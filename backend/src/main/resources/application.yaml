@@ -13,6 +13,10 @@ spring:
     database-platform: org.hibernate.community.dialect.SQLiteDialect
     hibernate:
       ddl-auto: update
+      jdbc:
+        batch_size: 1000
+      order_inserts: true
+      order_updates: true
 
 server:
   port: 8080  

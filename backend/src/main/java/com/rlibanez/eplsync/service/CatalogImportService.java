@@ -3,6 +3,8 @@ package com.rlibanez.eplsync.service;
 import com.rlibanez.eplsync.dto.ImportResult;
 import com.rlibanez.eplsync.exception.CatalogImportException;
 import com.rlibanez.eplsync.exception.CatalogImportInterruptedException;
+import com.rlibanez.eplsync.importer.CatalogBookCsvImporter;
+import com.rlibanez.eplsync.importer.CatalogBookCsvImporter.ImportStats;
 import com.rlibanez.eplsync.importer.FileDownloader;
 import com.rlibanez.eplsync.importer.ZipExtractor;
 import org.slf4j.Logger;
@@ -27,11 +29,14 @@ public class CatalogImportService {
 
     private final FileDownloader fileDownloader;
     private final ZipExtractor zipExtractor;
+    private final CatalogBookCsvImporter csvImporter;
 
     public CatalogImportService(FileDownloader fileDownloader,
-            ZipExtractor zipExtractor) {
+            ZipExtractor zipExtractor,
+            CatalogBookCsvImporter csvImporter) {
         this.fileDownloader = fileDownloader;
         this.zipExtractor = zipExtractor;
+        this.csvImporter = csvImporter;
     }
 
     /**
@@ -64,27 +69,28 @@ public class CatalogImportService {
             csvFile = zipExtractor.extractCsv(zipFile);
             log.info("CSV extraído: {} ({} bytes)", csvFile, Files.size(csvFile));
 
-            // TODO: Paso 3 - Procesar el CSV y guardar en BD
-            // Aquí se procesará el CSV antes de borrarlo
+            // Paso 3: Procesar CSV y guardar en BD
+            boolean truncateBeforeImport = true;
+            ImportStats stats = csvImporter.importFile(csvFile, truncateBeforeImport);
 
-            // Por ahora solo retornamos éxito con la descarga y extracción
-            log.info("Descarga y extracción completadas. CSV disponible en: {}", csvFile);
+            log.info("Importación completada. Procesadas={}, Errores={}", stats.processed(), stats.errors());
 
             return new ImportResult(
                     true,
-                    "Archivo descargado y extraído exitosamente (pendiente procesamiento)",
-                    0, // TODO: contador de registros procesados
-                    0 // TODO: contador de errores
-            );
+                    "Importación completada",
+                    stats.processed(),
+                    stats.errors());
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new CatalogImportInterruptedException("La operación de importación fue interrumpida", e);
         } catch (IOException e) {
             throw new CatalogImportException("Error de entrada/salida durante la importación", e);
+        } catch (Exception e) {
+            throw new CatalogImportException("Error durante el procesamiento del CSV", e);
         } finally {
             cleanupTempFile(zipFile);
-            // TODO: Borrar csvFile después de implementar el paso 3
+            cleanupTempFile(csvFile);
         }
     }
 
