@@ -35,7 +35,7 @@ public class CatalogBookController {
      *
      * Ejemplos:
      * /api/catalog/books?page=0&size=20
-     * /api/catalog/books?author=brandon&language=INGLES&sort=title,asc
+     * /api/catalog/books?author=brandon&language=en&sort=title,asc
      * /api/catalog/books?publicationYearFrom=2000&publicationYearTo=2010&size=50
      * http://localhost:8088/api/catalog/books?author=Brandon&page=2&size=50
      */

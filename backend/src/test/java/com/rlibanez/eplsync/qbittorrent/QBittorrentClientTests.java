@@ -133,7 +133,7 @@ class QBittorrentClientTests {
         downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                 .post("/api/torrent/books/2663"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("ACCEPTED"));
-        assertThat(addedFields()).containsEntry("category", "Libros").containsEntry("tags", "EPLSync,ESPANOL")
+        assertThat(addedFields()).containsEntry("category", "Libros").containsEntry("tags", "EPLSync,es")
                 .containsEntry("stopped", "false").containsEntry("autoTMM", "true")
                 .containsEntry("rename", "Bronte, Charlotte - Jane Eyre & más [2663] (r1.2)")
                 .doesNotContainKey("savepath");
@@ -231,9 +231,9 @@ class QBittorrentClientTests {
     void requestTagPlaceholdersReplaceDefaultsAndResolveBeforeSending() throws Exception {
         downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                 .post("/api/torrent/books/2663").contentType("application/json").content("""
-                {"qbittorrent":{"tags":["idioma:{language}","{collection}","idioma:ESPANOL","{revision}"]}}
+                {"qbittorrent":{"tags":["idioma:{language}","{collection}","idioma:es","{revision}"]}}
                 """)) .andExpect(status().isAccepted());
-        assertThat(addedFields()).containsEntry("tags", "idioma:ESPANOL,1.2");
+        assertThat(addedFields()).containsEntry("tags", "idioma:es,1.2");
     }
 
     @Test

@@ -90,6 +90,7 @@ public class TorrentNameResolver {
         if (value instanceof Number number) {
             return new BigDecimal(number.toString()).stripTrailingZeros().toPlainString();
         }
+        if (value instanceof com.rlibanez.eplsync.model.enums.Language language) return language.getIsoCode();
         if (value instanceof Enum<?> enumeration) return enumeration.name();
         return value.toString();
     }

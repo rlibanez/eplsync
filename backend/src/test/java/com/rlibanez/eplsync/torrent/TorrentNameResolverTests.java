@@ -35,7 +35,7 @@ class TorrentNameResolverTests {
         var book = CatalogBook.builder().revision(2.0).volume(1.5).publicationDate(LocalDate.of(2026, 9, 27))
                 .language(Language.ESPANOL).build();
         assertThat(resolver.resolve("{revision}|{volume}|{publicationDate}|{language}|{collection}", book))
-                .isEqualTo("2|1.5|2026-09-27|ESPANOL|");
+                .isEqualTo("2|1.5|2026-09-27|es|");
         assertThatThrownBy(() -> resolver.resolve("{collection}", book)).isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -50,9 +50,9 @@ class TorrentNameResolverTests {
     @Test
     void resolvesTagsDeduplicatesAndOmitsEmptyResults() {
         var book = CatalogBook.builder().language(Language.ESPANOL).revision(2.0).build();
-        assertThat(resolver.resolveTags(java.util.List.of("EPLSync", "{language}", " ESPANOL ",
+        assertThat(resolver.resolveTags(java.util.List.of("EPLSync", "{language}", " es ",
                 "{collection}", "", "  ", "revision:{revision}"), book))
-                .containsExactly("EPLSync", "ESPANOL", "revision:2");
+                .containsExactly("EPLSync", "es", "revision:2");
         assertThat(resolver.resolveTags(java.util.List.of(), book)).isEmpty();
     }
 

@@ -368,7 +368,7 @@ Reglas de resolución:
 
 - Corchetes, paréntesis, guiones y demás texto fuera de `{campo}` son literales.
 - Campos nulos se sustituyen por texto vacío. La puntuación del patrón se conserva.
-- Fechas se muestran como `YYYY-MM-DD`; enums como su nombre (`ESPANOL`, etc.).
+- Fechas se muestran como `YYYY-MM-DD`; `language` como su código (`es`, `en`, etc.) y los demás enums como su nombre.
 - Números usan punto decimal, sin ceros decimales innecesarios: `1.2`, `2`, `1.5`.
 - Los valores se insertan literalmente, sin volver a interpretar llaves, `$` o
   barras presentes en el título o autor. Los caracteres de control y separadores
@@ -508,7 +508,7 @@ incorporar otros clientes sin añadir dependencias de protocolo a los controlado
 #### Placeholders en etiquetas
 
 Los tags del YAML y de la petición admiten campos de `CatalogBook`, igual que el
-renombrado: `["EPLSync", "{language}"]` produce `["EPLSync", "ESPANOL"]` para un
+renombrado: `["EPLSync", "{language}"]` produce `["EPLSync", "es"]` para un
 libro en español. También se admiten prefijos, por ejemplo `"idioma:{language}"`.
 Los campos se resuelven una sola vez, conservando literalmente sus valores.
 
@@ -520,3 +520,12 @@ control se rechazan, también si proceden de campos como `genres` o `author`.
 Las etiquetas de la petición sustituyen la lista del YAML; `[]` envía sin etiquetas.
 qBittorrent crea las etiquetas nuevas al añadir el torrent. Un torrent ya existente
 conserva sus etiquetas.
+
+### Idioma en la API
+
+`language` se devuelve como el código de `Language.getIsoCode()` (`es`, `en`, `ca`, etc.).
+`OTRO` se representa como `other`, un valor propio de la aplicación, no un código ISO 639-1.
+Los filtros aceptan `language=es` y conservan compatibilidad con `language=ESPANOL`.
+Los valores no reconocidos se rechazan; la importación CSV mantiene su conversión habitual.
+El placeholder `{language}` también produce el código en nombres y etiquetas torrent.
+Los valores almacenados en la base de datos no cambian; no hace falta reimportar.

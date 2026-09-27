@@ -1,5 +1,9 @@
 package com.rlibanez.eplsync.model.enums;
 
+import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import java.util.Locale;
+
 /**
  * Idioma del libro.
  */
@@ -39,6 +43,7 @@ public enum Language {
      *
      * @return el código ISO 639-1 (ej.: "es", "en").
      */
+    @JsonValue
     public String getIsoCode() {
         return isoCode;
     }
@@ -54,7 +59,7 @@ public enum Language {
             return OTRO;
         }
 
-        String n = text.trim().toLowerCase();
+        String n = text.trim().toLowerCase(Locale.ROOT);
 
         // Si viene como ISO directamente
         Language byIso = fromIsoCode(n);
@@ -78,6 +83,17 @@ public enum Language {
         };
     }
 
+    /** Entrada API estricta: códigos y nombres históricos del enum. */
+    @JsonCreator
+    public static Language fromApiValue(String value) {
+        if (value == null) return null;
+        for (Language language : values()) {
+            if (language.isoCode.equalsIgnoreCase(value.trim()) || language.name().equalsIgnoreCase(value.trim()))
+                return language;
+        }
+        throw new IllegalArgumentException("Código de idioma no reconocido");
+    }
+
     /**
      * Parsea un código ISO 639-1.
      *
@@ -89,7 +105,7 @@ public enum Language {
             return OTRO;
         }
 
-        return switch (code.trim().toLowerCase()) {
+        return switch (code.trim().toLowerCase(Locale.ROOT)) {
             case "es" -> ESPANOL;
             case "en" -> INGLES;
             case "ca" -> CATALAN;

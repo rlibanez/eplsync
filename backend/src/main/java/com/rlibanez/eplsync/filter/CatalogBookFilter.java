@@ -18,7 +18,7 @@ import java.util.Set;
  * Filtro de búsqueda para CatalogBook (binding desde query params).
  *
  * Ejemplos:
- * /api/catalog/books?author=brandon&language=ESPANOL
+ * /api/catalog/books?author=brandon&language=es
  * /api/catalog/books?title=mistborn&publicationYearFrom=2000&publicationYearTo=2015
  * /api/catalog/books?publicationDateFrom=2013-01-01&publicationDateTo=2013-12-31
  * /api/catalog/books?status=DISPONIBLE&status=VERIFICADO
