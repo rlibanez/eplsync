@@ -127,6 +127,20 @@ public class GlobalExceptionHandler {
                 .body(buildError(HttpStatus.METHOD_NOT_ALLOWED, "Método no permitido", details, request));
     }
 
+    @ExceptionHandler(TorrentConnectionException.class)
+    public ResponseEntity<ErrorResponse> handleTorrentConnection(
+            TorrentConnectionException ex, HttpServletRequest request) {
+        return ResponseEntity.status(ex.getStatus())
+                .body(buildError(ex.getStatus(), "Conexión con el cliente torrent fallida", ex.getMessage(), request));
+    }
+
+    @ExceptionHandler(TorrentOperationException.class)
+    public ResponseEntity<ErrorResponse> handleTorrentOperation(
+            TorrentOperationException ex, HttpServletRequest request) {
+        return ResponseEntity.status(ex.getStatus())
+                .body(buildError(ex.getStatus(), "Operación torrent fallida", ex.getMessage(), request));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(
             Exception ex,

@@ -34,7 +34,9 @@ class TorrentPropertiesTests {
     @Test
     void loadsYamlAndReplacesListFromDockerEnvironmentIncludingEmptyValue() {
         runner(null).run(context -> assertThat(context.getBean(TorrentProperties.class).getTrackers())
-                .containsExactly("udp://tracker.opentrackr.org:1337/announce"));
+                .containsExactly("udp://tracker.opentrackr.org:1337/announce",
+                        "udp://www.torrent.eu.org:451/announce", "udp://exodus.desync.com:6969/announce",
+                        "udp://p4p.arenabg.ch:1337/announce", "udp://tracker.internetwarriors.net:1337/announce"));
         runner("https://example.com/announce,udp://example.org:80/announce").run(context ->
                 assertThat(context.getBean(TorrentProperties.class).getTrackers())
                         .containsExactly("https://example.com/announce", "udp://example.org:80/announce"));

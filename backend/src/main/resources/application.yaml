@@ -21,7 +21,7 @@ spring:
         order_updates: true
 
 server:
-  port: 8080  
+  port: 8088
 
 logging:
   level:
@@ -38,3 +38,18 @@ eplsync:
       - "udp://exodus.desync.com:6969/announce"
       - "udp://p4p.arenabg.ch:1337/announce"
       - "udp://tracker.internetwarriors.net:1337/announce"
+
+    enabled: false
+    client: qbittorrent
+    base-url: "http://localhost:8080"
+    connect-timeout: 5s
+    request-timeout: 10s
+    rename:
+      enabled: true
+      pattern: "{author} - {title} [{eplId}] (r{revision})"
+    qbittorrent:
+      auth:
+        mode: auto
+        api-key: ""
+        username: ""
+        password: ""
