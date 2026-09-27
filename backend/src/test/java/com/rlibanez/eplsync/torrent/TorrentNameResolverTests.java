@@ -46,4 +46,31 @@ class TorrentNameResolverTests {
                 .isEqualTo("[$5 \\ {author} & + ñ] ($5 \\ {author} & + ñ)");
         assertThat(resolver.resolve("{synopsis}", book)).isEqualTo("uno dos");
     }
+
+    @Test
+    void resolvesTagsDeduplicatesAndOmitsEmptyResults() {
+        var book = CatalogBook.builder().language(Language.ESPANOL).revision(2.0).build();
+        assertThat(resolver.resolveTags(java.util.List.of("EPLSync", "{language}", " ESPANOL ",
+                "{collection}", "", "  ", "revision:{revision}"), book))
+                .containsExactly("EPLSync", "ESPANOL", "revision:2");
+        assertThat(resolver.resolveTags(java.util.List.of(), book)).isEmpty();
+    }
+
+    @Test
+    void rejectsInvalidTagTemplatesAndUnsafeResolvedValues() {
+        var book = CatalogBook.builder().author("Bronte, Charlotte").synopsis("uno\ndos").build();
+        for (String pattern : java.util.List.of("{unknown}", "{language.name}", "{title", "{author}", "{synopsis}")) {
+            assertThatThrownBy(() -> resolver.resolveTags(java.util.List.of(pattern), book))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(() -> resolver.resolveTags(java.util.Arrays.asList((String) null), book))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void tagValuesRemainLiteralAndAreNotExpandedAgain() {
+        var book = CatalogBook.builder().title("$5 \\ {language} & ñ").language(Language.ESPANOL).build();
+        assertThat(resolver.resolveTags(java.util.List.of("{title}"), book))
+                .containsExactly("$5 \\ {language} & ñ");
+    }
 }

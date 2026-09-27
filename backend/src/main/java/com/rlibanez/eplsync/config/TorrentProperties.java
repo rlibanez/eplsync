@@ -24,6 +24,15 @@ public class TorrentProperties {
     private Duration connectTimeout = Duration.ofSeconds(5);
     private Duration requestTimeout = Duration.ofSeconds(10);
     private Rename rename = new Rename();
+    private Download download = new Download();
+
+    @Getter
+    @Setter
+    public static class Download {
+        private boolean start = true;
+        private String savePath;
+    }
+
     private List<String> trackers = List.of();
 
     @Getter
@@ -62,7 +71,7 @@ public class TorrentProperties {
     }
 
     public void setTrackers(List<String> trackers) {
-        this.trackers = trackers.stream().map(String::trim).filter(s -> !s.isEmpty())
+        this.trackers = trackers.stream().map(tracker -> java.util.Objects.requireNonNull(tracker).trim()).filter(s -> !s.isEmpty())
                 .peek(TorrentProperties::validateTracker).distinct().toList();
     }
 

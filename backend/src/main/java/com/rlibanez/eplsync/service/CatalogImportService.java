@@ -12,6 +12,7 @@ import com.rlibanez.eplsync.importer.ZipExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,9 +25,7 @@ import java.nio.file.Path;
 public class CatalogImportService {
 
     private static final Logger log = LoggerFactory.getLogger(CatalogImportService.class);
-    private static final String EPUBLIBRE_ZIP_URL = "https://epublibre.org/rssweb/csv/epub.zip";
-    // private static final String EPUBLIBRE_ZIP_URL =
-    // "https://www.dropbox.com/s/a9r4p7oyaftaz1b/csv_full_imgs.zip?dl=1";
+    private final String catalogZipUrl;
 
     private final FileDownloader fileDownloader;
     private final ZipExtractor zipExtractor;
@@ -34,23 +33,25 @@ public class CatalogImportService {
 
     public CatalogImportService(FileDownloader fileDownloader,
             ZipExtractor zipExtractor,
-            CatalogBookCsvImporter csvImporter) {
+            CatalogBookCsvImporter csvImporter,
+            @Value("${eplsync.catalog.zip-url}") String catalogZipUrl) {
+        this.catalogZipUrl = catalogZipUrl;
         this.fileDownloader = fileDownloader;
         this.zipExtractor = zipExtractor;
         this.csvImporter = csvImporter;
     }
 
     /**
-     * Reemplaza el catálogo completo desde la URL oficial de ePubLibre.
+     * Reemplaza el catálogo completo desde la URL configurada.
      * 
      * @return Resumen del proceso de importación.
      */
     public ImportResult importCatalog() {
-        return importCatalog(EPUBLIBRE_ZIP_URL);
+        return importCatalog(catalogZipUrl);
     }
 
     /**
-     * Reemplaza el catálogo desde una URL específica (null usa la URL oficial).
+     * Reemplaza el catálogo desde una URL específica (null usa la URL configurada).
      * 
      * @param zipUrl URL del archivo ZIP que contiene el CSV.
      * @return Resumen del proceso de importación.
@@ -59,7 +60,7 @@ public class CatalogImportService {
         return importCatalog(zipUrl, true);
     }
 
-    /** Actualiza el catálogo sin borrarlo; null usa la URL oficial. */
+    /** Actualiza el catálogo sin borrarlo; null usa la URL configurada. */
     public ImportResult updateCatalog(String zipUrl) {
         return importCatalog(zipUrl, false);
     }
@@ -83,7 +84,7 @@ public class CatalogImportService {
 
     private <T> T withCatalogFile(String zipUrl, CatalogFileOperation<T> operation) {
         if (zipUrl == null) {
-            zipUrl = EPUBLIBRE_ZIP_URL;
+            zipUrl = catalogZipUrl;
         }
         log.info("Iniciando importación del catálogo desde: {}", zipUrl);
 

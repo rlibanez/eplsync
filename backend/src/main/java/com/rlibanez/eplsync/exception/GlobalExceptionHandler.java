@@ -3,7 +3,6 @@ package com.rlibanez.eplsync.exception;
 import com.rlibanez.eplsync.dto.ErrorResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 
 import org.slf4j.Logger;
@@ -32,7 +31,7 @@ public class GlobalExceptionHandler {
 
         String details = ex.getConstraintViolations()
                 .stream()
-                .map(ConstraintViolation::getMessage)
+                .map(violation -> java.util.Objects.requireNonNull(violation).getMessage())
                 .findFirst()
                 .orElse("Parámetros inválidos");
 

@@ -30,6 +30,8 @@ logging:
     com.rlibanez.eplsync: DEBUG
 
 eplsync:
+  catalog:
+    zip-url: "https://epublibre.org/rssweb/csv/epub.zip"
   torrent:
     # Un valor vacío desactiva los trackers de los magnets generados.
     trackers:
@@ -44,10 +46,17 @@ eplsync:
     base-url: "http://localhost:8080"
     connect-timeout: 5s
     request-timeout: 10s
+    download:
+      start: true
+      save-path: null
     rename:
       enabled: true
       pattern: "{author} - {title} [{eplId}] (r{revision})"
     qbittorrent:
+      download:
+        category: "Libros"
+        tags: ["EPLsync", "{language}"]
+        auto-management: true
       auth:
         mode: auto
         api-key: ""

@@ -96,6 +96,90 @@ public class QBittorrentClient implements TorrentClient {
         }
     }
 
+    /** Una única escritura; los timeouts no provocan reenvíos automáticos. */
+    @Override
+    public synchronized com.rlibanez.eplsync.dto.TorrentDownloadResult.Status addTorrent(
+            com.rlibanez.eplsync.torrent.TorrentDownload download) {
+        if (!properties.isEnabled()) throw new TorrentOperationException(HttpStatus.CONFLICT,
+                "La conexión torrent está deshabilitada");
+        var defaults = qbittorrent.getDownload();
+        var options = download.qbittorrent();
+        String category = options != null && options.category() != null ? options.category() : defaults.getCategory();
+        var tagPatterns = options != null && options.tags() != null ? options.tags() : defaults.getTags();
+        var tags = new com.rlibanez.eplsync.torrent.TorrentNameResolver().resolveTags(tagPatterns, download.book());
+        boolean automatic = options != null && options.autoManagement() != null
+                ? options.autoManagement() : defaults.isAutoManagement();
+        category = category == null ? "" : category.trim();
+        if (category.chars().anyMatch(Character::isISOControl))
+            throw new IllegalArgumentException("Categoría inválida");
+        if (tags == null || tags.stream().anyMatch(tag -> tag == null || tag.isBlank()
+                || tag.contains(",") || tag.chars().anyMatch(Character::isISOControl)))
+            throw new IllegalArgumentException("Las etiquetas no pueden estar vacías ni contener comas o caracteres de control");
+        String savePath = download.savePath();
+        if (savePath != null && savePath.chars().anyMatch(Character::isISOControl))
+            throw new IllegalArgumentException("savePath contiene caracteres de control");
+        if (automatic && savePath != null && !savePath.isBlank())
+            throw new IllegalArgumentException("savePath requiere autoManagement=false");
+        boolean key = checkConnection().authMode().equals("api-key");
+        var existing = readJson("torrents/info?hashes=" + encode(download.hash()), key);
+        if (!existing.isArray()) throw new QBittorrentConnectionException(UPSTREAM);
+        for (var torrent : existing) {
+            if (download.hash().equalsIgnoreCase(torrent.path("hash").asString()))
+                return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS;
+        }
+        if (!category.isEmpty()) {
+            var categories = readJson("torrents/categories", key);
+            if (!categories.isObject()) throw new QBittorrentConnectionException(UPSTREAM);
+            if (!categories.has(category)) throw new TorrentOperationException(HttpStatus.CONFLICT,
+                    "La categoría configurada no existe en qBittorrent");
+        }
+        var fields = new java.util.LinkedHashMap<String, String>();
+        fields.put("urls", download.magnet());
+        fields.put("category", category);
+        fields.put("tags", String.join(",", tags.stream().map(tag -> java.util.Objects.requireNonNull(tag).trim()).distinct().toList()));
+        fields.put("stopped", Boolean.toString(!download.start()));
+        fields.put("autoTMM", Boolean.toString(automatic));
+        if (!automatic && savePath != null && !savePath.isBlank()) fields.put("savepath", savePath);
+        if (download.name() != null) fields.put("rename", download.name());
+        String body = fields.entrySet().stream().map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue()))
+                .collect(java.util.stream.Collectors.joining("&"));
+        var builder = request("torrents/add").header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        if (key) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
+        var response = send(key ? apiKeyClient : sessionClient, builder.build());
+        if (response.statusCode() == 409) throw new TorrentOperationException(HttpStatus.CONFLICT,
+                "qBittorrent ha rechazado el envío; comprueba si el torrent ya existe");
+        checkStatus(response);
+        // qBittorrent 5.2.3 devuelve contadores JSON; versiones anteriores usaban Ok.
+        if (response.statusCode() == 200 && response.body().trim().equals("Ok."))
+            return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;
+        var result = parseJson(response.body());
+        if ((response.statusCode() != 200 && response.statusCode() != 202)
+                || result.path("failure_count").asInt(-1) != 0
+                || result.path("success_count").asInt(0) + result.path("pending_count").asInt(0) != 1)
+            throw new QBittorrentConnectionException(UPSTREAM);
+        return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;
+    }
+
+    private tools.jackson.databind.JsonNode readJson(String path, boolean key) {
+        var builder = request(path).GET();
+        if (key) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
+        var response = send(key ? apiKeyClient : sessionClient, builder.build());
+        checkStatus(response);
+        if (response.statusCode() != 200) throw new QBittorrentConnectionException(UPSTREAM);
+        return parseJson(response.body());
+    }
+
+    private tools.jackson.databind.JsonNode parseJson(String body) {
+        try {
+            var node = tools.jackson.databind.json.JsonMapper.builder().build().readTree(body);
+            if (node == null) throw new QBittorrentConnectionException(UPSTREAM);
+            return node;
+        } catch (tools.jackson.core.JacksonException ex) {
+            throw new QBittorrentConnectionException(UPSTREAM);
+        }
+    }
+
     private TorrentConnectionStatus checkSession() {
         if (!cookies.getCookieStore().getCookies().isEmpty()) {
             try {

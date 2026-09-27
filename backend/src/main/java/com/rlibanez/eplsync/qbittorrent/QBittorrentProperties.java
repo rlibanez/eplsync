@@ -11,6 +11,16 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "eplsync.torrent.qbittorrent")
 public class QBittorrentProperties {
     private Auth auth = new Auth();
+    private Download download = new Download();
+
+    @Getter
+    @Setter
+    public static class Download {
+        private String category = "Libros";
+        private java.util.List<String> tags = java.util.List.of("EPLSync", "{language}");
+        private boolean autoManagement = true;
+    }
+
 
     public enum AuthMode { AUTO, API_KEY, SESSION }
 

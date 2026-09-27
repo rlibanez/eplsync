@@ -22,33 +22,59 @@ public class TorrentNameResolver {
             .filter(field -> !Modifier.isStatic(field.getModifiers()) && !field.isSynthetic())
             .map(field -> BeanUtils.getPropertyDescriptor(CatalogBook.class, field.getName()))
             .filter(Objects::nonNull).filter(property -> property.getReadMethod() != null)
-            .collect(Collectors.toUnmodifiableMap(java.beans.PropertyDescriptor::getName,
-                    java.beans.PropertyDescriptor::getReadMethod));
+            .collect(Collectors.toUnmodifiableMap(property -> Objects.requireNonNull(property).getName(),
+                    property -> Objects.requireNonNull(property).getReadMethod()));
 
     public static void validatePattern(String pattern) {
+        validatePattern(pattern, "rename.pattern");
+    }
+
+    private static void validatePattern(String pattern, String label) {
         if (pattern == null || pattern.isBlank() || pattern.chars().anyMatch(Character::isISOControl)) {
-            throw new IllegalArgumentException("rename.pattern no puede estar vacío ni contener caracteres de control");
+            throw new IllegalArgumentException(label + " no puede estar vacío ni contener caracteres de control");
         }
         Matcher matcher = TOKEN.matcher(pattern);
         while (matcher.find()) {
             if (!FIELDS.containsKey(matcher.group(1))) {
-                throw new IllegalArgumentException("rename.pattern contiene un campo que no existe en CatalogBook: " + matcher.group(1));
+                throw new IllegalArgumentException(label + " contiene un campo que no existe en CatalogBook: " + matcher.group(1));
             }
         }
         String literals = matcher.replaceAll("");
         if (literals.contains("{") || literals.contains("}")) {
-            throw new IllegalArgumentException("rename.pattern tiene llaves inválidas");
+            throw new IllegalArgumentException(label + " tiene llaves inválidas");
         }
     }
 
     public String resolve(String pattern, CatalogBook book) {
         validatePattern(pattern);
-        Objects.requireNonNull(book, "El libro es obligatorio");
-        String name = TOKEN.matcher(pattern).replaceAll(match ->
-                Matcher.quoteReplacement(format(read(FIELDS.get(match.group(1)), book))));
+        String name = expand(pattern, book);
         name = name.replaceAll("[\\p{Cc}\\p{Zl}\\p{Zp}]", " ").strip();
         if (name.isBlank()) throw new IllegalArgumentException("El patrón genera un nombre de torrent vacío");
         return name;
+    }
+
+    /** Cada entrada sigue siendo una etiqueta; nunca se divide por comas. */
+    public java.util.List<String> resolveTags(java.util.List<String> patterns, CatalogBook book) {
+        if (patterns == null) throw new IllegalArgumentException("tags debe ser una lista");
+        var tags = new java.util.LinkedHashSet<String>();
+        for (String pattern : patterns) {
+            if (pattern == null) throw new IllegalArgumentException("tags no admite elementos null");
+            if (pattern.isBlank() && pattern.codePoints().noneMatch(Character::isISOControl)) continue;
+            validatePattern(pattern, "tags");
+            String tag = expand(pattern, book).strip();
+            if (tag.contains(",") || tag.codePoints().anyMatch(c -> Character.isISOControl(c)
+                    || Character.getType(c) == Character.LINE_SEPARATOR
+                    || Character.getType(c) == Character.PARAGRAPH_SEPARATOR))
+                throw new IllegalArgumentException("Las etiquetas resueltas no pueden contener comas ni caracteres de control");
+            if (!tag.isBlank()) tags.add(tag);
+        }
+        return java.util.List.copyOf(tags);
+    }
+
+    private String expand(String pattern, CatalogBook book) {
+        Objects.requireNonNull(book, "El libro es obligatorio");
+        return TOKEN.matcher(pattern).replaceAll(match ->
+                Matcher.quoteReplacement(format(read(FIELDS.get(match.group(1)), book))));
     }
 
     private Object read(Method getter, CatalogBook book) {

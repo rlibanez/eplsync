@@ -30,6 +30,17 @@ public class TorrentClientService {
         return selectedClient.checkConnection();
     }
 
+    public void requireEnabled() {
+        if (!properties.isEnabled()) throw new TorrentOperationException(
+                HttpStatus.CONFLICT, "La conexión torrent está deshabilitada");
+    }
+
+    public com.rlibanez.eplsync.dto.TorrentDownloadResult.Status addTorrent(
+            com.rlibanez.eplsync.torrent.TorrentDownload download) {
+        requireEnabled();
+        return selectedClient.addTorrent(download);
+    }
+
     public void requireRenameEnabled() {
         if (!properties.isEnabled() || !properties.getRename().isEnabled()) {
             throw new TorrentOperationException(

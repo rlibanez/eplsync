@@ -191,10 +191,10 @@ con el nuevo entorno), pero no reimportar el catálogo ni modificar la BD.
 
 ## Conexión con clientes torrent
 
-Esta fase implementa configuración, autenticación y comprobación de conexión.
-Permite renombrar explícitamente torrents existentes; todavía no añade descargas. La integración está deshabilitada
+La integración permite comprobar la conexión, enviar un libro por su EPL Id
+y renombrar explícitamente torrents existentes. La integración está deshabilitada
 por defecto y no conecta al arrancar; el catálogo funciona aunque qBittorrent
-esté apagado. Las conexiones se realizan al solicitar la comprobación.
+esté apagado. Las conexiones se realizan al solicitar una operación torrent.
 
 ### Configuración
 
@@ -402,3 +402,121 @@ timeouts, ya que el servidor podría haber aplicado el cambio.
 Cambiar el patrón no modifica descargas automáticamente. Los endpoints de magnets
 mantienen su `dn` actual; ese nombre sugerido es independiente del nombre aplicado
 al cliente por esta operación.
+
+### URL del ZIP del catálogo
+
+La URL predeterminada para importar y previsualizar se configura en `application.yaml`
+y puede sobrescribirse en `application-local.yaml`:
+
+```yaml
+eplsync:
+  catalog:
+    zip-url: "https://epublibre.org/rssweb/csv/epub.zip"
+```
+
+El parámetro opcional `url` de los endpoints de importación tiene prioridad sobre
+este valor. En Docker puede sobrescribirse con `EPLSYNC_CATALOG_ZIPURL`.
+
+### Enviar un libro a qBittorrent
+
+`POST /api/torrent/books/{eplId}` envía un único torrent del libro.
+No descarga el EPUB a EPLSync: qBittorrent recibe el magnet y gestiona la descarga.
+El envío está diseñado para qBittorrent 5.2.3. No hay todavía envío por búsqueda ni por lista de IDs.
+
+Sin cuerpo se usan los valores predeterminados de `application.yaml` (sobrescribibles en el perfil local):
+
+```yaml
+eplsync:
+  torrent:
+    download:
+      start: true
+      save-path: null
+    rename:
+      enabled: true
+      pattern: "{author} - {title} [{eplId}] (r{revision})"
+    qbittorrent:
+      download:
+        category: "Libros"
+        tags: ["EPLSync", "{language}"]
+        auto-management: true
+```
+
+La integración debe estar habilitada y autenticada. La categoría `Libros` debe existir en qBit;
+EPLSync no crea categorías. Ejemplo con valores predeterminados:
+
+```sh
+curl -X POST http://localhost:8088/api/torrent/books/2663
+```
+
+Ejemplo con opciones personalizadas:
+
+```sh
+curl -X POST http://localhost:8088/api/torrent/books/2663 \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "start": false,
+    "savePath": "/downloads/libros",
+    "rename": {
+      "enabled": true,
+      "pattern": "EPL_{eplId}_{title}"
+    },
+    "qbittorrent": {
+      "category": "Libros",
+      "tags": ["EPLSync", "Pendientes"],
+      "autoManagement": false
+    }
+  }'
+```
+
+- Cada campo omitido o `null` hereda su valor configurado, también dentro de los objetos.
+- `tags: []` elimina las etiquetas predeterminadas; las listas personalizadas las sustituyen.
+- `category: ""` añade sin categoría. Las etiquetas no admiten comas ni caracteres de control.
+- `start: false` envía `stopped=true` a qBit; `true` permite iniciar respetando su cola.
+- `autoManagement: true` usa gestión automática y no admite una ruta explícita.
+- `autoManagement: false` permite `savePath`; sin ruta se utiliza la predeterminada de qBit.
+  `savePath: ""` borra una ruta heredada. La ruta pertenece al equipo/contenedor de qBit.
+- `rename.enabled: false` omite el nombre personalizado. Si está activo, se usan campos
+  de `CatalogBook`; no se renombran archivos ni carpetas.
+- Si existen varios hashes válidos en `links`, es obligatorio incluir `hash` en el JSON.
+  Se admite hexadecimal o Base32 y debe pertenecer al libro. Solo se envía ese hash.
+
+Respuesta `202 Accepted`:
+
+```json
+{
+  "eplId": 2663,
+  "hash": "0123456789ABCDEF0123456789ABCDEF01234567",
+  "client": "qbittorrent",
+  "status": "ACCEPTED"
+}
+```
+
+`ACCEPTED` indica que qBit aceptó el envío, no que haya obtenido los metadatos o terminado
+la descarga. No se crea un trabajo en segundo plano en EPLSync en esta primera versión.
+Si el hash ya existe, devuelve `200` y `ALREADY_EXISTS`, conservando nombre, categoría,
+etiquetas y estado existentes. La comprobación y el alta no son atómicas frente a otros clientes.
+
+Errores: `400` para opciones/hash inválidos, `404` para libro inexistente, `422` para libro
+sin hashes válidos, `409` para integración deshabilitada, selección de hash necesaria,
+categoría inexistente o rechazo de qBit; `502`/`503`/`504` para comunicación/autenticación.
+Solo se realiza un POST de alta: ante un timeout el resultado puede ser incierto y no se
+reenvía automáticamente. Comprueba qBit antes de repetir la petición.
+
+Las propiedades específicas quedan en el adaptador qBittorrent; el contrato común permite
+incorporar otros clientes sin añadir dependencias de protocolo a los controladores.
+
+#### Placeholders en etiquetas
+
+Los tags del YAML y de la petición admiten campos de `CatalogBook`, igual que el
+renombrado: `["EPLSync", "{language}"]` produce `["EPLSync", "ESPANOL"]` para un
+libro en español. También se admiten prefijos, por ejemplo `"idioma:{language}"`.
+Los campos se resuelven una sola vez, conservando literalmente sus valores.
+
+Se rechazan campos desconocidos y llaves mal formadas antes de contactar con qBit.
+Los campos nulos se convierten en texto vacío; se omiten los resultados vacíos,
+se recortan espacios exteriores y se eliminan duplicados conservando el orden.
+Cada entrada representa una etiqueta: los resultados con comas o caracteres de
+control se rechazan, también si proceden de campos como `genres` o `author`.
+Las etiquetas de la petición sustituyen la lista del YAML; `[]` envía sin etiquetas.
+qBittorrent crea las etiquetas nuevas al añadir el torrent. Un torrent ya existente
+conserva sus etiquetas.

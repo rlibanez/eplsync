@@ -28,7 +28,7 @@ public class CatalogImportController {
 
     /**
      * Reemplaza todo el catálogo local por el catálogo importado.
-     * Si no se proporciona URL, usa la URL oficial de ePubLibre.
+     * Si no se proporciona URL, usa eplsync.catalog.zip-url.
      * 
      * @param url URL personalizada del ZIP (opcional).
      * @return Resultado de la importación.

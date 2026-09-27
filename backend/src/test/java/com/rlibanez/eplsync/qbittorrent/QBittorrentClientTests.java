@@ -33,6 +33,10 @@ class QBittorrentClientTests {
     private TorrentProperties properties;
     private QBittorrentProperties qbittorrent;
     private final CopyOnWriteArrayList<Call> calls = new CopyOnWriteArrayList<>();
+    private volatile String torrentInfo = "[]";
+    private volatile String categories = "{\"Libros\":{},\"Personal\":{}}";
+    private volatile int addStatus = 200;
+    private volatile String addBody = "{\"success_count\":1,\"failure_count\":0,\"pending_count\":0}";
     private volatile int keyStatus = 200;
     private volatile int renameStatus = 200;
     private volatile int loginStatus = 204;
@@ -81,18 +85,168 @@ class QBittorrentClientTests {
                 if (loginStatus < 300 && !loginBody.equals("Fails."))
                     exchange.getResponseHeaders().add("Set-Cookie", cookieName + "=" + cookieValue + "; Path=/; HttpOnly");
                 respond(exchange, loginStatus, loginBody);
-            } else if (call.path().equals("/qbit/api/v2/app/version") || call.path().equals("/qbit/api/v2/app/webapiVersion") || call.path().equals("/qbit/api/v2/torrents/rename")) {
+            } else if (call.path().equals("/qbit/api/v2/app/version") || call.path().equals("/qbit/api/v2/app/webapiVersion") || call.path().startsWith("/qbit/api/v2/torrents/")) {
                 if (call.authorization() != null) {
                     if (keyStatus != 200) { respond(exchange, keyStatus, "remote body with test-key secret"); return; }
                 } else if (rejectSession || call.cookie() == null || !call.cookie().contains(cookieName + "=" + cookieValue)) {
                     respond(exchange, 403, "Forbidden"); return;
                 }
-                if (call.path().endsWith("/torrents/rename")) respond(exchange, renameStatus, "");
+                if (call.path().endsWith("/torrents/info")) respond(exchange, 200, torrentInfo);
+                else if (call.path().endsWith("/torrents/categories")) respond(exchange, 200, categories);
+                else if (call.path().endsWith("/torrents/add")) respond(exchange, addStatus, addBody);
+                else if (call.path().endsWith("/torrents/rename")) respond(exchange, renameStatus, "");
                 else respond(exchange, 200, call.path().endsWith("/version") ? version : "2.15.1");
             } else {
                 respond(exchange, 404, "Unexpected path");
             }
         }
+    }
+
+    private org.springframework.test.web.servlet.MockMvc downloadMvc(String links) {
+        var repository = org.mockito.Mockito.mock(com.rlibanez.eplsync.repository.CatalogBookRepository.class);
+        var book = new com.rlibanez.eplsync.model.CatalogBook();
+        book.setEplId(2663L);
+        book.setTitle("Jane Eyre & más");
+        book.setAuthor("Bronte, Charlotte");
+        book.setRevision(1.2);
+        book.setLanguage(com.rlibanez.eplsync.model.enums.Language.ESPANOL);
+        book.setLinks(links);
+        org.mockito.Mockito.when(repository.findById(2663L)).thenReturn(java.util.Optional.of(book));
+        var service = new com.rlibanez.eplsync.service.TorrentDownloadService(repository, properties,
+                new com.rlibanez.eplsync.torrent.MagnetLinkBuilder(properties),
+                new com.rlibanez.eplsync.torrent.TorrentNameResolver(),
+                new TorrentClientService(properties, List.of(client())));
+        return MockMvcBuilders.standaloneSetup(new com.rlibanez.eplsync.controller.TorrentDownloadController(service))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+    }
+
+    private java.util.Map<String, String> addedFields() {
+        var call = calls.stream().filter(c -> c.path().endsWith("/torrents/add")).findFirst().orElseThrow();
+        return java.util.Arrays.stream(call.body().split("&")).map(pair -> pair.split("=", 2))
+                .collect(java.util.stream.Collectors.toMap(pair -> pair[0], pair ->
+                        java.net.URLDecoder.decode(pair[1], StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void downloadUsesDefaultsAndSendsOnlyOneMagnet() throws Exception {
+        properties.getRename().setPattern("{author} - {title} [{eplId}] (r{revision})");
+        downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("ACCEPTED"));
+        assertThat(addedFields()).containsEntry("category", "Libros").containsEntry("tags", "EPLSync,ESPANOL")
+                .containsEntry("stopped", "false").containsEntry("autoTMM", "true")
+                .containsEntry("rename", "Bronte, Charlotte - Jane Eyre & más [2663] (r1.2)")
+                .doesNotContainKey("savepath");
+        assertThat(addedFields().get("urls")).startsWith("magnet:?xt=urn:btih:" + "A".repeat(40));
+        assertThat(calls.stream().filter(c -> c.method().equals("POST")).count()).isEqualTo(1);
+    }
+
+    @Test
+    void downloadOverridesDefaultsAndSupportsSessionFallback() throws Exception {
+        keyStatus = 403;
+        downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663").contentType("application/json").content("""
+                {"start":false,"savePath":"/downloads/libros","rename":{"enabled":false},
+                 "qbittorrent":{"category":"Personal","tags":[],"autoManagement":false}}
+                """)) .andExpect(status().isAccepted());
+        assertThat(addedFields()).containsEntry("category", "Personal").containsEntry("tags", "")
+                .containsEntry("savepath", "/downloads/libros").containsEntry("stopped", "true")
+                .containsEntry("autoTMM", "false").doesNotContainKey("rename");
+        assertThat(calls.getLast().cookie()).contains("session1");
+        assertThat(calls.getLast().authorization()).isNull();
+    }
+
+    @Test
+    void existingTorrentDoesNotWriteOrChangeOptions() throws Exception {
+        torrentInfo = "[{\"hash\":\"" + "a".repeat(40) + "\"}]";
+        downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ALREADY_EXISTS"));
+        assertThat(calls).noneMatch(c -> c.method().equals("POST"));
+    }
+
+    @Test
+    void multipleHashesRequireSelectionAndRejectUnrelatedHash() throws Exception {
+        var mvc = downloadMvc("A".repeat(40) + "," + "B".repeat(40));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663")).andExpect(status().isConflict());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663").contentType("application/json")
+                .content("{\"hash\":\"" + "C".repeat(40) + "\"}")).andExpect(status().isBadRequest());
+        assertThat(calls).isEmpty();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663").contentType("application/json")
+                .content("{\"hash\":\"" + "b".repeat(40) + "\"}")).andExpect(status().isAccepted());
+        assertThat(addedFields().get("urls")).contains("urn:btih:" + "B".repeat(40));
+    }
+
+    @Test
+    void rejectsConflictingDestinationAndMissingCategoryBeforeWriting() throws Exception {
+        var mvc = downloadMvc("A".repeat(40));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663").contentType("application/json")
+                .content("{\"savePath\":\"/downloads\"}")).andExpect(status().isBadRequest());
+        assertThat(calls).isEmpty();
+        categories = "{}";
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663")).andExpect(status().isConflict());
+        assertThat(calls).noneMatch(c -> c.method().equals("POST"));
+    }
+
+    @Test
+    void remoteAddFailureIsNotRetried() throws Exception {
+        addStatus = 500;
+        var mvc = downloadMvc("A".repeat(40));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663")).andExpect(status().isBadGateway());
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
+    }
+
+    @Test
+    void downloadValidatesMissingBookEmptyLinksAndDisabledIntegration() throws Exception {
+        var mvc = downloadMvc("");
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/999")).andExpect(status().isNotFound());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663")).andExpect(status().isUnprocessableContent());
+        properties.setEnabled(false);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663")).andExpect(status().isConflict());
+        assertThat(calls).isEmpty();
+    }
+
+    @Test
+    void downloadRejectsInvalidRenameAndTagsWithoutNetwork() throws Exception {
+        var mvc = downloadMvc("A".repeat(40));
+        for (String body : List.of("{\"rename\":{\"pattern\":\"{notAField}\"}}",
+                "{\"qbittorrent\":{\"tags\":[\"one,two\"]}}")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .post("/api/torrent/books/2663").contentType("application/json").content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        assertThat(calls).isEmpty();
+    }
+
+    @Test
+    void requestTagPlaceholdersReplaceDefaultsAndResolveBeforeSending() throws Exception {
+        downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663").contentType("application/json").content("""
+                {"qbittorrent":{"tags":["idioma:{language}","{collection}","idioma:ESPANOL","{revision}"]}}
+                """)) .andExpect(status().isAccepted());
+        assertThat(addedFields()).containsEntry("tags", "idioma:ESPANOL,1.2");
+    }
+
+    @Test
+    void invalidConfiguredOrRequestTagPlaceholdersFailBeforeNetwork() throws Exception {
+        var mvc = downloadMvc("A".repeat(40));
+        qbittorrent.getDownload().setTags(List.of("{missing}"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663")).andExpect(status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .post("/api/torrent/books/2663").contentType("application/json")
+                .content("{\"qbittorrent\":{\"tags\":[\"{author}\"]}}"))
+                .andExpect(status().isBadRequest());
+        assertThat(calls).isEmpty();
     }
 
     private void respond(HttpExchange exchange, int status, String body) throws IOException {
