@@ -4,8 +4,13 @@ import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
+import java.util.Objects;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.HashSet;
+import com.rlibanez.eplsync.dto.ImportResult;
+import com.rlibanez.eplsync.dto.ImportPreviewResult;
+import com.rlibanez.eplsync.dto.ImportPreviewResult.BookUpdate;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,14 +40,14 @@ public class CatalogBookCsvImporter {
     @PersistenceContext
     private EntityManager em;
 
-    public record ImportStats(int processed, int errors) {
+    public record ImportStats(int processed, int errors, int updated, int created, int unchanged) {
     }
 
     public CatalogBookCsvImporter(CatalogBookRepository repository) {
         this.repository = repository;
     }
 
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public ImportStats importFile(Path csvPath, boolean truncateBeforeImport) throws IOException {
 
         if (truncateBeforeImport) {
@@ -51,31 +56,56 @@ public class CatalogBookCsvImporter {
             em.clear();
         }
 
+        return processFile(csvPath, false, 0, 1).summary();
+    }
+
+    @Transactional(readOnly = true)
+    public ImportPreviewResult previewFile(Path csvPath, int page, int size) throws IOException {
+        if (page < 0 || size < 1 || size > 500) {
+            throw new IllegalArgumentException("page debe ser >= 0 y size debe estar entre 1 y 500");
+        }
+        var result = processFile(csvPath, true, page, size);
+        var stats = result.summary();
+        return new ImportPreviewResult(new ImportResult(true, "Previsualización completada",
+                stats.processed(), stats.errors(), stats.updated(), stats.created(), stats.unchanged()),
+                page, size, result.createdBooks(), result.updatedBooks());
+    }
+
+    private record ProcessResult(ImportStats summary, List<CatalogBook> createdBooks,
+                                 List<BookUpdate> updatedBooks) {}
+
+    private ProcessResult processFile(Path csvPath, boolean preview, int page, int size) throws IOException {
+        List<CatalogBook> createdBooks = new ArrayList<>();
+        List<BookUpdate> updatedBooks = new ArrayList<>();
+        var seenIds = new HashSet<Long>();
+        long offset = (long) page * size;
         int processed = 0;
         int errors = 0;
+        int updated = 0;
+        int created = 0;
+        int unchanged = 0;
         int rowNumber = 1;
 
         try (Reader reader = Files.newBufferedReader(csvPath)) {
 
-            var it = new CsvToBeanBuilder<CatalogBookCsvRow>(reader)
+            var parser = new CsvToBeanBuilder<CatalogBookCsvRow>(reader)
                     .withType(CatalogBookCsvRow.class)
                     .withSeparator(',')
                     .withQuoteChar('"')
                     .withIgnoreLeadingWhiteSpace(true)
-                    .build()
-                    .iterator();
-
-            List<CatalogBook> batch = new ArrayList<>(BATCH_SIZE);
+                    .withThrowExceptions(false)
+                    .build();
+            var it = parser.iterator();
 
             while (it.hasNext()) {
                 rowNumber++;
                 CatalogBookCsvRow row = null;
+                CatalogBook entity;
+                row = it.next(); // Los fallos de lectura abortan; los de conversión los captura OpenCSV.
                 try {
-                    row = it.next();
-
                     var pub = PublicationFieldParser.parse(row.getPublishedRaw());
 
-                    CatalogBook entity = CatalogBook.builder()
+                    entity = CatalogBook.builder()
                             .eplId(row.getEplId())
                             .revision(row.getRevision())
                             .author(row.getAuthor())
@@ -95,38 +125,95 @@ public class CatalogBookCsvImporter {
                             .links(row.getLinks())
                             .build();
 
-                    batch.add(entity);
-                    processed++;
-
-                    if (processed % PROGRESS_EVERY == 0) {
-                        log.info("Progreso importación: {} filas OK, {} errores",
-                                processed, errors);
+                    if (entity.getEplId() == null || entity.getRevision() == null
+                            || entity.getAuthor() == null || entity.getTitle() == null) {
+                        throw new IllegalArgumentException("Faltan campos obligatorios del libro");
                     }
-
-                    if (batch.size() >= BATCH_SIZE) {
-                        repository.saveAll(batch);
-                        repository.flush();
-                        em.clear();
-                        batch.clear();
-                    }
-
                 } catch (Exception ex) {
                     errors++;
                     if (errors <= 20) {
                         Long eplId = (row != null) ? row.getEplId() : null;
                         log.warn("Error importando fila {} (eplId={}): {}", rowNumber, eplId, ex.getMessage());
                     }
+                    continue;
+                }
+
+                // Un ID repetido se omite en ambos modos para que la previsualización sea equivalente.
+                if (!seenIds.add(entity.getEplId())) {
+                    errors++;
+                    continue;
+                }
+
+                // Los errores de persistencia abortan la transacción: no se cuentan como filas omitidas.
+                CatalogBook existing = repository.findById(entity.getEplId()).orElse(null);
+                if (existing == null) {
+                    if (!preview) {
+                        em.persist(entity);
+                    } else if (created >= offset && created < offset + size) {
+                        createdBooks.add(entity);
+                    }
+                    created++;
+                } else {
+                    var changedFields = changedFields(existing, entity);
+                    if (changedFields.isEmpty()) {
+                        unchanged++;
+                    } else {
+                        entity.setInsertDate(existing.getInsertDate());
+                        entity.setLastModifiedDate(existing.getLastModifiedDate());
+                        if (!preview) {
+                            em.merge(entity);
+                        } else if (updated >= offset && updated < offset + size) {
+                            updatedBooks.add(new BookUpdate(existing.toBuilder().build(), entity, changedFields));
+                        }
+                        updated++;
+                    }
+                }
+                processed++;
+                if (processed % BATCH_SIZE == 0) {
+                    if (!preview) {
+                        repository.flush();
+                    }
+                    em.clear();
+                }
+                if (processed % PROGRESS_EVERY == 0) {
+                    log.info("Progreso importación: {} filas OK, {} errores", processed, errors);
                 }
             }
-
-            if (!batch.isEmpty()) {
-                repository.saveAll(batch);
-                repository.flush();
-                em.clear();
-                batch.clear();
+            for (var error : parser.getCapturedExceptions()) {
+                errors++;
+                if (errors <= 20) {
+                    log.warn("Error convirtiendo fila {}: {}", error.getLineNumber(), error.getMessage());
+                }
             }
+            if (!preview) {
+                repository.flush();
+            }
+            em.clear();
         }
 
-        return new ImportStats(processed, errors);
+        return new ProcessResult(new ImportStats(processed, errors, updated, created, unchanged),
+                List.copyOf(createdBooks), List.copyOf(updatedBooks));
+    }
+
+    /** Compara solo datos del CSV, excluyendo las fechas de auditoría local. */
+    private List<String> changedFields(CatalogBook a, CatalogBook b) {
+        List<String> fields = new ArrayList<>();
+        if (!Objects.equals(a.getRevision(), b.getRevision())) fields.add("revision");
+        if (!Objects.equals(a.getAuthor(), b.getAuthor())) fields.add("author");
+        if (!Objects.equals(a.getTitle(), b.getTitle())) fields.add("title");
+        if (!Objects.equals(a.getGenres(), b.getGenres())) fields.add("genres");
+        if (!Objects.equals(a.getCollection(), b.getCollection())) fields.add("collection");
+        if (!Objects.equals(a.getVolume(), b.getVolume())) fields.add("volume");
+        if (!Objects.equals(a.getPublicationYear(), b.getPublicationYear())) fields.add("publicationYear");
+        if (!Objects.equals(a.getSynopsis(), b.getSynopsis())) fields.add("synopsis");
+        if (!Objects.equals(a.getPages(), b.getPages())) fields.add("pages");
+        if (!Objects.equals(a.getLanguage(), b.getLanguage())) fields.add("language");
+        if (!Objects.equals(a.getPublicationStatus(), b.getPublicationStatus())) fields.add("publicationStatus");
+        if (!Objects.equals(a.getPublicationDate(), b.getPublicationDate())) fields.add("publicationDate");
+        if (!Objects.equals(a.getStatus(), b.getStatus())) fields.add("status");
+        if (!Objects.equals(a.getRating(), b.getRating())) fields.add("rating");
+        if (!Objects.equals(a.getVotesCount(), b.getVotesCount())) fields.add("votesCount");
+        if (!Objects.equals(a.getLinks(), b.getLinks())) fields.add("links");
+        return List.copyOf(fields);
     }
 }

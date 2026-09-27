@@ -5,6 +5,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import com.rlibanez.eplsync.exception.CatalogDownloadException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -58,22 +61,37 @@ public class FileDownloader {
                 request,
                 HttpResponse.BodyHandlers.ofInputStream());
 
-        int statusCode = response.statusCode();
-
-        if (statusCode < 200 || statusCode >= 300) {
-            throw new IOException("Error al descargar archivo. Status: " + statusCode);
-        }
-
-        Path tempFile = Files.createTempFile(filePrefix, fileSuffix);
-
+        // Cierra también el cuerpo de las respuestas de error.
         try (InputStream inputStream = response.body()) {
-            Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
-            log.trace("Archivo descargado exitosamente: {} ({} bytes)",
-                    tempFile, Files.size(tempFile));
-            return tempFile;
-        } catch (IOException e) {
-            Files.deleteIfExists(tempFile);
-            throw e;
+            int statusCode = response.statusCode();
+            if (statusCode < 200 || statusCode >= 300) {
+                String location = response.headers().firstValue("Location").orElse("sin Location");
+                log.warn("Descarga fallida: HTTP {}, URL={}, Location={}", statusCode, response.uri(), location);
+                throw new CatalogDownloadException("Error al descargar archivo. HTTP " + statusCode
+                        + (statusCode >= 300 && statusCode < 400
+                        ? ": redirección no completada (ver URL y Location en el log)" : ""));
+            }
+
+            String contentType = response.headers().firstValue("Content-Type")
+                    .orElse("").toLowerCase(Locale.ROOT);
+            if (".zip".equalsIgnoreCase(fileSuffix)
+                    && (contentType.startsWith("text/html") || contentType.startsWith("text/plain"))) {
+                String message = new String(inputStream.readNBytes(2048), StandardCharsets.UTF_8)
+                        .replaceAll("<[^>]*>", " ").replaceAll("\\s+", " ").trim();
+                if (message.length() > 300) message = message.substring(0, 300);
+                throw new CatalogDownloadException("El servidor devolvió texto en lugar del ZIP del catálogo"
+                        + (message.isEmpty() ? "" : ": " + message));
+            }
+
+            Path tempFile = Files.createTempFile(filePrefix, fileSuffix);
+            try {
+                Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
+                log.trace("Archivo descargado exitosamente: {} ({} bytes)", tempFile, Files.size(tempFile));
+                return tempFile;
+            } catch (IOException e) {
+                Files.deleteIfExists(tempFile);
+                throw e;
+            }
         }
     }
 }

@@ -1,7 +1,9 @@
 package com.rlibanez.eplsync.service;
 
 import com.rlibanez.eplsync.dto.ImportResult;
+import com.rlibanez.eplsync.dto.ImportPreviewResult;
 import com.rlibanez.eplsync.exception.CatalogImportException;
+import com.rlibanez.eplsync.exception.CatalogDownloadException;
 import com.rlibanez.eplsync.exception.CatalogImportInterruptedException;
 import com.rlibanez.eplsync.importer.CatalogBookCsvImporter;
 import com.rlibanez.eplsync.importer.CatalogBookCsvImporter.ImportStats;
@@ -22,7 +24,6 @@ import java.nio.file.Path;
 public class CatalogImportService {
 
     private static final Logger log = LoggerFactory.getLogger(CatalogImportService.class);
-
     private static final String EPUBLIBRE_ZIP_URL = "https://epublibre.org/rssweb/csv/epub.zip";
     // private static final String EPUBLIBRE_ZIP_URL =
     // "https://www.dropbox.com/s/a9r4p7oyaftaz1b/csv_full_imgs.zip?dl=1";
@@ -40,7 +41,7 @@ public class CatalogImportService {
     }
 
     /**
-     * Importa el catálogo completo desde la URL oficial de ePubLibre.
+     * Reemplaza el catálogo completo desde la URL oficial de ePubLibre.
      * 
      * @return Resumen del proceso de importación.
      */
@@ -49,12 +50,41 @@ public class CatalogImportService {
     }
 
     /**
-     * Importa el catálogo desde una URL específica.
+     * Reemplaza el catálogo desde una URL específica (null usa la URL oficial).
      * 
      * @param zipUrl URL del archivo ZIP que contiene el CSV.
      * @return Resumen del proceso de importación.
      */
     public ImportResult importCatalog(String zipUrl) {
+        return importCatalog(zipUrl, true);
+    }
+
+    /** Actualiza el catálogo sin borrarlo; null usa la URL oficial. */
+    public ImportResult updateCatalog(String zipUrl) {
+        return importCatalog(zipUrl, false);
+    }
+
+    private ImportResult importCatalog(String zipUrl, boolean truncateBeforeImport) {
+        return withCatalogFile(zipUrl, csvFile -> {
+            ImportStats stats = csvImporter.importFile(csvFile, truncateBeforeImport);
+            return new ImportResult(true, "Importación completada", stats.processed(), stats.errors(),
+                    stats.updated(), stats.created(), stats.unchanged());
+        });
+    }
+
+    public ImportPreviewResult previewCatalog(String zipUrl, int page, int size) {
+        return withCatalogFile(zipUrl, csvFile -> csvImporter.previewFile(csvFile, page, size));
+    }
+
+    @FunctionalInterface
+    private interface CatalogFileOperation<T> {
+        T apply(Path csvFile) throws IOException;
+    }
+
+    private <T> T withCatalogFile(String zipUrl, CatalogFileOperation<T> operation) {
+        if (zipUrl == null) {
+            zipUrl = EPUBLIBRE_ZIP_URL;
+        }
         log.info("Iniciando importación del catálogo desde: {}", zipUrl);
 
         Path zipFile = null;
@@ -69,21 +99,13 @@ public class CatalogImportService {
             csvFile = zipExtractor.extractCsv(zipFile);
             log.info("CSV extraído: {} ({} bytes)", csvFile, Files.size(csvFile));
 
-            // Paso 3: Procesar CSV y guardar en BD
-            boolean truncateBeforeImport = true;
-            ImportStats stats = csvImporter.importFile(csvFile, truncateBeforeImport);
-
-            log.info("Importación completada. Procesadas={}, Errores={}", stats.processed(), stats.errors());
-
-            return new ImportResult(
-                    true,
-                    "Importación completada",
-                    stats.processed(),
-                    stats.errors());
-
+            // Paso 3: Procesar el CSV según la operación solicitada: reemplazar, actualizar o previsualizar.
+            return operation.apply(csvFile);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new CatalogImportInterruptedException("La operación de importación fue interrumpida", e);
+        } catch (CatalogDownloadException e) {
+            throw new CatalogImportException(e.getMessage(), e);
         } catch (IOException e) {
             throw new CatalogImportException("Error de entrada/salida durante la importación", e);
         } catch (Exception e) {

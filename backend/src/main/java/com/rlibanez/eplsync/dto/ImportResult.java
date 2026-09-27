@@ -7,5 +7,8 @@ public record ImportResult(
         boolean success,
         String message,
         int recordsProcessed,
-        int errors
+        int errors,
+        int recordsUpdated,
+        int recordsCreated,
+        int recordsUnchanged
 ) {}

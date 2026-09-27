@@ -1,6 +1,8 @@
 package com.rlibanez.eplsync.controller;
 
 import com.rlibanez.eplsync.dto.ImportResult;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import com.rlibanez.eplsync.service.CatalogImportService;
 
 import org.hibernate.validator.constraints.URL;
@@ -25,16 +27,38 @@ public class CatalogImportController {
     }
 
     /**
-     * Inicia la importación del catálogo.
+     * Reemplaza todo el catálogo local por el catálogo importado.
      * Si no se proporciona URL, usa la URL oficial de ePubLibre.
      * 
      * @param url URL personalizada del ZIP (opcional).
      * @return Resultado de la importación.
      */
-    @PostMapping
+    @PostMapping("/reset")
     public ResponseEntity<ImportResult> importCatalog(
             @RequestParam(required = false) @URL(message = "La URL no es válida") String url) {
 
+        return ResponseEntity.ok(catalogImportService.importCatalog(validateUrl(url)));
+    }
+
+    /** Actualiza el catálogo conservando los libros y sus fechas de alta. */
+    @PostMapping("/update")
+    public ResponseEntity<ImportResult> updateCatalog(
+            @RequestParam(required = false) @URL(message = "La URL no es válida") String url) {
+        return ResponseEntity.ok(catalogImportService.updateCatalog(validateUrl(url)));
+    }
+
+    /** Devuelve el resumen del dry-run; includeDetails permite consultar el detalle paginado. */
+    @PostMapping("/preview")
+    public ResponseEntity<?> previewCatalog(
+            @RequestParam(required = false) @URL(message = "La URL no es válida") String url,
+            @RequestParam(defaultValue = "false") boolean includeDetails,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(500) int size) {
+        var preview = catalogImportService.previewCatalog(validateUrl(url), page, size);
+        return ResponseEntity.ok(includeDetails ? preview : preview.summary());
+    }
+
+    private String validateUrl(String url) {
         if (url != null && url.isBlank()) {
             url = null;
         }
@@ -47,10 +71,6 @@ public class CatalogImportController {
             }
         }
 
-        ImportResult result = (url != null)
-                ? catalogImportService.importCatalog(url)
-                : catalogImportService.importCatalog();
-
-        return ResponseEntity.ok(result);
+        return url;
     }
 }

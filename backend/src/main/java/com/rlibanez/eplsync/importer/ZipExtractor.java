@@ -61,6 +61,16 @@ public class ZipExtractor {
                 }
                 zis.closeEntry();
             }
+        } catch (IOException | RuntimeException e) {
+            // El servicio aún no conoce esta ruta si la extracción no llega a devolverla.
+            if (extractedFile != null) {
+                try {
+                    Files.deleteIfExists(extractedFile);
+                } catch (IOException cleanupError) {
+                    e.addSuppressed(cleanupError);
+                }
+            }
+            throw e;
         }
 
         if (csvCount == 0) {

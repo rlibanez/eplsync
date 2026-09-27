@@ -26,7 +26,7 @@ import com.rlibanez.eplsync.model.enums.PublicationStatus;
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@Builder(toBuilder = true)
 public class CatalogBook {
 
     @Id
@@ -56,6 +56,7 @@ public class CatalogBook {
     @Column(name = "volume")
     private Double volume;
 
+    /** Año de publicación del libro original. */
     @Column(name = "publication_year")
     private Integer publicationYear;
 
@@ -75,6 +76,23 @@ public class CatalogBook {
 
     @Column(name = "publication_date")
     private LocalDate publicationDate;
+
+    @Column(name = "insert_date", updatable = false)
+    private LocalDate insertDate;
+
+    @Column(name = "last_modified_date")
+    private LocalDate lastModifiedDate;
+
+    @PrePersist
+    private void onCreate() {
+        insertDate = LocalDate.now();
+        lastModifiedDate = null;
+    }
+
+    @PreUpdate
+    private void onUpdate() {
+        lastModifiedDate = LocalDate.now();
+    }
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 50)
