@@ -11,6 +11,13 @@ public interface TorrentClient {
                 "El cliente seleccionado no admite añadir torrents");
     }
 
+    default com.rlibanez.eplsync.dto.TorrentDownloadResult.Status addTorrent(
+            TorrentDownload download, TorrentSubmissionContext context) {
+        return addTorrent(download);
+    }
+
+    default TorrentDownload withDefaults(TorrentDownload download) { return download; }
+
     String type();
     TorrentConnectionStatus checkConnection();
 

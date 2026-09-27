@@ -30,6 +30,13 @@ public class TorrentDownloadService {
         client.requireEnabled();
         var book = repository.findById(eplId).orElseThrow(() ->
                 new TorrentOperationException(HttpStatus.NOT_FOUND, "El libro no existe en el catálogo"));
+        var command = prepare(book, request);
+        var status = client.addTorrent(command);
+        return new TorrentDownloadResult(eplId, command.hash(), properties.getClient(), status);
+    }
+
+    public TorrentDownload prepare(com.rlibanez.eplsync.model.CatalogBook book, TorrentDownloadRequest request) {
+        Long eplId = book.getEplId();
         var hashes = magnets.hashes(book.getLinks());
         if (hashes.isEmpty()) throw new TorrentOperationException(HttpStatus.UNPROCESSABLE_CONTENT,
                 "El libro no tiene hashes torrent válidos");
@@ -53,8 +60,7 @@ public class TorrentDownloadService {
         String name = renameEnabled ? names.resolve(pattern, book) : null;
         boolean start = options.start() == null ? properties.getDownload().isStart() : options.start();
         String savePath = options.savePath() == null ? properties.getDownload().getSavePath() : options.savePath();
-        var status = client.addTorrent(new TorrentDownload(hash, magnets.build(hash, eplId, book.getTitle()),
+        return client.withDefaults(new TorrentDownload(hash, magnets.build(hash, eplId, book.getTitle()),
                 start, savePath, name, options.qbittorrent(), book));
-        return new TorrentDownloadResult(eplId, hash, properties.getClient(), status);
     }
 }

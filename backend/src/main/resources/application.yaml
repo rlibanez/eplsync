@@ -1,7 +1,7 @@
 spring:
   application:
     name: eplsync
-  
+
   datasource:
     url: jdbc:sqlite:./data/eplsync.db
     driver-class-name: org.sqlite.JDBC
@@ -14,7 +14,7 @@ spring:
     hibernate:
       ddl-auto: update
     properties:
-      hibernate:  
+      hibernate:
         jdbc:
           batch_size: 1000
         order_inserts: true
@@ -32,26 +32,34 @@ logging:
 eplsync:
   catalog:
     zip-url: "https://epublibre.org/rssweb/csv/epub.zip"
+
   torrent:
-    # Un valor vacío desactiva los trackers de los magnets generados.
     trackers:
       - "udp://tracker.opentrackr.org:1337/announce"
       - "udp://www.torrent.eu.org:451/announce"
       - "udp://exodus.desync.com:6969/announce"
       - "udp://p4p.arenabg.ch:1337/announce"
       - "udp://tracker.internetwarriors.net:1337/announce"
-
     enabled: false
     client: qbittorrent
     base-url: "http://localhost:8080"
     connect-timeout: 5s
     request-timeout: 10s
+
+    bulk:
+      multiple-hashes: all
+      batch-size: 100
+      concurrency: 1
+      interval: 500ms
+
     download:
       start: true
       save-path: null
+
     rename:
       enabled: true
       pattern: "{author} - {title} [{eplId}] (r{revision})"
+
     qbittorrent:
       download:
         category: "Libros"

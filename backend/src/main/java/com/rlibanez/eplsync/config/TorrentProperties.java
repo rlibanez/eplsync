@@ -25,6 +25,17 @@ public class TorrentProperties {
     private Duration requestTimeout = Duration.ofSeconds(10);
     private Rename rename = new Rename();
     private Download download = new Download();
+    private Bulk bulk = new Bulk();
+
+    @Getter
+    @Setter
+    public static class Bulk {
+        private com.rlibanez.eplsync.torrent.bulk.MultipleHashes multipleHashes = com.rlibanez.eplsync.torrent.bulk.MultipleHashes.SKIP;
+        private int batchSize = 100;
+        private int concurrency = 1;
+        private Duration interval = Duration.ofMillis(500);
+    }
+
 
     @Getter
     @Setter

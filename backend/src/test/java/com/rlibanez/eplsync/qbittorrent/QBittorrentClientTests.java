@@ -249,6 +249,130 @@ class QBittorrentClientTests {
         assertThat(calls).isEmpty();
     }
 
+    @Test
+    void snapshotRetainsQbittorrentDefaultsWhenConfigurationChanges() {
+        var book = com.rlibanez.eplsync.model.CatalogBook.builder()
+                .eplId(1L).language(com.rlibanez.eplsync.model.enums.Language.INGLES).build();
+        var qbit = client();
+        var command = qbit.withDefaults(new com.rlibanez.eplsync.torrent.TorrentDownload(
+                "A".repeat(40), "magnet:?xt=urn:btih:" + "A".repeat(40), false, null, "Frozen name", null, book));
+        qbittorrent.getDownload().setCategory("Changed");
+        qbittorrent.getDownload().setTags(List.of("Changed"));
+        qbittorrent.getDownload().setAutoManagement(false);
+        assertThat(qbit.addTorrent(command)).isEqualTo(com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED);
+        assertThat(addedFields()).containsEntry("category", "Libros").containsEntry("tags", "EPLSync,en")
+                .containsEntry("autoTMM", "true").containsEntry("stopped", "true").containsEntry("rename", "Frozen name");
+    }
+
+    private com.rlibanez.eplsync.torrent.TorrentDownload command(String hash) {
+        return new com.rlibanez.eplsync.torrent.TorrentDownload(hash,
+                "magnet:?xt=urn:btih:" + hash, true, null, "Test", null,
+                com.rlibanez.eplsync.model.CatalogBook.builder().language(com.rlibanez.eplsync.model.enums.Language.INGLES).build());
+    }
+
+    @Test
+    void bulkContextReusesCategoriesWhileExplicitConnectionCheckIsFresh() {
+        var qbit = client();
+        var context = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+        qbit.addTorrent(command("A".repeat(40)), context);
+        assertThat(calls).hasSize(5);
+        calls.clear();
+        qbit.addTorrent(command("B".repeat(40)), context);
+        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/torrents/info", "/qbit/api/v2/torrents/add");
+        calls.clear();
+        qbit.checkConnection();
+        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/app/version", "/qbit/api/v2/app/webapiVersion");
+    }
+
+    @Test
+    void expiredSessionRenewsOnReadAndDoesNotDuplicateAdd() {
+        qbittorrent.getAuth().setMode(AuthMode.SESSION);
+        var qbit = client();
+        qbit.addTorrent(command("A".repeat(40)));
+        calls.clear(); cookieValue = "renewed";
+        qbit.addTorrent(command("B".repeat(40)));
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/auth/login")).count()).isEqualTo(1);
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
+        assertThat(calls.getLast().cookie()).contains("renewed");
+    }
+
+    @Test
+    void individualRequestsReloadCategoriesAndFailedPostIsNeverRetried() {
+        var qbit = client();
+        qbit.addTorrent(command("A".repeat(40)));
+        calls.clear();
+        qbit.addTorrent(command("B".repeat(40)));
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/categories")).count()).isEqualTo(1);
+        assertThat(calls).noneMatch(c -> c.path().contains("/app/"));
+        calls.clear(); addStatus = 403;
+        assertThatThrownBy(() -> qbit.addTorrent(command("C".repeat(40)))).isInstanceOf(QBittorrentConnectionException.class);
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
+        calls.clear(); addStatus = 200;
+        qbit.addTorrent(command("C".repeat(40)));
+        assertThat(calls).anyMatch(c -> c.path().endsWith("/app/version"));
+    }
+
+    @Test
+    void concurrentAddsShareInitialAuthenticationAndCategoryLookup() {
+        var qbit = client();
+        var context = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+        var futures = java.util.stream.IntStream.range(1, 4).mapToObj(n ->
+                java.util.concurrent.CompletableFuture.runAsync(() -> qbit.addTorrent(command(String.format("%040X", n)), context)))
+                .toArray(java.util.concurrent.CompletableFuture[]::new);
+        java.util.concurrent.CompletableFuture.allOf(futures).join();
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/app/version")).count()).isEqualTo(1);
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/app/webapiVersion")).count()).isEqualTo(1);
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/categories")).count()).isEqualTo(1);
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/add")).count()).isEqualTo(3);
+    }
+
+    @Test
+    void detailedHttpLogsNeverIncludeCredentialsCookiesOrMagnetBody() {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(QBittorrentClient.class);
+        var previous = logger.getLevel();
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start(); logger.addAppender(appender); logger.setLevel(ch.qos.logback.classic.Level.TRACE);
+        try {
+            client().addTorrent(command("A".repeat(40)));
+            String output = appender.list.stream().map(event -> event.getFormattedMessage())
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            assertThat(output).contains("HTTP 200", "/api/v2/torrents/add")
+                    .doesNotContain("test-key", "session1", "magnet:", " p&+=ss ", "Authorization", "Cookie");
+        } finally { logger.detachAppender(appender); logger.setLevel(previous); appender.stop(); }
+    }
+
+    @Test
+    void revokedCachedKeyFallsBackOnReadAndReusesSessionForFollowingAdds() {
+        var qbit = client();
+        qbit.addTorrent(command("A".repeat(40)));
+        keyStatus = 403; calls.clear();
+        qbit.addTorrent(command("B".repeat(40)));
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/auth/login")).count()).isEqualTo(1);
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
+        assertThat(calls.getLast().authorization()).isNull();
+        calls.clear();
+        qbit.addTorrent(command("C".repeat(40)));
+        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/torrents/info", "/qbit/api/v2/torrents/categories", "/qbit/api/v2/torrents/add");
+        assertThat(calls).allMatch(c -> c.authorization() == null && c.cookie().contains("session1"));
+    }
+
+    @Test
+    void separateSubmissionContextsNeverShareCategoryLists() {
+        var qbit = client();
+        var first = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+        qbit.addTorrent(command("A".repeat(40)), first);
+        categories = "{}"; calls.clear();
+        // El mismo trabajo conserva la lista obtenida inicialmente.
+        qbit.addTorrent(command("B".repeat(40)), first);
+        assertThat(calls).noneMatch(c -> c.path().endsWith("/categories"));
+        calls.clear();
+        var second = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+        assertThatThrownBy(() -> qbit.addTorrent(command("C".repeat(40)), second))
+                .isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/categories")).count()).isEqualTo(1);
+        assertThat(calls).noneMatch(c -> c.path().endsWith("/add"));
+    }
+
     private void respond(HttpExchange exchange, int status, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(status, status == 204 ? -1 : bytes.length);

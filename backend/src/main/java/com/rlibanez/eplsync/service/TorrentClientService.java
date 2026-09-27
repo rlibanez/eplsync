@@ -41,6 +41,18 @@ public class TorrentClientService {
         return selectedClient.addTorrent(download);
     }
 
+    public com.rlibanez.eplsync.dto.TorrentDownloadResult.Status addTorrent(
+            com.rlibanez.eplsync.torrent.TorrentDownload download,
+            com.rlibanez.eplsync.torrent.TorrentSubmissionContext context) {
+        requireEnabled();
+        return selectedClient.addTorrent(download, context);
+    }
+
+    public com.rlibanez.eplsync.torrent.TorrentDownload withDefaults(com.rlibanez.eplsync.torrent.TorrentDownload download) {
+        requireEnabled();
+        return selectedClient.withDefaults(download);
+    }
+
     public void requireRenameEnabled() {
         if (!properties.isEnabled() || !properties.getRename().isEnabled()) {
             throw new TorrentOperationException(
