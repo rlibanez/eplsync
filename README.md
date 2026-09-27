@@ -729,3 +729,125 @@ DEBUG, INFO, WARN y ERROR. `TRACE` queda oculto. El logger específico
 solo muestra ERROR; no afecta al `GlobalExceptionHandler` de EPLSync.
 Para cargas grandes se puede poner `com.rlibanez.eplsync: INFO` y evitar logs por
 elemento, manteniendo las solicitudes y los cambios de estado de los trabajos.
+
+### Historial de descargas y sincronización manual
+
+Los envíos individuales y bulk registran cada torrent en `torrent_downloads`.
+No se añaden columnas de descarga a `catalog_books` ni se borra el historial al
+reimportar el catálogo. Se conserva la revisión del snapshot enviado, aunque el
+catálogo cambie durante la descarga.
+
+Estados iniciales:
+
+- `SUBMITTED`: el cliente aceptó el envío; no implica descarga completada.
+- `ALREADY_EXISTS`: el hash ya estaba en el cliente, pendiente de sincronizar su estado.
+- `ERROR`: rechazo o fallo confirmado del envío.
+- `UNKNOWN`: resultado incierto, por ejemplo un timeout o una interrupción. Antes
+  de realizar la llamada se persiste este estado para poder reconciliar un cierre
+  inesperado de EPLSync. No se reenvía desde el endpoint de sincronización.
+
+Los elementos bulk omitidos sin enviar un hash no crean registros de descarga.
+La identidad es instancia del cliente + libro + hash. Cada archivo/revisión con
+un hash distinto conserva su registro. Reenviar el mismo hash no duplica el registro
+ni cambia su revisión original, origen o evidencia de finalización.
+
+```bash
+curl -X POST 'http://localhost:8088/api/torrent/downloads/sync'
+curl 'http://localhost:8088/api/torrent/downloads?eplId=32&page=0&size=20&sort=revision,desc'
+```
+
+La sincronización es exclusivamente manual. Consulta una instantánea completa
+mediante `GET /api/v2/torrents/info`, sin filtros de categoría, y:
+
+- Actualiza registros conocidos por hash, incluidos los ya completados.
+- Descubre torrents cuyos hashes coincidan con `links` del catálogo actual.
+- Ignora torrents que no coinciden con el historial ni con el catálogo.
+- Traduce estados a `QUEUED`, `DOWNLOADING`, `PAUSED`, `CHECKING`, `DOWNLOADED`,
+  `ERROR` o `UNKNOWN`. Un torrent detenido no se considera completo por estar detenido.
+- Marca `NOT_FOUND` cuando desaparece un torrent previamente aceptado/observado.
+  Un intento rechazado o incierto nunca observado conserva `ERROR`/`UNKNOWN` si
+  sigue ausente. Si reaparece, vuelve a reflejar el estado del cliente.
+- Conserva `completedAt` aunque el torrent desaparezca. Esto acredita una descarga
+  histórica; no garantiza que el archivo siga en disco. Si se completó y eliminó
+  entre consultas sin que lo observásemos, no se inventa una finalización.
+
+Una respuesta inválida o un fallo de conexión no modifica estados ni fechas. La
+reconciliación se aplica en una transacción. No añade torrents, renombra archivos
+ni modifica qBittorrent. Mientras hay envíos en curso u otra sincronización, devuelve
+`409`; se puede repetir después. Los envíos que lleguen durante una sincronización
+esperan a que termine. La coordinación presupone una instancia de EPLSync por BD.
+
+La respuesta incluye `client`, `clientInstanceId`, `remoteTorrents`, `checked`,
+`created`, `updated` (cambio de estado o evidencia de finalización), `completed`
+(nuevas finalizaciones registradas), `notFound`, `ignored` (torrents remotos ajenos)
+y `checkedAt`. Son contadores de esta sincronización, no del job de envío.
+
+Cada registro contiene `id`, `eplId`, `revision`, `hash`, `client`,
+`clientInstanceId`, `status`, `origin`, `createdAt`, `requestedAt`, `submittedAt`,
+`discoveredAt`, `completedAt`, `lastCheckedAt`, `lastSeenAt` y `lastError`.
+
+- `origin`: `EPLSYNC` o `DISCOVERED`, inmutable.
+- `requestedAt`: primer intento de envío desde EPLSync; `submittedAt`: primera
+  aceptación confirmada. Pueden ser nulos en registros descubiertos.
+- `discoveredAt`: detección de un registro añadido manualmente al cliente.
+- `completedAt`: fecha indicada por el cliente o, si no la facilita, fecha de la
+  primera observación de descarga completa.
+- `lastCheckedAt`: última comprobación correcta, incluso si estaba ausente;
+  `lastSeenAt`: última vez que constaba presente.
+- La instancia se identifica mediante SHA-256 del tipo y URL base (sin barra final).
+  Cambiar la URL identifica otra instancia; no se actualizan registros de la anterior.
+  No se exponen credenciales ni URL de conexión en las respuestas.
+
+#### Filtros de descargas
+
+`GET /api/torrent/downloads` siempre devuelve `items` y `meta`, con paginación.
+
+| Parámetro | Uso |
+| --- | --- |
+| `eplId`, `hash`, `revision` | Coincidencia exacta; hash sin distinguir mayúsculas |
+| `status` | Uno o varios estados separados por comas |
+| `origin` | `EPLSYNC`, `DISCOVERED` o ambos separados por comas |
+| `client`, `clientInstanceId` | Tipo e instancia del cliente |
+| `completed` | `true` si existe `completedAt`, incluso en `NOT_FOUND`; `false` en otro caso |
+| `createdAtFrom` / `createdAtTo` | Intervalo inclusivo ISO 8601 con zona horaria |
+| `requestedAtFrom` / `requestedAtTo` | Intervalo de primer intento |
+| `submittedAtFrom` / `submittedAtTo` | Intervalo de primera aceptación |
+| `completedAtFrom` / `completedAtTo` | Intervalo de finalización |
+| `discoveredAtFrom` / `discoveredAtTo` | Intervalo de descubrimiento |
+| `lastCheckedAtFrom` / `lastCheckedAtTo` | Intervalo de comprobación |
+| `lastSeenAtFrom` / `lastSeenAtTo` | Intervalo de presencia |
+| `page`, `size` | Desde 0; tamaño por defecto 20, máximo 500 |
+| `sort` | Por defecto `createdAt,desc`; repetible para varios criterios |
+
+Los filtros diferentes se combinan con AND; los estados/orígenes de una lista con
+OR. Las fechas nulas no satisfacen filtros de intervalo. Parámetros desconocidos,
+valores inválidos e intervalos invertidos devuelven `400`. Se admite ordenar por
+identificadores, revisión, hash, estado, origen, cliente o cualquiera de las fechas;
+se añade `id` para estabilizar el orden.
+
+#### Resumen en el catálogo
+
+Tanto `GET /api/catalog/books/{eplId}` como el listado añaden `download.items`,
+ordenado por revisión y fecha de creación descendentes. Sin registros, `items: []`.
+Se mantienen todos los campos anteriores del libro y no se consulta al cliente
+para responder. Los datos reflejan el último envío/sincronización guardado.
+
+```json
+{
+  "download": {
+    "items": [
+      {"id": "uuid-2", "revision": 2.0, "status": "DOWNLOADING", "completed": false},
+      {"id": "uuid-1", "revision": 1.5, "status": "NOT_FOUND", "completed": true}
+    ]
+  }
+}
+```
+
+`completed` se calcula a partir de `completedAt`. El detalle con cliente, hash y
+fechas está en `/api/torrent/downloads?eplId=32`. El resumen usa consultas agrupadas
+(hasta 500 libros por consulta), sin una consulta adicional por cada libro.
+
+La primera sincronización también permite incorporar torrents anteriores a esta
+funcionalidad, con origen `DISCOVERED`. Solo puede asociar revisiones antiguas si
+ya estaban registradas: no se deduce una revisión del nombre del archivo ni se
+reconstruyen hashes históricos que ya no estén en el catálogo.

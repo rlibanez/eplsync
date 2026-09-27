@@ -38,7 +38,8 @@ class LanguageApiTests {
         when(service.searchAll(any())).thenReturn(List.of(book));
         var conversion = new DefaultFormattingConversionService();
         new LanguageWebConfiguration().addFormatters(conversion);
-        var mvc = MockMvcBuilders.standaloneSetup(new CatalogBookController(service))
+        var mvc = MockMvcBuilders.standaloneSetup(new CatalogBookController(service, new com.rlibanez.eplsync.torrent.downloads.CatalogDownloadViewService(
+                org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.downloads.DownloadRepository.class))))
                 .setConversionService(conversion)
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();

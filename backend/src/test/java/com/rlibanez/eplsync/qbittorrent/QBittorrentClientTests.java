@@ -49,6 +49,33 @@ class QBittorrentClientTests {
 
     record Call(String method, String path, String authorization, String cookie, String body, String origin) {}
 
+    @Test void readsFullSnapshotAndMapsCompletionWithoutTreatingStoppedOrCheckingAsComplete() {
+        String hash = "A".repeat(40);
+        torrentInfo = "[{\"hash\":\"" + hash + "\",\"state\":\"stoppedUP\",\"progress\":1,\"amount_left\":0,\"completion_on\":1700000000}]";
+        var qbit = client();
+        var result = qbit.listTorrents();
+        assertThat(result.getFirst().status()).isEqualTo(com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADED);
+        assertThat(result.getFirst().completedAt()).isEqualTo(java.time.Instant.ofEpochSecond(1700000000));
+        torrentInfo = torrentInfo.replace("stoppedUP", "checkingUP");
+        assertThat(qbit.listTorrents().getFirst().status()).isEqualTo(com.rlibanez.eplsync.torrent.downloads.DownloadStatus.CHECKING);
+        torrentInfo = torrentInfo.replace("checkingUP", "missingFiles");
+        assertThat(qbit.listTorrents().getFirst().status()).isEqualTo(com.rlibanez.eplsync.torrent.downloads.DownloadStatus.ERROR);
+        torrentInfo = torrentInfo.replace("missingFiles", "stoppedDL").replace("\"progress\":1", "\"progress\":0.5");
+        assertThat(qbit.listTorrents().getFirst().status()).isEqualTo(com.rlibanez.eplsync.torrent.downloads.DownloadStatus.PAUSED);
+        torrentInfo = "[{\"hash\":\"" + hash + "\"}]";
+        assertThatThrownBy(qbit::listTorrents).isInstanceOf(QBittorrentConnectionException.class);
+    }
+
+    private com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService tracking() {
+        var tracker = org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.class);
+        org.mockito.Mockito.when(tracker.submit(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Supplier<?> action = invocation.getArgument(1);
+                    return action.get();
+                });
+        return tracker;
+    }
+
     @BeforeEach
     void setup() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -115,7 +142,7 @@ class QBittorrentClientTests {
         var service = new com.rlibanez.eplsync.service.TorrentDownloadService(repository, properties,
                 new com.rlibanez.eplsync.torrent.MagnetLinkBuilder(properties),
                 new com.rlibanez.eplsync.torrent.TorrentNameResolver(),
-                new TorrentClientService(properties, List.of(client())));
+                new TorrentClientService(properties, List.of(client()), tracking()));
         return MockMvcBuilders.standaloneSetup(new com.rlibanez.eplsync.controller.TorrentDownloadController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
@@ -508,7 +535,7 @@ class QBittorrentClientTests {
 
     @Test
     void endpointExposesStatusAndSanitizedGatewayErrors() throws Exception {
-        var mvc = MockMvcBuilders.standaloneSetup(new TorrentClientController(new TorrentClientService(properties, List.of(client()))))
+        var mvc = MockMvcBuilders.standaloneSetup(new TorrentClientController(new TorrentClientService(properties, List.of(client()), tracking())))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         mvc.perform(get("/api/torrent/client/connection")).andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
@@ -533,7 +560,7 @@ class QBittorrentClientTests {
         var service = new com.rlibanez.eplsync.service.TorrentRenameService(repository,
                 new com.rlibanez.eplsync.torrent.MagnetLinkBuilder(properties),
                 new com.rlibanez.eplsync.torrent.TorrentNameResolver(), properties,
-                new TorrentClientService(properties, List.of(client())));
+                new TorrentClientService(properties, List.of(client()), tracking()));
         var mvc = MockMvcBuilders.standaloneSetup(new com.rlibanez.eplsync.controller.TorrentRenameController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         String endpoint = "/api/catalog/books/2663/torrents/" + hash.toLowerCase(java.util.Locale.ROOT) + "/rename";
@@ -593,7 +620,7 @@ class QBittorrentClientTests {
         var qbit = client();
         assertThat(calls).isEmpty();
         var mvc = MockMvcBuilders.standaloneSetup(new TorrentClientController(
-                new TorrentClientService(properties, List.of(qbit))))
+                new TorrentClientService(properties, List.of(qbit), tracking())))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         mvc.perform(get("/api/torrent/client/connection"))
                 .andExpect(status().isServiceUnavailable())

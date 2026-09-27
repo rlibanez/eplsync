@@ -18,6 +18,11 @@ public interface TorrentClient {
 
     default TorrentDownload withDefaults(TorrentDownload download) { return download; }
 
+    default java.util.List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent> listTorrents() {
+        throw new TorrentOperationException(HttpStatus.UNPROCESSABLE_CONTENT,
+                "El cliente seleccionado no admite sincronización de descargas");
+    }
+
     String type();
     TorrentConnectionStatus checkConnection();
 

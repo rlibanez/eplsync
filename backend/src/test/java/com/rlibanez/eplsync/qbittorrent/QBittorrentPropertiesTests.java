@@ -20,7 +20,8 @@ class QBittorrentPropertiesTests {
     static class Config {}
 
     private ApplicationContextRunner runner(Map<String, Object> environment) {
-        return new ApplicationContextRunner().withUserConfiguration(Config.class).withInitializer(context -> {
+        return new ApplicationContextRunner().withBean(com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.class,
+                () -> org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.class)).withUserConfiguration(Config.class).withInitializer(context -> {
             var sources = context.getEnvironment().getPropertySources();
             try {
                 for (var source : new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yaml"))) {

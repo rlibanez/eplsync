@@ -2,6 +2,8 @@ package com.rlibanez.eplsync.qbittorrent;
 
 import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.torrent.TorrentClient;
+import com.rlibanez.eplsync.torrent.downloads.DownloadStatus;
+import com.rlibanez.eplsync.torrent.downloads.RemoteTorrent;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import com.rlibanez.eplsync.qbittorrent.QBittorrentProperties.AuthMode;
 import com.rlibanez.eplsync.dto.TorrentConnectionStatus;
@@ -180,6 +182,53 @@ public class QBittorrentClient implements TorrentClient {
                 || result.path("success_count").asInt(0) + result.path("pending_count").asInt(0) != 1)
             throw new QBittorrentConnectionException(UPSTREAM);
         return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;
+    }
+
+    /** Instantánea completa y sin filtros: permite detectar ausencias y descubrir torrents ajenos al envío. */
+    @Override
+    public java.util.List<RemoteTorrent> listTorrents() {
+        var response = readAuthenticatedJson("torrents/info");
+        if (!response.isArray()) throw new QBittorrentConnectionException(UPSTREAM);
+        var result = new java.util.ArrayList<RemoteTorrent>();
+        var hashes = new java.util.HashSet<String>();
+        for (var item : response) {
+            String hash = item.path("hash").asString("").toUpperCase(java.util.Locale.ROOT);
+            String state = item.path("state").asString("");
+            if (!hash.matches("[0-9A-F]{40}|[0-9A-F]{64}") || state.isBlank()
+                    || !item.path("progress").isNumber() || !item.path("amount_left").isNumber()
+                    || !hashes.add(hash)) throw new QBittorrentConnectionException(UPSTREAM);
+            double progress = item.path("progress").asDouble();
+            long left = item.path("amount_left").asLong();
+            if (!Double.isFinite(progress) || progress < 0 || progress > 1 || left < 0)
+                throw new QBittorrentConnectionException(UPSTREAM);
+            var status = remoteStatus(state, progress, left);
+            long completion = item.path("completion_on").asLong(0);
+            java.time.Instant completedAt = null;
+            if (completion > 0) {
+                try { completedAt = java.time.Instant.ofEpochSecond(completion); }
+                catch (java.time.DateTimeException ex) { throw new QBittorrentConnectionException(UPSTREAM); }
+            }
+            result.add(new RemoteTorrent(hash, status, completedAt));
+        }
+        return java.util.List.copyOf(result);
+    }
+
+    private DownloadStatus remoteStatus(String state, double progress, long left) {
+        var status = switch (state) {
+            case "error", "missingFiles" -> DownloadStatus.ERROR;
+            case "checkingDL", "checkingUP", "checkingResumeData", "moving" -> DownloadStatus.CHECKING;
+            case "queuedDL", "queuedUP" -> DownloadStatus.QUEUED;
+            case "pausedDL", "pausedUP", "stoppedDL", "stoppedUP" -> DownloadStatus.PAUSED;
+            case "downloading", "forcedDL", "stalledDL", "metaDL", "forcedMetaDL",
+                 "uploading", "forcedUP", "stalledUP" -> DownloadStatus.DOWNLOADING;
+            default -> DownloadStatus.UNKNOWN;
+        };
+        if (status != DownloadStatus.ERROR
+                && status != DownloadStatus.CHECKING
+                && status != DownloadStatus.UNKNOWN
+                && progress == 1 && left == 0)
+            return DownloadStatus.DOWNLOADED;
+        return status;
     }
 
     private synchronized AuthMode sendingAuth() {

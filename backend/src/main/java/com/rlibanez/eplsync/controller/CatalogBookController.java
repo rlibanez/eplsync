@@ -1,6 +1,9 @@
 package com.rlibanez.eplsync.controller;
 
 import com.rlibanez.eplsync.dto.PageResponse;
+import com.rlibanez.eplsync.dto.CatalogBookResponse;
+import com.rlibanez.eplsync.torrent.downloads.CatalogDownloadViewService;
+import java.util.List;
 import com.rlibanez.eplsync.filter.CatalogBookFilter;
 import com.rlibanez.eplsync.model.CatalogBook;
 import com.rlibanez.eplsync.service.CatalogBookService;
@@ -16,7 +19,11 @@ public class CatalogBookController {
 
     private final CatalogBookService catalogBookService;
 
-    public CatalogBookController(CatalogBookService catalogBookService) {
+    private final CatalogDownloadViewService downloads;
+
+    public CatalogBookController(CatalogBookService catalogBookService,
+            CatalogDownloadViewService downloads) {
+        this.downloads = downloads;
         this.catalogBookService = catalogBookService;
     }
 
@@ -24,9 +31,9 @@ public class CatalogBookController {
      * Obtiene un libro del catálogo por su EPL Id.
      */
     @GetMapping("/{eplId}")
-    public ResponseEntity<CatalogBook> getByEplId(@PathVariable Long eplId) {
+    public ResponseEntity<CatalogBookResponse> getByEplId(@PathVariable Long eplId) {
         return catalogBookService.getByEplId(eplId)
-                .map(ResponseEntity::ok)
+                .map(book -> ResponseEntity.ok(downloads.enrich(List.of(book)).getFirst()))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
@@ -47,7 +54,7 @@ public class CatalogBookController {
 
         // Si NO se especifica page/size => sin paginar
         if (page == null && size == null) {
-            return catalogBookService.searchAll(filter);
+            return downloads.enrich(catalogBookService.searchAll(filter));
         }
 
         // Si se especifica page o size => paginado
@@ -63,6 +70,6 @@ public class CatalogBookController {
                 resultPage.hasNext(),
                 resultPage.hasPrevious());
 
-        return new PageResponse<>(resultPage.getContent(), meta);
+        return new PageResponse<>(downloads.enrich(resultPage.getContent()), meta);
     }
 }
