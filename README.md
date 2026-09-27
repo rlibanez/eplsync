@@ -99,3 +99,92 @@ Para compilar, ejecutar todas las pruebas y generar el JAR:
 ```sh
 ./backend/mvnw -f backend/pom.xml clean verify
 ```
+
+## Enlaces magnet
+
+La API genera enlaces BitTorrent v1 a partir de `CatalogBook.links`, sin descargar
+metadatos ni conectar con qBittorrent. Conserva los endpoints de libros existentes.
+
+| Petición GET | Respuesta |
+| --- | --- |
+| `/api/catalog/books/{eplId}/magnets` | Array JSON de magnets del libro; `[]` si no tiene hashes válidos y `404` si no existe |
+| `/api/catalog/magnets` | Array JSON de magnets de los libros filtrados |
+| `/api/catalog/magnets?page=0&size=20` | `{ "items": [...], "meta": {...} }`, con la misma estructura de metadatos que la búsqueda de libros |
+| `/api/catalog/magnets/export` | Archivo `magnets.txt`, `text/plain;charset=UTF-8`, con un magnet por línea |
+
+La búsqueda y la exportación admiten los mismos filtros del catálogo (`author`,
+`title`, `language`, fechas, estados, etc.) y `sort=title,asc`, por ejemplo.
+El orden predeterminado es `eplId,asc`; también se usa `eplId` para desempatar.
+La exportación devuelve todos los resultados filtrados, sin paginación.
+
+```sh
+curl 'http://localhost:8080/api/catalog/books/85202/magnets'
+curl 'http://localhost:8080/api/catalog/magnets?author=Wells&page=0&size=20'
+curl 'http://localhost:8080/api/catalog/magnets/export?author=Wells' -o magnets.txt
+```
+
+Se genera un magnet por hash distinto. Se aceptan hashes hexadecimales de 40
+caracteres y Base32 de 32 caracteres; estos últimos se convierten a hexadecimal.
+Los hashes del catálogo se separan por comas; también se admiten espacios,
+saltos de línea y punto y coma. Los valores inválidos se omiten. La deduplicación
+se hace por hash, incluso entre libros: se conserva el nombre del primer libro
+según el orden solicitado.
+
+Si se proporciona `page` o `size`, se pagina **después** de expandir y deduplicar
+los hashes. Los totales cuentan magnets, no libros. Por defecto `page=0` y
+`size=20`; `size` admite valores entre 1 y 500. Una página fuera del rango devuelve
+`items: []`; parámetros de paginación inválidos devuelven `400`.
+Para calcular totales exactos, esta primera versión procesa en memoria todos los
+resultados filtrados, cargando únicamente `eplId`, `title` y `links` de la BD.
+
+El nombre sugerido es `EPL_{eplId}_{title}`, codificado en UTF-8 en `dn`.
+`dn` no garantiza el nombre permanente en qBittorrent ni renombra los archivos:
+el cliente puede sustituirlo al recibir los metadatos. Para fijar el nombre
+mostrado se necesita la operación de renombrado del cliente.
+La URL HTTP de estos endpoints no es un archivo `.torrent`; se deben utilizar
+los enlaces `magnet:` devueltos (por ejemplo, copiando el texto exportado en el
+cuadro de añadir enlaces del cliente).
+
+### Trackers y Docker
+
+En `backend/src/main/resources/application.yaml` se configura la lista global:
+
+```yaml
+eplsync:
+  torrent:
+    trackers:
+      - "udp://tracker.opentrackr.org:1337/announce"
+```
+
+`EPLSYNC_TORRENT_TRACKERS` sustituye **toda** la lista con URLs separadas por comas.
+Cada URL genera un parámetro `tr`. Se eliminan duplicados y espacios exteriores.
+Se admiten HTTP, HTTPS y UDP (este último requiere puerto). Una URL inválida impide
+el arranque para detectar errores de configuración. Las direcciones no se prueban
+contra la red: su configuración no garantiza que el tracker esté disponible.
+
+Ejemplo del bloque a incorporar al futuro servicio de `docker-compose.yml`:
+
+```yaml
+services:
+  eplsync:
+    # Añadir aquí image o build del despliegue.
+    environment:
+      EPLSYNC_TORRENT_TRACKERS: "${EPLSYNC_TORRENT_TRACKERS-udp://tracker.opentrackr.org:1337/announce}"
+```
+
+En el `.env` situado junto a `docker-compose.yml`:
+
+```dotenv
+EPLSYNC_TORRENT_TRACKERS=udp://tracker.opentrackr.org:1337/announce,udp://www.torrent.eu.org:451/announce
+```
+
+Alternativamente, usar `env_file: .env` en el servicio en lugar del bloque
+`environment`. Compose lee `.env` para interpolación; por sí solo no introduce
+todas sus variables en el contenedor. Spring tampoco carga automáticamente un
+archivo `.env` al ejecutarse fuera de Docker.
+
+Un valor vacío (`EPLSYNC_TORRENT_TRACKERS=`) genera magnets sin `tr`, que el
+cliente puede resolver mediante DHT si está habilitado y hay pares disponibles.
+El ejemplo de Compose usa `${VARIABLE-defecto}`, sin `:`, para respetar ese valor
+vacío. Los cambios requieren reiniciar la aplicación (o recrear el contenedor
+con el nuevo entorno), pero no reimportar el catálogo ni modificar la BD.
