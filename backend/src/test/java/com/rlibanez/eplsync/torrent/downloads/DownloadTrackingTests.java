@@ -101,6 +101,38 @@ class DownloadTrackingTests {
         }
     }
 
+    @Test void eplIdFiltersCatalogMagnetsAndBulkWithValidation() throws Exception {
+        book(1.0, HASH);
+        books.save(CatalogBook.builder().eplId(33L).revision(1.0).author("Another author")
+                .title("Another title").links(OTHER).build());
+        var api = MockMvcBuilders.webAppContextSetup(webContext).build();
+        api.perform(get("/api/catalog/books").param("eplId", "32"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].eplId").value(32));
+        api.perform(get("/api/catalog/books").param("eplId", "32").param("size", "10"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1))
+                .andExpect(jsonPath("$.items[0].eplId").value(32));
+        api.perform(get("/api/catalog/books").param("eplId", "32").param("title", "does not match"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        api.perform(get("/api/catalog/books").param("eplId", "999"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        api.perform(get("/api/catalog/books/999")).andExpect(status().isNotFound());
+        api.perform(get("/api/catalog/magnets").param("eplId", "32"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0]").value(org.hamcrest.Matchers.containsString(HASH)));
+        api.perform(post("/api/torrent/books").param("eplId", "32"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1));
+        assertThat(bulkItems.findAll()).hasSize(1).allMatch(item -> item.getEplId().equals(32L));
+        for (String invalid : List.of("0", "-1", "abc", "9223372036854775808")) {
+            api.perform(get("/api/catalog/books").param("eplId", invalid)).andExpect(status().isBadRequest());
+            api.perform(get("/api/catalog/magnets").param("eplId", invalid)).andExpect(status().isBadRequest());
+            api.perform(post("/api/torrent/books").param("eplId", invalid)).andExpect(status().isBadRequest());
+        }
+        assertThat(bulkJobs.count()).isEqualTo(1);
+        verify(stubClient, never()).addTorrent(any(), any());
+        verify(stubClient, never()).addTorrent(any());
+    }
+
     @Test void summaryAggregatesStoredStatesWithFiltersAndDoesNotContactClient() throws Exception {
         service.addTorrent(command(1.0, HASH));
         service.addTorrent(command(1.1, OTHER));

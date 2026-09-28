@@ -1164,3 +1164,19 @@ consulta qBittorrent ni ejecuta un sync. Para actualizar esos estados, ejecutar
 antes `POST /api/torrent/downloads/sync`. El filtro `completed=true` conserva su
 significado habitual (existe `completedAt`); puede incluir registros `NOT_FOUND`
 que terminaron de descargarse anteriormente.
+
+### Filtrar el catálogo por eplId
+
+El filtro compartido `eplId` admite un identificador positivo y aplica coincidencia
+exacta. Se combina mediante AND con los demás filtros y funciona en
+`GET /api/catalog/books`, `GET /api/catalog/magnets` (también `/export`) y
+`POST /api/torrent/books`.
+
+```bash
+curl -s 'http://localhost:8088/api/catalog/books?eplId=32' | jq
+curl -s 'http://localhost:8088/api/catalog/books?eplId=32&size=20' | jq
+```
+
+La búsqueda devuelve un listado vacío si no hay coincidencias; la ruta individual
+`GET /api/catalog/books/32` sigue devolviendo un objeto o `404` si no existe.
+Un `eplId` no numérico, fuera del rango de `Long`, cero o negativo devuelve `400`.

@@ -24,6 +24,10 @@ public final class CatalogBookSpecifications {
 
         f.normalize();
 
+        if (f.getEplId() != null) {
+            spec = spec.and((root, q, cb) -> cb.equal(root.get("eplId"), f.getEplId()));
+        }
+
         spec = andIfNotNull(spec, authorContains(f.getAuthor()));
         spec = andIfNotNull(spec, titleContains(f.getTitle()));
         spec = andIfNotNull(spec, genresContains(f.getGenres()));

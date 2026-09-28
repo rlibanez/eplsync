@@ -28,6 +28,10 @@ import java.util.Set;
 @ToString
 public class CatalogBookFilter {
 
+    // Identificador exacto; combinable con el resto de filtros.
+    @Min(1)
+    private Long eplId;
+
     // --- Texto (contains, case-insensitive donde aplique) ---
     @Size(max = 255)
     private String author;
