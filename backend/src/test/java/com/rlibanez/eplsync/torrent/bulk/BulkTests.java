@@ -64,6 +64,59 @@ class BulkTests {
         assertThat(condition.getAsBoolean()).isTrue();
     }
 
+    private void awaitAutomatic(java.util.function.BooleanSupplier condition) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            synchronized (store) { if (condition.getAsBoolean()) return; }
+            Thread.sleep(5);
+        }
+        synchronized (store) { assertThat(condition.getAsBoolean()).isTrue(); }
+    }
+
+    @Test void automaticCoordinatorHonorsGlobalIntervalAndCompletesWithoutTicks() throws Exception {
+        var starts = new CopyOnWriteArrayList<Long>();
+        when(client.addTorrent(any())).thenAnswer(invocation -> {
+            starts.add(System.nanoTime());
+            return TorrentDownloadResult.Status.ACCEPTED;
+        });
+        var job = create(new BulkRequest(null, 2, 4, "100ms"));
+        worker = new BulkWorker(store, client, properties);
+        worker.start();
+        worker.start(); // El evento repetido no crea otro coordinador ni recupera envíos activos.
+        awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+        assertThat(starts).hasSize(5);
+        for (int i = 1; i < starts.size(); i++)
+            assertThat(starts.get(i) - starts.get(i - 1)).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(90));
+    }
+
+    @Test void automaticCoordinatorOverlapsRequestsAndDrainsBeforeResume() throws Exception {
+        var entered = new CountDownLatch(2);
+        var release = new CountDownLatch(1);
+        var calls = new AtomicInteger();
+        when(client.addTorrent(any())).thenAnswer(invocation -> {
+            calls.incrementAndGet(); entered.countDown();
+            if (!release.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("Timeout de prueba");
+            return TorrentDownloadResult.Status.ACCEPTED;
+        });
+        var job = create(new BulkRequest(null, 2, 2, "100ms"));
+        worker = new BulkWorker(store, client, properties);
+        worker.start();
+        try {
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+            synchronized (store) { store.control(job.jobId(), "pause"); }
+            release.countDown();
+            awaitAutomatic(() -> store.view(job.jobId()).inFlight() == 0);
+            assertThat(calls.get()).isEqualTo(2);
+            synchronized (store) { store.control(job.jobId(), "resume"); }
+            awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+            assertThat(calls.get()).isEqualTo(5);
+            worker.close();
+            synchronized (store) { create(null); }
+            Thread.sleep(300);
+            assertThat(calls.get()).isEqualTo(5);
+        } finally { release.countDown(); }
+    }
+
     @Test void logsPerItemAtTraceAndFailuresWithContextAtWarn() throws Exception {
         var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(BulkWorker.class);
         var previous = logger.getLevel();

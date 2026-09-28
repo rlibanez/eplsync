@@ -726,8 +726,12 @@ que el endpoint individual salvo `hash`, que no se admite en bulk.
   de magnets en una petición a qBit: se sigue enviando uno por petición.
 - `concurrency`: 1–16 operaciones de envío simultáneas.
 - `interval`: 0ms–60s de separación mínima entre el inicio de operaciones,
-  global para el trabajo, no por hilo. El coordinador revisa la cola cada 100ms;
-  la separación real puede ser mayor por la red o la carga.
+  global para el trabajo, no por hilo. El coordinador espera hasta el próximo
+  envío permitido y se despierta al finalizar una operación; no añade una pausa
+  fija de 100ms entre pasadas. No acumula envíos atrasados para lanzarlos en ráfaga.
+  La separación real puede ser mayor por la red, la persistencia o la carga.
+  Los trabajos nuevos o reanudados se detectan mediante una comprobación cada 250ms
+  como máximo mientras el coordinador está esperando.
 - `size` de selección: entero positivo, sin máximo de aplicación e independiente de `batchSize`.
 
 Se ejecuta un trabajo a la vez; los demás esperan. La concurrencia se aplica

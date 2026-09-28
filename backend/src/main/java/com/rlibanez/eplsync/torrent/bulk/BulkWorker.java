@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -36,6 +35,8 @@ public class BulkWorker {
     private long nextDispatch;
     private boolean ready;
     private boolean closing;
+    private Thread coordinator;
+    private static final long IDLE_WAIT = TimeUnit.MILLISECONDS.toNanos(250);
 
     private record PendingSend(BulkItem item, Future<Outcome> future) {}
 
@@ -45,24 +46,50 @@ public class BulkWorker {
         this.store = store; this.client = client; this.properties = properties;
     }
 
-    @EventListener(ApplicationReadyEvent.class)
     public void recover() {
         synchronized (store) { store.recover(); ready = true; }
     }
 
-    @Scheduled(fixedDelay = 100)
-    public void tick() {
+    @EventListener(ApplicationReadyEvent.class)
+    public void start() {
         synchronized (store) {
-            if (!ready || closing) return;
-            try { dispatch(); }
-            catch (RuntimeException ex) {
-                // No registrar snapshots, credenciales ni respuestas HTTP remotas.
-                log.error("No se pudo actualizar la cola torrent: jobId={}, tipo={}", activeId, ex.getClass().getSimpleName());
+            if (closing || coordinator != null) return;
+            recover();
+            coordinator = Thread.ofVirtual().name("torrent-bulk-coordinator").start(this::coordinate);
+        }
+    }
+
+    private void coordinate() {
+        synchronized (store) {
+            while (!closing) {
+                long delay = advance();
+                try {
+                    // Libera el mismo monitor utilizado por las notificaciones: no se pierden
+                    // finalizaciones entre la comprobación de futuros y el inicio de la espera.
+                    TimeUnit.NANOSECONDS.timedWait(store, Math.max(1, delay));
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
             }
         }
     }
 
-    private void dispatch() {
+    public void tick() {
+        synchronized (store) { advance(); }
+    }
+
+    private long advance() {
+        if (!ready || closing) return IDLE_WAIT;
+        try { return dispatch(); }
+        catch (RuntimeException ex) {
+            // No registrar snapshots, credenciales ni respuestas HTTP remotas.
+            log.error("No se pudo actualizar la cola torrent: jobId={}, tipo={}", activeId, ex.getClass().getSimpleName());
+            return TimeUnit.SECONDS.toNanos(1);
+        }
+    }
+
+    private long dispatch() {
         var iterator = inFlight.entrySet().iterator();
         while (iterator.hasNext()) {
             var entry = iterator.next();
@@ -84,11 +111,11 @@ public class BulkWorker {
                     activeId, outcome.retry(), safeLog(outcome.message()));
             iterator.remove();
         }
-        if (!properties.isEnabled()) return;
+        if (!properties.isEnabled()) return IDLE_WAIT;
         BulkJob job = activeId == null ? null : store.job(activeId);
         if (job != null && job.getState() != BulkJob.State.RUNNING) {
             buffer.clear();
-            if (!inFlight.isEmpty()) return;
+            if (!inFlight.isEmpty()) return IDLE_WAIT;
             var summary = store.view(activeId);
             log.info("Trabajo bulk sin envíos en curso: jobId={}, estado={}, accepted={}, alreadyExists={}, skipped={}, failed={}, pending={}, cancelled={}",
                     activeId, job.getState(), summary.accepted(), summary.alreadyExists(), summary.skipped(),
@@ -97,7 +124,7 @@ public class BulkWorker {
         }
         if (job == null) {
             job = store.next();
-            if (job == null) return;
+            if (job == null) return IDLE_WAIT;
             activeId = job.getId(); buffer.clear();
             submissionContext = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
             var progress = store.view(activeId);
@@ -108,18 +135,30 @@ public class BulkWorker {
             log.info("Procesando trabajo bulk: jobId={}, concurrency={}, interval={}ms", activeId, job.getConcurrency(), job.getIntervalMillis());
             logProgress(progress, progressPercent);
         }
-        if (inFlight.size() >= job.getConcurrency() || System.nanoTime() < nextDispatch) return;
+        if (inFlight.size() >= job.getConcurrency()) return IDLE_WAIT;
+        long remaining = nextDispatch - System.nanoTime();
+        if (remaining > 0) return Math.min(remaining, IDLE_WAIT);
         if (buffer.isEmpty()) buffer.addAll(store.pending(job.getId(), job.getBatchSize()));
-        if (buffer.isEmpty()) { store.completeIfEmpty(job.getId()); return; }
+        if (buffer.isEmpty()) { store.completeIfEmpty(job.getId()); return IDLE_WAIT; }
         while (!buffer.isEmpty() && inFlight.size() < job.getConcurrency() && System.nanoTime() >= nextDispatch) {
             var item = store.claim(job.getId(), buffer.removeFirst());
-            if (item == null) { buffer.clear(); return; }
+            if (item == null) { buffer.clear(); return IDLE_WAIT; }
             log.trace("Envío bulk: jobId={}, itemId={}, eplId={}, hash={}, intento={}",
                     job.getId(), item.getId(), item.getEplId(), item.getHash(), item.getAttempts());
             var context = submissionContext;
-            inFlight.put(item.getId(), new PendingSend(item, executor.submit(() -> send(item, context))));
+            var future = new CompletableFuture<Outcome>();
+            inFlight.put(item.getId(), new PendingSend(item, future));
+            executor.execute(() -> {
+                try { future.complete(send(item, context)); }
+                catch (Throwable ex) { future.completeExceptionally(ex); }
+                finally {
+                    synchronized (store) { store.notifyAll(); }
+                }
+            });
             nextDispatch = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(job.getIntervalMillis());
         }
+        return inFlight.size() >= job.getConcurrency() ? IDLE_WAIT
+                : Math.min(IDLE_WAIT, Math.max(1, nextDispatch - System.nanoTime()));
     }
 
     private void recordProgress(Outcome outcome) {
@@ -172,7 +211,7 @@ public class BulkWorker {
 
     @PreDestroy
     public void close() {
-        synchronized (store) { closing = true; }
+        synchronized (store) { closing = true; store.notifyAll(); }
         executor.shutdownNow();
         // Los IN_FLIGHT persistidos se reconcilian por hash en el siguiente arranque.
     }
