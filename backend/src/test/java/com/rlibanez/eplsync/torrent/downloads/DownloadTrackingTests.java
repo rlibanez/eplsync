@@ -101,6 +101,55 @@ class DownloadTrackingTests {
         }
     }
 
+    @Test void summaryAggregatesStoredStatesWithFiltersAndDoesNotContactClient() throws Exception {
+        service.addTorrent(command(1.0, HASH));
+        service.addTorrent(command(1.1, OTHER));
+        var rows = downloads.findAll();
+        var old = rows.stream().filter(row -> row.getHash().equals(HASH)).findFirst().orElseThrow();
+        old.setStatus(DownloadStatus.NOT_FOUND);
+        old.setCompletedAt(Instant.parse("2026-01-01T10:00:00Z"));
+        var current = rows.stream().filter(row -> row.getHash().equals(OTHER)).findFirst().orElseThrow();
+        current.setStatus(DownloadStatus.DOWNLOADED);
+        current.setCompletedAt(Instant.parse("2026-02-01T10:00:00Z"));
+        downloads.saveAll(rows);
+        clearInvocations(stubClient);
+        mvc.perform(get("/api/torrent/downloads/summary"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(2))
+                .andExpect(jsonPath("$.byStatus.NOT_FOUND").value(1))
+                .andExpect(jsonPath("$.byStatus.DOWNLOADED").value(1))
+                .andExpect(jsonPath("$.byStatus.DOWNLOADING").value(0))
+                .andExpect(jsonPath("$.byStatus.length()").value(DownloadStatus.values().length));
+        mvc.perform(get("/api/torrent/downloads/summary").param("eplId", "32")
+                .param("clientInstanceId", tracking.instanceId()).param("origin", "EPLSYNC")
+                .param("completed", "true").param("completedAtFrom", "2026-02-01T00:00:00Z"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.byStatus.NOT_FOUND").value(0));
+        mvc.perform(get("/api/torrent/downloads/summary").param("status", "DOWNLOADED,NOT_FOUND"))
+                .andExpect(jsonPath("$.total").value(2));
+        mvc.perform(get("/api/torrent/downloads/summary").param("hash", HASH.toLowerCase(Locale.ROOT)))
+                .andExpect(jsonPath("$.total").value(1)).andExpect(jsonPath("$.byStatus.NOT_FOUND").value(1));
+        mvc.perform(get("/api/torrent/downloads/summary").param("clientInstanceId", "other"))
+                .andExpect(jsonPath("$.total").value(0));
+        assertThat(downloads.findById(old.getId()).orElseThrow().getLastCheckedAt()).isNull();
+        verifyNoInteractions(stubClient);
+    }
+
+    @Test void emptySummaryIncludesEveryStateAndRejectsInvalidFilters() throws Exception {
+        var summary = queries.summary(new LinkedMultiValueMap<>());
+        assertThat(summary.total()).isZero();
+        assertThat(summary.byStatus()).hasSize(DownloadStatus.values().length);
+        assertThat(summary.byStatus().values()).containsOnly(0L);
+        for (var pair : List.of(new String[]{"page", "0"}, new String[]{"size", "20"}, new String[]{"sort", "id"},
+                new String[]{"unknown", "1"}, new String[]{"status", "BOGUS"}, new String[]{"completed", "yes"},
+                new String[]{"revision", "NaN"}, new String[]{"origin", ""})) {
+            mvc.perform(get("/api/torrent/downloads/summary").param(pair[0], pair[1])).andExpect(status().isBadRequest());
+        }
+        mvc.perform(get("/api/torrent/downloads/summary").param("eplId", "32", "33")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/torrent/downloads/summary").param("completedAtFrom", "2026-02-01T00:00:00Z")
+                .param("completedAtTo", "2026-01-01T00:00:00Z")).andExpect(status().isBadRequest());
+        verifyNoInteractions(stubClient);
+    }
+
     @Test void individualAndBulkContextRecordRevisionsAndRetriesWithoutDuplicates() {
         book(1.0, HASH); individual.download(32L, null);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.SUBMITTED);

@@ -1141,3 +1141,26 @@ links del sistema de archivos remoto, ni puede evitar cambios simultáneos hecho
 fuera de EPLsync. `REMOVED` confirma la ausencia del torrent, no una verificación
 física del borrado del archivo; el tratamiento final de los datos depende de
 qBittorrent. No hay limpieza automática ni cambios de política implícitos.
+
+### Resumen de descargas por estado
+
+`GET /api/torrent/downloads/summary` devuelve `total` y `byStatus`, con todos los
+estados (incluidos los que tienen contador cero). Cuenta registros de descarga,
+no libros ni torrents únicos: varias revisiones de un libro son varios registros.
+
+```bash
+curl -s 'http://localhost:8088/api/torrent/downloads/summary' | jq
+curl -s 'http://localhost:8088/api/torrent/downloads/summary?eplId=1234&origin=EPLSYNC' | jq
+```
+
+Admite los mismos filtros del listado de descargas, incluidos `client`,
+`clientInstanceId`, `status`, `completed` y los rangos de fechas. Sin filtros
+incluye todos los registros de la base de datos, también los de otros destinos.
+No admite `page`, `size` ni `sort`: agrega todo el conjunto filtrado en una sola
+consulta SQL, sin cargar las entidades. `total` es la suma de `byStatus`.
+
+Es una consulta de solo lectura sobre el último estado guardado en EPLsync; no
+consulta qBittorrent ni ejecuta un sync. Para actualizar esos estados, ejecutar
+antes `POST /api/torrent/downloads/sync`. El filtro `completed=true` conserva su
+significado habitual (existe `completedAt`); puede incluir registros `NOT_FOUND`
+que terminaron de descargarse anteriormente.

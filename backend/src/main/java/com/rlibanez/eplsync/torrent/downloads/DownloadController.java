@@ -18,6 +18,10 @@ public class DownloadController {
         if (!params.isEmpty()) throw new IllegalArgumentException("La sincronización no admite filtros");
         return client.syncDownloads();
     }
+    @GetMapping("/summary")
+    public DownloadQueryService.Summary summary(@RequestParam MultiValueMap<String, String> params) {
+        return queries.summary(params);
+    }
     @GetMapping
     public PageResponse<DownloadRecord> search(@RequestParam MultiValueMap<String, String> params) {
         return queries.search(params);
