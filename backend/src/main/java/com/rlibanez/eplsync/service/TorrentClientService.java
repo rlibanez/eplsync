@@ -62,6 +62,11 @@ public class TorrentClientService {
         return tracking.sync(selectedClient::listTorrents);
     }
 
+    public <T> T exclusiveClient(java.util.function.Function<TorrentClient, T> action) {
+        requireEnabled();
+        return tracking.exclusive(() -> action.apply(selectedClient));
+    }
+
     public void requireRenameEnabled() {
         if (!properties.isEnabled() || !properties.getRename().isEnabled()) {
             throw new TorrentOperationException(

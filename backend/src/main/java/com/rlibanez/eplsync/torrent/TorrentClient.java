@@ -23,6 +23,11 @@ public interface TorrentClient {
                 "El cliente seleccionado no admite sincronización de descargas");
     }
 
+    default void deleteTorrent(String remoteId, boolean deleteFiles) {
+        throw new TorrentOperationException(HttpStatus.UNPROCESSABLE_CONTENT,
+                "El cliente seleccionado no admite eliminar torrents");
+    }
+
     String type();
     TorrentConnectionStatus checkConnection();
 

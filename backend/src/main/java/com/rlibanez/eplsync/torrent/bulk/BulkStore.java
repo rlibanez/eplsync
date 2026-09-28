@@ -57,30 +57,9 @@ public class BulkStore {
         if (!paginated && !all && !hasFilter(filter))
             throw new IllegalArgumentException("Sin filtros ni paginación se requiere all=true");
         var input = request == null ? new BulkRequest(null, null, null, null) : request;
-        if (input.options() != null && input.options().hash() != null)
-            throw new IllegalArgumentException("Bulk selecciona el hash de cada libro; no admite options.hash");
-        int batchSize = input.batchSize() == null ? properties.getBulk().getBatchSize() : input.batchSize();
-        int concurrency = input.concurrency() == null ? properties.getBulk().getConcurrency() : input.concurrency();
-        var policy = input.multipleHashes() == null ? properties.getBulk().getMultipleHashes() : input.multipleHashes();
-        if (policy == null) throw new IllegalArgumentException("multipleHashes debe ser all, skip o first");
-        long interval;
-        try {
-            var duration = input.interval() == null ? properties.getBulk().getInterval()
-                    : DurationStyle.detectAndParse(input.interval());
-            if (duration.isNegative() || duration.compareTo(java.time.Duration.ofSeconds(60)) > 0)
-                throw new IllegalArgumentException("interval fuera de rango");
-            interval = duration.toMillis();
-        } catch (RuntimeException ex) { throw new IllegalArgumentException("interval debe ser una duración como 500ms o 2s"); }
-        if (batchSize < 1 || batchSize > 1000) throw new IllegalArgumentException("batchSize debe estar entre 1 y 1000");
-        if (concurrency < 1 || concurrency > 16) throw new IllegalArgumentException("concurrency debe estar entre 1 y 16");
-        if (interval < 0 || interval > 60_000) throw new IllegalArgumentException("interval debe estar entre 0ms y 60s");
-        var job = new BulkJob();
-        job.setId(UUID.randomUUID().toString()); job.setState(BulkJob.State.QUEUED);
-        job.setMultipleHashes(policy);
-        job.setClient(properties.getClient()); job.setTargetFingerprint(fingerprint());
-        job.setBatchSize(batchSize); job.setConcurrency(concurrency); job.setIntervalMillis(interval);
-        job.setCreatedAt(Instant.now()); job.setUpdatedAt(job.getCreatedAt());
-        jobs.saveAndFlush(job);
+        var job = newJob(input);
+        int batchSize = job.getBatchSize();
+        var policy = job.getMultipleHashes();
         var sort = pageable.getSort();
         if (sort.getOrderFor("eplId") == null) sort = sort.and(Sort.by("eplId"));
         validateSort(sort);
@@ -164,6 +143,55 @@ public class BulkStore {
         }
         job.setSelectedBooks(selectedBooks);
         if (items.countByJobIdAndState(job.getId(), BulkItem.State.PENDING) == 0) job.setState(BulkJob.State.COMPLETED);
+        jobs.saveAndFlush(job);
+        return view(job.getId());
+    }
+
+    private BulkJob newJob(BulkRequest input) {
+        if (input.options() != null && input.options().hash() != null)
+            throw new IllegalArgumentException("Bulk selecciona el hash de cada libro; no admite options.hash");
+        int batchSize = input.batchSize() == null ? properties.getBulk().getBatchSize() : input.batchSize();
+        int concurrency = input.concurrency() == null ? properties.getBulk().getConcurrency() : input.concurrency();
+        var policy = input.multipleHashes() == null ? properties.getBulk().getMultipleHashes() : input.multipleHashes();
+        if (policy == null) throw new IllegalArgumentException("multipleHashes debe ser all, skip o first");
+        long interval;
+        try {
+            var duration = input.interval() == null ? properties.getBulk().getInterval()
+                    : DurationStyle.detectAndParse(input.interval());
+            if (duration.isNegative() || duration.compareTo(java.time.Duration.ofSeconds(60)) > 0)
+                throw new IllegalArgumentException("interval fuera de rango");
+            interval = duration.toMillis();
+        } catch (RuntimeException ex) { throw new IllegalArgumentException("interval debe ser una duración como 500ms o 2s"); }
+        if (batchSize < 1 || batchSize > 1000) throw new IllegalArgumentException("batchSize debe estar entre 1 y 1000");
+        if (concurrency < 1 || concurrency > 16) throw new IllegalArgumentException("concurrency debe estar entre 1 y 16");
+        if (interval < 0 || interval > 60_000) throw new IllegalArgumentException("interval debe estar entre 0ms y 60s");
+        var job = new BulkJob();
+        job.setId(UUID.randomUUID().toString()); job.setState(BulkJob.State.QUEUED);
+        job.setMultipleHashes(policy);
+        job.setClient(properties.getClient()); job.setTargetFingerprint(fingerprint());
+        job.setBatchSize(batchSize); job.setConcurrency(concurrency); job.setIntervalMillis(interval);
+        job.setCreatedAt(Instant.now()); job.setUpdatedAt(job.getCreatedAt());
+        jobs.saveAndFlush(job);
+        return job;
+    }
+
+    /** Commands have already been selected and frozen by the update planner. */
+    @Transactional
+    public View createPrepared(List<TorrentDownload> commands, BulkRequest input) {
+        client.requireEnabled();
+        var job = newJob(input);
+        long position = 0;
+        var books = new HashSet<Long>();
+        for (var command : commands) {
+            var item = newItem(job, command.book().getEplId(), position++);
+            item.setHash(command.hash());
+            item.setCommandJson(mapper.writeValueAsString(command));
+            items.save(item);
+            books.add(command.book().getEplId());
+            if (position % job.getBatchSize() == 0) { em.flush(); em.clear(); }
+        }
+        job.setSelectedBooks(books.size());
+        if (commands.isEmpty()) job.setState(BulkJob.State.COMPLETED);
         jobs.saveAndFlush(job);
         return view(job.getId());
     }

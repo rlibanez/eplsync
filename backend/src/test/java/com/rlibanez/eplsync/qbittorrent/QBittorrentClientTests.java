@@ -49,6 +49,19 @@ class QBittorrentClientTests {
 
     record Call(String method, String path, String authorization, String cookie, String body, String origin) {}
 
+    @Test void deletionUsesRemoteIdAndExplicitFilePolicy() {
+        var qbit = client();
+        String remoteId = "B".repeat(40);
+        qbit.deleteTorrent(remoteId, false);
+        var deletion = calls.stream().filter(call -> call.path().endsWith("/torrents/delete")).findFirst().orElseThrow();
+        assertThat(deletion.method()).isEqualTo("POST");
+        assertThat(deletion.body()).isEqualTo("hashes=" + remoteId + "&deleteFiles=false");
+        assertThat(deletion.authorization()).isEqualTo("Bearer test-key");
+        qbit.deleteTorrent(remoteId, true);
+        assertThat(calls.getLast().body()).isEqualTo("hashes=" + remoteId + "&deleteFiles=true");
+        assertThatThrownBy(() -> qbit.deleteTorrent("all", true)).isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test void readsHybridHashesAndRejectsMalformedAliases() {
         torrentInfo = """
                 [{"hash":"%s","infohash_v1":"%s","infohash_v2":"%s",

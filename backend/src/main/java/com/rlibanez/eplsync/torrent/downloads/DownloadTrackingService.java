@@ -86,6 +86,13 @@ public class DownloadTrackingService {
     public record SyncResult(String client, String clientInstanceId, int remoteTorrents, int checked,
             int created, int updated, int completed, int notFound, int ignored, Instant checkedAt) {}
 
+    public <T> T exclusive(Supplier<T> action) {
+        if (!coordination.writeLock().tryLock()) throw new TorrentOperationException(HttpStatus.CONFLICT,
+                "Hay envíos o una sincronización en curso; vuelve a intentarlo al terminar");
+        try { return action.get(); }
+        finally { coordination.writeLock().unlock(); }
+    }
+
     public SyncResult sync(Supplier<List<RemoteTorrent>> remoteReader) {
         if (!coordination.writeLock().tryLock()) throw new TorrentOperationException(HttpStatus.CONFLICT,
                 "Hay envíos o una sincronización en curso; vuelve a intentarlo al terminar");

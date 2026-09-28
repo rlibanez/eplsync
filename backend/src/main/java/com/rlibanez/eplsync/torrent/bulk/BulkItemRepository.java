@@ -13,6 +13,11 @@ public interface BulkItemRepository extends JpaRepository<BulkItem, String> {
     Page<BulkItem> findByJobIdAndStateInOrderByPosition(String jobId, List<BulkItem.State> states, Pageable pageable);
     long countByJobIdAndState(String jobId, BulkItem.State state);
     long countByJobId(String jobId);
+    @Query("select distinct i.eplId from BulkItem i, BulkJob j where i.jobId = j.id "
+            + "and j.targetFingerprint = :instance and i.state in :states "
+            + "and j.state not in (com.rlibanez.eplsync.torrent.bulk.BulkJob.State.COMPLETED, "
+            + "com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED)")
+    List<Long> activeBooks(String instance, List<BulkItem.State> states);
     @Query("select count(distinct i.hash) from BulkItem i where i.jobId = :jobId")
     long selectedTorrents(String jobId);
     @Query("select count(distinct i.eplId) from BulkItem i where i.jobId = :jobId and not exists "

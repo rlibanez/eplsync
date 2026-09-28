@@ -208,9 +208,21 @@ public class QBittorrentClient implements TorrentClient {
                 try { completedAt = java.time.Instant.ofEpochSecond(completion); }
                 catch (java.time.DateTimeException ex) { throw new QBittorrentConnectionException(UPSTREAM); }
             }
-            result.add(new RemoteTorrent(hash, status, completedAt, torrentHashes(item)));
+            result.add(new RemoteTorrent(hash, status, completedAt, torrentHashes(item), item.path("content_path").asString("")));
         }
         return java.util.List.copyOf(result);
+    }
+
+    @Override
+    public void deleteTorrent(String remoteId, boolean deleteFiles) {
+        if (!remoteId.matches("(?i)[0-9a-f]{40}|[0-9a-f]{64}"))
+            throw new IllegalArgumentException("Identificador remoto inválido");
+        boolean key = sendingAuth() == AuthMode.API_KEY;
+        var builder = request("torrents/delete").header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString("hashes=" + encode(remoteId) + "&deleteFiles=" + deleteFiles));
+        if (key) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
+        // Una escritura incierta no se reintenta automáticamente.
+        checkStatus(send(key ? apiKeyClient : sessionClient, builder.build()));
     }
 
     private java.util.Set<String> torrentHashes(tools.jackson.databind.JsonNode item) {
