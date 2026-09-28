@@ -26,13 +26,15 @@ public class BulkWorker {
     private final TorrentClientService client;
     private final TorrentProperties properties;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-    private final Map<String, Future<Outcome>> inFlight = new HashMap<>();
+    private final Map<String, PendingSend> inFlight = new HashMap<>();
     private final Deque<String> buffer = new ArrayDeque<>();
     private String activeId;
     private com.rlibanez.eplsync.torrent.TorrentSubmissionContext submissionContext;
     private long nextDispatch;
     private boolean ready;
     private boolean closing;
+
+    private record PendingSend(BulkItem item, Future<Outcome> future) {}
 
     record Outcome(BulkItem.State state, String message, boolean pause, boolean retry) {}
 
@@ -52,7 +54,7 @@ public class BulkWorker {
             try { dispatch(); }
             catch (RuntimeException ex) {
                 // No registrar snapshots, credenciales ni respuestas HTTP remotas.
-                log.error("No se pudo actualizar la cola torrent ({})", ex.getClass().getSimpleName());
+                log.error("No se pudo actualizar la cola torrent: jobId={}, tipo={}", activeId, ex.getClass().getSimpleName());
             }
         }
     }
@@ -61,15 +63,21 @@ public class BulkWorker {
         var iterator = inFlight.entrySet().iterator();
         while (iterator.hasNext()) {
             var entry = iterator.next();
-            if (!entry.getValue().isDone()) continue;
+            if (!entry.getValue().future().isDone()) continue;
             Outcome outcome;
-            try { outcome = entry.getValue().get(); }
+            try { outcome = entry.getValue().future().get(); }
             catch (Exception ex) { outcome = new Outcome(BulkItem.State.FAILED, "Ejecución interrumpida; revisar antes de reanudar", true, false); }
             store.finish(entry.getKey(), outcome.state(), outcome.message(), outcome.pause(), outcome.retry());
-            log.debug("Resultado bulk: jobId={}, itemId={}, estado={}, pausa={}, reintento={}",
+            log.trace("Resultado bulk: jobId={}, itemId={}, estado={}, pausa={}, reintento={}",
                     activeId, entry.getKey(), outcome.state(), outcome.pause(), outcome.retry());
+            if (outcome.state() == BulkItem.State.FAILED || outcome.pause() || outcome.retry()) {
+                var item = entry.getValue().item();
+                log.warn("Fallo de envío bulk: jobId={}, itemId={}, eplId={}, hash={}, intento={}, motivo={}",
+                        activeId, item.getId(), item.getEplId(), item.getHash(), item.getAttempts(),
+                        safeLog(outcome.message()));
+            }
             if (outcome.pause() || outcome.retry()) log.warn("Trabajo bulk interrumpido: jobId={}, reintento={}, motivo={}",
-                    activeId, outcome.retry(), outcome.message());
+                    activeId, outcome.retry(), safeLog(outcome.message()));
             iterator.remove();
         }
         if (!properties.isEnabled()) return;
@@ -77,7 +85,10 @@ public class BulkWorker {
         if (job != null && job.getState() != BulkJob.State.RUNNING) {
             buffer.clear();
             if (!inFlight.isEmpty()) return;
-            log.info("Trabajo bulk sin envíos en curso: jobId={}, estado={}", activeId, job.getState());
+            var summary = store.view(activeId);
+            log.info("Trabajo bulk sin envíos en curso: jobId={}, estado={}, accepted={}, alreadyExists={}, skipped={}, failed={}, pending={}, cancelled={}",
+                    activeId, job.getState(), summary.accepted(), summary.alreadyExists(), summary.skipped(),
+                    summary.failed(), summary.pending(), summary.cancelled());
             activeId = null; job = null; submissionContext = null;
         }
         if (job == null) {
@@ -93,10 +104,10 @@ public class BulkWorker {
         while (!buffer.isEmpty() && inFlight.size() < job.getConcurrency() && System.nanoTime() >= nextDispatch) {
             var item = store.claim(job.getId(), buffer.removeFirst());
             if (item == null) { buffer.clear(); return; }
-            log.debug("Envío bulk: jobId={}, itemId={}, eplId={}, hash={}, intento={}",
+            log.trace("Envío bulk: jobId={}, itemId={}, eplId={}, hash={}, intento={}",
                     job.getId(), item.getId(), item.getEplId(), item.getHash(), item.getAttempts());
             var context = submissionContext;
-            inFlight.put(item.getId(), executor.submit(() -> send(item, context)));
+            inFlight.put(item.getId(), new PendingSend(item, executor.submit(() -> send(item, context))));
             nextDispatch = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(job.getIntervalMillis());
         }
     }
@@ -119,6 +130,12 @@ public class BulkWorker {
         } catch (RuntimeException ex) {
             return new Outcome(null, "Error inesperado; revisar antes de reanudar", true, false);
         }
+    }
+
+    private static String safeLog(String message) {
+        if (message == null) return "Sin detalle";
+        String clean = message.replaceAll("[\\p{Cc}\\p{Zl}\\p{Zp}]", " ");
+        return clean.substring(0, Math.min(500, clean.length()));
     }
 
     @PreDestroy

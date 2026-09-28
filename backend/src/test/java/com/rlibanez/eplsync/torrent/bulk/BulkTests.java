@@ -64,6 +64,30 @@ class BulkTests {
         assertThat(condition.getAsBoolean()).isTrue();
     }
 
+    @Test void logsPerItemAtTraceAndFailuresWithContextAtWarn() throws Exception {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(BulkWorker.class);
+        var previous = logger.getLevel();
+        var appender = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start(); logger.addAppender(appender); logger.setLevel(ch.qos.logback.classic.Level.TRACE);
+        try {
+            when(client.addTorrent(any())).thenThrow(new TorrentOperationException(
+                    org.springframework.http.HttpStatus.CONFLICT, "La categoría configurada no existe en qBittorrent"));
+            var job = create(null); start();
+            until(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+            worker.tick();
+            var warnings = appender.list.stream().filter(e -> e.getLevel() == ch.qos.logback.classic.Level.WARN)
+                    .map(e -> e.getFormattedMessage()).toList();
+            assertThat(warnings).hasSize(5).allMatch(message -> message.contains("jobId=" + job.jobId())
+                    && message.contains("eplId=") && message.contains("hash=")
+                    && message.contains("La categoría configurada no existe en qBittorrent"));
+            assertThat(appender.list.stream().filter(e -> e.getFormattedMessage().startsWith("Envío bulk:")
+                    || e.getFormattedMessage().startsWith("Resultado bulk:")))
+                    .hasSize(10).allMatch(e -> e.getLevel() == ch.qos.logback.classic.Level.TRACE);
+            assertThat(appender.list).anyMatch(e -> e.getLevel() == ch.qos.logback.classic.Level.INFO
+                    && e.getFormattedMessage().contains("failed=5"));
+        } finally { logger.detachAppender(appender); logger.setLevel(previous); appender.stop(); }
+    }
+
     @Test void snapshotsSelectionAndOptionsWithoutRetainingEntities() {
         var request = new BulkRequest(new TorrentDownloadRequest(null, false, "/test",
                 new TorrentDownloadRequest.Rename(true, "{title}"), null), 3, 2, "250ms");

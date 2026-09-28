@@ -844,13 +844,14 @@ operación. Los reintentos del trabajador siguen consultando primero el hash.
 
 Logs torrent:
 
-- `INFO`: petición individual con `eplId`, resultado individual, selección bulk
+- `INFO`: petición individual con `eplId`, selección bulk
   con filtros/paginación, creación del job y sus parámetros efectivos, ejecución,
   finalización y controles de pausa/reanudación/cancelación.
-- `WARN`: interrupción de un trabajo por un fallo de conexión o autenticación.
-- `DEBUG`: inicio y resultado de cada elemento con `jobId`, `itemId`, `eplId`,
-  hash e intento; preparación de autenticación y actualización de categorías.
-- `TRACE`: método, ruta API, estado HTTP y duración de las llamadas a qBit.
+- `WARN`: fallos individuales y bulk con identificadores y motivo; interrupciones y reintentos.
+- `DEBUG`: preparación de autenticación y actualización de categorías.
+- `TRACE`: inicio y resultado por torrent, además del método, ruta API, estado HTTP
+  y duración de las llamadas a qBit. Los cambios de estado del job incluyen un
+  resumen de contadores en `INFO`.
 
 No se registran claves, contraseñas, cookies, cabeceras de autenticación, magnets,
 cuerpos HTTP ni snapshots de libros. Los filtros de búsqueda se registran en
@@ -861,8 +862,8 @@ Con la configuración actual, `root: INFO` es el valor heredado; el paquete
 DEBUG, INFO, WARN y ERROR. `TRACE` queda oculto. El logger específico
 `org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR`
 solo muestra ERROR; no afecta al `GlobalExceptionHandler` de EPLSync.
-Para cargas grandes se puede poner `com.rlibanez.eplsync: INFO` y evitar logs por
-elemento, manteniendo las solicitudes y los cambios de estado de los trabajos.
+Con `com.rlibanez.eplsync: DEBUG` los envíos correctos por elemento quedan ocultos;
+los fallos siguen siendo visibles en `WARN`. Activa `TRACE` para investigar envíos concretos.
 
 ### Historial de descargas y sincronización manual
 

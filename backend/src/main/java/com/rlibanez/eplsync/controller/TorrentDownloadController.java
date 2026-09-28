@@ -18,8 +18,21 @@ public class TorrentDownloadController {
     public ResponseEntity<TorrentDownloadResult> downloadByEplId(@PathVariable Long eplId,
             @RequestBody(required = false) TorrentDownloadRequest request) {
         log.info("Solicitud de envío torrent: eplId={}", eplId);
-        var result = service.download(eplId, request);
-        log.info("Resultado de envío torrent: eplId={}, hash={}, status={}", eplId, result.hash(), result.status());
+        TorrentDownloadResult result;
+        try { result = service.download(eplId, request); }
+        catch (RuntimeException ex) {
+            // Solo mensajes controlados; no volcar peticiones, credenciales ni excepciones arbitrarias.
+            String reason = ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException
+                    || ex instanceof com.rlibanez.eplsync.exception.TorrentConnectionException
+                    ? ex.getMessage() : ex instanceof IllegalArgumentException
+                    ? "Opciones del torrent inválidas" : "Error inesperado al enviar el torrent";
+            if (reason == null) reason = "Sin detalle";
+            reason = reason.replaceAll("[\\p{Cc}\\p{Zl}\\p{Zp}]", " ");
+            log.warn("Fallo de envío individual: eplId={}, tipo={}, motivo={}", eplId,
+                    ex.getClass().getSimpleName(), reason.substring(0, Math.min(500, reason.length())));
+            throw ex;
+        }
+        log.trace("Resultado de envío torrent: eplId={}, hash={}, status={}", eplId, result.hash(), result.status());
         return ResponseEntity.status(result.status() == TorrentDownloadResult.Status.ALREADY_EXISTS ? 200 : 202)
                 .body(result);
     }
