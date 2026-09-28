@@ -24,6 +24,17 @@ server:
   port: 8088
 
 logging:
+  file:
+    name: ./logs/eplsync.log
+
+  logback:
+    rollingpolicy:
+      file-name-pattern: ./logs/eplsync.%d{yyyyMMdd}.%i.log
+      max-file-size: 50MB
+      max-history: 30
+      total-size-cap: 1GB
+      clean-history-on-start: true
+
   level:
     root: INFO
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
