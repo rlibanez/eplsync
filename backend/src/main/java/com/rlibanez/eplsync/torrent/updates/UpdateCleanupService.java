@@ -51,60 +51,155 @@ public class UpdateCleanupService {
         if (!plan.getClientInstanceId().equals(tracking.instanceId()))
             throw new TorrentOperationException(HttpStatus.CONFLICT, "El destino del trabajo ha cambiado");
         if (plan.getPreviousVersions() == PreviousVersions.KEEP) return view(jobId);
-        return client.exclusiveClient(adapter -> {
-            var snapshot = mapper.readValue(plan.getSnapshot(), UpdatePlanner.Snapshot.class);
+        var work = pendingEntries(List.of(plan));
+        if (work.get(jobId).isEmpty()) return view(jobId);
+        client.exclusiveClient(adapter -> execute(List.of(plan), work, adapter, retryUnconfirmed));
+        return view(jobId);
+    }
+
+    private static final List<UpdateCleanup.State> PENDING = List.of(UpdateCleanup.State.WAITING,
+            UpdateCleanup.State.BLOCKED, UpdateCleanup.State.REQUESTED);
+    public record JobResult(String jobId, long checked, long removed, long waiting, long blocked,
+            long requested, String error) {}
+    public record GlobalResult(int selectedJobs, long failedJobs, long checked, long removed,
+            long waiting, long blocked, long requested, List<JobResult> jobs) {}
+
+    public GlobalResult cleanAll(boolean retryUnconfirmed) {
+        var selected = plans.pending(PreviousVersions.KEEP, PENDING);
+        var work = pendingEntries(selected);
+        var errors = new HashMap<String, String>();
+        var current = new ArrayList<UpdatePlan>();
+        for (var plan : selected) {
+            if (plan.getClientInstanceId().equals(tracking.instanceId())) current.add(plan);
+            else errors.put(plan.getJobId(), "El destino del trabajo ha cambiado; restaura su cliente y URL");
+        }
+        if (!current.isEmpty()) errors.putAll(client.exclusiveClient(adapter -> execute(current, work, adapter, retryUnconfirmed)));
+        var results = new ArrayList<JobResult>();
+        for (var plan : selected) {
+            var ids = new HashSet<String>();
+            work.get(plan.getJobId()).forEach(entry -> ids.add(entry.getId()));
+            var states = new EnumMap<UpdateCleanup.State, Long>(UpdateCleanup.State.class);
+            for (var entry : entries.findByJobIdOrderByEplIdAsc(plan.getJobId()))
+                if (ids.contains(entry.getId())) states.merge(entry.getState(), 1L, Long::sum);
+            results.add(new JobResult(plan.getJobId(), ids.size(), states.getOrDefault(UpdateCleanup.State.REMOVED, 0L),
+                    states.getOrDefault(UpdateCleanup.State.WAITING, 0L), states.getOrDefault(UpdateCleanup.State.BLOCKED, 0L),
+                    states.getOrDefault(UpdateCleanup.State.REQUESTED, 0L), errors.get(plan.getJobId())));
+        }
+        var result = new GlobalResult(results.size(), results.stream().filter(job -> job.error() != null).count(),
+                results.stream().mapToLong(JobResult::checked).sum(), results.stream().mapToLong(JobResult::removed).sum(),
+                results.stream().mapToLong(JobResult::waiting).sum(), results.stream().mapToLong(JobResult::blocked).sum(),
+                results.stream().mapToLong(JobResult::requested).sum(), List.copyOf(results));
+        log.info("Limpieza global finalizada: jobs={}, errores={}, registros={}, eliminados={}, pendientes={}, bloqueados={}, sinConfirmar={}",
+                result.selectedJobs(), result.failedJobs(), result.checked(), result.removed(), result.waiting(), result.blocked(), result.requested());
+        return result;
+    }
+
+    private Map<String, List<UpdateCleanup>> pendingEntries(List<UpdatePlan> selected) {
+        var work = new LinkedHashMap<String, List<UpdateCleanup>>();
+        for (var plan : selected) work.put(plan.getJobId(), entries.findByJobIdOrderByEplIdAsc(plan.getJobId()).stream()
+                .filter(entry -> PENDING.contains(entry.getState())).toList());
+        return work;
+    }
+
+    private Map<String, String> execute(List<UpdatePlan> selected, Map<String, List<UpdateCleanup>> work,
+            com.rlibanez.eplsync.torrent.TorrentClient adapter, boolean retryUnconfirmed) {
+        var errors = new HashMap<String, String>();
+        var remote = adapter.listTorrents();
+        var byHash = index(remote);
+        var snapshots = new HashMap<String, Map<Long, UpdatePlanner.Candidate>>();
+        var protectedTargets = new HashSet<String>();
+        var policies = new HashMap<String, PreviousVersions>();
+        var conflictingPolicies = new HashSet<String>();
+        var unconfirmed = new HashSet<String>();
+        for (var plan : selected) {
             var byBook = new HashMap<Long, UpdatePlanner.Candidate>();
-            snapshot.items().forEach(item -> byBook.put(item.eplId(), item));
-            var remote = adapter.listTorrents();
-            var byHash = index(remote);
-            var owners = new HashMap<String, Set<Long>>();
-            for (var row : downloads.findByClientInstanceId(plan.getClientInstanceId()))
-                owners.computeIfAbsent(row.getHash(), key -> new HashSet<>()).add(row.getEplId());
-            for (var book : books.findTorrentIdentities()) for (var hash : magnets.hashes(book.getLinks()))
-                owners.computeIfAbsent(hash, key -> new HashSet<>()).add(book.getEplId());
-            var requested = new ArrayList<UpdateCleanup>();
-            var dispatched = new HashSet<String>();
-            var paths = paths(remote);
-            for (var entry : entries.findByJobIdOrderByEplIdAsc(jobId)) {
-                if (entry.getState() == UpdateCleanup.State.REMOVED) continue;
+            mapper.readValue(plan.getSnapshot(), UpdatePlanner.Snapshot.class).items().forEach(item -> {
+                byBook.put(item.eplId(), item);
+                for (var hash : item.targetHashes()) {
+                    var target = byHash.get(hash);
+                    if (target != null) protectedTargets.add(target.hash());
+                }
+            });
+            snapshots.put(plan.getJobId(), byBook);
+            for (var entry : work.get(plan.getJobId())) {
                 var old = byHash.get(entry.getHash());
-                if (old == null) { removed(entry); continue; }
-                // Un POST incierto no se repite: una siguiente consulta confirma su ausencia.
-                if (entry.getState() == UpdateCleanup.State.REQUESTED && !retryUnconfirmed) continue;
-                var candidate = byBook.get(entry.getEplId());
-                var targets = candidate.targetHashes().stream().map(byHash::get).toList();
-                if (targets.stream().anyMatch(target -> target == null || target.status() != DownloadStatus.DOWNLOADED)) {
-                    postpone(entry, UpdateCleanup.State.WAITING, "La nueva revisión todavía no está completa en el cliente"); continue;
-                }
-                if (targets.stream().anyMatch(target -> target.hash().equals(old.hash()))) {
-                    postpone(entry, UpdateCleanup.State.BLOCKED, "La versión anterior y la nueva identifican el mismo torrent"); continue;
-                }
-                boolean shared = old.aliases().stream().anyMatch(hash -> owners.getOrDefault(hash, Set.of()).stream()
-                        .anyMatch(id -> !id.equals(entry.getEplId())));
-                if (shared) { postpone(entry, UpdateCleanup.State.BLOCKED, "Torrent compartido con otro libro"); continue; }
-                boolean deleteFiles = plan.getPreviousVersions() == PreviousVersions.REMOVE_TORRENT_AND_FILES;
-                if (deleteFiles && !exclusivePath(old, paths)) {
-                    postpone(entry, UpdateCleanup.State.BLOCKED, "Rutas compartidas o no verificables; no se borran archivos"); continue;
-                }
-                // Persistir antes de la red permite reconocer un resultado incierto tras reiniciar.
-                save(entry, UpdateCleanup.State.REQUESTED, "Eliminación solicitada; pendiente de confirmar ausencia");
-                if (!dispatched.add(old.hash())) { requested.add(entry); continue; }
-                try {
-                    adapter.deleteTorrent(old.hash(), deleteFiles);
-                    requested.add(entry);
-                    log.info("Limpieza solicitada: jobId={}, eplId={}, deleteFiles={}", jobId, entry.getEplId(), deleteFiles);
-                } catch (RuntimeException ex) {
-                    log.warn("Limpieza sin confirmar: jobId={}, eplId={}, tipo={}", jobId, entry.getEplId(), ex.getClass().getSimpleName());
-                    save(entry, UpdateCleanup.State.REQUESTED,
-                            "Respuesta de eliminación no confirmada; consultar de nuevo o usar retryUnconfirmed=true");
-                }
+                if (old == null) continue;
+                var previous = policies.putIfAbsent(old.hash(), plan.getPreviousVersions());
+                if (previous != null && previous != plan.getPreviousVersions()) conflictingPolicies.add(old.hash());
+                if (entry.getState() == UpdateCleanup.State.REQUESTED) unconfirmed.add(old.hash());
             }
-            if (!requested.isEmpty()) {
+        }
+        var owners = new HashMap<String, Set<Long>>();
+        for (var row : downloads.findByClientInstanceId(tracking.instanceId()))
+            owners.computeIfAbsent(row.getHash(), key -> new HashSet<>()).add(row.getEplId());
+        for (var book : books.findTorrentIdentities()) for (var hash : magnets.hashes(book.getLinks()))
+            owners.computeIfAbsent(hash, key -> new HashSet<>()).add(book.getEplId());
+        var dispatched = new HashSet<String>();
+        var paths = paths(remote);
+        for (var plan : selected) {
+            String jobId = plan.getJobId();
+            try {
+                for (var entry : work.get(jobId)) {
+
+                    var old = byHash.get(entry.getHash());
+                    if (old == null) { removed(entry); continue; }
+                    // Un POST incierto no se repite: una siguiente consulta confirma su ausencia.
+                    if (entry.getState() == UpdateCleanup.State.REQUESTED && !retryUnconfirmed) continue;
+                    var candidate = snapshots.get(jobId).get(entry.getEplId());
+                    var targets = candidate.targetHashes().stream().map(byHash::get).toList();
+                    if (targets.stream().anyMatch(target -> target == null || target.status() != DownloadStatus.DOWNLOADED)) {
+                        postpone(entry, UpdateCleanup.State.WAITING, "La nueva revisión todavía no está completa en el cliente"); continue;
+                    }
+                    if (targets.stream().anyMatch(target -> target.hash().equals(old.hash()))) {
+                        postpone(entry, UpdateCleanup.State.BLOCKED, "La versión anterior y la nueva identifican el mismo torrent"); continue;
+                    }
+                    boolean shared = old.aliases().stream().anyMatch(hash -> owners.getOrDefault(hash, Set.of()).stream()
+                            .anyMatch(id -> !id.equals(entry.getEplId())));
+                    if (shared) { postpone(entry, UpdateCleanup.State.BLOCKED, "Torrent compartido con otro libro"); continue; }
+                    boolean deleteFiles = plan.getPreviousVersions() == PreviousVersions.REMOVE_TORRENT_AND_FILES;
+                    if (deleteFiles && !exclusivePath(old, paths)) {
+                        postpone(entry, UpdateCleanup.State.BLOCKED, "Rutas compartidas o no verificables; no se borran archivos"); continue;
+                    }
+                    if (protectedTargets.contains(old.hash()) || conflictingPolicies.contains(old.hash())) {
+                        postpone(entry, UpdateCleanup.State.BLOCKED,
+                                "Torrent necesario para otro plan o con políticas de borrado incompatibles"); continue;
+                    }
+                    if (unconfirmed.contains(old.hash()) && !retryUnconfirmed) {
+                        save(entry, UpdateCleanup.State.REQUESTED, "Otro job tiene una eliminación sin confirmar para este torrent");
+                        continue;
+                    }
+                    // Persistir antes de la red permite reconocer un resultado incierto tras reiniciar.
+                    save(entry, UpdateCleanup.State.REQUESTED, "Eliminación solicitada; pendiente de confirmar ausencia");
+                    if (!dispatched.add(old.hash())) continue;
+                    try {
+                        adapter.deleteTorrent(old.hash(), deleteFiles);
+                        log.info("Limpieza solicitada: jobId={}, eplId={}, deleteFiles={}", jobId, entry.getEplId(), deleteFiles);
+                    } catch (RuntimeException ex) {
+                        log.warn("Limpieza sin confirmar: jobId={}, eplId={}, tipo={}", jobId, entry.getEplId(), ex.getClass().getSimpleName());
+                        save(entry, UpdateCleanup.State.REQUESTED,
+                                "Respuesta de eliminación no confirmada; consultar de nuevo o usar retryUnconfirmed=true");
+                        errors.put(jobId, "Alguna eliminación no pudo confirmarse; consultar los estados de limpieza");
+                    }
+                }
+            } catch (RuntimeException ex) {
+                errors.put(jobId, "No se pudo completar la limpieza del job; consultar sus estados");
+                log.warn("Fallo de limpieza: jobId={}, tipo={}", jobId, ex.getClass().getSimpleName());
+            }
+        }
+        if (!dispatched.isEmpty()) {
+            try {
                 var after = index(adapter.listTorrents());
-                for (var entry : requested) if (!after.containsKey(entry.getHash())) removed(entry);
+                // También confirmar los intentos cuya respuesta se perdió.
+                for (var plan : selected) for (var entry : work.get(plan.getJobId()))
+                    if (entry.getState() == UpdateCleanup.State.REQUESTED && !after.containsKey(entry.getHash())) removed(entry);
+            } catch (RuntimeException ex) {
+                for (var plan : selected)
+                    if (work.get(plan.getJobId()).stream().anyMatch(entry -> entry.getState() == UpdateCleanup.State.REQUESTED))
+                        errors.put(plan.getJobId(), "No se pudo confirmar la ausencia de los torrents; repetir la consulta de limpieza");
+                log.warn("No se pudo confirmar la limpieza: tipo={}", ex.getClass().getSimpleName());
             }
-            return view(jobId);
-        });
+        }
+        return errors;
     }
 
     private Map<String, RemoteTorrent> index(List<RemoteTorrent> remote) {

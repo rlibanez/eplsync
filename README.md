@@ -1180,3 +1180,42 @@ curl -s 'http://localhost:8088/api/catalog/books?eplId=32&size=20' | jq
 La búsqueda devuelve un listado vacío si no hay coincidencias; la ruta individual
 `GET /api/catalog/books/32` sigue devolviendo un objeto o `404` si no existe.
 Un `eplId` no numérico, fuera del rango de `Long`, cero o negativo devuelve `400`.
+
+### Limpieza global de actualizaciones
+
+```bash
+curl -s -X POST 'http://localhost:8088/api/torrent/updates/cleanup' | jq
+```
+
+Procesa los planes con política `removeTorrent` o `removeTorrentAndFiles` y
+registros `WAITING`, `BLOCKED` o `REQUESTED`. Excluye `KEPT` y `REMOVED`.
+Reevalúa las condiciones de seguridad y comprueba ausencias para los borrados
+sin confirmar. No repite estos últimos salvo petición explícita:
+
+```bash
+curl -s -X POST 'http://localhost:8088/api/torrent/updates/cleanup?retryUnconfirmed=true' | jq
+```
+
+Comparte una instantánea inicial del cliente entre todos los jobs, los índices
+de hashes/rutas y, si se intentaron borrados, una única consulta final de
+confirmación. Sin trabajos aplicables no consulta al cliente. La exclusión mutua
+con envíos y sync cubre toda la operación; las políticas de los jobs no cambian.
+
+La respuesta contiene `selectedJobs`, `failedJobs`, `checked`, `removed`,
+`waiting`, `blocked`, `requested` y `jobs`. Cada elemento de `jobs` contiene
+`jobId`, los mismos contadores de registros y `error` (nulo cuando no hay error).
+Los contadores describen solo los registros pendientes seleccionados en esta
+petición, no todo el historial ni torrents únicos. Un torrent compartido por
+varios registros se borra como máximo una vez. `failedJobs` puede coincidir con
+registros `requested`: una escritura incierta no se declara eliminada.
+
+Un destino incompatible se informa en el resultado del job y no se toca.
+Los errores de un job no impiden procesar los demás. Si falla la consulta inicial
+al cliente, falla la petición sin realizar borrados. Si falla la confirmación
+final, los registros quedan sin confirmar y la respuesta incluye el error.
+
+La limpieza global protege los torrents que son objetivos de otros planes
+seleccionados y bloquea políticas incompatibles sobre el mismo torrent. En una
+cadena de revisiones, puede ser necesario repetir la limpieza una vez resueltos
+los planes anteriores. Sigue disponible la limpieza individual:
+`POST /api/torrent/updates/{jobId}/cleanup`.

@@ -82,6 +82,127 @@ class UpdateTests {
     }
     UpdateCleanup only(String id) { return cleaner.view(id).items().getFirst(); }
 
+    @Test void globalCleanupUsesTwoSnapshotsAndExcludesKeptAndRemovedJobs() throws Exception {
+        var first = create(PreviousVersions.REMOVE_TORRENT);
+        history(2, 1.0, OTHER, DownloadStatus.DOWNLOADED); book(2, 1.2, "D".repeat(40));
+        var second = create(PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        history(3, 1.0, "E".repeat(40), DownloadStatus.DOWNLOADED); book(3, 1.2, "F".repeat(40));
+        create(PreviousVersions.KEEP);
+        var a = remote(OLD, DownloadStatus.DOWNLOADED, "/books/a.epub");
+        var b = remote(NEW, DownloadStatus.DOWNLOADED, "/books/b.epub");
+        var c = remote(OTHER, DownloadStatus.DOWNLOADED, "/books/c.epub");
+        var d = remote("D".repeat(40), DownloadStatus.DOWNLOADED, "/books/d.epub");
+        when(stubClient.listTorrents()).thenReturn(List.of(a, b, c, d), List.of(b, d));
+        mvc.perform(post("/api/torrent/updates/cleanup"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.selectedJobs").value(2))
+                .andExpect(jsonPath("$.checked").value(2)).andExpect(jsonPath("$.removed").value(2))
+                .andExpect(jsonPath("$.failedJobs").value(0)).andExpect(jsonPath("$.jobs.length()").value(2));
+        verify(stubClient, times(2)).listTorrents();
+        verify(stubClient).deleteTorrent(OLD, false);
+        verify(stubClient).deleteTorrent(OTHER, true);
+        assertThat(only(first.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        assertThat(only(second.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        clearInvocations(stubClient);
+        assertThat(cleaner.cleanAll(false).selectedJobs()).isZero();
+        verifyNoInteractions(stubClient);
+    }
+
+    @Test void globalCleanupRechecksWaitingBlockedAndUnconfirmedWithoutRepeatingWrites() {
+        var first = create(PreviousVersions.REMOVE_TORRENT);
+        history(2, 1.0, OTHER, DownloadStatus.DOWNLOADED); book(2, 1.2, "D".repeat(40));
+        var second = create(PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        var entry = only(first.jobId()); entry.setState(UpdateCleanup.State.REQUESTED); cleanup.save(entry);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD, DownloadStatus.DOWNLOADED, "/a"),
+                remote(NEW, DownloadStatus.DOWNLOADED, "/b"), remote(OTHER, DownloadStatus.DOWNLOADED, "/c"),
+                remote("D".repeat(40), DownloadStatus.DOWNLOADING, "/d")));
+        var result = cleaner.cleanAll(false);
+        assertThat(result.requested()).isEqualTo(1); assertThat(result.waiting()).isEqualTo(1);
+        verify(stubClient, never()).deleteTorrent(any(), anyBoolean());
+        verify(stubClient, times(1)).listTorrents();
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD, DownloadStatus.DOWNLOADED, "/a"),
+                remote(NEW, DownloadStatus.DOWNLOADED, "/b"), remote(OTHER, DownloadStatus.DOWNLOADED, "/c"),
+                remote("D".repeat(40), DownloadStatus.DOWNLOADED, "/c")));
+        result = cleaner.cleanAll(false);
+        assertThat(result.blocked()).isEqualTo(1);
+        cleaner.cleanAll(true);
+        verify(stubClient).deleteTorrent(OLD, false);
+        verify(stubClient, never()).deleteTorrent(eq(OTHER), anyBoolean());
+        assertThat(only(second.jobId()).getState()).isEqualTo(UpdateCleanup.State.BLOCKED);
+    }
+
+    @Test void globalCleanupReportsWrongDestinationAndContinuesAfterDeleteFailure() {
+        var first = create(PreviousVersions.REMOVE_TORRENT);
+        history(2, 1.0, OTHER, DownloadStatus.DOWNLOADED); book(2, 1.2, "D".repeat(40));
+        var second = create(PreviousVersions.REMOVE_TORRENT);
+        history(3, 1.0, "E".repeat(40), DownloadStatus.DOWNLOADED); book(3, 1.2, "F".repeat(40));
+        var third = create(PreviousVersions.REMOVE_TORRENT);
+        var foreign = plans.findById(third.jobId()).orElseThrow(); foreign.setClientInstanceId("different"); plans.save(foreign);
+        var b = remote(NEW, DownloadStatus.DOWNLOADED, null);
+        var d = remote("D".repeat(40), DownloadStatus.DOWNLOADED, null);
+        var a = remote(OLD, DownloadStatus.DOWNLOADED, null);
+        when(stubClient.listTorrents()).thenReturn(List.of(a, b, remote(OTHER, DownloadStatus.DOWNLOADED, null), d), List.of(a, b, d));
+        doThrow(new IllegalStateException("secret remote body")).when(stubClient).deleteTorrent(OLD, false);
+        var result = cleaner.cleanAll(false);
+        assertThat(result.selectedJobs()).isEqualTo(3); assertThat(result.failedJobs()).isEqualTo(2);
+        assertThat(result.removed()).isEqualTo(1); assertThat(result.requested()).isEqualTo(1);
+        assertThat(result.toString()).doesNotContain("secret remote body");
+        assertThat(only(first.jobId()).getState()).isEqualTo(UpdateCleanup.State.REQUESTED);
+        assertThat(only(second.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        assertThat(only(third.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
+        verify(stubClient, never()).deleteTorrent(eq("E".repeat(40)), anyBoolean());
+    }
+
+    @Test void globalCleanupProtectsTargetsOfOtherPlansAndDeduplicatesDeletes() {
+        var first = create(PreviousVersions.REMOVE_TORRENT);
+        bulk.control(first.jobId(), "cancel");
+        history(1, 1.2, NEW, DownloadStatus.DOWNLOADED); book(1, 1.3, OTHER);
+        var second = create(PreviousVersions.REMOVE_TORRENT);
+        var a = remote(OLD, DownloadStatus.DOWNLOADED, null);
+        var b = remote(NEW, DownloadStatus.DOWNLOADED, null);
+        var c = remote(OTHER, DownloadStatus.DOWNLOADED, null);
+        when(stubClient.listTorrents()).thenReturn(List.of(a, b, c), List.of(b, c));
+        var result = cleaner.cleanAll(false);
+        assertThat(result.removed()).isEqualTo(2); assertThat(result.blocked()).isEqualTo(1);
+        verify(stubClient, times(1)).deleteTorrent(OLD, false);
+        verify(stubClient, never()).deleteTorrent(NEW, false);
+        // El job anterior ya no participa: ahora la revisión intermedia puede limpiarse.
+        when(stubClient.listTorrents()).thenReturn(List.of(b, c), List.of(c));
+        result = cleaner.cleanAll(false);
+        assertThat(result.selectedJobs()).isEqualTo(1); assertThat(result.removed()).isEqualTo(1);
+        assertThat(cleaner.view(second.jobId()).items()).allMatch(row -> row.getState() == UpdateCleanup.State.REMOVED);
+    }
+
+    @Test void failedGlobalSnapshotDoesNotChangeEntriesOrDeleteAnything() {
+        var job = create(PreviousVersions.REMOVE_TORRENT);
+        when(stubClient.listTorrents()).thenThrow(new IllegalStateException("unavailable"));
+        assertThatThrownBy(() -> cleaner.cleanAll(false)).isInstanceOf(IllegalStateException.class);
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
+        verify(stubClient, never()).deleteTorrent(any(), anyBoolean());
+    }
+
+    @Test void failedGlobalConfirmationReturnsPerJobErrorAndKeepsUncertainty() {
+        var job = create(PreviousVersions.REMOVE_TORRENT);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD, DownloadStatus.DOWNLOADED, null),
+                remote(NEW, DownloadStatus.DOWNLOADED, null))).thenThrow(new IllegalStateException("unavailable"));
+        var result = cleaner.cleanAll(false);
+        assertThat(result.failedJobs()).isEqualTo(1);
+        assertThat(result.requested()).isEqualTo(1);
+        assertThat(result.jobs().getFirst().error()).contains("confirmar");
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REQUESTED);
+    }
+
+    @Test void globalCleanupBlocksConflictingPoliciesAndRejectsUnknownParameters() throws Exception {
+        var first = create(PreviousVersions.REMOVE_TORRENT);
+        bulk.control(first.jobId(), "cancel");
+        create(PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD, DownloadStatus.DOWNLOADED, "/a"), remote(NEW, DownloadStatus.DOWNLOADED, "/b")));
+        var result = cleaner.cleanAll(false);
+        assertThat(result.blocked()).isEqualTo(2);
+        verify(stubClient, never()).deleteTorrent(any(), anyBoolean());
+        mvc.perform(post("/api/torrent/updates/cleanup").param("deleteFiles", "true")).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/torrent/updates/cleanup").param("retryUnconfirmed", "true", "false")).andExpect(status().isBadRequest());
+    }
+
     @Test void previewIsReadOnlyAndSupportsSingleBookAndPagination() throws Exception {
         history(2, 1.0, OTHER, DownloadStatus.SUBMITTED); book(2, 2.0, "D".repeat(40));
         mvc.perform(get("/api/torrent/updates").param("eplId", "1"))
@@ -280,6 +401,7 @@ class UpdateTests {
             try {
                 assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
                 assertThatThrownBy(() -> cleaner.clean(job.jobId())).hasMessageContaining("envíos");
+                assertThatThrownBy(() -> cleaner.cleanAll(false)).hasMessageContaining("envíos");
                 verify(stubClient, never()).deleteTorrent(any(), anyBoolean());
             } finally { release.countDown(); }
             future.get(5, TimeUnit.SECONDS);

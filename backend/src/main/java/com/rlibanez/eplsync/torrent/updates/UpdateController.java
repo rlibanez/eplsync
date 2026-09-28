@@ -56,6 +56,17 @@ public class UpdateController {
         validate(params); return cleanup.view(jobId);
     }
 
+    @PostMapping("/cleanup")
+    public UpdateCleanupService.GlobalResult cleanAll(
+            @RequestParam(defaultValue = "false") boolean retryUnconfirmed,
+            @RequestParam org.springframework.util.MultiValueMap<String, String> params) {
+        validate(params, "retryUnconfirmed");
+        synchronized (bulk) {
+            log.info("Solicitud de limpieza global: retryUnconfirmed={}", retryUnconfirmed);
+            return cleanup.cleanAll(retryUnconfirmed);
+        }
+    }
+
     @PostMapping("/{jobId}/cleanup")
     public UpdateCleanupService.View clean(@PathVariable String jobId,
             @RequestParam(defaultValue = "false") boolean retryUnconfirmed,
