@@ -83,6 +83,13 @@ class BulkTests {
             assertThat(appender.list.stream().filter(e -> e.getFormattedMessage().startsWith("Envío bulk:")
                     || e.getFormattedMessage().startsWith("Resultado bulk:")))
                     .hasSize(10).allMatch(e -> e.getLevel() == ch.qos.logback.classic.Level.TRACE);
+                var progress = appender.list.stream()
+                    .filter(e -> e.getLevel() == ch.qos.logback.classic.Level.INFO
+                        && e.getFormattedMessage().startsWith("Progreso bulk:"))
+                    .map(e -> e.getFormattedMessage()).toList();
+                assertThat(progress).hasSize(6);
+                assertThat(progress.getFirst()).contains("progreso=0%", "processedItems=0/5");
+                assertThat(progress.getLast()).contains("progreso=100%", "processedItems=5/5", "failed=5", "pending=0");
             assertThat(appender.list).anyMatch(e -> e.getLevel() == ch.qos.logback.classic.Level.INFO
                     && e.getFormattedMessage().contains("failed=5"));
         } finally { logger.detachAppender(appender); logger.setLevel(previous); appender.stop(); }

@@ -30,6 +30,9 @@ public class BulkWorker {
     private final Deque<String> buffer = new ArrayDeque<>();
     private String activeId;
     private com.rlibanez.eplsync.torrent.TorrentSubmissionContext submissionContext;
+    private long activeSelectedItems;
+    private long activeProcessedItems;
+    private int lastProgressCheckpoint;
     private long nextDispatch;
     private boolean ready;
     private boolean closing;
@@ -68,6 +71,7 @@ public class BulkWorker {
             try { outcome = entry.getValue().future().get(); }
             catch (Exception ex) { outcome = new Outcome(BulkItem.State.FAILED, "Ejecución interrumpida; revisar antes de reanudar", true, false); }
             store.finish(entry.getKey(), outcome.state(), outcome.message(), outcome.pause(), outcome.retry());
+            recordProgress(outcome);
             log.trace("Resultado bulk: jobId={}, itemId={}, estado={}, pausa={}, reintento={}",
                     activeId, entry.getKey(), outcome.state(), outcome.pause(), outcome.retry());
             if (outcome.state() == BulkItem.State.FAILED || outcome.pause() || outcome.retry()) {
@@ -96,7 +100,13 @@ public class BulkWorker {
             if (job == null) return;
             activeId = job.getId(); buffer.clear();
             submissionContext = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+            var progress = store.view(activeId);
+            activeSelectedItems = progress.selectedItems();
+            activeProcessedItems = progress.processedItems();
+            int progressPercent = progressPercent();
+            lastProgressCheckpoint = progressPercent / 10 * 10;
             log.info("Procesando trabajo bulk: jobId={}, concurrency={}, interval={}ms", activeId, job.getConcurrency(), job.getIntervalMillis());
+            logProgress(progress, progressPercent);
         }
         if (inFlight.size() >= job.getConcurrency() || System.nanoTime() < nextDispatch) return;
         if (buffer.isEmpty()) buffer.addAll(store.pending(job.getId(), job.getBatchSize()));
@@ -110,6 +120,28 @@ public class BulkWorker {
             inFlight.put(item.getId(), new PendingSend(item, executor.submit(() -> send(item, context))));
             nextDispatch = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(job.getIntervalMillis());
         }
+    }
+
+    private void recordProgress(Outcome outcome) {
+        if (outcome.state() == null || outcome.pause() || outcome.retry()) return;
+        activeProcessedItems++;
+        if (activeSelectedItems == 0) return;
+        int progressPercent = progressPercent();
+        int checkpointPercent = progressPercent / 10 * 10;
+        if (checkpointPercent <= lastProgressCheckpoint) return;
+        lastProgressCheckpoint = checkpointPercent;
+        logProgress(store.view(activeId), progressPercent);
+    }
+
+    private int progressPercent() {
+        return activeSelectedItems == 0 ? 100
+                : (int) (activeProcessedItems * 100.0 / activeSelectedItems);
+    }
+
+    private void logProgress(BulkStore.View progress, int progressPercent) {
+        log.info("Progreso bulk: jobId={}, progreso={}%, processedItems={}/{}, accepted={}, alreadyExists={}, skipped={}, failed={}, pending={}, inFlight={}",
+                activeId, progressPercent, progress.processedItems(), progress.selectedItems(), progress.accepted(),
+                progress.alreadyExists(), progress.skipped(), progress.failed(), progress.pending(), progress.inFlight());
     }
 
     private Outcome send(BulkItem item, com.rlibanez.eplsync.torrent.TorrentSubmissionContext context) {

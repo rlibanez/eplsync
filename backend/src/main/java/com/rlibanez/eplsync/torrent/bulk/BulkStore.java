@@ -26,6 +26,8 @@ import java.util.*;
 
 @Service
 public class BulkStore {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkStore.class);
+
     private final BulkJobRepository jobs;
     private final BulkItemRepository items;
     private final TorrentDownloadService downloads;
@@ -85,8 +87,19 @@ public class BulkStore {
         var spec = CatalogBookSpecifications.fromFilter(filter);
         long offset = paginated ? pageable.getOffset() : 0;
         long remaining = paginated ? pageable.getPageSize() : Long.MAX_VALUE;
+        var countCriteria = em.getCriteriaBuilder();
+        var countQuery = countCriteria.createQuery(Long.class);
+        var countRoot = countQuery.from(com.rlibanez.eplsync.model.CatalogBook.class);
+        countQuery.select(countCriteria.count(countRoot));
+        var countPredicate = spec.toPredicate(countRoot, countQuery, countCriteria);
+        if (countPredicate != null) countQuery.where(countPredicate);
+        long matchingBooks = em.createQuery(countQuery).getSingleResult();
+        long totalBooks = paginated
+            ? Math.max(0, Math.min(matchingBooks - offset, pageable.getPageSize()))
+            : matchingBooks;
         long position = 0;
         long selectedBooks = 0;
+        int lastProgressCheckpoint = 0;
         var magnets = new com.rlibanez.eplsync.torrent.MagnetLinkBuilder(properties);
         var seen = new HashSet<String>();
         // Una única transacción mantiene consistente la selección; las entidades se liberan por lote.
@@ -138,6 +151,15 @@ public class BulkStore {
             }
             offset += batch.size(); remaining -= batch.size();
             em.flush(); em.clear();
+            if (totalBooks > 0) {
+                int progressPercent = (int) (selectedBooks * 100 / totalBooks);
+                int checkpointPercent = progressPercent / 10 * 10;
+                if (checkpointPercent >= 10 && checkpointPercent > lastProgressCheckpoint) {
+                    log.info("Preparación bulk en progreso: jobId={}, progreso={}%, librosProcesados={}/{}, itemsPreparados={}",
+                            job.getId(), progressPercent, selectedBooks, totalBooks, position);
+                    lastProgressCheckpoint = checkpointPercent;
+                }
+            }
             if (batch.size() < size) break;
         }
         job.setSelectedBooks(selectedBooks);
