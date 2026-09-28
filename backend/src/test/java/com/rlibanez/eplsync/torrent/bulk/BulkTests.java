@@ -171,6 +171,52 @@ class BulkTests {
         assertThatThrownBy(() -> store.control(job.jobId(), "resume")).isInstanceOf(TorrentOperationException.class);
     }
 
+    @Test void listsCurrentAndPastJobsWithPaginationAndStatusFilters() throws Exception {
+        var allStates = BulkJob.State.values();
+        String newestId = null;
+        for (int index = 0; index < allStates.length; index++) {
+            var created = create(null);
+            var job = jobs.findById(created.jobId()).orElseThrow();
+            job.setState(allStates[index]);
+            job.setCreatedAt(Instant.parse("2026-01-01T00:00:00Z").plusSeconds(index));
+            jobs.save(job); newestId = job.getId();
+        }
+        var first = store.list(0, 2, null);
+        assertThat(first.meta().totalItems()).isEqualTo(allStates.length);
+        assertThat(first.meta().hasNext()).isTrue();
+        assertThat(first.items().getFirst()).isEqualTo(store.view(newestId));
+        var second = store.list(1, 2, null);
+        assertThat(second.items()).extracting(BulkStore.View::jobId)
+                .doesNotContainAnyElementsOf(first.items().stream().map(BulkStore.View::jobId).toList());
+        assertThat(store.list(0, 20, List.of(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT)).items())
+                .extracting(BulkStore.View::status).containsExactlyInAnyOrder(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT);
+        assertThat(store.list(100, 20, null).items()).isEmpty();
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+                .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(allStates.length))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].jobId").value(newestId))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].targetFingerprint").doesNotExist());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs")
+                .param("status", "RUNNING,RETRY_WAIT"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(2));
+        for (var param : List.of(new String[]{"page", "-1"}, new String[]{"size", "101"},
+                new String[]{"status", "BOGUS"}, new String[]{"status", "RUNNING,"}, new String[]{"state", "RUNNING"})) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs")
+                    .param(param[0], param[1]))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        }
+    }
+
+    @Test void listingEmptyHistoryReturnsEmptyPage() {
+        var result = store.list(0, 20, null);
+        assertThat(result.items()).isEmpty();
+        assertThat(result.meta().totalItems()).isZero();
+        assertThat(result.meta().hasNext()).isFalse();
+    }
+
     @Test void endpointsAcceptOverridesAndExposeProgressWithoutSnapshots() throws Exception {
         var conversion = new org.springframework.format.support.DefaultFormattingConversionService();
         new com.rlibanez.eplsync.config.LanguageWebConfiguration().addFormatters(conversion);

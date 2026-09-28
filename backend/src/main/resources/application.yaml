@@ -42,7 +42,7 @@ eplsync:
       - "udp://tracker.internetwarriors.net:1337/announce"
     enabled: false
     client: qbittorrent
-    base-url: "http://localhost:8080"
+    base-url: "http://qbittorrent:8090"
     connect-timeout: 5s
     request-timeout: 10s
 

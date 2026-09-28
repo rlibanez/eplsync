@@ -171,7 +171,11 @@ public class BulkStore {
 
     @Transactional(readOnly = true)
     public View view(String id) {
-        var j = job(id);
+        return view(job(id));
+    }
+
+    private View view(BulkJob j) {
+        String id = j.getId();
         long accepted = count(id, BulkItem.State.ACCEPTED), existing = count(id, BulkItem.State.ALREADY_EXISTS);
         long skipped = count(id, BulkItem.State.SKIPPED), failed = count(id, BulkItem.State.FAILED);
         return new View(id, j.getState(), j.getClient(), j.getSelectedBooks(), items.processedBooks(id, List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT, BulkItem.State.CANCELLED)),
@@ -181,6 +185,17 @@ public class BulkStore {
                 j.getMultipleHashes() == null ? MultipleHashes.SKIP : j.getMultipleHashes(),
                 items.selectedTorrents(id), items.processedTorrents(id, List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT, BulkItem.State.CANCELLED)),
                 items.countByJobId(id), accepted + existing + skipped + failed);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<View> list(int page, int size, List<BulkJob.State> states) {
+        if (page < 0 || size < 1 || size > 100)
+            throw new IllegalArgumentException("page >= 0 y size entre 1 y 100");
+        var pageable = PageRequest.of(page, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+        var result = states == null ? jobs.findAll(pageable) : jobs.findByStateIn(states, pageable);
+        return new PageResponse<>(result.getContent().stream().map(this::view).toList(),
+                new PageResponse.PageMeta(page, size, result.getTotalElements(), result.getTotalPages(),
+                        result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
     }
 
     @Transactional(readOnly = true)
