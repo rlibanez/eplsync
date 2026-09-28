@@ -49,6 +49,20 @@ class QBittorrentClientTests {
 
     record Call(String method, String path, String authorization, String cookie, String body, String origin) {}
 
+    @Test void readsHybridHashesAndRejectsMalformedAliases() {
+        torrentInfo = """
+                [{"hash":"%s","infohash_v1":"%s","infohash_v2":"%s",
+                  "state":"uploading","progress":1,"amount_left":0}]
+                """.formatted("b".repeat(40), "a".repeat(40), "b".repeat(64));
+        var qbit = client();
+        var result = qbit.listTorrents();
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().aliases()).containsExactlyInAnyOrder(
+                "A".repeat(40), "B".repeat(40), "B".repeat(64));
+        torrentInfo = torrentInfo.replace("a".repeat(40), "invalid");
+        assertThatThrownBy(qbit::listTorrents).isInstanceOf(QBittorrentConnectionException.class);
+    }
+
     @Test void readsFullSnapshotAndMapsCompletionWithoutTreatingStoppedOrCheckingAsComplete() {
         String hash = "A".repeat(40);
         torrentInfo = "[{\"hash\":\"" + hash + "\",\"state\":\"stoppedUP\",\"progress\":1,\"amount_left\":0,\"completion_on\":1700000000}]";

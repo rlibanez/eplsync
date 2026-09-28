@@ -208,9 +208,23 @@ public class QBittorrentClient implements TorrentClient {
                 try { completedAt = java.time.Instant.ofEpochSecond(completion); }
                 catch (java.time.DateTimeException ex) { throw new QBittorrentConnectionException(UPSTREAM); }
             }
-            result.add(new RemoteTorrent(hash, status, completedAt));
+            result.add(new RemoteTorrent(hash, status, completedAt, torrentHashes(item)));
         }
         return java.util.List.copyOf(result);
+    }
+
+    private java.util.Set<String> torrentHashes(tools.jackson.databind.JsonNode item) {
+        var result = new java.util.HashSet<String>();
+        for (String field : java.util.List.of("hash", "infohash_v1", "infohash_v2")) {
+            String value = item.path(field).asString("").toUpperCase(java.util.Locale.ROOT);
+            if (value.isEmpty()) continue;
+            int length = field.equals("infohash_v1") ? 40 : field.equals("infohash_v2") ? 64 : 0;
+            if (!(length == 0 ? value.matches("[0-9A-F]{40}|[0-9A-F]{64}")
+                    : value.matches("[0-9A-F]{" + length + "}")))
+                throw new QBittorrentConnectionException(UPSTREAM);
+            result.add(value);
+        }
+        return result;
     }
 
     private DownloadStatus remoteStatus(String state, double progress, long left) {

@@ -104,7 +104,14 @@ public class DownloadTrackingService {
 
     private SyncResult reconcile(List<RemoteTorrent> remote, Instant now) {
         var byHash = new HashMap<String, RemoteTorrent>();
-        for (var torrent : remote) byHash.put(torrent.hash().toUpperCase(Locale.ROOT), torrent);
+        for (var torrent : remote) {
+            for (var alias : torrent.aliases()) {
+                var previous = byHash.putIfAbsent(alias, torrent);
+                if (previous != null && !previous.hash().equals(torrent.hash()))
+                    throw new TorrentOperationException(HttpStatus.BAD_GATEWAY,
+                            "El cliente devuelve identidades de torrent ambiguas");
+            }
+        }
         var known = downloads.findByClientInstanceId(instanceId());
         var identities = new HashSet<String>();
         var matched = new HashSet<String>();
@@ -120,7 +127,7 @@ public class DownloadTrackingService {
                         || row.getLastSeenAt() != null || row.getSubmittedAt() != null) {
                     row.setStatus(DownloadStatus.NOT_FOUND); row.setLastError(null); missing++;
                 }
-            } else { observe(row, observed, now); matched.add(row.getHash()); }
+            } else { observe(row, observed, now); matched.add(observed.hash()); }
             row.setLastCheckedAt(now);
             if (previous != row.getStatus() || wasComplete != (row.getCompletedAt() != null)) updated++;
             if (!wasComplete && row.getCompletedAt() != null) completed++;
@@ -130,7 +137,7 @@ public class DownloadTrackingService {
             for (var hash : magnets.hashes(book.getLinks())) {
                 var observed = byHash.get(hash);
                 if (observed == null) continue;
-                matched.add(hash);
+                matched.add(observed.hash());
                 if (!identities.add(book.getEplId() + ":" + hash)) continue;
                 var row = create(book.getEplId(), book.getRevision(), hash, DownloadRecord.Origin.DISCOVERED, now);
                 row.setDiscoveredAt(now); observe(row, observed, now);
@@ -138,8 +145,8 @@ public class DownloadTrackingService {
                 if (row.getCompletedAt() != null) completed++;
             }
         }
-        return new SyncResult(properties.getClient(), instanceId(), byHash.size(), known.size() + created,
-                created, updated, completed, missing, byHash.size() - matched.size(), now);
+        return new SyncResult(properties.getClient(), instanceId(), remote.size(), known.size() + created,
+                created, updated, completed, missing, remote.size() - matched.size(), now);
     }
 
     private void observe(DownloadRecord row, RemoteTorrent observed, Instant now) {

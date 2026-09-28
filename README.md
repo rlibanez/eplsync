@@ -898,7 +898,10 @@ curl 'http://localhost:8088/api/torrent/downloads?eplId=32&page=0&size=20&sort=r
 La sincronización es exclusivamente manual. Consulta una instantánea completa
 mediante `GET /api/v2/torrents/info`, sin filtros de categoría, y:
 
-- Actualiza registros conocidos por hash, incluidos los ya completados.
+- Actualiza registros conocidos por hash, incluidos los ya completados. En qBittorrent
+  compara `hash`, `infohash_v1` e `infohash_v2`: un torrent híbrido cuenta una sola
+  vez en `remoteTorrents` e `ignored`. Conserva el hash original del registro; un
+  falso `NOT_FOUND` por esta diferencia se corrige al repetir el sync.
 - Descubre torrents cuyos hashes coincidan con `links` del catálogo actual.
 - Ignora torrents que no coinciden con el historial ni con el catálogo.
 - Traduce estados a `QUEUED`, `DOWNLOADING`, `PAUSED`, `CHECKING`, `DOWNLOADED`,

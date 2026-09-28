@@ -129,6 +129,45 @@ class DownloadTrackingTests {
         } finally { worker.close(); }
     }
 
+    @Test void hybridTorrentRepairsNotFoundWithoutDuplicatingRecordsOrRemoteCounts() {
+        service.addTorrent(command(1.6, HASH));
+        var id = only().getId();
+        when(stubClient.listTorrents()).thenReturn(List.of());
+        service.syncDownloads();
+        assertThat(only().getStatus()).isEqualTo(DownloadStatus.NOT_FOUND);
+        var completion = Instant.parse("2026-01-01T10:00:00Z");
+        when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent("B".repeat(40),
+                DownloadStatus.DOWNLOADED, completion, java.util.Set.of(HASH.toLowerCase(Locale.ROOT), "B".repeat(64)))));
+        var result = service.syncDownloads();
+        assertThat(result.remoteTorrents()).isEqualTo(1);
+        assertThat(result.updated()).isEqualTo(1);
+        assertThat(result.completed()).isEqualTo(1);
+        assertThat(result.created()).isZero();
+        assertThat(result.notFound()).isZero();
+        assertThat(result.ignored()).isZero();
+        assertThat(only().getId()).isEqualTo(id);
+        assertThat(only().getHash()).isEqualTo(HASH);
+        assertThat(only().getStatus()).isEqualTo(DownloadStatus.DOWNLOADED);
+        assertThat(only().getCompletedAt()).isEqualTo(completion);
+        assertThat(service.syncDownloads().completed()).isZero();
+    }
+
+    @Test void discoversHybridByCatalogHashAndIgnoresOneUnrelatedTorrent() {
+        book(1.0, HASH);
+        when(stubClient.listTorrents()).thenReturn(List.of(
+                new RemoteTorrent("B".repeat(40), DownloadStatus.DOWNLOADED, null,
+                        java.util.Set.of(HASH, "B".repeat(64))),
+                new RemoteTorrent("C".repeat(40), DownloadStatus.DOWNLOADED, null,
+                        java.util.Set.of("C".repeat(64)))));
+        var result = service.syncDownloads();
+        assertThat(result.remoteTorrents()).isEqualTo(2);
+        assertThat(result.created()).isEqualTo(1);
+        assertThat(result.ignored()).isEqualTo(1);
+        assertThat(only().getHash()).isEqualTo(HASH);
+        assertThat(only().getOrigin()).isEqualTo(DownloadRecord.Origin.DISCOVERED);
+        assertThat(service.syncDownloads().created()).isZero();
+    }
+
     @Test void completionDisappearanceAndReappearancePreserveEvidenceAndIdentity() {
         service.addTorrent(command(1.0, HASH));
         var id = only().getId(); var completion = Instant.parse("2026-01-01T10:00:00Z");
