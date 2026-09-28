@@ -1,5 +1,138 @@
 # EPL Sync
 
+## Ejecutar con Docker
+
+Desde la raíz del repositorio, con Docker y Docker Compose v2 o posterior,
+prepara la configuración local (solo la primera vez):
+
+```sh
+cp .env.example .env
+mkdir -p data logs
+```
+
+Edita `.env` antes de arrancar: ajusta la URL de qBittorrent y sustituye `api_key`
+por tu clave real. Si no vas a usar la integración, establece
+`EPLSYNC_TORRENT_ENABLED=false`. `.env.example` contiene valores de ejemplo;
+Compose carga automáticamente `.env`, no `.env.example`.
+
+Las carpetas `data` y `logs`, y sus archivos existentes, deben permitir escritura
+al UID/GID configurado en `.env` mediante `PUID` y `PGID` (por defecto `1000:1000`).
+En Linux, puedes consultar tu UID/GID con `id -u` e `id -g` y usar esos valores
+si las carpetas te pertenecen. Si necesitas asignarlas a `1000:1000`:
+
+```sh
+sudo chown -R 1000:1000 data logs
+```
+
+Adapta esos números si has elegido otros. El `chown` del Dockerfile solo afecta
+a la imagen; no cambia los permisos de las carpetas montadas desde el host.
+
+```sh
+docker compose up -d --build
+docker compose logs -f eplsync
+curl http://localhost:8088/actuator/health
+```
+
+La imagen compila el backend con el wrapper Maven y Java 25 en una etapa separada;
+la ejecución usa un JRE 25 y un usuario sin privilegios, con el UID/GID indicado.
+No requiere Java ni Maven instalados en el host. `PUID` y `PGID` se aplican durante
+la construcción: si los cambias, ajusta los permisos y reconstruye con
+`docker compose up -d --build`. El build omite los tests; para validarlos antes
+puedes ejecutar `cd backend && ./mvnw verify`.
+
+El puerto publicado por defecto es `8088` en todas las interfaces del host.
+Puedes cambiarlo con `HOST_PORT` en `.env` o con
+`HOST_PORT=8090 docker compose up -d`, manteniendo el 8088 interno. Ajusta también
+el puerto de las peticiones de ejemplo. Esta API no incluye autenticación;
+publica el servicio solo en una red de confianza o detrás de un proxy que controle
+el acceso. Para limitarlo al host, cambia el mapeo de Compose a
+`"127.0.0.1:${HOST_PORT:-8088}:8088"`.
+
+SQLite y los jobs/historial se guardan en `./data/eplsync.db` del host, mediante
+el montaje de `./data` en `/app/data`. Si la BD ya existe, el contenedor la utiliza;
+si no existe, la aplicación la crea. Tanto `docker compose down` como
+`docker compose down -v` conservan estas carpetas del host y sus datos.
+No ejecutes dos instancias contra la misma base SQLite.
+
+### Configuración y conexión con qBittorrent
+
+`.env` está excluido de Git y del contexto de build. `.env.example` se versiona
+como plantilla y también queda fuera del contexto de build.
+Compose utiliza `.env` para interpolar el YAML; el bloque `environment` actual
+pasa estas variables de la aplicación al contenedor:
+
+- `EPLSYNC_CATALOG_ZIPURL`
+- `EPLSYNC_TORRENT_ENABLED`
+- `EPLSYNC_TORRENT_CLIENT`
+- `EPLSYNC_TORRENT_BASEURL`
+- `EPLSYNC_TORRENT_QBITTORRENT_AUTH_APIKEY`
+
+También establece `TZ=Europe/Madrid`. Las demás variables de `.env.example`
+son ejemplos para futuras ampliaciones y no se transmiten actualmente.
+La autenticación usa el modo `auto` de `application.yaml`, que permite utilizar
+la API key configurada. Para pasar otras opciones desde `.env`, añádelas primero
+al bloque `environment` del servicio.
+
+Los nombres de variables siguen el binding nativo de Spring: puntos por guiones
+bajos y sin guiones dentro de los nombres (`base-url` → `BASEURL`,
+`api-key` → `APIKEY`). `application.yaml` mantiene valores literales y no necesita
+placeholders de entorno. No se utiliza `env_file` con `format: raw`; si un valor
+de `.env` contiene un `$` literal, puedes encerrarlo entre comillas simples para
+evitar su interpolación por Compose.
+
+Tras modificar las variables transmitidas, ejecuta `docker compose up -d` para
+recrear el contenedor. No cambies `SERVER_PORT` si mantienes el mapeo de puertos
+del Compose incluido.
+
+`localhost` dentro del contenedor es EPLsync. Para qBittorrent usa:
+
+- En el host: `http://host.docker.internal:PUERTO_WEBUI`; en Linux puede requerir
+  añadir `extra_hosts: ["host.docker.internal:host-gateway"]` al servicio.
+- En otro contenedor de una red Docker compartida: `http://qbittorrent:PUERTO_WEBUI`,
+  usando su nombre de servicio y puerto interno. Ambos servicios deben unirse a esa red.
+- En otro equipo o detrás de un dominio: su URL accesible desde Docker.
+
+No necesitas montar los archivos descargados por qBittorrent dentro de EPLsync.
+El seguimiento consulta su API; los destinos de descarga pertenecen al cliente torrent.
+
+También puedes montar un YAML privado como configuración externa ampliando el
+bloque `volumes` del servicio (crea el archivo antes de arrancar):
+
+```yaml
+volumes:
+  - ./data:/app/data
+  - ./logs:/app/logs
+  - ./config/application-local.yaml:/app/config/application.yaml:ro
+```
+
+Spring carga automáticamente `/app/config/application.yaml`. El archivo de origen
+`application-local.yaml` ya está ignorado por Git. Las variables de entorno tienen
+prioridad sobre este archivo. Los perfiles locales del código fuente no se copian
+ni se empaquetan en la imagen Docker.
+
+## Logs persistentes
+
+Los logs se escriben en consola y en `./logs/eplsync.log`, relativo al directorio
+desde el que arranca Java. En Docker, el Compose incluido monta `./logs` del host
+en `/app/logs`; el usuario del contenedor debe poder escribir en ese directorio.
+Si arrancas desde `backend`, la ruta local será `backend/logs/eplsync.log`.
+
+El archivo rota al alcanzar 50 MB y al cambiar de día (en la siguiente escritura).
+Los históricos se llaman `eplsync.20260928.0.log`, `eplsync.20260928.1.log`, etc.
+La fecha corresponde al período del log según la zona horaria de la JVM y el
+contador comienza en cero cada día. El umbral no es un límite estricto: una entrada
+puede hacer que el archivo supere ligeramente los 50 MB.
+
+Se conservan hasta 30 días de históricos, con un límite adicional de 1 GB para
+los archivos rotados; el archivo activo no cuenta para ese límite. La limpieza
+se realiza al arrancar y durante la rotación, de forma asíncrona. Los históricos
+se guardan sin compresión y están excluidos de Git.
+
+La configuración está en `backend/src/main/resources/application.yaml`. Puedes
+ajustar la retención mediante `LOGGING_LOGBACK_ROLLINGPOLICY_MAXHISTORY` y
+`LOGGING_LOGBACK_ROLLINGPOLICY_TOTALSIZECAP`. Si cambias la ubicación, ajusta tanto
+`LOGGING_FILE_NAME` como `LOGGING_LOGBACK_ROLLINGPOLICY_FILENAMEPATTERN`.
+
 ## Importación del catálogo
 
 Los tres modos descargan el ZIP oficial de ePubLibre. Admiten el parámetro
@@ -162,12 +295,12 @@ Se admiten HTTP, HTTPS y UDP (este último requiere puerto). Una URL inválida i
 el arranque para detectar errores de configuración. Las direcciones no se prueban
 contra la red: su configuración no garantiza que el tracker esté disponible.
 
-Ejemplo del bloque a incorporar al futuro servicio de `docker-compose.yml`:
+Ejemplo de variable a añadir al bloque `environment` del servicio en `docker-compose.yml`:
 
 ```yaml
 services:
   eplsync:
-    # Añadir aquí image o build del despliegue.
+    # Conservar el resto de la configuración del servicio.
     environment:
       EPLSYNC_TORRENT_TRACKERS: "${EPLSYNC_TORRENT_TRACKERS-udp://tracker.opentrackr.org:1337/announce}"
 ```
@@ -294,12 +427,13 @@ eplsync:
 ### Docker y ejecución local
 
 Crear un archivo `.env` con las variables de conexión y activar
-`EPLSYNC_TORRENT_ENABLED=true`. Incorporar al futuro servicio Compose:
+`EPLSYNC_TORRENT_ENABLED=true`. Como alternativa al bloque `environment` actual, puedes configurar `env_file`
+en el servicio Compose para transmitir todas las variables del archivo:
 
 ```yaml
 services:
   eplsync:
-    # Añadir image o build del despliegue.
+    # Conservar build, puertos y volúmenes del servicio actual.
     env_file:
       - .env
 ```
@@ -851,3 +985,23 @@ La primera sincronización también permite incorporar torrents anteriores a est
 funcionalidad, con origen `DISCOVERED`. Solo puede asociar revisiones antiguas si
 ya estaban registradas: no se deduce una revisión del nombre del archivo ni se
 reconstruyen hashes históricos que ya no estén en el catálogo.
+
+### Listar jobs actuales y pasados
+
+```sh
+curl -s 'http://localhost:8088/api/torrent/jobs' | jq
+curl -s 'http://localhost:8088/api/torrent/jobs?page=1&size=20' | jq
+curl -s 'http://localhost:8088/api/torrent/jobs?status=QUEUED,RUNNING,RETRY_WAIT,PAUSED' | jq
+curl -s 'http://localhost:8088/api/torrent/jobs?status=COMPLETED,CANCELLED' | jq
+```
+
+`GET /api/torrent/jobs` incluye todos los estados por defecto y devuelve `items`
+y `meta`. Cada elemento contiene la misma información y contadores que
+`GET /api/torrent/jobs/{jobId}`. No requiere conocer los IDs previamente.
+
+La paginación comienza en `page=0`, con `size=20` por defecto (máximo 100).
+El orden es fecha de creación descendente, con ID descendente como desempate.
+`status` admite uno o varios estados separados por comas. Una página sin resultados
+contiene `items: []`; parámetros desconocidos o inválidos devuelven `400`.
+El historial corresponde a los jobs persistidos en la base de datos actual y
+sobrevive a los reinicios. Los envíos individuales no crean jobs bulk.

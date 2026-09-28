@@ -1,0 +1,24 @@
+services:
+  eplsync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PUID: "${PUID:-1000}"
+        PGID: "${PGID:-1000}"
+    image: rlibanez/eplsync:0.0.1
+    container_name: eplsync
+    ports:
+      - "${HOST_PORT:-8088}:8088"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      TZ: Europe/Madrid
+      EPLSYNC_CATALOG_ZIPURL: "${EPLSYNC_CATALOG_ZIPURL}"
+      EPLSYNC_TORRENT_ENABLED: "${EPLSYNC_TORRENT_ENABLED}"
+      EPLSYNC_TORRENT_CLIENT: "${EPLSYNC_TORRENT_CLIENT}"
+      EPLSYNC_TORRENT_BASEURL: "${EPLSYNC_TORRENT_BASEURL}"
+      EPLSYNC_TORRENT_QBITTORRENT_AUTH_APIKEY: "${EPLSYNC_TORRENT_QBITTORRENT_AUTH_APIKEY}"  
+    stop_grace_period: 30s
+    restart: unless-stopped
