@@ -200,9 +200,15 @@ public class BulkStore {
 
     @Transactional(readOnly = true)
     public PageResponse<ItemView> details(String id, int page, int size) {
+        return details(id, page, size, null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ItemView> details(String id, int page, int size, List<BulkItem.State> states) {
         job(id);
         if (page < 0 || size < 1 || size > 500) throw new IllegalArgumentException("page >= 0 y size entre 1 y 500");
-        var result = items.findByJobIdOrderByPosition(id, PageRequest.of(page, size));
+        var result = states == null ? items.findByJobIdOrderByPosition(id, PageRequest.of(page, size))
+                : items.findByJobIdAndStateInOrderByPosition(id, states, PageRequest.of(page, size));
         return new PageResponse<>(result.map(i -> new ItemView(i.getId(), i.getEplId(), i.getHash(), i.getState(), i.getAttempts(), i.getMessage())).getContent(),
                 new PageResponse.PageMeta(page, size, result.getTotalElements(), result.getTotalPages(), result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
     }

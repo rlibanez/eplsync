@@ -64,8 +64,22 @@ public class BulkController {
 
     @GetMapping("/jobs/{id}/items")
     public PageResponse<BulkStore.ItemView> items(@PathVariable String id,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
-        synchronized (store) { return store.details(id, page, size); }
+            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String status, jakarta.servlet.http.HttpServletRequest request) {
+        if (!java.util.Set.of("page", "size", "status").containsAll(request.getParameterMap().keySet()))
+            throw new IllegalArgumentException("Parámetro desconocido; se admiten page, size y status");
+        for (var values : request.getParameterMap().values())
+            if (values.length != 1 || values[0].isBlank()) throw new IllegalArgumentException("Parámetro vacío o repetido");
+        java.util.List<BulkItem.State> states = null;
+        if (status != null) {
+            try {
+                states = java.util.Arrays.stream(status.split(",", -1)).map(String::trim)
+                        .map(BulkItem.State::valueOf).distinct().toList();
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException("status debe contener estados de elemento válidos separados por comas");
+            }
+        }
+        synchronized (store) { return store.details(id, page, size, states); }
     }
 
     @PostMapping("/jobs/{id}/pause")

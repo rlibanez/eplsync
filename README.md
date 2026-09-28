@@ -1006,3 +1006,20 @@ El orden es fecha de creación descendente, con ID descendente como desempate.
 contiene `items: []`; parámetros desconocidos o inválidos devuelven `400`.
 El historial corresponde a los jobs persistidos en la base de datos actual y
 sobrevive a los reinicios. Los envíos individuales no crean jobs bulk.
+
+### Filtrar elementos de un job
+
+El endpoint existente `GET /api/torrent/jobs/{jobId}/items` admite `status`:
+
+```sh
+curl -s 'http://localhost:8088/api/torrent/jobs/ID/items?status=SKIPPED&page=0&size=500' | jq
+curl -s 'http://localhost:8088/api/torrent/jobs/ID/items?status=SKIPPED,FAILED' | jq
+```
+
+El filtro se aplica en la base de datos antes de paginar: `meta.totalItems` y
+`meta.totalPages` corresponden a los elementos filtrados. El motivo de cada omisión
+o fallo sigue disponible en `items[].message`. Sin `status` se incluyen todos.
+Los estados admitidos son `PENDING`, `IN_FLIGHT`, `ACCEPTED`, `ALREADY_EXISTS`,
+`SKIPPED`, `FAILED` y `CANCELLED`, separados por comas si se indican varios.
+Se mantiene el orden de selección, `page=0`, `size=50` por defecto y máximo 500.
+Los filtros desconocidos, vacíos o inválidos devuelven `400`.

@@ -241,6 +241,38 @@ class BulkTests {
         assertThat(result.meta().hasNext()).isFalse();
     }
 
+    @Test void filtersItemsBeforePaginationAndPreservesSkipReasons() throws Exception {
+        var job = create(null);
+        var rows = items.findByJobIdOrderByPosition(job.jobId(), PageRequest.of(0, 20)).getContent();
+        rows.get(1).setState(BulkItem.State.SKIPPED); rows.get(1).setMessage("Hash duplicado en la selección");
+        rows.get(3).setState(BulkItem.State.SKIPPED); rows.get(3).setMessage("El libro no tiene hashes torrent válidos");
+        rows.get(4).setState(BulkItem.State.FAILED); rows.get(4).setMessage("Envío rechazado");
+        items.saveAll(rows);
+        create(null); // Otro job no debe contaminar el filtro ni sus contadores.
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+                .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
+        String path = "/api/torrent/jobs/" + job.jobId() + "/items";
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path)
+                .param("status", "SKIPPED").param("size", "1").param("page", "1"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(2))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalPages").value(2))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].eplId").value(rows.get(3).getEplId()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].message").value("El libro no tiene hashes torrent válidos"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path).param("status", "SKIPPED,FAILED"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(3));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(5));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path).param("status", "ACCEPTED"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items").isEmpty());
+        for (String value : List.of("", "RUNNING", "SKIPPED,", "bogus")) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path).param("status", value))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        }
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/missing/items").param("status", "SKIPPED"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNotFound());
+    }
+
     @Test void endpointsAcceptOverridesAndExposeProgressWithoutSnapshots() throws Exception {
         var conversion = new org.springframework.format.support.DefaultFormattingConversionService();
         new com.rlibanez.eplsync.config.LanguageWebConfiguration().addFormatters(conversion);
