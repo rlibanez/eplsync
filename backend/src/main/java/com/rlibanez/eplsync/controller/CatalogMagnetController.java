@@ -34,8 +34,8 @@ public class CatalogMagnetController {
         if (page == null && size == null) return service.search(filter, sort);
         int pageNumber = page == null ? 0 : page;
         int pageSize = size == null ? 20 : size;
-        if (pageNumber < 0 || pageSize < 1 || pageSize > 500) {
-            throw new IllegalArgumentException("page debe ser >= 0 y size debe estar entre 1 y 500");
+        if (pageNumber < 0 || pageSize < 1) {
+            throw new IllegalArgumentException("page debe ser >= 0 y size debe ser > 0");
         }
         var magnets = service.search(filter, sort);
         long offset = (long) pageNumber * pageSize;

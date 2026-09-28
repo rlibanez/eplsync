@@ -197,7 +197,7 @@ curl -i -X POST 'http://localhost:8088/api/catalog/import/preview?includeDetails
 Con `includeDetails=true` devuelve:
 
 - `summary`: los mismos contadores de importación, calculados sobre todo el CSV.
-- `page` y `size`: página desde cero y tamaño (predeterminado 50, máximo 500).
+- `page` y `size`: página desde cero y tamaño (predeterminado 50, sin máximo de aplicación).
 - `createdBooks`: libros nuevos completos de la página solicitada.
 - `updatedBooks`: cambios de la página, con `before`, `after` y `changedFields`.
 
@@ -265,7 +265,7 @@ según el orden solicitado.
 
 Si se proporciona `page` o `size`, se pagina **después** de expandir y deduplicar
 los hashes. Los totales cuentan magnets, no libros. Por defecto `page=0` y
-`size=20`; `size` admite valores entre 1 y 500. Una página fuera del rango devuelve
+`size=20`; `size` admite enteros positivos, sin máximo de aplicación. Una página fuera del rango devuelve
 `items: []`; parámetros de paginación inválidos devuelven `400`.
 Para calcular totales exactos, esta primera versión procesa en memoria todos los
 resultados filtrados, cargando únicamente `eplId`, `title` y `links` de la BD.
@@ -728,7 +728,7 @@ que el endpoint individual salvo `hash`, que no se admite en bulk.
 - `interval`: 0ms–60s de separación mínima entre el inicio de operaciones,
   global para el trabajo, no por hilo. El coordinador revisa la cola cada 100ms;
   la separación real puede ser mayor por la red o la carga.
-- `size` de selección: 1–2000, independiente de `batchSize`.
+- `size` de selección: entero positivo, sin máximo de aplicación e independiente de `batchSize`.
 
 Se ejecuta un trabajo a la vez; los demás esperan. La concurrencia se aplica
 al trabajo activo. Los valores efectivos de descarga, trackers, nombres y datos
@@ -951,7 +951,7 @@ Cada registro contiene `id`, `eplId`, `revision`, `hash`, `client`,
 | `discoveredAtFrom` / `discoveredAtTo` | Intervalo de descubrimiento |
 | `lastCheckedAtFrom` / `lastCheckedAtTo` | Intervalo de comprobación |
 | `lastSeenAtFrom` / `lastSeenAtTo` | Intervalo de presencia |
-| `page`, `size` | Desde 0; tamaño por defecto 20, máximo 500 |
+| `page`, `size` | Desde 0; tamaño por defecto 20, sin máximo de aplicación |
 | `sort` | Por defecto `createdAt,desc`; repetible para varios criterios |
 
 Los filtros diferentes se combinan con AND; los estados/orígenes de una lista con
@@ -1000,7 +1000,7 @@ curl -s 'http://localhost:8088/api/torrent/jobs?status=COMPLETED,CANCELLED' | jq
 y `meta`. Cada elemento contiene la misma información y contadores que
 `GET /api/torrent/jobs/{jobId}`. No requiere conocer los IDs previamente.
 
-La paginación comienza en `page=0`, con `size=20` por defecto (máximo 100).
+La paginación comienza en `page=0`, con `size=20` por defecto (sin máximo de aplicación).
 El orden es fecha de creación descendente, con ID descendente como desempate.
 `status` admite uno o varios estados separados por comas. Una página sin resultados
 contiene `items: []`; parámetros desconocidos o inválidos devuelven `400`.
@@ -1021,5 +1021,17 @@ El filtro se aplica en la base de datos antes de paginar: `meta.totalItems` y
 o fallo sigue disponible en `items[].message`. Sin `status` se incluyen todos.
 Los estados admitidos son `PENDING`, `IN_FLIGHT`, `ACCEPTED`, `ALREADY_EXISTS`,
 `SKIPPED`, `FAILED` y `CANCELLED`, separados por comas si se indican varios.
-Se mantiene el orden de selección, `page=0`, `size=50` por defecto y máximo 500.
+Se mantiene el orden de selección, `page=0`, `size=50` por defecto y sin máximo de aplicación.
 Los filtros desconocidos, vacíos o inválidos devuelven `400`.
+
+### Tamaño de página
+
+Los endpoints de catálogo y torrent aceptan `page >= 0` y `size > 0`, sin límites
+artificiales de 100, 500 o 2000 elementos. Spring tampoco recorta `size` a 2000.
+Los parámetros usan enteros de 32 bits (máximo representable: 2147483647).
+Los valores por defecto y el comportamiento sin paginación se mantienen.
+
+Por ejemplo, `POST /api/torrent/books?language=es&page=0&size=10000&sort=eplId,asc`
+selecciona hasta 10000 libros; no inicia 10000 envíos simultáneos. `batchSize`,
+`concurrency` e `interval` siguen controlando la ejecución. En listados GET, una
+página grande genera una respuesta mayor y requiere más memoria y tiempo.

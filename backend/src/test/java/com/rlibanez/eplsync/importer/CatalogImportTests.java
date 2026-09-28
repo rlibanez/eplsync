@@ -132,7 +132,13 @@ class CatalogImportTests {
     @Test
     void previewRejectsInvalidPagination() {
         assertThatIllegalArgumentException().isThrownBy(() -> importer.previewFile(directory.resolve("x"), -1, 1));
-        assertThatIllegalArgumentException().isThrownBy(() -> importer.previewFile(directory.resolve("x"), 0, 501));
+        assertThatIllegalArgumentException().isThrownBy(() -> importer.previewFile(directory.resolve("x"), 0, 0));
+    }
+
+    @Test
+    void previewAcceptsLargePageSize() throws Exception {
+        var result = importer.previewFile(csv("1,1,Autor,Original\n"), 0, 10000);
+        assertThat(result.size()).isEqualTo(10000);
     }
 
     @Test

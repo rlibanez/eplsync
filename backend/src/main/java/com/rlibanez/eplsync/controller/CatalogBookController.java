@@ -52,6 +52,9 @@ public class CatalogBookController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
 
+        if ((page != null && page < 0) || (size != null && size < 1))
+            throw new IllegalArgumentException("page >= 0 y size > 0");
+
         // Si NO se especifica page/size => sin paginar
         if (page == null && size == null) {
             return downloads.enrich(catalogBookService.searchAll(filter));

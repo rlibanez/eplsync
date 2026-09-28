@@ -28,7 +28,7 @@ public class DownloadQueryService {
             if (values.stream().anyMatch(value -> value == null || value.isBlank())) throw new IllegalArgumentException("Parámetro vacío: " + key);
         });
         int page = integer(params.getFirst("page"), 0), size = integer(params.getFirst("size"), 20);
-        if (page < 0 || size < 1 || size > 500) throw new IllegalArgumentException("page debe ser >= 0 y size debe estar entre 1 y 500");
+        if (page < 0 || size < 1) throw new IllegalArgumentException("page debe ser >= 0 y size debe ser > 0");
         var orders = new ArrayList<Sort.Order>();
         for (var value : params.getOrDefault("sort", List.of("createdAt,desc"))) {
             var parts = value.split(",", -1);

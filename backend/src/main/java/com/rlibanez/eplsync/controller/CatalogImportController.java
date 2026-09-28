@@ -2,7 +2,6 @@ package com.rlibanez.eplsync.controller;
 
 import com.rlibanez.eplsync.dto.ImportResult;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Max;
 import com.rlibanez.eplsync.service.CatalogImportService;
 
 import org.hibernate.validator.constraints.URL;
@@ -53,7 +52,7 @@ public class CatalogImportController {
             @RequestParam(required = false) @URL(message = "La URL no es válida") String url,
             @RequestParam(defaultValue = "false") boolean includeDetails,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(500) int size) {
+            @RequestParam(defaultValue = "50") @Min(1) int size) {
         var preview = catalogImportService.previewCatalog(validateUrl(url), page, size);
         return ResponseEntity.ok(includeDetails ? preview : preview.summary());
     }

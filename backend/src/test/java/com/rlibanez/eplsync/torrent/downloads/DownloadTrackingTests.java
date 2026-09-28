@@ -73,6 +73,34 @@ class DownloadTrackingTests {
     }
     DownloadRecord only() { return downloads.findAll().getFirst(); }
 
+    @Autowired org.springframework.web.context.WebApplicationContext webContext;
+
+    @Test void largePagesAreNotRejectedOrSilentlyTruncatedBySpring() throws Exception {
+        var fixtures = java.util.stream.LongStream.rangeClosed(1, 2001)
+                .mapToObj(id -> CatalogBook.builder().eplId(id).revision(1.0).title("Book " + id).author("Author")
+                        .links(String.format("%040X", id)).build()).toList();
+        books.saveAll(fixtures);
+        var realMvc = MockMvcBuilders.webAppContextSetup(webContext).build();
+        realMvc.perform(get("/api/catalog/books").param("size", "10000"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000))
+                .andExpect(jsonPath("$.items.length()").value(2001));
+        realMvc.perform(post("/api/torrent/books").param("size", "10000").param("sort", "eplId,asc"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(2001));
+        realMvc.perform(get("/api/catalog/magnets").param("size", "10000"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000));
+        realMvc.perform(get("/api/torrent/downloads").param("size", "10000"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000));
+        realMvc.perform(get("/api/torrent/jobs").param("size", "10000"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000));
+        var id = bulkJobs.findAll().getFirst().getId();
+        realMvc.perform(get("/api/torrent/jobs/" + id + "/items").param("size", "10000"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2001));
+        for (String endpoint : List.of("/api/catalog/books", "/api/catalog/magnets", "/api/torrent/downloads", "/api/torrent/jobs")) {
+            realMvc.perform(get(endpoint).param("size", "0")).andExpect(status().isBadRequest());
+            realMvc.perform(get(endpoint).param("page", "-1")).andExpect(status().isBadRequest());
+        }
+    }
+
     @Test void individualAndBulkContextRecordRevisionsAndRetriesWithoutDuplicates() {
         book(1.0, HASH); individual.download(32L, null);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.SUBMITTED);
@@ -216,7 +244,7 @@ class DownloadTrackingTests {
         downloads.deleteAll();
         mvc.perform(get("/api/catalog/books/32")).andExpect(jsonPath("$.download.items").isEmpty());
         for (var pair : List.of(new String[]{"pages", "2"}, new String[]{"completed", "yes"}, new String[]{"revision", "NaN"},
-                new String[]{"status", "BOGUS"}, new String[]{"page", "-1"}, new String[]{"size", "501"},
+                new String[]{"status", "BOGUS"}, new String[]{"page", "-1"}, new String[]{"size", "0"},
                 new String[]{"sort", "password,asc"}, new String[]{"createdAtFrom", "yesterday"})) {
             mvc.perform(get("/api/torrent/downloads").param(pair[0], pair[1])).andExpect(status().isBadRequest());
         }

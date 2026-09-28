@@ -61,8 +61,8 @@ public class CatalogBookCsvImporter {
 
     @Transactional(readOnly = true)
     public ImportPreviewResult previewFile(Path csvPath, int page, int size) throws IOException {
-        if (page < 0 || size < 1 || size > 500) {
-            throw new IllegalArgumentException("page debe ser >= 0 y size debe estar entre 1 y 500");
+        if (page < 0 || size < 1) {
+            throw new IllegalArgumentException("page debe ser >= 0 y size debe ser > 0");
         }
         var result = processFile(csvPath, true, page, size);
         var stats = result.summary();

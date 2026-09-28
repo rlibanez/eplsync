@@ -74,7 +74,7 @@ class CatalogMagnetControllerTests {
                 .andExpect(jsonPath("$.meta.page").value(0));
         mvc.perform(get("/api/catalog/magnets").param("page", "0"))
                 .andExpect(jsonPath("$.meta.size").value(20));
-        for (String size : new String[] {"0", "501", "invalid"}) {
+        for (String size : new String[] {"0", "-1", "invalid"}) {
             mvc.perform(get("/api/catalog/magnets").param("size", size)).andExpect(status().isBadRequest());
         }
         mvc.perform(get("/api/catalog/magnets").param("page", "-1")).andExpect(status().isBadRequest());

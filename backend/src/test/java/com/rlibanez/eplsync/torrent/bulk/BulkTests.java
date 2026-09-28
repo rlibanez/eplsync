@@ -233,7 +233,7 @@ class BulkTests {
                 .param("status", "RUNNING,RETRY_WAIT"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(2));
-        for (var param : List.of(new String[]{"page", "-1"}, new String[]{"size", "101"},
+        for (var param : List.of(new String[]{"page", "-1"}, new String[]{"size", "0"},
                 new String[]{"status", "BOGUS"}, new String[]{"status", "RUNNING,"}, new String[]{"state", "RUNNING"})) {
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs")
                     .param(param[0], param[1]))

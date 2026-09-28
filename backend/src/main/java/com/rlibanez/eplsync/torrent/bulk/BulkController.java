@@ -24,8 +24,8 @@ public class BulkController {
         for (var field : CatalogBookFilter.class.getDeclaredFields()) known.add(field.getName());
         for (String parameter : servletRequest.getParameterMap().keySet())
             if (!known.contains(parameter)) throw new IllegalArgumentException("Parámetro de selección no admitido: " + parameter);
-        if ((page != null && page < 0) || (size != null && (size < 1 || size > 2000)))
-            throw new IllegalArgumentException("page >= 0 y size entre 1 y 2000");
+        if ((page != null && page < 0) || (size != null && (size < 1)))
+            throw new IllegalArgumentException("page >= 0 y size > 0");
         log.info("Solicitud bulk: filtros={}, page={}, size={}, sort={}, all={}",
                 safeLog(filter), page, size, safeLog(pageable.getSort()), all);
         synchronized (store) {

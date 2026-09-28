@@ -211,8 +211,8 @@ public class BulkStore {
 
     @Transactional(readOnly = true)
     public PageResponse<View> list(int page, int size, List<BulkJob.State> states) {
-        if (page < 0 || size < 1 || size > 100)
-            throw new IllegalArgumentException("page >= 0 y size entre 1 y 100");
+        if (page < 0 || size < 1)
+            throw new IllegalArgumentException("page >= 0 y size > 0");
         var pageable = PageRequest.of(page, size, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
         var result = states == null ? jobs.findAll(pageable) : jobs.findByStateIn(states, pageable);
         return new PageResponse<>(result.getContent().stream().map(this::view).toList(),
@@ -228,7 +228,7 @@ public class BulkStore {
     @Transactional(readOnly = true)
     public PageResponse<ItemView> details(String id, int page, int size, List<BulkItem.State> states) {
         job(id);
-        if (page < 0 || size < 1 || size > 500) throw new IllegalArgumentException("page >= 0 y size entre 1 y 500");
+        if (page < 0 || size < 1) throw new IllegalArgumentException("page >= 0 y size > 0");
         var result = states == null ? items.findByJobIdOrderByPosition(id, PageRequest.of(page, size))
                 : items.findByJobIdAndStateInOrderByPosition(id, states, PageRequest.of(page, size));
         return new PageResponse<>(result.map(i -> new ItemView(i.getId(), i.getEplId(), i.getHash(), i.getState(), i.getAttempts(), i.getMessage())).getContent(),
