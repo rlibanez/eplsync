@@ -22,10 +22,23 @@ spring:
 
 server:
   port: 8088
+  tomcat:
+    accesslog:
+      enabled: true
+      directory: ${user.dir}/logs
+      prefix: access
+      suffix: .log
+      encoding: UTF-8
+      pattern: '%{yyyy-MM-dd HH:mm:ss.SSS XXX}t %a "%m %U%q" %s %{ms}Tms %BB "%{User-Agent}i"'
+      buffered: false
+      rotate: true
+      rename-on-rotate: true
+      file-date-format: .yyyyMMdd
+      max-days: 30
 
 logging:
   file:
-    name: ./logs/eplsync.log
+    name: ${user.dir}/logs/eplsync.log
 
   logback:
     rollingpolicy:

@@ -133,6 +133,38 @@ ajustar la retención mediante `LOGGING_LOGBACK_ROLLINGPOLICY_MAXHISTORY` y
 `LOGGING_LOGBACK_ROLLINGPOLICY_TOTALSIZECAP`. Si cambias la ubicación, ajusta tanto
 `LOGGING_FILE_NAME` como `LOGGING_LOGBACK_ROLLINGPOLICY_FILENAMEPATTERN`.
 
+### Log de acceso HTTP
+
+Tomcat registra las peticiones HTTP entrantes en `./logs/access.log`, junto
+al log de aplicación. Incluye las rutas `/api`, `/actuator` y las peticiones que
+terminan en error. Cada línea contiene fecha y hora con zona horaria, IP remota,
+método, ruta con parámetros de consulta, código HTTP, duración en milisegundos,
+tamaño de respuesta en bytes (sin cabeceras) y `User-Agent`:
+
+```text
+2026-09-29 12:34:56.789 +02:00 192.168.1.20 "GET /api/catalog/books?language=es&page=0&size=100&sort=eplId,asc" 200 42ms 18432B "curl/8.10.1"
+```
+
+La duración es el tiempo que Tomcat dedica a atender la petición; en operaciones
+que lanzan jobs no incluye la ejecución posterior del trabajo. Los parámetros de
+consulta se registran completos: no deben contener contraseñas ni tokens. No se
+registran cuerpos ni cabeceras salvo `User-Agent`; si falta, aparece `-`.
+Tomcat también representa la ausencia de query string con `-`, por lo que una
+petición sin parámetros aparece, por ejemplo, como `"GET /actuator/health-"`.
+La IP es la del cliente conectado;
+si accede mediante un proxy, puede ser la del proxy. No se confía automáticamente
+en cabeceras `X-Forwarded-For` enviadas por el cliente.
+
+Este fichero usa la rotación nativa de Tomcat, independiente de Logback: rota
+diariamente a `access.20260929.log` y conserva 30 días. No tiene el límite
+de 50 MB ni el tope de 1 GB del log de aplicación. Las líneas se escriben sin
+buffer para facilitar el seguimiento con `tail -f`.
+
+Se configura en `server.tomcat.accesslog`; puedes desactivarlo con
+`SERVER_TOMCAT_ACCESSLOG_ENABLED=false` o cambiar su directorio con
+`SERVER_TOMCAT_ACCESSLOG_DIRECTORY` (usa una ruta absoluta, pues Tomcat resuelve
+las rutas relativas contra su propio directorio base).
+
 ## Importación del catálogo
 
 Los tres modos descargan el ZIP oficial de ePubLibre. Admiten el parámetro
