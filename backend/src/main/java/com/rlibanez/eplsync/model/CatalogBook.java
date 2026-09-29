@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.Instant;
 
 import com.rlibanez.eplsync.model.enums.BookStatus;
 import com.rlibanez.eplsync.model.enums.Language;
@@ -78,20 +79,20 @@ public class CatalogBook {
     private LocalDate publicationDate;
 
     @Column(name = "insert_date", updatable = false)
-    private LocalDate insertDate;
+    private Instant insertDate;
 
     @Column(name = "last_modified_date")
-    private LocalDate lastModifiedDate;
+    private Instant lastModifiedDate;
 
     @PrePersist
     private void onCreate() {
-        insertDate = LocalDate.now();
+        insertDate = Instant.now();
         lastModifiedDate = null;
     }
 
     @PreUpdate
     private void onUpdate() {
-        lastModifiedDate = LocalDate.now();
+        lastModifiedDate = Instant.now();
     }
 
     @Enumerated(EnumType.STRING)

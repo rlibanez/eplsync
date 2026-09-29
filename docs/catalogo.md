@@ -86,11 +86,13 @@ página. No se guarda una instantánea ni un identificador para aplicar la vista
 si el CSV remoto o la BD cambian, una petición posterior puede devolver resultados
 distintos. `/update` realiza una nueva descarga y comparación.
 
-## Fecha de inserción local
+## Fechas de seguimiento local
 
 El campo Java/JSON `insertDate` corresponde a la columna `insert_date` y conserva
-la fecha de la primera inserción en la BD. `lastModifiedDate` mantiene su nombre
-y solo cambia cuando se modifica el libro.
+el instante de la primera inserción en la BD. `lastModifiedDate` mantiene su nombre
+y solo cambia cuando se modifica el libro; inicialmente es `null`. Ambos usan
+`Instant` y se devuelven como fecha y hora UTC, por ejemplo
+`2026-09-29T07:16:18.123Z`. `publicationDate` sigue siendo una fecha sin hora.
 
 Se parte de una instalación nueva: Hibernate crea directamente la columna
 `insert_date`. No se incluye una migración desde esquemas anteriores.

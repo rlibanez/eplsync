@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,6 +23,9 @@ class CatalogBookDatesTests {
     @Autowired
     private EntityManager em;
 
+    @Autowired
+    private tools.jackson.databind.ObjectMapper mapper;
+
     @BeforeEach
     void clearCatalog() {
         em.createQuery("delete from CatalogBook").executeUpdate();
@@ -34,17 +38,19 @@ class CatalogBookDatesTests {
                 .eplId(1L).revision(1.0).author("Autor").title("Título")
                 .publicationYear(1990).publicationDate(LocalDate.of(2020, 1, 1))
                 .build();
+        Instant before = Instant.now().minusSeconds(1);
         em.persist(book);
         em.flush();
-        assertThat(book.getInsertDate()).isEqualTo(LocalDate.now());
+        assertThat(book.getInsertDate()).isBetween(before, Instant.now().plusSeconds(1));
         assertThat(book.getLastModifiedDate()).isNull();
 
         // Simula un alta anterior para detectar si una actualización sobrescribe su fecha.
         em.createNativeQuery("UPDATE catalog_books SET insert_date = :date WHERE epl_id = 1")
-                .setParameter("date", LocalDate.of(2025, 1, 1)).executeUpdate();
+                .setParameter("date", Instant.parse("2025-01-01T12:34:56Z")).executeUpdate();
         em.clear();
         book = em.find(CatalogBook.class, 1L);
-        LocalDate originalDate = book.getInsertDate();
+        Instant originalDate = book.getInsertDate();
+        assertThat(originalDate).isEqualTo(Instant.parse("2025-01-01T12:34:56Z"));
         em.detach(book);
         em.merge(book.toBuilder().title("Título actualizado").build());
         em.flush();
@@ -52,9 +58,24 @@ class CatalogBookDatesTests {
 
         CatalogBook updated = em.find(CatalogBook.class, 1L);
         assertThat(updated.getInsertDate()).isEqualTo(originalDate);
-        assertThat(updated.getLastModifiedDate()).isEqualTo(LocalDate.now());
+        assertThat(updated.getLastModifiedDate()).isBetween(before, Instant.now().plusSeconds(1));
         assertThat(updated.getPublicationYear()).isEqualTo(1990);
         assertThat(updated.getPublicationDate()).isEqualTo(LocalDate.of(2020, 1, 1));
+    }
+
+    @Test
+    void serializesAuditDatesAsUtcInstantsAndPublicationAsDate() {
+        var book = CatalogBook.builder().eplId(3L)
+                .insertDate(Instant.parse("2026-09-29T07:16:18.123Z"))
+                .lastModifiedDate(Instant.parse("2026-09-29T10:42:05.456Z"))
+                .publicationDate(LocalDate.of(2026, 9, 27)).build();
+        var response = com.rlibanez.eplsync.dto.CatalogBookResponse.from(book, null);
+        for (Object value : new Object[]{book, response}) {
+            var json = mapper.readTree(mapper.writeValueAsString(value));
+            assertThat(json.get("insertDate").stringValue()).isEqualTo("2026-09-29T07:16:18.123Z");
+            assertThat(json.get("lastModifiedDate").stringValue()).isEqualTo("2026-09-29T10:42:05.456Z");
+            assertThat(json.get("publicationDate").stringValue()).isEqualTo("2026-09-27");
+        }
     }
 
     @Test

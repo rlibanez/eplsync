@@ -840,3 +840,10 @@ mediante la configuración de despliegue.
 No hay actualmente un endpoint de envío mediante una lista explícita de `eplId`,
 ni endpoints generales para pausar o borrar torrents arbitrarios del cliente.
 Los controles de jobs actúan sobre los envíos de EPLsync.
+
+### Formato de las fechas de seguimiento del catálogo
+
+`insertDate` y `lastModifiedDate` conservan sus nombres y contienen fecha y hora
+UTC (por ejemplo, `2026-09-29T07:16:18.123Z`). La inserción se conserva al actualizar;
+la modificación es `null` hasta el primer cambio y no cambia al reimportar datos
+idénticos. `publicationDate` mantiene el formato `YYYY-MM-DD`.

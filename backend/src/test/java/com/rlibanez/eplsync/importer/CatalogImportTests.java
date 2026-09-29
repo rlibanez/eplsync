@@ -10,7 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.io.IOException;
-import java.time.LocalDate;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -37,18 +37,21 @@ class CatalogImportTests {
     @Test
     void updateCountsChangesAndPreservesMissingBooksAndDates() throws Exception {
         importer.importFile(csv("1,1,Autor,Original\n2,1,Autor,Igual\n3,1,Autor,Ausente\n"), true);
-        LocalDate created = repository.findById(1L).orElseThrow().getInsertDate();
+        Instant created = repository.findById(1L).orElseThrow().getInsertDate();
+        Instant beforeUpdate = Instant.now().minusSeconds(1);
         var result = importer.importFile(csv("1,2,Autor,Modificado\n2,1,Autor,Igual\n4,1,Autor,Nuevo\n"), false);
         assertThat(result).isEqualTo(new CatalogBookCsvImporter.ImportStats(3, 0, 1, 1, 1));
         assertThat(repository.count()).isEqualTo(4);
         var updated = repository.findById(1L).orElseThrow();
         assertThat(updated.getTitle()).isEqualTo("Modificado");
         assertThat(updated.getInsertDate()).isEqualTo(created);
-        assertThat(updated.getLastModifiedDate()).isEqualTo(LocalDate.now());
+        assertThat(updated.getLastModifiedDate()).isBetween(beforeUpdate, Instant.now().plusSeconds(1));
         assertThat(repository.findById(2L).orElseThrow().getLastModifiedDate()).isNull();
-        assertThat(repository.findById(4L).orElseThrow().getInsertDate()).isEqualTo(LocalDate.now());
+        assertThat(repository.findById(4L).orElseThrow().getInsertDate()).isBetween(beforeUpdate, Instant.now().plusSeconds(1));
         var repeated = importer.importFile(directory.resolve("catalog.csv"), false);
         assertThat(repeated).isEqualTo(new CatalogBookCsvImporter.ImportStats(3, 0, 0, 0, 3));
+        assertThat(repository.findById(1L).orElseThrow().getLastModifiedDate())
+                .isEqualTo(updated.getLastModifiedDate());
     }
 
     @Test

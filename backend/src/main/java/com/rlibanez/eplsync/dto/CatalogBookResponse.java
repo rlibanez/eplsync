@@ -4,6 +4,7 @@ import com.rlibanez.eplsync.model.CatalogBook;
 import com.rlibanez.eplsync.model.enums.*;
 import com.rlibanez.eplsync.torrent.downloads.DownloadStatus;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.List;
 
 /** Respuesta API: los datos de descarga no se persisten en CatalogBook. */
@@ -21,8 +22,8 @@ public record CatalogBookResponse(
         Language language,
         PublicationStatus publicationStatus,
         LocalDate publicationDate,
-        LocalDate insertDate,
-        LocalDate lastModifiedDate,
+        Instant insertDate,
+        Instant lastModifiedDate,
         BookStatus status,
         Double rating,
         Integer votesCount,
