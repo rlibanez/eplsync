@@ -1,8 +1,45 @@
-# Actualización de revisiones y limpieza
+# Novedades, actualización de revisiones y limpieza
 
 [Documentación](README.md) · [Inicio](../README.md)
 
 Las rutas y los comandos parten de la raíz del repositorio salvo que se indique otro directorio.
+
+## Mantener una biblioteca en español
+
+`GET /api/torrent/refresh?language=es` previsualiza los libros sin historial para
+el cliente actual y los libros con una revisión superior. `POST` en esa misma
+ruta crea un único job con ambos grupos, aplicando el filtro a los dos.
+
+```bash
+curl -s 'http://192.168.2.2:8088/api/torrent/refresh?language=es&multipleHashes=all&size=1000' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/refresh?language=es' \
+  -H 'Content-Type: application/json' \
+  -d '{"previousVersions":"removeTorrentAndFiles","multipleHashes":"all"}' | jq
+```
+
+El resultado incluye un `jobId`. La limpieza se ejecuta posteriormente con
+`POST /api/torrent/updates/JOB_ID/cleanup`, o con la limpieza global. Solo afecta
+a las versiones anteriores, cuando sus nuevas revisiones están completas; los
+libros nuevos no generan borrados. Omitir `previousVersions` conserva todo.
+
+También se pueden separar las selecciones:
+
+- `GET/POST /api/torrent/books?selection=new&language=es`: solo novedades.
+- `GET/POST /api/torrent/updates?language=es`: solo revisiones superiores.
+
+Las tres selecciones admiten los filtros de `CatalogBookFilter`. Un libro es nuevo
+si no tiene historial en la instancia actual, independientemente de su fecha de
+importación. Los estados `ERROR`, `UNKNOWN` o `NOT_FOUND` siguen siendo historial:
+no convierten el libro en nuevo. Se excluyen libros con envíos pendientes.
+Si hubo cambios manuales en qBittorrent, ejecutar sync antes para actualizar el
+historial; los GET son de solo lectura local y no sincronizan automáticamente.
+
+GET admite `page`, `size` y `multipleHashes` en la URL. POST procesa todos los
+candidatos filtrados, sin paginación; recibe las opciones de envío en JSON.
+En `/refresh`, las opciones son las mismas que en `/updates`. En
+`/books?selection=new` son las de bulk y no se usa `previousVersions`.
+
+Consulta la [referencia completa, parámetros y ejemplos](API.md#18-novedades-y-envío-combinado-con-filtros).
 
 ## Actualizar revisiones de libros gestionados
 
@@ -19,8 +56,8 @@ escribe registros. Usa el último estado guardado; si se necesita información
 actual del cliente, ejecutar antes `POST /api/torrent/downloads/sync`.
 
 ```bash
-curl -s 'http://localhost:8088/api/torrent/updates?page=0&size=50' | jq
-curl -s 'http://localhost:8088/api/torrent/updates?eplId=1234&multipleHashes=all' | jq
+curl -s 'http://192.168.2.2:8088/api/torrent/updates?page=0&size=50' | jq
+curl -s 'http://192.168.2.2:8088/api/torrent/updates?eplId=1234&multipleHashes=all' | jq
 ```
 
 La respuesta contiene `items` y `meta`. Cada candidato incluye `eplId`, `title`,
@@ -30,11 +67,11 @@ y `targetHashes`. `includeNotFound=true` permite actualizar también libros cuyo
 por sí solos para considerar un libro gestionado. `multipleHashes` acepta
 `all`, `first` o `skip`; si falta, utiliza el valor bulk de `application.yaml`.
 
-Crear el job (sin `eplId` selecciona **todos los candidatos**, no solo la página
-mostrada en la previsualización):
+Crear el job (selecciona **todos los candidatos que cumplan los filtros**, no
+solo la página mostrada en la previsualización):
 
 ```bash
-curl -s -X POST 'http://localhost:8088/api/torrent/updates?eplId=1234' \
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates?eplId=1234' \
   -H 'Content-Type: application/json' \
   -d '{"previousVersions":"keep","multipleHashes":"all","concurrency":2,"interval":"100ms"}' | jq
 ```
@@ -59,8 +96,8 @@ quedan congelados en el job; una importación posterior no cambia sus objetivos.
 Consultar el plan y ejecutar su limpieza por separado:
 
 ```bash
-curl -s 'http://localhost:8088/api/torrent/updates/JOB_ID' | jq
-curl -s -X POST 'http://localhost:8088/api/torrent/updates/JOB_ID/cleanup' | jq
+curl -s 'http://192.168.2.2:8088/api/torrent/updates/JOB_ID' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates/JOB_ID/cleanup' | jq
 ```
 
 El GET muestra la política, los objetivos congelados y el estado por registro
@@ -86,7 +123,7 @@ y comprueba los `REQUESTED` sin repetir automáticamente la escritura. Para
 reintentar explícitamente una eliminación sin confirmar:
 
 ```bash
-curl -s -X POST 'http://localhost:8088/api/torrent/updates/JOB_ID/cleanup?retryUnconfirmed=true' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates/JOB_ID/cleanup?retryUnconfirmed=true' | jq
 ```
 
 Este reintento vuelve a comprobar completitud y protecciones. El sync habitual
@@ -106,7 +143,7 @@ qBittorrent. No hay limpieza automática ni cambios de política implícitos.
 ## Limpieza global de actualizaciones
 
 ```bash
-curl -s -X POST 'http://localhost:8088/api/torrent/updates/cleanup' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates/cleanup' | jq
 ```
 
 Procesa los planes con política `removeTorrent` o `removeTorrentAndFiles` y
@@ -115,7 +152,7 @@ Reevalúa las condiciones de seguridad y comprueba ausencias para los borrados
 sin confirmar. No repite estos últimos salvo petición explícita:
 
 ```bash
-curl -s -X POST 'http://localhost:8088/api/torrent/updates/cleanup?retryUnconfirmed=true' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates/cleanup?retryUnconfirmed=true' | jq
 ```
 
 Comparte una instantánea inicial del cliente entre todos los jobs, los índices

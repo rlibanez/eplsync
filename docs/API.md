@@ -24,6 +24,7 @@ el despliegue pueden sobrescribir los predeterminados del repositorio.
 15. [Renombrado de torrents](#15-renombrado-de-torrents)
 16. [Salud de la aplicación](#16-salud-de-la-aplicación)
 17. [Inventario de endpoints](#17-inventario-de-endpoints)
+18. [Novedades y envío combinado con filtros](#18-novedades-y-envío-combinado-con-filtros)
 
 ## 1. Convenciones generales
 
@@ -33,8 +34,8 @@ el despliegue pueden sobrescribir los predeterminados del repositorio.
 - `page` empieza en `0`; `size` debe ser positivo. No existe el antiguo máximo de
   2.000 elementos. Los parámetros siguen sujetos al rango de sus tipos numéricos.
 - Los estados distinguen mayúsculas y minúsculas salvo que se indique otra cosa.
-- Las fechas del catálogo usan `YYYY-MM-DD`. Los instantes de descargas y jobs se
-  expresan normalmente en UTC, con sufijo `Z`.
+- `publicationDate` usa `YYYY-MM-DD`. `insertDate`, `lastModifiedDate` y los
+  instantes de descargas y jobs se expresan en UTC, con sufijo `Z`.
 - `JOB_ID` y `HASH_DEL_LIBRO` son marcadores: deben sustituirse por valores reales.
 - Los ejemplos que usan `jq` requieren esa herramienta para formatear el JSON.
 - Un parámetro no documentado no añade funcionalidad: algunos endpoints lo
@@ -66,7 +67,7 @@ La previsualización de importación utiliza un formato propio, descrito más ab
 | --- | --- | --- | --- |
 | Consultar catálogo o magnets | No | No | No |
 | Consultar historial/resumen de descargas | No | No | No |
-| Previsualizar revisiones nuevas | No | No | No |
+| Previsualizar novedades o revisiones nuevas | No | No | No |
 | Consultar jobs y planes | No | No | No |
 | Comprobar conexión | Sí, si está habilitado | No modifica el historial | No modifica torrents |
 | Ejecutar sync | Sí | Sí | No |
@@ -147,6 +148,9 @@ Estos filtros funcionan en:
 - `GET /api/catalog/magnets`
 - `GET /api/catalog/magnets/export`
 - `POST /api/torrent/books`
+- `GET/POST /api/torrent/books?selection=new`
+- `GET/POST /api/torrent/updates`
+- `GET/POST /api/torrent/refresh`
 
 | Parámetro | Significado / valores |
 | --- | --- |
@@ -629,7 +633,8 @@ Excluye libros con envíos pendientes, revisiones nuevas ya enviadas/presentes y
 situaciones inciertas que requieren reconciliación. `ERROR` o `UNKNOWN` por sí
 solos no bastan como historial elegible.
 
-No admite filtros generales de autor, idioma, etc., ni `sort`.
+Admite todos los filtros compartidos de `CatalogBookFilter`, incluido
+`language=es`, combinados mediante AND. No admite `sort`.
 
 ## 13. Envío de actualizaciones
 
@@ -641,7 +646,7 @@ POST /api/torrent/updates
 
 | Parámetro | Descripción |
 | --- | --- |
-| `eplId` | Un único libro; omitido: todos los candidatos. |
+| Filtros del catálogo | Incluidos `eplId`, `language`, `author`, etc.; limitan los candidatos. |
 | `includeNotFound` | Igual que en la previsualización; predeterminado: `false`. |
 
 ### Cuerpo JSON opcional
@@ -683,8 +688,8 @@ curl -s -X POST \
 Devuelve `202`, un `jobId` y `Location: /api/torrent/jobs/{jobId}`. El progreso y
 control utilizan los endpoints habituales de jobs.
 
-- El POST no admite paginación; sin `eplId` selecciona todos los candidatos, no
-  solo la página consultada en el GET.
+- El POST no admite paginación; selecciona todos los candidatos que cumplan los
+  filtros, no solo la página consultada en el GET.
 - No hay borrado durante el envío.
 - Los hashes, revisiones y opciones quedan congelados en el job.
 - Sin candidatos se crea un job vacío ya completado.
@@ -820,7 +825,10 @@ mediante la configuración de despliegue.
 | POST | `/api/catalog/books/{eplId}/torrents/{hash}/rename` |
 | GET | `/api/torrent/client/connection` |
 | POST | `/api/torrent/books/{eplId}` |
-| POST | `/api/torrent/books` |
+| POST | `/api/torrent/books` (bulk normal o `selection=new`) |
+| GET | `/api/torrent/books?selection=new` |
+| GET | `/api/torrent/refresh` |
+| POST | `/api/torrent/refresh` |
 | GET | `/api/torrent/jobs` |
 | GET | `/api/torrent/jobs/{jobId}` |
 | GET | `/api/torrent/jobs/{jobId}/items` |
@@ -858,3 +866,135 @@ comprobación vuelve a consultarlo. Al reanudar un trabajo se crea un contexto n
 
 El índice no es una monitorización continua: los cambios realizados por otros
 clientes durante un trabajo pueden no verse hasta que se vuelva a consultar.
+
+## 18. Novedades y envío combinado con filtros
+
+| Método | Endpoint | Selección |
+| --- | --- | --- |
+| GET | `/api/torrent/books?selection=new` | Previsualiza libros sin historial en el cliente actual. |
+| POST | `/api/torrent/books?selection=new` | Crea un job solo con esos libros nuevos. |
+| GET | `/api/torrent/updates` | Previsualiza revisiones superiores de libros gestionados. |
+| POST | `/api/torrent/updates` | Crea un job solo con esas revisiones superiores. |
+| GET | `/api/torrent/refresh` | Previsualiza la unión de novedades y revisiones superiores. |
+| POST | `/api/torrent/refresh` | Crea **un único job** con ambos grupos. |
+
+Todos admiten los [filtros del catálogo](#3-consulta-de-libros-y-filtros-compartidos),
+como `language=es`, `author`, `eplId`, `publicationYearFrom` o `status`.
+Los filtros se aplican al **libro actual del catálogo**, tanto para novedades
+como para actualizaciones. Los candidatos se ordenan por `eplId` ascendente.
+No se admite `sort` en estas selecciones.
+
+### Qué significa nuevo
+
+Un libro nuevo es un `eplId` **sin ningún registro en el historial de la instancia
+actual del cliente** (tipo y URL configurados). No depende de `insertDate`, de la
+fecha de importación ni de que su revisión sea `1.0`. Un registro de otra instancia
+no lo excluye. Tener únicamente `ERROR`, `UNKNOWN` o `NOT_FOUND` tampoco convierte
+un libro en nuevo: esos casos requieren revisar o recuperar su historial.
+
+Se excluyen libros reservados por envíos pendientes/en curso, incluso si el job
+está pausado, y candidatos sin hashes válidos o descartados por `multipleHashes`.
+Las actualizaciones mantienen las reglas de revisión superior e historial elegible.
+
+La previsualización **no contacta con qBittorrent y no modifica datos**. Si se han
+añadido o eliminado torrents manualmente, se puede ejecutar antes el sync para
+actualizar el historial. Estos endpoints no importan el CSV ni ejecutan sync
+implícitamente. Los torrents ya existentes se comprueban durante el envío.
+
+### Parámetros y respuestas
+
+| Parámetro | GET | POST |
+| --- | --- | --- |
+| Filtros de `CatalogBookFilter` | URL | URL |
+| `selection=new` | Obligatorio en `/books` | Obligatorio en `/books` |
+| `includeNotFound` | URL, solo `/updates` y `/refresh`; predeterminado `false` | Igual |
+| `multipleHashes` | URL: `all`, `first`, `skip` | Cuerpo JSON |
+| `page`, `size` | URL: `0`, `50` por defecto; `page >= 0`, `size > 0` | No admitidos |
+
+GET devuelve `items` y `meta`. Cada item contiene `eplId`, `title`,
+`catalogRevision`, `existingDownloads` y `targetHashes`. En las novedades,
+`existingDownloads` está vacío; en las actualizaciones contiene las versiones
+anteriores. La paginación se aplica **después de seleccionar los candidatos**.
+
+POST selecciona **todos los candidatos que cumplan los filtros**, no solo la página
+previsualizada. No requiere `all=true`: sin filtros, selecciona los candidatos de
+todos los idiomas. Los parámetros desconocidos, vacíos o repetidos se rechazan con
+`400` (salvo `status`, que permite varios valores).
+
+El cuerpo opcional de `POST /refresh` es el mismo que el de `POST /updates`:
+`previousVersions`, `multipleHashes`, `batchSize` (alias `batch-size`), `concurrency`,
+`interval` y `options`. Los límites y opciones de descarga son los del bulk;
+`options.hash` no se admite. `previousVersions` es `keep` por defecto, y solo afecta
+a las versiones anteriores de los libros actualizados.
+
+`POST /books?selection=new` usa el cuerpo bulk: las mismas opciones excepto
+`previousVersions`, porque las novedades no tienen versiones anteriores que limpiar.
+Los valores de descarga y ejecución omitidos heredan `application.yaml`.
+
+POST devuelve `202`, el resumen del job y `Location: /api/torrent/jobs/{jobId}`.
+Los endpoints habituales de progreso, items, pausa, reanudación y cancelación sirven
+para estos jobs. Repetir el POST no vuelve a reservar libros pendientes. Sin
+candidatos se devuelve un job vacío `COMPLETED`. La selección y las opciones se
+congelan al crear el job; el GET previo no reserva libros.
+
+### Flujo recomendado: mantener una biblioteca en español
+
+Después de importar el CSV, previsualizar novedades y revisiones nuevas juntas:
+
+```bash
+curl -s \
+  'http://192.168.2.2:8088/api/torrent/refresh?language=es&multipleHashes=all&size=1000' | jq
+```
+
+Enviar ambos grupos y preparar la limpieza posterior de versiones anteriores:
+
+```bash
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/refresh?language=es' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "previousVersions": "removeTorrentAndFiles",
+    "multipleHashes": "all",
+    "batchSize": 100,
+    "concurrency": 2,
+    "interval": "100ms",
+    "options": {"qbittorrent": {"category": "Epublibre"}}
+  }' | jq
+```
+
+La categoría debe existir en qBittorrent. Para conservar los archivos antiguos,
+usar `removeTorrent`; para conservar también los torrents, usar `keep` u omitir
+`previousVersions`. No se borra nada durante el envío.
+
+```bash
+# Progreso del envío (COMPLETED no significa que hayan terminado las descargas).
+curl -s 'http://192.168.2.2:8088/api/torrent/jobs/JOB_ID' | jq
+
+# Plan del job combinado, incluidos los libros nuevos y las revisiones nuevas.
+curl -s 'http://192.168.2.2:8088/api/torrent/updates/JOB_ID' | jq
+
+# Cuando las nuevas revisiones estén descargadas, limpieza manual del job.
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates/JOB_ID/cleanup' | jq
+```
+
+La limpieza solo afecta a los registros anteriores guardados en el plan; los libros
+nuevos no generan registros de borrado. Conserva todas las comprobaciones de
+completitud, hashes y rutas. También sirve `POST /api/torrent/updates/cleanup`
+para procesar todos los planes pendientes. No existe un endpoint separado
+`/refresh/cleanup`.
+
+Para trabajar con cada grupo por separado:
+
+```bash
+curl -s 'http://192.168.2.2:8088/api/torrent/books?selection=new&language=es&multipleHashes=all' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/books?selection=new&language=es' \
+  -H 'Content-Type: application/json' -d '{"multipleHashes":"all"}' | jq
+
+curl -s 'http://192.168.2.2:8088/api/torrent/updates?language=es&multipleHashes=all' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates?language=es' \
+  -H 'Content-Type: application/json' \
+  -d '{"previousVersions":"removeTorrent","multipleHashes":"all"}' | jq
+```
+
+El bulk normal `POST /api/torrent/books?language=es` conserva su comportamiento:
+selecciona todos los libros en español, sin limitarse a novedades y sin preparar
+limpieza de revisiones anteriores.

@@ -2,6 +2,8 @@ package com.rlibanez.eplsync.torrent.updates;
 
 import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.dto.TorrentDownloadRequest;
+import com.rlibanez.eplsync.filter.CatalogBookFilter;
+import com.rlibanez.eplsync.specification.CatalogBookSpecifications;
 import com.rlibanez.eplsync.repository.CatalogBookRepository;
 import com.rlibanez.eplsync.service.TorrentDownloadService;
 import com.rlibanez.eplsync.torrent.*;
@@ -40,35 +42,50 @@ public class UpdatePlanner {
             List<String> targetHashes) {}
     public record Snapshot(List<Candidate> items) {}
 
+    public enum Selection { NEW, UPDATES, BOTH }
+
     @Transactional(readOnly = true)
     public List<Candidate> preview(Long eplId, boolean includeNotFound, MultipleHashes multipleHashes) {
-        if (eplId != null && eplId <= 0) throw new IllegalArgumentException("eplId debe ser positivo");
+        var filter = new CatalogBookFilter();
+        filter.setEplId(eplId);
+        return preview(filter, includeNotFound, multipleHashes, Selection.UPDATES);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Candidate> preview(CatalogBookFilter filter, boolean includeNotFound,
+            MultipleHashes multipleHashes, Selection selection) {
+        if (filter.getEplId() != null && filter.getEplId() <= 0)
+            throw new IllegalArgumentException("eplId debe ser positivo");
         var policy = multipleHashes == null ? properties.getBulk().getMultipleHashes() : multipleHashes;
-        var records = downloads.findByClientInstanceId(tracking.instanceId());
-        var grouped = new TreeMap<Long, List<DownloadRecord>>();
-        for (var row : records) if (eplId == null || eplId.equals(row.getEplId()))
+        String instance = tracking.instanceId();
+        var grouped = new HashMap<Long, List<DownloadRecord>>();
+        for (var row : downloads.findByClientInstanceId(instance))
             grouped.computeIfAbsent(row.getEplId(), key -> new ArrayList<>()).add(row);
-        var active = new HashSet<>(items.activeBooks(tracking.instanceId(),
+        var active = new HashSet<>(items.activeBooks(instance,
                 List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT)));
-        var ids = new ArrayList<>(grouped.keySet());
+        // Project only selection fields, avoiding loading every synopsis in a large catalogue.
+        var selected = books.findBy(CatalogBookSpecifications.fromFilter(filter),
+                query -> query.as(CatalogBookRepository.UpdateIdentity.class).all());
         var result = new ArrayList<Candidate>();
-        for (int offset = 0; offset < ids.size(); offset += 500) {
-            for (var book : books.findUpdateIdentities(ids.subList(offset, Math.min(ids.size(), offset + 500)))) {
-                if (active.contains(book.getEplId()) || book.getRevision() == null || !Double.isFinite(book.getRevision())) continue;
-                var history = grouped.get(book.getEplId());
+        for (var book : selected) {
+            if (active.contains(book.getEplId()) || book.getRevision() == null || !Double.isFinite(book.getRevision())) continue;
+            var history = grouped.getOrDefault(book.getEplId(), List.of());
+            boolean isNew = history.isEmpty();
+            if (isNew && selection == Selection.UPDATES || !isNew && selection == Selection.NEW) continue;
+            if (!isNew) {
                 var eligible = history.stream().filter(row -> present(row.getStatus())
                         || includeNotFound && row.getStatus() == DownloadStatus.NOT_FOUND).toList();
                 if (eligible.isEmpty() || eligible.stream().anyMatch(row -> row.getRevision() >= book.getRevision())) continue;
-                var hashes = magnets.hashes(book.getLinks());
-                if (hashes.isEmpty() || hashes.size() > 1 && policy == MultipleHashes.SKIP) continue;
-                var targets = policy == MultipleHashes.ALL ? hashes : List.of(hashes.getFirst());
-                // Never reinterpret an existing hash as a different revision.
-                if (history.stream().anyMatch(row -> targets.contains(row.getHash()) && (present(row.getStatus()) || row.getStatus() == DownloadStatus.UNKNOWN))) continue;
-                if (history.stream().anyMatch(row -> targets.contains(row.getHash()) && row.getRevision() != book.getRevision().doubleValue())) continue;
-                result.add(new Candidate(book.getEplId(), book.getTitle(), book.getRevision(), history.stream()
-                        .filter(row -> row.getRevision() < book.getRevision()).map(row -> new Existing(row.getId(),
-                                row.getRevision(), row.getHash(), row.getStatus())).toList(), targets));
             }
+            var hashes = magnets.hashes(book.getLinks());
+            if (hashes.isEmpty() || hashes.size() > 1 && policy == MultipleHashes.SKIP) continue;
+            var targets = policy == MultipleHashes.ALL ? hashes : List.of(hashes.getFirst());
+            // Never reinterpret an existing hash as a different revision.
+            if (history.stream().anyMatch(row -> targets.contains(row.getHash()) && (present(row.getStatus()) || row.getStatus() == DownloadStatus.UNKNOWN))) continue;
+            if (history.stream().anyMatch(row -> targets.contains(row.getHash()) && row.getRevision() != book.getRevision().doubleValue())) continue;
+            result.add(new Candidate(book.getEplId(), book.getTitle(), book.getRevision(), history.stream()
+                    .filter(row -> row.getRevision() < book.getRevision()).map(row -> new Existing(row.getId(),
+                            row.getRevision(), row.getHash(), row.getStatus())).toList(), targets));
         }
         result.sort(Comparator.comparing(Candidate::eplId));
         return result;
@@ -80,10 +97,18 @@ public class UpdatePlanner {
 
     @Transactional
     public BulkStore.View create(Long eplId, boolean includeNotFound, UpdateRequest request) {
+        var filter = new CatalogBookFilter();
+        filter.setEplId(eplId);
+        return create(filter, includeNotFound, request, Selection.UPDATES);
+    }
+
+    @Transactional
+    public BulkStore.View create(CatalogBookFilter filter, boolean includeNotFound,
+            UpdateRequest request, Selection selection) {
         var input = request == null ? new UpdateRequest(null, null, null, null, null, null) : request;
         if (input.options() != null && input.options().hash() != null)
             throw new IllegalArgumentException("Las actualizaciones no admiten options.hash");
-        var candidates = preview(eplId, includeNotFound, input.multipleHashes());
+        var candidates = preview(filter, includeNotFound, input.multipleHashes(), selection);
         var commands = new ArrayList<TorrentDownload>();
         for (int offset = 0; offset < candidates.size(); offset += 500) {
             var chunk = candidates.subList(offset, Math.min(candidates.size(), offset + 500));

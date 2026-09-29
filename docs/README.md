@@ -11,5 +11,5 @@ Guías de instalación, uso y mantenimiento. Los comandos parten de la raíz del
 - [Integración con qBittorrent](torrent.md)
 - [Envíos masivos y jobs](jobs.md)
 - [Historial y sincronización de descargas](descargas.md)
-- [Actualización de revisiones y limpieza](actualizaciones.md)
+- [Novedades, actualización de revisiones y limpieza](actualizaciones.md)
 - [Referencia de la API](API.md): endpoints, parámetros y ejemplos de peticiones.

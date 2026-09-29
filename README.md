@@ -40,5 +40,7 @@ curl -X POST http://localhost:8088/api/catalog/import/update
 
 - [Instalación y configuración detallada](docs/instalacion.md).
 - [Referencia de la API](docs/API.md).
+- [Novedades, revisiones nuevas y limpieza](docs/actualizaciones.md): envío combinado
+  mediante `GET/POST /api/torrent/refresh?language=es`.
 - [Todas las guías](docs/README.md): catálogo, qBittorrent, jobs, descargas,
   actualizaciones, logs y desarrollo.

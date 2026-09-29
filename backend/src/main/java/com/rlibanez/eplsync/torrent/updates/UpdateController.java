@@ -5,7 +5,8 @@ import com.rlibanez.eplsync.torrent.bulk.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.net.URI;
-import java.util.List;
+import com.rlibanez.eplsync.filter.CatalogBookFilter;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/torrent/updates")
@@ -19,32 +20,27 @@ public class UpdateController {
     }
 
     @GetMapping
-    public PageResponse<UpdatePlanner.Candidate> preview(@RequestParam(required = false) Long eplId,
+    public PageResponse<UpdatePlanner.Candidate> preview(@Valid @ModelAttribute CatalogBookFilter filter,
             @RequestParam(defaultValue = "false") boolean includeNotFound,
             @RequestParam(required = false) String multipleHashes,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
             @RequestParam org.springframework.util.MultiValueMap<String, String> params) {
-        validate(params, "eplId", "includeNotFound", "multipleHashes", "page", "size");
+        SelectionQueries.validate(params, "includeNotFound", "multipleHashes", "page", "size");
         if (page < 0 || size < 1) throw new IllegalArgumentException("page >= 0 y size > 0");
-        var result = planner.preview(eplId, includeNotFound, MultipleHashes.parse(multipleHashes));
-        long offset = (long) page * size;
-        var selected = offset >= result.size() ? List.<UpdatePlanner.Candidate>of()
-                : result.subList((int) offset, (int) Math.min(offset + size, result.size()));
-        int pages = (int) ((result.size() + (long) size - 1) / size);
-        return new PageResponse<>(selected, new PageResponse.PageMeta(page, size, result.size(), pages,
-                page == 0, page >= pages - 1, page < pages - 1, page > 0));
+        return SelectionQueries.page(planner.preview(filter, includeNotFound, MultipleHashes.parse(multipleHashes),
+                UpdatePlanner.Selection.UPDATES), page, size);
     }
 
     @PostMapping
-    public ResponseEntity<BulkStore.View> create(@RequestParam(required = false) Long eplId,
+    public ResponseEntity<BulkStore.View> create(@Valid @ModelAttribute CatalogBookFilter filter,
             @RequestParam(defaultValue = "false") boolean includeNotFound,
             @RequestBody(required = false) UpdateRequest request,
             @RequestParam org.springframework.util.MultiValueMap<String, String> params) {
-        validate(params, "eplId", "includeNotFound");
+        SelectionQueries.validate(params, "includeNotFound");
         synchronized (bulk) {
-            log.info("Solicitud de actualización: eplId={}, includeNotFound={}, previousVersions={}", eplId,
+            log.info("Solicitud de actualización: filtros={}, includeNotFound={}, previousVersions={}", SelectionQueries.safeLog(filter),
                     includeNotFound, request == null ? PreviousVersions.KEEP : request.policy());
-            var job = planner.create(eplId, includeNotFound, request);
+            var job = planner.create(filter, includeNotFound, request, UpdatePlanner.Selection.UPDATES);
             log.info("Trabajo de actualización creado: jobId={}, libros={}", job.jobId(), job.selectedBooks());
             return ResponseEntity.accepted().location(URI.create("/api/torrent/jobs/" + job.jobId())).body(job);
         }

@@ -47,6 +47,7 @@ class UpdateTests {
     @Autowired TorrentClientService service;
     @Autowired TorrentClient stubClient;
     @Autowired TorrentProperties properties;
+    @Autowired org.springframework.web.context.WebApplicationContext webContext;
     MockMvc mvc;
     static final String OLD = "A".repeat(40), NEW = "B".repeat(40), OTHER = "C".repeat(40);
 
@@ -59,7 +60,7 @@ class UpdateTests {
         properties.setEnabled(true); properties.setBaseUrl("http://localhost:8080");
         properties.getBulk().setMultipleHashes(MultipleHashes.ALL);
         properties.getBulk().setInterval(java.time.Duration.ZERO);
-        mvc = MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(new GlobalExceptionHandler()).build();
+        mvc = MockMvcBuilders.webAppContextSetup(webContext).build();
         history(1L, 1.0, OLD, DownloadStatus.DOWNLOADED);
         book(1L, 1.2, NEW);
     }
@@ -81,6 +82,145 @@ class UpdateTests {
         return new RemoteTorrent(hash, status, null, Set.of(), path);
     }
     UpdateCleanup only(String id) { return cleaner.view(id).items().getFirst(); }
+
+    void language(long id, com.rlibanez.eplsync.model.enums.Language language) {
+        var book = books.findById(id).orElseThrow(); book.setLanguage(language); books.save(book);
+    }
+
+    void mixedCatalogue() {
+        language(1, com.rlibanez.eplsync.model.enums.Language.ESPANOL);
+        book(2, 1.0, OTHER); language(2, com.rlibanez.eplsync.model.enums.Language.ESPANOL);
+        book(3, 1.0, "D".repeat(40)); language(3, com.rlibanez.eplsync.model.enums.Language.INGLES);
+        history(4, 1.0, "E".repeat(40), DownloadStatus.DOWNLOADED);
+        book(4, 2.0, "F".repeat(40)); language(4, com.rlibanez.eplsync.model.enums.Language.INGLES);
+    }
+
+    @Test void filteredPreviewsSeparateNewAndUpdatedWithoutWritesOrClientCalls() throws Exception {
+        mixedCatalogue();
+        mvc.perform(get("/api/torrent/refresh").param("language", "es"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2))
+                .andExpect(jsonPath("$.items[0].eplId").value(1))
+                .andExpect(jsonPath("$.items[1].eplId").value(2))
+                .andExpect(jsonPath("$.items[1].existingDownloads").isEmpty());
+        mvc.perform(get("/api/torrent/books").param("selection", "new").param("language", "es"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].eplId").value(2));
+        mvc.perform(get("/api/torrent/updates").param("language", "es"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].eplId").value(1));
+        mvc.perform(get("/api/torrent/refresh").param("language", "es").param("page", "1").param("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2))
+                .andExpect(jsonPath("$.items[0].eplId").value(2));
+        assertThat(jobs.count()).isZero(); assertThat(plans.count()).isZero();
+        assertThat(cleanup.count()).isZero(); assertThat(downloads.count()).isEqualTo(2);
+        verifyNoInteractions(stubClient);
+    }
+
+    @Test void combinedPostCreatesOneJobWithOptionsAndOnlyOldRevisionCleanup() throws Exception {
+        mixedCatalogue();
+        mvc.perform(post("/api/torrent/refresh").param("language", "es")
+                .contentType("application/json").content("""
+                {"previousVersions":"removeTorrentAndFiles", "multipleHashes":"all",
+                 "batch-size":17,"concurrency":3,"interval":"250ms",
+                 "options":{"start":false,"qbittorrent":{"category":"Libros","tags":["es"]}}}
+                """))
+                .andExpect(status().isAccepted()).andExpect(header().exists("Location"))
+                .andExpect(jsonPath("$.selectedBooks").value(2)).andExpect(jsonPath("$.selectedTorrents").value(2))
+                .andExpect(jsonPath("$.batchSize").value(17)).andExpect(jsonPath("$.concurrency").value(3))
+                .andExpect(jsonPath("$.interval").value("250ms"));
+        assertThat(jobs.count()).isEqualTo(1);
+        assertThat(items.findAll()).extracting(BulkItem::getEplId).containsExactlyInAnyOrder(1L, 2L);
+        assertThat(items.findAll()).allMatch(i -> i.getCommandJson().contains("\"start\":false"));
+        var jobId = plans.findAll().getFirst().getJobId();
+        assertThat(cleaner.view(jobId).updates()).hasSize(2);
+        assertThat(cleaner.view(jobId).items()).hasSize(1);
+        assertThat(only(jobId).getEplId()).isEqualTo(1);
+        assertThat(cleaner.view(jobId).previousVersions()).isEqualTo(PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        verify(stubClient, never()).deleteTorrent(any(), anyBoolean());
+        // Cleaning this mixed job only deletes the old revision of book 1.
+        var newRevision = remote(NEW, DownloadStatus.DOWNLOADED, "/books/new.epub");
+        var newBook = remote(OTHER, DownloadStatus.DOWNLOADING, "/books/other.epub");
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD, DownloadStatus.DOWNLOADED, "/books/old.epub"),
+                newRevision, newBook), List.of(newRevision, newBook));
+        cleaner.clean(jobId);
+        verify(stubClient).deleteTorrent(OLD, true);
+        verify(stubClient, never()).deleteTorrent(eq(OTHER), anyBoolean());
+        assertThat(only(jobId).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+    }
+
+    @Test void filteredUpdateAndNewPostsUseSeparateSelections() throws Exception {
+        mixedCatalogue();
+        mvc.perform(post("/api/torrent/updates").param("language", "es"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1));
+        assertThat(items.findAll()).extracting(BulkItem::getEplId).containsExactly(1L);
+        mvc.perform(post("/api/torrent/books").param("selection", "new").param("language", "es"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1));
+        assertThat(items.findAll()).extracting(BulkItem::getEplId).containsExactlyInAnyOrder(1L, 2L);
+        mvc.perform(post("/api/torrent/refresh").param("language", "es"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(0));
+        assertThat(plans.findAll()).allMatch(p -> p.getPreviousVersions() == PreviousVersions.KEEP);
+    }
+
+    @Test void anyLocalHistoryExcludesNewButOtherClientHistoryDoesNot() throws Exception {
+        for (int id = 2; id <= 5; id++) book(id, 1.0, String.format("%040X", id));
+        history(2, 1.0, String.format("%040X", 2), DownloadStatus.ERROR);
+        history(3, 1.0, String.format("%040X", 3), DownloadStatus.NOT_FOUND);
+        history(4, 1.0, String.format("%040X", 4), DownloadStatus.UNKNOWN);
+        var foreign = history(5, 1.0, String.format("%040X", 5), DownloadStatus.DOWNLOADED);
+        foreign.setClientInstanceId("another-instance"); downloads.save(foreign);
+        mvc.perform(get("/api/torrent/books").param("selection", "new"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].eplId").value(5));
+        mvc.perform(get("/api/torrent/refresh").param("includeNotFound", "true"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+    }
+
+    @Test void combinedRequestRespectsHashPoliciesForBothGroups() {
+        book(1, 1.2, NEW + "," + OTHER);
+        book(2, 1.0, "D".repeat(40) + "," + "E".repeat(40));
+        var filter = new com.rlibanez.eplsync.filter.CatalogBookFilter();
+        assertThat(planner.preview(filter, false, MultipleHashes.SKIP, UpdatePlanner.Selection.BOTH)).isEmpty();
+        assertThat(planner.preview(filter, false, MultipleHashes.FIRST, UpdatePlanner.Selection.BOTH))
+                .allMatch(c -> c.targetHashes().size() == 1);
+        assertThat(planner.preview(filter, false, MultipleHashes.ALL, UpdatePlanner.Selection.BOTH))
+                .hasSize(2).allMatch(c -> c.targetHashes().size() == 2);
+    }
+
+    @Test void combinedAndNewRejectInvalidFiltersWithoutEnqueuing() throws Exception {
+        for (String path : List.of("/api/torrent/refresh", "/api/torrent/updates", "/api/torrent/books?selection=new")) {
+            mvc.perform(post(path).param("langauge", "es")).andExpect(status().isBadRequest());
+            mvc.perform(post(path).param("language", "not-a-language")).andExpect(status().isBadRequest());
+            mvc.perform(post(path).param("eplId", "0")).andExpect(status().isBadRequest());
+            mvc.perform(post(path).param("language", "es", "en")).andExpect(status().isBadRequest());
+            mvc.perform(post(path).param("size", "1")).andExpect(status().isBadRequest());
+        }
+        mvc.perform(post("/api/torrent/books").param("selection", "unknown")).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/torrent/refresh").contentType("application/json")
+                .content("{\"options\":{\"hash\":\"" + NEW + "\"}}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/torrent/refresh").contentType("application/json")
+                .content("{\"concurrency\":0}"))
+                .andExpect(status().isBadRequest());
+        assertThat(jobs.count()).isZero(); assertThat(plans.count()).isZero(); assertThat(cleanup.count()).isZero();
+    }
+
+    @Test void combinedSelectionIsReservedAcrossConcurrentRequestsAndPausedJobs() throws Exception {
+        book(2, 1.0, OTHER);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            java.util.concurrent.Callable<BulkStore.View> task = () -> {
+                synchronized (bulk) {
+                    return planner.create(new com.rlibanez.eplsync.filter.CatalogBookFilter(), false, null, UpdatePlanner.Selection.BOTH);
+                }
+            };
+            var first = executor.submit(task); var second = executor.submit(task);
+            var one = first.get(5, TimeUnit.SECONDS); var two = second.get(5, TimeUnit.SECONDS);
+            assertThat(one.selectedBooks() + two.selectedBooks()).isEqualTo(2);
+            var job = one.selectedBooks() == 2 ? one : two;
+            bulk.control(job.jobId(), "pause");
+            assertThat(planner.preview(new com.rlibanez.eplsync.filter.CatalogBookFilter(), false, null,
+                    UpdatePlanner.Selection.BOTH)).isEmpty();
+        }
+    }
 
     @Test void globalCleanupUsesTwoSnapshotsAndExcludesKeptAndRemovedJobs() throws Exception {
         var first = create(PreviousVersions.REMOVE_TORRENT);

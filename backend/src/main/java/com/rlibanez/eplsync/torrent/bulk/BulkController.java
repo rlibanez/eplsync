@@ -15,7 +15,7 @@ public class BulkController {
     private final BulkStore store;
     public BulkController(BulkStore store) { this.store = store; }
 
-    @PostMapping("/books")
+    @PostMapping(value = "/books", params = "!selection")
     public ResponseEntity<BulkStore.View> create(@Valid @ModelAttribute CatalogBookFilter filter,
             Pageable pageable, @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size, @RequestParam(defaultValue = "false") boolean all,
