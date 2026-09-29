@@ -332,10 +332,42 @@ class QBittorrentClientTests {
         assertThat(calls).hasSize(5);
         calls.clear();
         qbit.addTorrent(command("B".repeat(40)), context);
-        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/torrents/info", "/qbit/api/v2/torrents/add");
+        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/torrents/add");
         calls.clear();
         qbit.checkConnection();
         assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/app/version", "/qbit/api/v2/app/webapiVersion");
+    }
+
+    @Test
+    void hybridHashesAreRecognizedAndSnapshotIsScopedToSubmission() {
+        var qbit = client();
+        String v1 = "a".repeat(40), v2 = "b".repeat(64);
+        torrentInfo = "[{\"hash\":\"" + "b".repeat(40) + "\",\"infohash_v1\":\"" + v1
+                + "\",\"infohash_v2\":\"" + v2 + "\"}]";
+        var context = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+        assertThat(qbit.addTorrent(command(v1.toUpperCase()), context).name()).isEqualTo("ALREADY_EXISTS");
+        assertThat(qbit.addTorrent(command(v2), context).name()).isEqualTo("ALREADY_EXISTS");
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/info")).count()).isEqualTo(1);
+        assertThat(calls).noneMatch(c -> c.path().endsWith("/torrents/add"));
+        torrentInfo = "[]";
+        assertThat(qbit.addTorrent(command(v1)).name()).isEqualTo("ACCEPTED");
+    }
+
+    @Test
+    void acceptedHashesAreRememberedAndFailuresReloadSnapshot() {
+        var qbit = client();
+        var context = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+        String hash = "A".repeat(40);
+        qbit.addTorrent(command(hash), context);
+        calls.clear();
+        assertThat(qbit.addTorrent(command(hash), context).name()).isEqualTo("ALREADY_EXISTS");
+        assertThat(calls).isEmpty();
+        addStatus = 409;
+        assertThatThrownBy(() -> qbit.addTorrent(command("C".repeat(40)), context)).isInstanceOf(RuntimeException.class);
+        torrentInfo = "[{\"hash\":\"" + "B".repeat(40) + "\",\"infohash_v1\":\"" + "C".repeat(40) + "\"}]";
+        calls.clear();
+        assertThat(qbit.addTorrent(command("C".repeat(40)), context).name()).isEqualTo("ALREADY_EXISTS");
+        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/torrents/info");
     }
 
     @Test
@@ -378,6 +410,7 @@ class QBittorrentClientTests {
         assertThat(calls.stream().filter(c -> c.path().endsWith("/app/webapiVersion")).count()).isEqualTo(1);
         assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/categories")).count()).isEqualTo(1);
         assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/add")).count()).isEqualTo(3);
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/info")).count()).isEqualTo(1);
     }
 
     @Test

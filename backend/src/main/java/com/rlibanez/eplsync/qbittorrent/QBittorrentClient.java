@@ -145,12 +145,8 @@ public class QBittorrentClient implements TorrentClient {
             throw new IllegalArgumentException("savePath contiene caracteres de control");
         if (automatic && savePath != null && !savePath.isBlank())
             throw new IllegalArgumentException("savePath requiere autoManagement=false");
-        var existing = readAuthenticatedJson("torrents/info?hashes=" + encode(download.hash()));
-        if (!existing.isArray()) throw new QBittorrentConnectionException(UPSTREAM);
-        for (var torrent : existing) {
-            if (download.hash().equalsIgnoreCase(torrent.path("hash").asString()))
-                return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS;
-        }
+        if (context.containsTorrent(download.hash(), this::submissionHashes))
+            return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS;
         if (!category.isEmpty()) validateCategory(category, context);
         boolean key = sendingAuth() == AuthMode.API_KEY;
         var fields = new java.util.LinkedHashMap<String, String>();
@@ -166,22 +162,44 @@ public class QBittorrentClient implements TorrentClient {
         var builder = request("torrents/add").header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(body));
         if (key) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
-        var response = send(key ? apiKeyClient : sessionClient, builder.build());
-        if (response.statusCode() == 401 || response.statusCode() == 403) invalidateSendingState();
-        if (response.statusCode() == 409) {
-            throw new TorrentOperationException(HttpStatus.CONFLICT,
-                    "qBittorrent ha rechazado el envío; comprueba si el torrent ya existe");
-        }
-        checkStatus(response);
-        // qBittorrent 5.2.3 devuelve contadores JSON; versiones anteriores usaban Ok.
-        if (response.statusCode() == 200 && response.body().trim().equals("Ok."))
+        try {
+            var response = send(key ? apiKeyClient : sessionClient, builder.build());
+            if (response.statusCode() == 401 || response.statusCode() == 403) invalidateSendingState();
+            if (response.statusCode() == 409) {
+                throw new TorrentOperationException(HttpStatus.CONFLICT,
+                        "qBittorrent ha rechazado el envío; comprueba si el torrent ya existe");
+            }
+            checkStatus(response);
+            // qBittorrent 5.2.3 devuelve contadores JSON; versiones anteriores usaban Ok.
+            if (response.statusCode() == 200 && response.body().trim().equals("Ok.")) {
+                context.torrentAccepted(download.hash());
+                return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;
+            }
+            var result = parseJson(response.body());
+            if ((response.statusCode() != 200 && response.statusCode() != 202)
+                    || result.path("failure_count").asInt(-1) != 0
+                    || result.path("success_count").asInt(0) + result.path("pending_count").asInt(0) != 1)
+                throw new QBittorrentConnectionException(UPSTREAM);
+            context.torrentAccepted(download.hash());
             return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;
-        var result = parseJson(response.body());
-        if ((response.statusCode() != 200 && response.statusCode() != 202)
-                || result.path("failure_count").asInt(-1) != 0
-                || result.path("success_count").asInt(0) + result.path("pending_count").asInt(0) != 1)
-            throw new QBittorrentConnectionException(UPSTREAM);
-        return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;
+        } catch (RuntimeException ex) {
+            // El servidor puede haber aceptado un envío cuya respuesta se perdió.
+            context.invalidateTorrents();
+            throw ex;
+        }
+    }
+
+    /** Índice por solicitud: el identificador remoto puede diferir del hash v1 del catálogo. */
+    private java.util.Set<String> submissionHashes() {
+        var response = readAuthenticatedJson("torrents/info");
+        if (!response.isArray()) throw new QBittorrentConnectionException(UPSTREAM);
+        var hashes = new java.util.HashSet<String>();
+        for (var item : response) {
+            var aliases = torrentHashes(item);
+            if (aliases.isEmpty()) throw new QBittorrentConnectionException(UPSTREAM);
+            hashes.addAll(aliases);
+        }
+        return hashes;
     }
 
     /** Instantánea completa y sin filtros: permite detectar ausencias y descubrir torrents ajenos al envío. */

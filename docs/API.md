@@ -847,3 +847,14 @@ Los controles de jobs actúan sobre los envíos de EPLsync.
 UTC (por ejemplo, `2026-09-29T07:16:18.123Z`). La inserción se conserva al actualizar;
 la modificación es `null` hasta el primer cambio y no cambia al reimportar datos
 idénticos. `publicationDate` mantiene el formato `YYYY-MM-DD`.
+
+### Detección de torrents existentes al enviar
+
+Los envíos reconocen los identificadores `hash`, `infohash_v1` e `infohash_v2`
+de qBittorrent, incluidos los torrents híbridos. Cada solicitud individual o
+ejecución bulk obtiene un índice inicial compartido entre sus envíos y añade
+los hashes aceptados. Tras un fallo de envío se invalida ese índice; la próxima
+comprobación vuelve a consultarlo. Al reanudar un trabajo se crea un contexto nuevo.
+
+El índice no es una monitorización continua: los cambios realizados por otros
+clientes durante un trabajo pueden no verse hasta que se vuelva a consultar.
