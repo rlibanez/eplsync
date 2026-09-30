@@ -65,6 +65,7 @@ como plantilla y también queda fuera del contexto de build.
 Compose utiliza `.env` para interpolar el YAML; el bloque `environment` actual
 pasa estas variables de la aplicación al contenedor:
 
+- `EPLSYNC_UI_LANGUAGE` (idioma de interfaz; `auto` por defecto)
 - `EPLSYNC_CATALOG_ZIPURL`
 - `EPLSYNC_TORRENT_ENABLED`
 - `EPLSYNC_TORRENT_CLIENT`
@@ -114,3 +115,24 @@ Spring carga automáticamente `/app/config/application.yaml`. El archivo de orig
 prioridad sobre este archivo. Los perfiles locales del código fuente no se copian
 ni se empaquetan en la imagen Docker.
 
+
+## Idioma de la interfaz
+
+En `.env` puedes definir `EPLSYNC_UI_LANGUAGE=es`; Compose transmite la variable.
+También puedes fijarla directamente en el bloque `environment` de tu servicio:
+
+```yaml
+environment:
+  EPLSYNC_UI_LANGUAGE: "es"
+```
+
+El valor predeterminado es `auto`: detecta el idioma del navegador. Si no hay
+traducción compatible, se utiliza inglés. Un código explícito no disponible
+también utiliza inglés. La selección personal guardada en el navegador tiene
+prioridad sobre Docker y la detección automática. La configuración se lee en
+tiempo de ejecución, sin recompilar React. Tras cambiarla, ejecuta
+`docker compose up -d` y recarga la interfaz.
+
+Desde «Mantenimiento → Actualizar catálogo» puedes previsualizar e importar el
+CSV configurado, incluso para la primera carga. La interfaz y la API comparten
+el mismo puerto publicado.

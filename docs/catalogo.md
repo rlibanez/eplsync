@@ -19,6 +19,26 @@ Borra los registros de `catalog_books` e importa el catálogo desde cero.
 No elimina el archivo SQLite ni otras tablas. Los libros importados reciben una
 nueva `insertDate` y `lastModifiedDate` queda en `null`.
 
+## Reiniciar toda la base de datos
+
+`POST /api/maintenance/reset` requiere un cuerpo JSON `{"confirm":true}`.
+Elimina el catálogo, el historial local de descargas, los trabajos y sus elementos,
+los planes de actualización y los registros de limpieza. Descarga el ZIP de la URL
+configurada, extrae el CSV y reconstruye el catálogo desde cero en la misma operación.
+
+Conserva el archivo SQLite y su esquema, la configuración, los logs y las
+preferencias del navegador. No borra ni modifica torrents o archivos en qBittorrent.
+El borrado y la importación son transaccionales: un fallo de descarga o importación
+revierte todos los cambios. Un CSV vacío o con filas erróneas también cancela el reinicio.
+
+Devuelve `200` con `success` y los contadores de filas eliminadas `catalogBooks`,
+`downloads`, `jobs`, `jobItems`, `updatePlans` y `cleanupRecords`, además de `recordsImported` con el total de libros
+importados. La confirmación
+ausente o distinta de `true` produce `400`; las peticiones API, sincronizaciones
+o envíos en curso pueden impedir el reinicio con `409`. Pausa o cancela los
+trabajos y espera a que finalicen sus envíos antes de volver a intentarlo.
+Los trabajos en pausa o en cola también se borran al confirmar el reinicio.
+
 ## Actualizar el catálogo
 
 ```sh

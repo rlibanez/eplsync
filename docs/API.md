@@ -120,6 +120,26 @@ Con `includeDetails=true`, la respuesta contiene `summary`, `page`, `size`,
 > `preview` no escribe en el catálogo, pero sí descarga y procesa el ZIP.
 > `reset` reemplaza el catálogo; no es una previsualización.
 
+### Reiniciar toda la base de datos
+
+`POST /api/maintenance/reset` requiere un cuerpo JSON `{"confirm":true}`.
+Elimina el catálogo, el historial local de descargas, los trabajos y sus elementos,
+los planes de actualización y los registros de limpieza. Descarga el ZIP de la URL
+configurada, extrae el CSV y reconstruye el catálogo desde cero en la misma operación.
+
+Conserva el archivo SQLite y su esquema, la configuración, los logs y las
+preferencias del navegador. No borra ni modifica torrents o archivos en qBittorrent.
+El borrado y la importación son transaccionales: un fallo de descarga o importación
+revierte todos los cambios. Un CSV vacío o con filas erróneas también cancela el reinicio.
+
+Devuelve `200` con `success` y los contadores de filas eliminadas `catalogBooks`,
+`downloads`, `jobs`, `jobItems`, `updatePlans` y `cleanupRecords`, además de `recordsImported` con el total de libros
+importados. La confirmación
+ausente o distinta de `true` produce `400`; las peticiones API, sincronizaciones
+o envíos en curso pueden impedir el reinicio con `409`. Pausa o cancela los
+trabajos y espera a que finalicen sus envíos antes de volver a intentarlo.
+Los trabajos en pausa o en cola también se borran al confirmar el reinicio.
+
 ## 3. Consulta de libros y filtros compartidos
 
 | Método | Endpoint | Resultado |
@@ -815,6 +835,7 @@ mediante la configuración de despliegue.
 | Método | Ruta |
 | --- | --- |
 | POST | `/api/catalog/import/reset` |
+| POST | `/api/maintenance/reset` |
 | POST | `/api/catalog/import/update` |
 | POST | `/api/catalog/import/preview` |
 | GET | `/api/catalog/books` |
@@ -843,6 +864,7 @@ mediante la configuración de despliegue.
 | GET | `/api/torrent/updates/{jobId}` |
 | POST | `/api/torrent/updates/{jobId}/cleanup` |
 | POST | `/api/torrent/updates/cleanup` |
+| GET | `/api/ui/config` |
 | GET | `/actuator/health` |
 
 No hay actualmente un endpoint de envío mediante una lista explícita de `eplId`,
@@ -998,3 +1020,25 @@ curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates?language=es' \
 El bulk normal `POST /api/torrent/books?language=es` conserva su comportamiento:
 selecciona todos los libros en español, sin limitarse a novedades y sin preparar
 limpieza de revisiones anteriores.
+
+## Configuración pública de interfaz
+
+`GET /api/ui/config` devuelve únicamente `{ "defaultLanguage": "auto" }` (o el
+valor configurado con `EPLSYNC_UI_LANGUAGE` / `eplsync.ui.language`). Lleva
+`Cache-Control: no-store`; no expone credenciales ni configuración del cliente
+torrent. Con `auto`, el frontend detecta el idioma del navegador. Para códigos explícitos,
+comprueba si dispone de esa traducción y usa inglés en caso contrario. El valor
+por defecto del backend es `auto`.
+
+
+## Directorio del catálogo
+
+`GET /api/catalog/directory/{kind}` lista valores distintos de la base de datos.
+`kind` admite `authors`, `languages`, `genres` o `years`. No consulta el cliente torrent.
+Parámetros: `q` (búsqueda literal, máximo 512 caracteres), `page` (desde 0) y `size`
+(10, 20, 50, 100, 200, 500 o 1000; predeterminado 20). Devuelve la estructura paginada
+habitual con `items: [{"value":"..."}]` y `meta`. Los años se ordenan de mayor a
+menor; las otras categorías, por su valor almacenado ascendente. Los idiomas se
+convierten a su código ISO en la respuesta; la búsqueda compara el valor almacenado.
+Autores y géneros compuestos se mantienen intactos, sin normalización. Los valores
+nulos o vacíos se excluyen. Un tipo, página o tamaño inválido devuelve `400`.

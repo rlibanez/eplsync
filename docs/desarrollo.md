@@ -57,3 +57,248 @@ eplsync:
         password: ""
 ```
 
+
+## Frontend React + TypeScript
+
+El código vive en `frontend/`, separado del proyecto Maven. Requiere Node.js 24
+(o una versión compatible con Vite 7) y npm. Desde la raíz:
+
+```sh
+npm ci --prefix frontend
+npm run dev --prefix frontend
+```
+
+Vite muestra su dirección local (normalmente `http://localhost:5173`). Ejecuta
+el backend en otro terminal, con Java 25:
+
+```sh
+./backend/mvnw -f backend/pom.xml spring-boot:run
+```
+
+Vite reenvía `/api/` a `http://localhost:8088`; si cambias el puerto de Spring,
+ajusta `frontend/vite.config.ts`. No es necesario habilitar CORS ni configurar
+una URL de backend en el navegador. La interfaz usa rutas relativas `/api/`.
+
+```sh
+npm test --prefix frontend
+npm run build --prefix frontend
+```
+
+La compilación comprueba TypeScript y genera `frontend/dist/`. No se versionan
+`dist/` ni `node_modules/`; sí se versiona `package-lock.json` para instalaciones
+reproducibles. Las pantallas están agrupadas por funcionalidad en
+`src/features/`, el marco de navegación en `src/layout/` y el contrato HTTP en
+`src/api/`.
+
+La primera versión incluye Inicio, catálogo paginado con filtros y ordenación,
+y ficha individual con historial asociado. Los filtros se conservan en la URL.
+Las consultas no importan el catálogo ni sincronizan o modifican qBittorrent.
+El catálogo no proporciona portadas: se muestra un marcador gráfico local.
+
+## Frontend en Docker
+
+`docker compose up -d --build` compila el frontend con Node, copia `dist/` a los
+recursos estáticos de Spring y empaqueta todo en el JAR. El contenedor final
+solo ejecuta Java y sirve interfaz y API en el puerto 8088:
+
+- `/`: inicio.
+- `/catalog`: catálogo.
+- `/catalog/32`: ficha de un libro, también accesible directamente.
+- `/directory`: autores, idiomas, géneros y años del catálogo.
+- `/downloads`: estado local y sincronización manual.
+- `/downloads/send`: envío individual; `/downloads/send/multiple`: envío múltiple.
+- `/downloads/jobs` y `/downloads/jobs/{id}`: seguimiento y control de trabajos.
+- `/settings/general`: idioma, paleta de colores y modo claro/oscuro.
+- `/settings/database`: previsualización, actualización y reinicio completo.
+- `/settings/torrent`: comprobación manual de conexión con el cliente torrent.
+- `/settings` y `/maintenance/catalog`: redirigen a General y Base de datos.
+- `/api/**`: API existente y configuración pública de interfaz.
+
+El controlador de navegación solo reenvía las rutas conocidas de la interfaz a
+`index.html`: los errores de API y los recursos ausentes no se convierten en HTML.
+La compilación Maven por sí sola sigue generando el backend; Docker incorpora
+el frontend sin copiar artefactos generados al árbol de fuentes local.
+Los volúmenes `data/` y `logs/` mantienen su comportamiento habitual.
+
+### Pruebas de navegador
+
+```sh
+cd frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
+Playwright arranca Vite en el puerto 5178 y utiliza respuestas de prueba para
+verificar filtros, paginación, ficha, retorno al listado tras recargar, errores y
+menú móvil. No requiere ni modifica el catálogo local. Para usar un Chromium
+ya instalado, define `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` con su ruta.
+
+## Traducciones de la interfaz
+
+El frontend utiliza `react-i18next` con archivos JSON agrupados por función:
+
+- `frontend/src/locales/es.json`: español.
+- `frontend/src/locales/en.json`: inglés y traducción de respaldo.
+- `frontend/src/locales/resources.ts`: registro de idiomas y sus nombres nativos.
+
+El selector está únicamente en Ajustes → General. Aplica el
+cambio sin recargar ni perder los filtros. La elección manual se guarda en
+`localStorage` (`eplsync:language`) y tiene prioridad.
+
+Sin elección manual, `EPLSYNC_UI_LANGUAGE=auto` (predeterminado) detecta el primer
+idioma compatible de `navigator.languages`. Si ninguno está disponible, se usa
+inglés. Puedes fijar `es` o `en` en Docker para sustituir esa detección inicial;
+un código explícito desconocido utiliza inglés. Las variantes regionales como
+`es-ES` se reconocen. El servidor publica el valor en `GET /api/ui/config` y no
+hace falta recompilar React para cambiarlo, solo recrear el contenedor.
+
+Si el navegador bloquea el almacenamiento, la elección manual dura solo durante
+la sesión de la aplicación. Ajustes contiene el selector de idioma, sin controles
+para restablecer la preferencia ni para plegar el lateral.
+
+Para añadir un idioma:
+
+1. Copia `es.json` a otro archivo, por ejemplo `fr.json`, y traduce sus valores.
+2. Conserva las claves y las variables `{{title}}`, `{{count}}`, etc. Los plurales
+   usan los sufijos de i18next (`_one`, `_other`; añade los que requiera el idioma).
+3. Importa el JSON y añade su entrada en `locales` de `resources.ts`, con su nombre
+   nativo. El selector y los recursos se generan desde ese registro.
+4. Ejecuta `npm test` y `npm run build` desde `frontend/`. Comprueba también el
+   diseño con textos largos. Reconstruye la imagen Docker para distribuirlo.
+
+Usa `useTranslation()` para textos nuevos, con frases completas y variables en
+vez de concatenar fragmentos. `useLocale()` centraliza formatos de números,
+fechas y etiquetas de estados e idiomas. Las fechas con hora se presentan en la
+zona horaria del navegador; las fechas sin hora mantienen el día del catálogo.
+Los años e identificadores no llevan separadores de millares. No se traducen
+los títulos, autores, géneros ni sinopsis del catálogo, ni se modifican los códigos
+enviados a la API. El idioma de la interfaz y el filtro de idioma son independientes.
+
+Las pruebas verifican claves y variables de los idiomas registrados, plurales,
+cambio de idioma, persistencia, configuración del despliegue, formatos y selección móvil.
+
+## Mantenimiento y preferencias
+
+«Ajustes → Base de datos» utiliza `POST /api/catalog/import/preview`
+para un resumen sin cambios y `POST /api/catalog/import/update` para la primera
+carga o una actualización. El servidor descarga el ZIP configurado, extrae el CSV
+e inserta/actualiza libros. La previsualización no congela el CSV ni reserva una actualización.
+
+La acción «Reiniciar base de datos» usa `POST /api/maintenance/reset` con
+`{"confirm":true}` después de una confirmación destacada en rojo. Descarga el ZIP/CSV, vacía las seis
+tablas de datos y reconstruye el catálogo en una transacción. Un fallo o un CSV
+vacío o con errores revierte el borrado y la importación. Conserva el esquema,
+la configuración, los logs y las preferencias del navegador. No modifica torrents
+ni archivos en qBittorrent. El antiguo `/api/catalog/import/reset` sigue limitado
+al reemplazo del catálogo.
+
+Un filtro coordina las peticiones API de esta instancia: el reinicio requiere
+acceso exclusivo y devuelve `409` si hay otras peticiones activas. El monitor del
+worker y el bloqueo de seguimiento impiden solaparlo con envíos o sincronizaciones;
+los envíos pendientes de finalizar también provocan `409`. Tras confirmar la
+transacción se descarta la cola en memoria y el frontend limpia sus consultas de
+catálogo y fichas. Estos bloqueos son locales al proceso: no permiten compartir
+la misma base de datos entre varias instancias.
+
+Se pide confirmar la actualización, se muestran los contadores devueltos por la
+API y se invalidan las consultas del catálogo y fichas al terminar. No hay un
+porcentaje real disponible: se muestra actividad mientras llega la respuesta.
+Se conserva la operación al navegar dentro de la aplicación y se bloquean nuevas
+operaciones de importación en esa pestaña mientras está pendiente. No es un job
+persistente; recargar/cerrar la pestaña puede perder el resultado aunque el servidor
+termine la operación. No se reintentan automáticamente las peticiones POST.
+
+El botón «Plegar menú lateral» está al pie del menú. Los iconos conservan su
+posición vertical al plegarlo y hay separadores entre grupos. La preferencia se
+guarda en `eplsync:sidebar-collapsed`. El menú móvil conserva su comportamiento
+desplegable. No se muestran migas de pan.
+
+Las fichas usan `/catalog/{id}` sin parámetros. El enlace guarda la consulta del
+catálogo en el estado de navegación y `sessionStorage` proporciona un respaldo
+por pestaña (`eplsync:catalog-search`). «Volver al catálogo» recupera filtros,
+página y orden, y restaura el desplazamiento cuando la tabla termina de cargar.
+Sin contexto guardado vuelve a `/catalog`. La URL del catálogo sí conserva sus
+filtros para permitir compartir búsquedas.
+
+General ofrece diez paletas: verde, azul, violeta, rosa, naranja, cian, índigo,
+púrpura, lima y amarillo. El selector Claro/Oscuro se guarda en `eplsync:scheme`
+(oscuro por defecto); `eplsync:palette` conserva el color en este navegador. Cambian los colores de
+Mantine y los tonos de la interfaz; errores y acciones destructivas mantienen sus
+colores semánticos. La configuración del servidor sigue en Docker/Spring.
+
+Torrent consulta `GET /api/torrent/client/connection` únicamente al pulsar
+«Comprobar conexión», sin reintentos automáticos. Muestra si está habilitado,
+si conecta, cliente, autenticación y versiones, o el error correspondiente.
+No inicia descargas ni realiza sincronizaciones.
+
+
+## Navegación y descargas
+
+El lateral agrupa Biblioteca (Catálogo y Directorio) y Descargas (Estado, Enviar y
+Trabajos). El logo abre Inicio; no hay enlace Inicio ni eslogan. Ajustes está al
+pie, junto al plegado. General, Base de datos y Torrent son pestañas dentro de
+Ajustes, con rutas propias. La etiqueta accesible del idioma se conserva oculta
+para evitar repetirla visualmente.
+
+Todas las tablas permiten 10, 20, 50, 100, 200, 500 o 1000 elementos, con 20 por defecto.
+Cambiar el tamaño vuelve a la primera página. Directorio consulta valores distintos
+paginados en la base de datos y abre el catálogo filtrado. Autores y géneros
+compuestos se muestran como están guardados; no se normalizan ni se dividen.
+
+Estado lee historial y resumen locales. La sincronización se realiza solo al
+pulsar su botón y muestra los contadores de respuesta. Los registros se enlazan
+con sus fichas mediante EPL ID; pueden existir varias revisiones o destinos por
+libro. Una finalización registrada no equivale necesariamente al estado actual.
+
+Enviar tiene pestañas Individual y Múltiple. Cuando hay varios hashes se exige
+elegir uno. Las
+opciones omitidas heredan el servidor; categoría y etiquetas permiten una
+sobrescritura vacía explícita. Una ruta manual exige desactivar gestión automática.
+
+La previsualización múltiple consulta el catálogo sin enviar torrents. Se envían
+todos los libros que coinciden con los filtros aplicados, independientemente de
+la página mostrada en la tabla; sin filtros se requiere marcar el catálogo completo.
+Cambiar filtros exige previsualizar otra vez. La selección se recalcula al confirmar,
+por lo que no constituye una instantánea reservada. Los envíos desde esta vista requieren confirmación,
+no se reintentan automáticamente y advierten sobre resultados inciertos.
+
+Un envío múltiple abre su trabajo. Trabajos refresca la lista cada cinco segundos;
+el detalle y sus elementos cada tres segundos mientras no haya terminado. Pausar,
+reanudar y cancelar operan sobre envíos de EPL Sync, nunca sobre los torrents ya
+añadidos. Cancelar exige confirmación. El aviso de envío en curso sobrevive a la
+navegación; cerrar o recargar la pestaña puede perder la respuesta aunque el servidor
+termine el envío. El reinicio de base de datos limpia también las consultas de estas
+vistas y del directorio.
+
+
+El lateral desplegado ocupa 190 px. Su botón muestra «Plegar» al estar desplegado
+y conserva el nombre accesible y tooltip. Todos los iconos, incluido el logo,
+comparten un eje horizontal fijo a 38 px del borde izquierdo en ambos estados. El separador superior de Ajustes solo
+se muestra en escritorio con el lateral plegado. «Subir» flota fuera de las tablas
+y aparece tras desplazarse más de media pantalla (máximo 400 px), siempre que
+exista contenido desplazable; respeta la preferencia de movimiento reducido.
+Actualizar vista en Trabajos utiliza el color primario y confirma explícitamente
+la carga, éxito o error de la actualización manual. El refresco periódico no
+genera avisos de éxito.
+
+
+En la ficha, «Enviar a descargar» ejecuta directamente `POST /api/torrent/books/{id}`
+sin cuerpo ni confirmación adicional, heredando las opciones del servidor. Si hay
+varios hashes válidos, se exige elegir uno en la misma ficha y se envía únicamente
+`hash` en el cuerpo. El botón se bloquea durante el envío y muestra éxito, torrent
+ya existente o error, sin reintentos automáticos. «Abrir magnet» usa los enlaces
+del backend y abre el cliente asociado por el navegador; con varios enlaces
+muestra un menú. No se abre ningún protocolo magnet automáticamente.
+
+El título de una fila del catálogo navega dentro de la pestaña actual. Su flecha
+abre la ficha completa en un nuevo contexto (`target="_blank"`,
+`rel="noopener noreferrer"`), normalmente una pestaña según la configuración del
+navegador. Conserva menú lateral y «Volver al catálogo», con URL limpia.
+
+
+Las tablas incluyen un campo «Página» y un botón «Ir» para saltar directamente
+a cualquier página válida (numeración visible desde 1, API desde 0). Conservan
+los filtros y el tamaño seleccionado. El selector de tamaño no muestra check
+y dispone de espacio para «1000 por página». La ficha incluye «Ver en ePubLibre»
+con `https://www.epublibre.org/libro/detalle/{eplId}`, en otra pestaña. El favicon
+SVG utiliza el mismo libro abierto del logo provisional.

@@ -79,6 +79,22 @@ public class BulkWorker {
         synchronized (store) { advance(); }
     }
 
+    /** Called under the store monitor by maintenance; includes completed futures not yet persisted. */
+    public boolean hasInFlightSends() {
+        synchronized (store) { return !inFlight.isEmpty(); }
+    }
+
+    /** Clear cached selection only when no asynchronous send can write later. */
+    public void clearIdleState() {
+        synchronized (store) {
+            if (!inFlight.isEmpty()) throw new IllegalStateException("Hay envíos en curso");
+            buffer.clear(); activeId = null; submissionContext = null;
+            activeSelectedItems = 0; activeProcessedItems = 0; lastProgressCheckpoint = 0;
+            nextDispatch = 0;
+            store.notifyAll();
+        }
+    }
+
     private long advance() {
         if (!ready || closing) return IDLE_WAIT;
         try { return dispatch(); }

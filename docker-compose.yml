@@ -15,6 +15,7 @@ services:
       - ./logs:/app/logs
     environment:
       TZ: Europe/Madrid
+      EPLSYNC_UI_LANGUAGE: "${EPLSYNC_UI_LANGUAGE:-auto}"
       EPLSYNC_CATALOG_ZIPURL: "${EPLSYNC_CATALOG_ZIPURL}"
       EPLSYNC_TORRENT_ENABLED: "${EPLSYNC_TORRENT_ENABLED}"
       EPLSYNC_TORRENT_CLIENT: "${EPLSYNC_TORRENT_CLIENT}"

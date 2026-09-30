@@ -1,5 +1,14 @@
 # syntax=docker/dockerfile:1
 
+FROM node:24-alpine AS frontend
+
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY frontend/ ./
+RUN npm run build
+
+
 FROM eclipse-temurin:25-jdk-noble AS build
 
 WORKDIR /build
@@ -12,6 +21,7 @@ RUN --mount=type=cache,target=/root/.m2 \
     ./mvnw -B -ntp dependency:go-offline
 
 COPY backend/src/ src/
+COPY --from=frontend /frontend/dist/ src/main/resources/static/
 
 RUN --mount=type=cache,target=/root/.m2 \
     ./mvnw -B -ntp -Dmaven.test.skip=true package \

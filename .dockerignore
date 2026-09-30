@@ -1,4 +1,4 @@
-# Solo se envían al builder los archivos necesarios para compilar el backend.
+# Solo se envían al builder los archivos necesarios para compilar la aplicación.
 **
 !Dockerfile
 !backend/
@@ -9,6 +9,16 @@
 !backend/src/
 !backend/src/main/
 !backend/src/main/**
+!frontend/
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/index.html
+!frontend/tsconfig.json
+!frontend/vite.config.ts
+!frontend/src/
+!frontend/src/**
+!frontend/public/
+!frontend/public/**
 # No empaquetar perfiles locales, credenciales ni archivos de desarrollo.
 **/application*.properties
 **/application*.yml

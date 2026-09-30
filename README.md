@@ -23,12 +23,20 @@ docker compose up -d --build
 curl http://localhost:8088/actuator/health
 ```
 
-La imagen se compila sin instalar Java ni Maven en el host. El puerto por defecto
+Abre `http://localhost:8088` para acceder a la interfaz web (Inicio, catálogo y
+fichas de libros, mantenimiento y ajustes).
+
+La imagen compila React/TypeScript y Java sin instalar Node, Java ni Maven en el host. El puerto por defecto
 es `8088` (configurable con `HOST_PORT`); los datos y logs persisten en `data/`
 y `logs/`. La API no incluye autenticación: utiliza una red de confianza o un
 proxy con control de acceso.
 
 ## Primer uso
+
+Desde la interfaz, abre **Mantenimiento → Actualizar catálogo** para previsualizar
+e importar los libros. En `.env`, `EPLSYNC_UI_LANGUAGE=es` establece español como
+idioma predeterminado. El valor `auto` detecta el navegador; un idioma desconocido
+utiliza inglés.
 
 Importa o actualiza el catálogo:
 
