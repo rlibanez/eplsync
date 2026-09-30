@@ -107,4 +107,10 @@ public class CatalogBook {
 
     @Column(name = "links", columnDefinition = "TEXT")
     private String links;
+
+    @Column(name = "cover_url", columnDefinition = "TEXT")
+    private String coverUrl;
+
+    @Column(name = "cover_available")
+    private Boolean coverAvailable;
 }

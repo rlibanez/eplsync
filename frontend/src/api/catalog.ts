@@ -18,6 +18,8 @@ export interface Book {
   rating: number | null;
   votesCount: number | null;
   links: string | null;
+  coverUrl: string | null;
+  coverAvailable: boolean | null;
   download: {
     items: {
       id: string;

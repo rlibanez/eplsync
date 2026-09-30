@@ -1,3 +1,5 @@
+import type { Book } from "../../api/catalog";
+import { RepairCover } from "./RepairCover";
 import { useState } from "react";
 import {
   useIsMutating,
@@ -16,7 +18,8 @@ interface Sent {
   client: string;
   status: "ACCEPTED" | "ALREADY_EXISTS";
 }
-export function BookActions({ eplId }: { eplId: number }) {
+export function BookActions({ book }: { book: Book }) {
+  const { eplId } = book;
   const { t } = useTranslation();
   const cache = useQueryClient();
   const [hash, setHash] = useState<string | null>(null);
@@ -124,6 +127,7 @@ export function BookActions({ eplId }: { eplId: number }) {
         >
           {t("detail.epublibre")}
         </Button>
+        <RepairCover book={book} />
       </div>
       {magnets.isError && (
         <Alert color="yellow">

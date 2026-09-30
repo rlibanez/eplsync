@@ -86,7 +86,7 @@ public class CatalogBookCsvImporter {
         int unchanged = 0;
         int rowNumber = 1;
 
-        try (Reader reader = Files.newBufferedReader(csvPath)) {
+        try (Reader reader = new CoverCsvReader(Files.newBufferedReader(csvPath))) {
 
             var parser = new CsvToBeanBuilder<CatalogBookCsvRow>(reader)
                     .withType(CatalogBookCsvRow.class)
@@ -123,6 +123,8 @@ public class CatalogBookCsvImporter {
                             .rating(row.getRating())
                             .votesCount(row.getVotesCount())
                             .links(row.getLinks())
+                            .coverUrl(row.getCoverUrl() == null || row.getCoverUrl().isBlank()
+                                    ? null : row.getCoverUrl().strip())
                             .build();
 
                     if (entity.getEplId() == null || entity.getRevision() == null
@@ -154,6 +156,9 @@ public class CatalogBookCsvImporter {
                     }
                     created++;
                 } else {
+                    if (Objects.equals(existing.getCoverUrl(), entity.getCoverUrl())) {
+                        entity.setCoverAvailable(existing.getCoverAvailable());
+                    }
                     var changedFields = changedFields(existing, entity);
                     if (changedFields.isEmpty()) {
                         unchanged++;
@@ -214,6 +219,7 @@ public class CatalogBookCsvImporter {
         if (!Objects.equals(a.getRating(), b.getRating())) fields.add("rating");
         if (!Objects.equals(a.getVotesCount(), b.getVotesCount())) fields.add("votesCount");
         if (!Objects.equals(a.getLinks(), b.getLinks())) fields.add("links");
+        if (!Objects.equals(a.getCoverUrl(), b.getCoverUrl())) fields.add("coverUrl");
         return List.copyOf(fields);
     }
 }

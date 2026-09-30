@@ -1,3 +1,4 @@
+import { BookCover } from "./BookCover";
 import { PageJump } from "../../components/PageJump";
 import { useEffect } from "react";
 import { rememberCatalog } from "./navigation";
@@ -178,9 +179,7 @@ export function Catalog() {
                         to={`/catalog/${book.eplId}`}
                         state={{ catalogSearch: search.toString() }}
                       >
-                        <span className="mini-book">
-                          <BookOpen size={18} />
-                        </span>
+                        <BookCover book={book} />
                         <span>
                           {book.title}
                           <small>EPL {book.eplId}</small>

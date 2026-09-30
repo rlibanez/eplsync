@@ -56,6 +56,12 @@ logging:
 eplsync:
   catalog:
     zip-url: "https://epublibre.org/rssweb/csv/epub.zip"
+    cover-check:
+      # Debe cumplirse connect-timeout ≤ request-timeout ≤ batch-timeout:
+      connect-timeout: 3s # Límite para establecer una conexión HTTP.
+      request-timeout: 3s # Presupuesto por URL, incluyendo sus redirecciones.
+      batch-timeout: 4s # Límite total del grupo paralelo. >= request-timeout.
+      concurrency: 4 # URLs simultáneas (1–32).
 
   torrent:
     trackers:

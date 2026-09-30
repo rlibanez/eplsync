@@ -105,7 +105,9 @@
     "magnetError": "No se pudo obtener el enlace magnet.",
     "sent": "Libro enviado al cliente torrent con las opciones del servidor. La descarga puede seguir en curso.",
     "alreadySent": "El torrent ya existe en el cliente.",
-    "epublibre": "Ver en ePubLibre"
+    "epublibre": "Ver en ePubLibre",
+    "cover": "Portada de {{title}}",
+    "openCover": "Abrir portada de {{title}} en una nueva pestaña"
   },
   "feedback": {
     "loading": "Cargando catálogo…",
@@ -194,7 +196,8 @@
     "appearance": "Aspecto",
     "scheme": "Modo de color",
     "light": "Claro",
-    "dark": "Oscuro"
+    "dark": "Oscuro",
+    "covers": "Portadas"
   },
   "import": {
     "description": "Descarga el catálogo de ePubLibre y crea o actualiza tu biblioteca local.",
@@ -409,5 +412,75 @@
     "of": "de {{total}}",
     "go": "Ir",
     "records": "{{total}} elementos"
+  },
+  "covers": {
+    "title": "Comprobar portadas",
+    "description": "Comprueba las portadas del catálogo. Los resultados concluyentes se guardan y las portadas no encontradas se sustituyen por una portada alternativa. Los fallos temporales conservan el estado anterior.",
+    "parametersNote": "Estos valores solo se aplican a esta ejecución; no cambian la configuración del servidor.",
+    "parameters": "Parámetros de comprobación",
+    "connectTimeoutMs": "Tiempo de conexión (segundos)",
+    "requestTimeoutMs": "Tiempo por portada (segundos)",
+    "batchTimeoutMs": "Tiempo por grupo (segundos)",
+    "connectTimeoutMsHelp": "Límite para establecer una conexión nueva.",
+    "requestTimeoutMsHelp": "Presupuesto por portada, incluidas las redirecciones.",
+    "batchTimeoutMsHelp": "Límite del grupo de peticiones simultáneas.",
+    "concurrency": "Comprobaciones simultáneas",
+    "concurrencyHelp": "Entre 1 y 32. Más peticiones pueden provocar límites del servidor remoto.",
+    "invalidOptions": "Usa tiempos entre 0,001 y 300 segundos, con conexión ≤ portada ≤ grupo, y entre 1 y 32 comprobaciones simultáneas.",
+    "dryRun": "Solo comprobar, sin guardar cambios",
+    "start": "Comprobar catálogo",
+    "restoreDefaults": "Restaurar valores del servidor",
+    "startError": "No se ha podido confirmar el inicio. Consulta el estado antes de volver a intentarlo; puede haber otra comprobación en curso.",
+    "statusError": "No se ha podido consultar el estado de la tarea.",
+    "retryStatus": "Actualizar estado",
+    "running": "Comprobando portadas",
+    "states": {
+      "RUNNING": "Comprobación en curso",
+      "COMPLETED": "Comprobación completada",
+      "FAILED": "La comprobación no ha terminado"
+    },
+    "testMode": "Modo prueba: no se guardan cambios.",
+    "saveMode": "Modo reparación: se guardan los resultados concluyentes.",
+    "progress": "Progreso de portadas",
+    "progressCount": "{{checked}} de {{total}} libros comprobados",
+    "finishing": "Finalizando y preparando el resumen…",
+    "background": "Puedes salir de esta vista o cerrar el navegador: el servidor continúa trabajando. La tarea y su resumen se conservan hasta reiniciar el servidor.",
+    "taskError": "La tarea no pudo completarse. Puede haber otra comprobación o un mantenimiento en curso. Consulta el log del servidor antes de volver a intentarlo.",
+    "summary": {
+      "checked": "Comprobados",
+      "available": "Disponibles",
+      "unavailable": "No encontrados",
+      "inconclusive": "Sin determinar",
+      "wouldChange": "Cambios propuestos",
+      "updated": "Cambios guardados"
+    },
+    "repair": "Reparar portada",
+    "alreadyAlternative": "Este libro ya utiliza la portada alternativa.",
+    "repaired": "Se ha activado la portada alternativa.",
+    "repairError": "No se ha podido completar la comprobación. No se ha confirmado ningún cambio.",
+    "forceDescription": "Si la imagen no es correcta, puedes marcar la portada original como no disponible y usar la portada alternativa. Se conservará la URL original.",
+    "force": "Usar portada alternativa",
+    "close": "Cerrar",
+    "forceError": "No se ha podido confirmar el cambio. La portada puede haber cambiado; actualiza la vista antes de volver a intentarlo.",
+    "reasons": {
+      "AVAILABLE": "El servidor indica que la imagen está disponible, por lo que no se ha marcado como no encontrada.",
+      "TIMEOUT": "El servidor no respondió dentro del tiempo permitido. No se ha podido determinar si la portada existe.",
+      "TIMEOUT_OR_NETWORK_ERROR": "La comprobación agotó el tiempo disponible o hubo un problema de conexión.",
+      "NETWORK_ERROR": "No se pudo conectar con el servidor de la imagen.",
+      "HTTP_ERROR": "El servidor respondió con HTTP {{status}}. Esa respuesta no confirma que la portada no exista.",
+      "NOT_AN_IMAGE": "El servidor no identificó la respuesta como una imagen. El resultado no es concluyente.",
+      "INVALID_URL": "La URL de la portada no se puede comprobar.",
+      "INVALID_REDIRECT": "El servidor devolvió una redirección que no se puede seguir.",
+      "TOO_MANY_REDIRECTS": "Se alcanzó el límite de redirecciones sin un resultado concluyente.",
+      "INTERRUPTED": "La comprobación fue interrumpida.",
+      "CONCURRENT_CHANGE": "La portada cambió durante la comprobación. Actualiza la vista antes de volver a intentarlo.",
+      "CHECK_ERROR": "No se pudo completar la comprobación. No se ha confirmado que la portada falle.",
+      "UNKNOWN": "No se ha podido confirmar que la portada no esté disponible.",
+      "NO_COVER": "No se encontró una URL de portada para comprobar. Actualiza la vista para consultar el estado actual del libro."
+    },
+    "includeReviewed": "Incluir portadas ya revisadas",
+    "includeReviewedHelp": "Desactívalo para comprobar únicamente portadas sin revisar.",
+    "scopeUnchecked": "Alcance: solo portadas sin revisar.",
+    "scopeAll": "Alcance: todas las portadas."
   }
 }

@@ -151,4 +151,67 @@ class CatalogImportTests {
                 .isInstanceOf(IOException.class);
         assertThat(repository.existsById(1L)).isTrue();
     }
+
+    @Test
+    void importsOptionalCoversAndRepairsOnlyExtraUrlQuoteIncludingMultilineRecords() throws Exception {
+        Path file = Files.writeString(directory.resolve("covers.csv"), """
+                "EPL Id","Revisión","Autor","Título","Sinopsis","Portada"
+                "1","1","Autor","Uno","Texto","https://example.org/1.jpg"
+                "2","1","Autor","Dos","Texto","https://example.org/2.jpg""
+                "3","1","Autor","Tres","Texto",""
+                "4","1","Autor","Cuatro","Texto","   "
+                "5","1","Autor","Cinco","Primera línea
+                Segunda línea con ""comillas""\","https://example.org/5.jpg""
+                "6","1","Autor","Seis","Texto","https://example.org/6.jpg"
+                """.replace("\n", "\r\n"));
+        var preview = importer.previewFile(file, 0, 20);
+        assertThat(preview.summary().errors()).isZero();
+        assertThat(preview.createdBooks()).extracting("coverUrl").containsExactly(
+                "https://example.org/1.jpg", "https://example.org/2.jpg", null, null,
+                "https://example.org/5.jpg", "https://example.org/6.jpg");
+        assertThat(importer.importFile(file, false))
+                .isEqualTo(new CatalogBookCsvImporter.ImportStats(6, 0, 0, 6, 0));
+        assertThat(repository.findById(5L).orElseThrow().getSynopsis())
+                .contains("Primera línea\nSegunda línea con \"comillas\"");
+        assertThat(repository.findById(2L).orElseThrow().getCoverUrl()).isEqualTo("https://example.org/2.jpg");
+        assertThat(repository.findById(3L).orElseThrow().getCoverUrl()).isNull();
+    }
+
+    @Test
+    void coverChangesAppearInPreviewAndMissingColumnClearsStoredCover() throws Exception {
+        Path file = Files.writeString(directory.resolve("covers.csv"),
+                "EPL Id,Revisión,Autor,Título,Portada\n1,1,Autor,Original,https://example.org/1.jpg\n");
+        importer.importFile(file, false);
+        var checked = repository.findById(1L).orElseThrow();
+        checked.setCoverAvailable(false);
+        repository.saveAndFlush(checked);
+        assertThat(importer.importFile(file, false).unchanged()).isEqualTo(1);
+        assertThat(repository.findById(1L).orElseThrow().getCoverAvailable()).isFalse();
+        Path sameUrl = Files.writeString(directory.resolve("same-url.csv"),
+                "EPL Id,Revisión,Autor,Título,Portada\n1,2,Autor,Original,https://example.org/1.jpg\n");
+        importer.importFile(sameUrl, false);
+        assertThat(repository.findById(1L).orElseThrow().getCoverAvailable()).isFalse();
+        importer.importFile(file, false);
+        Path changed = Files.writeString(directory.resolve("changed.csv"),
+                "EPL Id,Revisión,Autor,Título,Portada\n1,1,Autor,Original,https://example.org/2.jpg\n");
+        var preview = importer.previewFile(changed, 0, 20);
+        assertThat(preview.updatedBooks().getFirst().changedFields()).containsExactly("coverUrl");
+        assertThat(repository.findById(1L).orElseThrow().getCoverUrl()).endsWith("/1.jpg");
+        assertThat(importer.importFile(changed, false).updated()).isEqualTo(1);
+        assertThat(repository.findById(1L).orElseThrow().getCoverUrl()).endsWith("/2.jpg");
+        assertThat(repository.findById(1L).orElseThrow().getCoverAvailable()).isNull();
+        importer.importFile(csv("1,1,Autor,Original\n2,1,Autor,Nuevo\n"), false);
+        assertThat(repository.findAll()).allSatisfy(book -> assertThat(book.getCoverUrl()).isNull());
+    }
+
+    @Test
+    void legacyQuotedEmptyAndEscapedFinalFieldsAreUnchanged() throws Exception {
+        Path file = Files.writeString(directory.resolve("legacy.csv"), """
+                "EPL Id","Revisión","Autor","Título","Sinopsis"
+                "1","1","Autor","Uno",""
+                "2","1","Autor","Dos","Termina en ""comillas""\"
+                """ );
+        assertThat(importer.importFile(file, false).processed()).isEqualTo(2);
+        assertThat(repository.findById(2L).orElseThrow().getSynopsis()).isEqualTo("Termina en \"comillas\"");
+    }
 }

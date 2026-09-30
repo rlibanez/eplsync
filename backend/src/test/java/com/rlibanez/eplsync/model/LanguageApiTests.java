@@ -33,7 +33,8 @@ class LanguageApiTests {
     @Test
     void bookEndpointReturnsCodeAndSearchBindsCodesAndLegacyNames() throws Exception {
         var service = mock(CatalogBookService.class);
-        var book = CatalogBook.builder().eplId(32L).language(Language.ESPANOL).build();
+        var book = CatalogBook.builder().eplId(32L).language(Language.ESPANOL).coverUrl("https://example.org/32.jpg")
+                .coverAvailable(false).build();
         when(service.getByEplId(32L)).thenReturn(Optional.of(book));
         when(service.searchAll(any())).thenReturn(List.of(book));
         var conversion = new DefaultFormattingConversionService();
@@ -44,14 +45,24 @@ class LanguageApiTests {
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         mvc.perform(get("/api/catalog/books/32")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.language").value("es"));
+                .andExpect(jsonPath("$.language").value("es"))
+                .andExpect(jsonPath("$.coverUrl").value("https://example.org/32.jpg"))
+                .andExpect(jsonPath("$.coverAvailable").value(false));
         for (String value : List.of("es", "ESPANOL")) {
             mvc.perform(get("/api/catalog/books").param("language", value)).andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].language").value("es"));
+                    .andExpect(jsonPath("$[0].language").value("es"))
+                    .andExpect(jsonPath("$[0].coverUrl").value("https://example.org/32.jpg"));
         }
         var captor = org.mockito.ArgumentCaptor.forClass(CatalogBookFilter.class);
         verify(service, times(2)).searchAll(captor.capture());
         assertThat(captor.getAllValues()).allSatisfy(filter -> assertThat(filter.getLanguage()).isEqualTo(Language.ESPANOL));
+        when(service.search(any(), any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(book)));
+        mvc.perform(get("/api/catalog/books").param("page", "0").param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].coverUrl").value("https://example.org/32.jpg"));
+        book.setCoverUrl(null);
+        mvc.perform(get("/api/catalog/books/32")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.coverUrl").value(org.hamcrest.Matchers.nullValue()));
         mvc.perform(get("/api/catalog/books").param("language", "invalid")).andExpect(status().isBadRequest());
     }
 }

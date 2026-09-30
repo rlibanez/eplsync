@@ -12,6 +12,32 @@ import com.rlibanez.eplsync.model.CatalogBook;
 @Repository
 public interface CatalogBookRepository extends JpaRepository<CatalogBook, Long>, JpaSpecificationExecutor<CatalogBook> {
 
+    interface CoverIdentity {
+        Long getEplId();
+        String getCoverUrl();
+        Boolean getCoverAvailable();
+    }
+
+    @org.springframework.data.jpa.repository.Query("select b.eplId as eplId, b.coverUrl as coverUrl, "
+            + "b.coverAvailable as coverAvailable from CatalogBook b where b.eplId > :afterId "
+            + "and (:eplId is null or b.eplId = :eplId) "
+            + "and b.coverUrl is not null and trim(b.coverUrl) <> '' "
+            + "and (:onlyUnchecked = false or b.coverAvailable is null) order by b.eplId")
+    java.util.List<CoverIdentity> findCovers(long afterId, Long eplId, boolean onlyUnchecked,
+            org.springframework.data.domain.Pageable pageable);
+
+    @org.springframework.data.jpa.repository.Query("select count(b) from CatalogBook b where b.eplId > :afterId "
+            + "and (:eplId is null or b.eplId = :eplId) "
+            + "and b.coverUrl is not null and trim(b.coverUrl) <> '' "
+            + "and (:onlyUnchecked = false or b.coverAvailable is null)")
+    long countCovers(long afterId, Long eplId, boolean onlyUnchecked);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("update CatalogBook b set b.coverAvailable = :available "
+            + "where b.eplId = :id and b.coverUrl = :url "
+            + "and (b.coverAvailable = :previous or (b.coverAvailable is null and :previous is null))")
+    int updateCoverAvailability(long id, String url, Boolean previous, boolean available);
+
     interface TorrentIdentity {
         Long getEplId();
         Double getRevision();

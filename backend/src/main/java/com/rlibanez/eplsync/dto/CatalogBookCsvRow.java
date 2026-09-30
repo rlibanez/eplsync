@@ -56,4 +56,7 @@ public class CatalogBookCsvRow {
 
     @CsvBindByName(column = "Enlace(s)")
     private String links;
+
+    @CsvBindByName(column = "Portada")
+    private String coverUrl;
 }

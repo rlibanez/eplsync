@@ -28,6 +28,8 @@ public record CatalogBookResponse(
         Double rating,
         Integer votesCount,
         String links,
+        String coverUrl,
+        Boolean coverAvailable,
         Download download) {
     public record Download(List<DownloadItem> items) {}
     public record DownloadItem(String id, Double revision, DownloadStatus status, boolean completed) {}
@@ -51,6 +53,6 @@ public record CatalogBookResponse(
                 book.getStatus(),
                 book.getRating(),
                 book.getVotesCount(),
-                book.getLinks(), download);
+                book.getLinks(), book.getCoverUrl(), book.getCoverAvailable(), download);
     }
 }

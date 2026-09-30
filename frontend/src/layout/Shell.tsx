@@ -1,3 +1,4 @@
+import { CoverActivity } from "../features/catalog/CoverActivity";
 import { BackToTop } from "../components/BackToTop";
 import { TorrentActivity } from "../features/downloads/TorrentActivity";
 import { PreferencesProvider, usePreferences } from "./Preferences";
@@ -159,6 +160,7 @@ function ShellContent() {
       </aside>
       <main id="main" tabIndex={-1}>
         <TorrentActivity />
+        <CoverActivity />
         <Outlet />
       </main>
       <BackToTop hidden={open} />

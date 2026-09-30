@@ -31,6 +31,13 @@ export const router = createBrowserRouter([
             }),
           },
           {
+            path: "covers",
+            lazy: async () => ({
+              Component: (await import("../features/settings/CoverSettings"))
+                .CoverSettings,
+            }),
+          },
+          {
             path: "torrent",
             lazy: async () => ({
               Component: (await import("../features/settings/TorrentSettings"))

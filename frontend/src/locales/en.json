@@ -105,7 +105,9 @@
     "magnetError": "Could not retrieve the magnet link.",
     "sent": "Book submitted to the torrent client using server defaults. The download may still be in progress.",
     "alreadySent": "The torrent already exists in the client.",
-    "epublibre": "View on ePubLibre"
+    "epublibre": "View on ePubLibre",
+    "cover": "Cover of {{title}}",
+    "openCover": "Open cover of {{title}} in a new tab"
   },
   "feedback": {
     "loading": "Loading catalog…",
@@ -194,7 +196,8 @@
     "appearance": "Appearance",
     "scheme": "Color mode",
     "light": "Light",
-    "dark": "Dark"
+    "dark": "Dark",
+    "covers": "Covers"
   },
   "import": {
     "description": "Download the ePubLibre catalog and create or update your local library.",
@@ -409,5 +412,75 @@
     "of": "of {{total}}",
     "go": "Go",
     "records": "{{total}} items"
+  },
+  "covers": {
+    "title": "Check covers",
+    "description": "Check catalog covers. Conclusive results are saved and missing covers use an alternative cover. Temporary errors preserve the previous state.",
+    "parametersNote": "These values apply only to this run; they do not change the server configuration.",
+    "parameters": "Check parameters",
+    "connectTimeoutMs": "Connection timeout (seconds)",
+    "requestTimeoutMs": "Cover timeout (seconds)",
+    "batchTimeoutMs": "Group timeout (seconds)",
+    "connectTimeoutMsHelp": "Time limit for establishing a new connection.",
+    "requestTimeoutMsHelp": "Time budget per cover, including redirects.",
+    "batchTimeoutMsHelp": "Time limit for a group of simultaneous requests.",
+    "concurrency": "Simultaneous checks",
+    "concurrencyHelp": "Between 1 and 32. More requests may trigger remote server limits.",
+    "invalidOptions": "Use times between 0.001 and 300 seconds, with connection ≤ cover ≤ group, and between 1 and 32 simultaneous checks.",
+    "dryRun": "Check only, without saving changes",
+    "start": "Check catalog",
+    "restoreDefaults": "Restore server defaults",
+    "startError": "Could not confirm the task started. Check its status before trying again; another check may already be running.",
+    "statusError": "Could not retrieve task status.",
+    "retryStatus": "Refresh status",
+    "running": "Checking covers",
+    "states": {
+      "RUNNING": "Check in progress",
+      "COMPLETED": "Check completed",
+      "FAILED": "Check did not complete"
+    },
+    "testMode": "Preview mode: changes are not saved.",
+    "saveMode": "Repair mode: conclusive results are saved.",
+    "progress": "Cover progress",
+    "progressCount": "{{checked}} of {{total}} books checked",
+    "finishing": "Finishing and preparing the summary…",
+    "background": "You can leave this view or close the browser: the server keeps working. The task and summary are retained until the server restarts.",
+    "taskError": "The task could not complete. Another check or maintenance operation may be running. Check the server log before trying again.",
+    "summary": {
+      "checked": "Checked",
+      "available": "Available",
+      "unavailable": "Not found",
+      "inconclusive": "Undetermined",
+      "wouldChange": "Proposed changes",
+      "updated": "Saved changes"
+    },
+    "repair": "Repair cover",
+    "alreadyAlternative": "This book already uses the alternative cover.",
+    "repaired": "The alternative cover has been enabled.",
+    "repairError": "Could not complete the check. No change has been confirmed.",
+    "forceDescription": "If the image is incorrect, you can mark the original cover as unavailable and use the alternative cover. The original URL will be preserved.",
+    "force": "Use alternative cover",
+    "close": "Close",
+    "forceError": "Could not confirm the change. The cover may have changed; refresh the view before trying again.",
+    "reasons": {
+      "AVAILABLE": "The server reports an available image, so the cover was not marked as missing.",
+      "TIMEOUT": "The server did not respond within the time limit. Cover availability could not be determined.",
+      "TIMEOUT_OR_NETWORK_ERROR": "The check timed out or encountered a connection problem.",
+      "NETWORK_ERROR": "Could not connect to the image server.",
+      "HTTP_ERROR": "The server returned HTTP {{status}}. This does not confirm that the cover is missing.",
+      "NOT_AN_IMAGE": "The server did not identify the response as an image. The result is inconclusive.",
+      "INVALID_URL": "The cover URL cannot be checked.",
+      "INVALID_REDIRECT": "The server returned a redirect that cannot be followed.",
+      "TOO_MANY_REDIRECTS": "The redirect limit was reached without a conclusive result.",
+      "INTERRUPTED": "The check was interrupted.",
+      "CONCURRENT_CHANGE": "The cover changed during the check. Refresh the view before trying again.",
+      "CHECK_ERROR": "Could not complete the check. The cover has not been confirmed as unavailable.",
+      "UNKNOWN": "The cover could not be confirmed as unavailable.",
+      "NO_COVER": "No cover URL was found to check. Refresh the view to see the current book state."
+    },
+    "includeReviewed": "Include previously checked covers",
+    "includeReviewedHelp": "Turn this off to check only covers that have not been reviewed.",
+    "scopeUnchecked": "Scope: unchecked covers only.",
+    "scopeAll": "Scope: all covers."
   }
 }

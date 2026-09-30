@@ -1,0 +1,216 @@
+import { useState } from "react";
+import { Alert, Button, Checkbox, NumberInput, Progress } from "@mantine/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { get } from "../../api/catalog";
+import { post } from "../downloads/shared";
+import { Loading, Failure } from "../../components/Feedback";
+import {
+  type CoverOptions,
+  type CoverTask,
+  useCoverTask,
+} from "../catalog/coverApi";
+
+export function CoverSettings() {
+  const defaults = useQuery({
+    queryKey: ["cover-config"],
+    queryFn: ({ signal }) =>
+      get<CoverOptions>("/catalog/covers/config", signal),
+  });
+  if (defaults.isPending) return <Loading />;
+  if (defaults.isError)
+    return <Failure error={defaults.error} retry={() => defaults.refetch()} />;
+  return <CoverSettingsForm defaults={defaults.data} />;
+}
+
+function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
+  const { t } = useTranslation();
+  const cache = useQueryClient();
+  const [options, setOptions] = useState(defaults);
+  const [dryRun, setDryRun] = useState(false);
+  const [includeReviewed, setIncludeReviewed] = useState(true);
+  const status = useCoverTask();
+  const task = status.data?.task;
+  const start = useMutation({
+    retry: false,
+    mutationFn: () =>
+      post<CoverTask>("/catalog/covers/task", {
+        dryRun,
+        onlyUnchecked: !includeReviewed,
+        options,
+      }),
+    onSuccess: (task) => cache.setQueryData(["cover-task"], { task }),
+    onError: () => {
+      void status.refetch();
+    },
+  });
+  const busy = start.isPending || task?.state === "RUNNING";
+  const displayedOptions = task?.state === "RUNNING" ? task.options : options;
+  const valid =
+    Number.isInteger(options.concurrency) &&
+    options.concurrency >= 1 &&
+    options.concurrency <= 32 &&
+    options.connectTimeoutMs >= 1 &&
+    options.connectTimeoutMs <= options.requestTimeoutMs &&
+    options.requestTimeoutMs <= options.batchTimeoutMs &&
+    options.batchTimeoutMs <= 300000;
+  return (
+    <section className="panel settings-section">
+      <h2>{t("covers.title")}</h2>
+      <p>{t("covers.description")}</p>
+      <p className="muted">{t("covers.parametersNote")}</p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (valid && !busy) start.mutate();
+        }}
+      >
+        <fieldset disabled={busy} className="cover-controls">
+          <legend className="sr-only">{t("covers.parameters")}</legend>
+          {(
+            ["connectTimeoutMs", "requestTimeoutMs", "batchTimeoutMs"] as const
+          ).map((key) => (
+            <NumberInput
+              key={key}
+              label={t(`covers.${key}`)}
+              aria-label={t(`covers.${key}`)}
+              description={t(`covers.${key}Help`)}
+              value={displayedOptions[key] / 1000}
+              min={0.001}
+              max={300}
+              step={1}
+              decimalScale={3}
+              required
+              onChange={(value) =>
+                setOptions((old) => ({
+                  ...old,
+                  [key]:
+                    typeof value === "number" ? Math.round(value * 1000) : 0,
+                }))
+              }
+            />
+          ))}
+          <NumberInput
+            label={t("covers.concurrency")}
+            aria-label={t("covers.concurrency")}
+            description={t("covers.concurrencyHelp")}
+            value={displayedOptions.concurrency}
+            min={1}
+            max={32}
+            allowDecimal={false}
+            required
+            onChange={(value) =>
+              setOptions((old) => ({
+                ...old,
+                concurrency: typeof value === "number" ? value : 0,
+              }))
+            }
+          />
+        </fieldset>
+        {!valid && <p role="alert">{t("covers.invalidOptions")}</p>}
+        <Checkbox
+          className="cover-scope"
+          label={t("covers.includeReviewed")}
+          description={t("covers.includeReviewedHelp")}
+          checked={
+            task?.state === "RUNNING" ? !task.onlyUnchecked : includeReviewed
+          }
+          disabled={busy}
+          onChange={(event) => setIncludeReviewed(event.currentTarget.checked)}
+        />
+        <Checkbox
+          label={t("covers.dryRun")}
+          checked={task?.state === "RUNNING" ? task.dryRun : dryRun}
+          disabled={busy}
+          onChange={(event) => setDryRun(event.currentTarget.checked)}
+        />
+        <div className="action-row cover-start">
+          <Button
+            type="submit"
+            disabled={!valid || busy || status.isPending || status.isError}
+            loading={start.isPending}
+          >
+            {t("covers.start")}
+          </Button>
+          <Button
+            variant="default"
+            disabled={busy}
+            onClick={() => setOptions(defaults)}
+          >
+            {t("covers.restoreDefaults")}
+          </Button>
+        </div>
+      </form>
+      {start.isError && (
+        <Alert color="red" role="alert">
+          {t("covers.startError")}
+        </Alert>
+      )}
+      {status.isError && (
+        <Alert color="red" role="alert">
+          <p>{t("covers.statusError")}</p>
+          <Button variant="light" onClick={() => void status.refetch()}>
+            {t("covers.retryStatus")}
+          </Button>
+        </Alert>
+      )}
+      {task && (
+        <div className="cover-task-result" aria-live="polite">
+          <h3>{t(`covers.states.${task.state}`)}</h3>
+          <p>{t(task.dryRun ? "covers.testMode" : "covers.saveMode")}</p>
+          <p>
+            {t(
+              task.onlyUnchecked ? "covers.scopeUnchecked" : "covers.scopeAll",
+            )}
+          </p>
+          {task.state === "RUNNING" && (
+            <>
+              <Progress
+                value={
+                  task.total
+                    ? Math.min(100, (task.checked * 100) / task.total)
+                    : 0
+                }
+                aria-label={t("covers.progress")}
+              />
+              <p>
+                {t("covers.progressCount", {
+                  checked: task.checked,
+                  total: task.total,
+                })}
+              </p>
+              {task.total > 0 && task.checked >= task.total && (
+                <p>{t("covers.finishing")}</p>
+              )}
+              <p className="muted">{t("covers.background")}</p>
+            </>
+          )}
+          {task.state === "FAILED" && (
+            <Alert color="red" role="alert">
+              {t("covers.taskError")}
+            </Alert>
+          )}
+          {task.summary && (
+            <dl className="cover-summary">
+              {(
+                [
+                  "checked",
+                  "available",
+                  "unavailable",
+                  "inconclusive",
+                  "wouldChange",
+                  "updated",
+                ] as const
+              ).map((key) => (
+                <div key={key}>
+                  <dt>{t(`covers.summary.${key}`)}</dt>
+                  <dd>{task.summary![key]}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}

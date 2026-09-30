@@ -231,10 +231,61 @@ Campos del modelo utilizables para ordenar:
 eplId, revision, author, title, genres, collection, volume,
 publicationYear, synopsis, pages, language, publicationStatus,
 publicationDate, insertDate, lastModifiedDate, status,
-rating, votesCount, links
+rating, votesCount, links, coverUrl
 ```
 
 `download` es información añadida a la respuesta, no un campo persistido para ordenar.
+
+El detalle y los listados incluyen `coverUrl`: URL importada de la columna
+opcional `Portada` del CSV, o `null` si no hay valor. La API no calcula una URL
+alternativa ni descarga imágenes. El frontend usa la portada de ePubLibre por ID
+cuando `coverUrl` está ausente.
+
+También se expone `coverAvailable` (`true`, `false` o `null`). El frontend usa
+ePubLibre si es `false`; conserva la URL original en la respuesta y en la BD.
+
+### Comprobación de portadas
+
+| Método | Endpoint | Resultado |
+| --- | --- | --- |
+| GET | `/api/catalog/covers/check` | Comprueba el catálogo seleccionado y devuelve resultados, sin escribir en BD. |
+| POST | `/api/catalog/covers/check` | Comprueba el catálogo seleccionado y guarda disponibilidad concluyente. |
+
+Parámetros compartidos: `eplId` opcional, `size` opcional (entero positivo),
+`afterId=0` y `onlyUnchecked=true`. **Sin `size` recorre todo el catálogo seleccionado**,
+sin límite total. Para comprobar también estados ya guardados, usar
+`onlyUnchecked=false`. Si se indica `size`, limita los libros comprobados y permite
+continuar con `afterId=nextAfterId` mientras `hasMore=true`.
+
+Ejemplo completo sin escrituras, mostrando solo resultados no encontrados:
+`GET /api/catalog/covers/check?onlyUnchecked=false&coverAvailable=false`.
+
+La respuesta llega al terminar; una comprobación completa puede requerir una
+conexión HTTP de larga duración. POST realiza una nueva comprobación y guarda al
+final; no aplica una instantánea del GET anterior. HTTP 409 indica que otra
+comprobación está en curso.
+
+Solo GET: `coverAvailable=true|false` filtra `items` por el resultado de la
+comprobación actual (no por el estado almacenado). Sin ese parámetro muestra todos.
+Los contadores y `nextAfterId`/`hasMore` corresponden al recorrido completo, aunque no
+haya coincidencias. `size` limita las comprobaciones, no los resultados filtrados.
+
+HTTP 200 con tipo imagen produce `true`; HTTP 404/410 produce `false`. Otros
+resultados no modifican el estado. No se borra `coverUrl` ni se guarda una fecha.
+La respuesta detalla estados previos, resultados, cambios propuestos y aplicados.
+Ver [comportamiento y ejemplos](catalogo.md#comprobar-disponibilidad-de-portadas).
+
+Para la interfaz de **Ajustes → Portadas**, `GET /api/catalog/covers/config` expone
+los valores iniciales; `POST /api/catalog/covers/task` inicia una tarea completa
+en segundo plano y `GET /api/catalog/covers/task` consulta su estado. El POST acepta
+`dryRun`, `onlyUnchecked` (ambos `false` por defecto en este endpoint de tareas)
+y `options` con `connectTimeoutMs`, `requestTimeoutMs`, `batchTimeoutMs`
+y `concurrency`, sin modificar la configuración global. La última tarea se conserva
+en memoria hasta reiniciar el servidor. Véase [gestión desde la interfaz](catalogo.md#gestión-de-portadas-desde-la-interfaz).
+
+`POST /api/catalog/covers/{eplId}/alternative`, con `{"expectedCoverUrl":"URL comprobada"}`,
+permite marcar explícitamente la portada como no disponible. Conserva su URL y
+rechaza con HTTP 409 una URL que haya cambiado desde la comprobación.
 
 ## 4. Magnets y exportación
 

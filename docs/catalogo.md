@@ -9,6 +9,220 @@ Las rutas y los comandos parten de la raíz del repositorio salvo que se indique
 Los tres modos descargan el ZIP oficial de ePubLibre. Admiten el parámetro
 opcional `url` para indicar otro ZIP mediante HTTP o HTTPS.
 
+El CSV admite la columna opcional `Portada`, con la URL de la imagen. Se guarda
+en `catalog_books.cover_url` y se expone como `coverUrl` en el detalle y los
+listados de libros. Si falta la columna o el valor está vacío, se guarda `null`,
+también al actualizar un libro que antes tenía portada. Los cambios de portada
+se incluyen en la previsualización como `coverUrl`.
+
+El importador corrige el defecto conocido de una comilla doble sobrante después
+de una URL HTTP/HTTPS entrecomillada en la última columna `Portada`. Conserva
+los campos vacíos (`""`), las comillas escapadas y las sinopsis multilínea.
+La corrección se aplica tanto a la importación como a la previsualización.
+
+La nueva columna nullable se añade al arrancar mediante la actualización de
+esquema existente; no hace falta reiniciar ni vaciar la base de datos.
+El frontend muestra la URL guardada y, solo si no existe, usa
+`https://images.epublibre.org/libros/{eplId}.jpg`. Las imágenes se cargan desde
+el navegador; si no se pueden cargar, se conserva el icono de libro. En el detalle,
+la portada enlaza a la imagen completa en una nueva pestaña.
+
+## Comprobar disponibilidad de portadas
+
+`coverAvailable` (`cover_available` en SQLite) es nullable: `true` indica una
+respuesta HTTP 200 de tipo imagen, `false` un HTTP 404/410, y `null` que aún no
+se ha comprobado. No se guarda fecha de comprobación. La URL original se conserva.
+El frontend utiliza ePubLibre cuando el estado es `false` o falta la URL; no
+realiza peticiones de validación durante la navegación. Un error temporal de una
+comprobación no modifica el estado anterior.
+
+```sh
+# Prueba de un libro, incluso si ya tenía un estado guardado: no escribe nada.
+curl -s 'http://localhost:8088/api/catalog/covers/check?eplId=2725&onlyUnchecked=false'
+
+# Comprueba de nuevo y guarda los resultados concluyentes de ese libro.
+curl -s -X POST 'http://localhost:8088/api/catalog/covers/check?eplId=2725&onlyUnchecked=false'
+
+# Primer lote de URLs sin comprobar.
+curl -s 'http://localhost:8088/api/catalog/covers/check?size=20'
+```
+
+Los dos métodos aceptan los mismos parámetros:
+
+| Parámetro | Predeterminado | Comportamiento |
+| --- | --- | --- |
+| `eplId` | Sin filtro | Restringe la comprobación a ese libro. |
+| `size` | Sin límite | Si se indica, limita el total de libros comprobados; entero positivo. |
+| `afterId` | `0` | Selecciona IDs mayores, en orden ascendente. |
+| `onlyUnchecked` | `true` | Selecciona solo estados `null`; `false` permite revisar cualquiera. |
+
+GET admite además `coverAvailable=true` o `coverAvailable=false` para mostrar
+solo resultados disponibles o no encontrados, respectivamente. Si se omite,
+se muestran todos, incluidos los inconcluyentes. Este filtro se aplica al resultado
+**recién comprobado**, no al estado almacenado en BD, y solo filtra `items`:
+los contadores y el cursor siguen describiendo todos los libros comprobados.
+
+```sh
+# Comprobar TODO el catálogo con URL, incluso estados ya guardados, sin escribir.
+# Mostrar únicamente los resultados no encontrados.
+curl -s 'http://localhost:8088/api/catalog/covers/check?coverAvailable=false&onlyUnchecked=false'
+```
+
+**Sin `size`, una llamada recorre automáticamente todos los libros seleccionados**,
+leyendo la base de datos en lotes internos pequeños. No hay límite total de libros.
+El GET sin parámetros comprueba todos los que tengan URL y estado `null`; para
+incluir los ya comprobados, usar `onlyUnchecked=false`. Al completar el recorrido,
+`hasMore=false` y `nextAfterId=null`.
+
+Si se especifica `size`, limita libros comprobados, no coincidencias del filtro:
+puede devolver `items: []` y `hasMore: true`. En ese caso se puede continuar con
+`afterId=nextAfterId` y los mismos filtros. El filtro de visualización es exclusivo
+del GET y no restringe las escrituras del POST.
+
+La petición es síncrona: devuelve el resumen y los detalles al terminar el recorrido.
+Con decenas de miles de URLs puede tardar mucho; el cliente o proxy debe permitir
+mantener la conexión abierta durante ese tiempo. No es un trabajo en segundo plano.
+POST guarda los resultados en una transacción después de completar las comprobaciones.
+Los libros sin URL se omiten. Para repetir exactamente la selección de un GET hay que usar sus mismos
+parámetros en el POST, no su cursor de continuación. POST vuelve a consultar las
+URLs: no aplica una instantánea previamente guardada por GET.
+
+La respuesta incluye `dryRun`, `checked`, `available`, `unavailable`,
+`inconclusive`, `wouldChange`, `updated`, `hasMore`, `nextAfterId` e `items`.
+Cada resultado contiene `eplId`, `coverUrl`, `previousAvailable`, `available`,
+`httpStatus`, `reason`, `wouldChange` y `updated`. En GET, `updated` siempre es cero
+y los elementos tienen `updated=false`. Un resultado inconcluyente tiene
+`available=null`; no significa que se vaya a borrar un estado previo.
+
+Se hacen GET externos (sin descargar deliberadamente el cuerpo completo), hasta
+cuatro en paralelo por defecto, con un máximo de tres redirecciones y presupuesto
+predeterminado de tres segundos por URL. Cada grupo tiene además un límite
+predeterminado de cuatro segundos.
+Las URLs repetidas se consultan una sola vez durante todo el recorrido de la petición. Solo puede ejecutarse una
+comprobación por instancia: otra petición concurrente recibe HTTP 409. Las consultas
+normales del catálogo continúan disponibles y no se mantiene una transacción de
+base de datos durante las peticiones externas.
+
+En el log del backend se registra a nivel INFO el inicio (modo prueba o escritura,
+filtros y total seleccionado), el progreso aproximadamente cada 10 % y un resumen
+final con disponibles, no encontrados, inconcluyentes, cambios propuestos/aplicados,
+URLs distintas consultadas y duración. El porcentaje cuenta libros, no URLs únicas,
+y usa el total al iniciar, respetando `size` y los filtros de selección. En catálogos
+que cambien durante la ejecución ese total es orientativo. En selecciones muy
+pequeñas los porcentajes pueden saltar más del 10 %; con cero candidatos solo hay
+inicio y resumen. El 100 % indica el fin de las comprobaciones; el resumen final
+del POST se escribe después de guardar. Las interrupciones y fallos también se registran.
+
+Los tiempos y la concurrencia se configuran en `backend/src/main/resources/application.yaml`:
+
+```yaml
+eplsync:
+  catalog:
+    cover-check:
+      connect-timeout: 3s
+      request-timeout: 3s
+      batch-timeout: 4s
+      concurrency: 4
+```
+
+- `connect-timeout`: tiempo máximo para establecer una conexión nueva.
+- `request-timeout`: presupuesto por URL, compartido por la validación del destino
+  y las peticiones que se hagan al seguir redirecciones. No se reinicia por redirección.
+- `batch-timeout`: límite externo del grupo paralelo, que cancela tareas pendientes,
+  incluso cuando todavía no han recibido cabeceras. El siguiente grupo espera a que
+  termine o venza el actual.
+- `concurrency`: número de URLs simultáneas, de 1 a 32. Aumentarlo puede reducir
+  duración, pero también aumentar los rechazos o límites del servidor remoto.
+
+Se admiten duraciones como `500ms`, `3s` o `1m`, entre 1 ms y 5 minutos, con
+`connect-timeout <= request-timeout <= batch-timeout`. Las configuraciones inválidas
+impiden el arranque con un error de validación. El log de inicio muestra los valores
+efectivos. Estos límites no son esperas obligatorias: una respuesta rápida termina
+antes. No hay reintentos automáticos ni aumentos progresivos del timeout.
+
+Para ampliar el presupuesto por URL a 10 segundos, habría que ampliar también
+`batch-timeout`, por ejemplo a 11 segundos; cambiar solo `request-timeout` no es
+válido si el límite del grupo sigue en 4 segundos. Los valores predeterminados no
+se han aumentado. Un cambio en el YAML empaquetado requiere reconstruir la imagen
+y reiniciar; también se pueden proporcionar estas variables en el entorno del contenedor:
+`EPLSYNC_CATALOG_COVERCHECK_CONNECTTIMEOUT`, `EPLSYNC_CATALOG_COVERCHECK_REQUESTTIMEOUT`,
+`EPLSYNC_CATALOG_COVERCHECK_BATCHTIMEOUT` y `EPLSYNC_CATALOG_COVERCHECK_CONCURRENCY`.
+
+### Gestión de portadas desde la interfaz
+
+En **Ajustes → Portadas** se puede iniciar la comprobación de todo el catálogo.
+«Incluir portadas ya revisadas» está activado por defecto (`onlyUnchecked=false`).
+Al desactivarlo, solo se comprueban portadas con estado `null` (`onlyUnchecked=true`). El formulario parte de los valores del
+servidor y permite cambiar los tres tiempos (en segundos) y la concurrencia
+**solo para esa ejecución**. Por defecto guarda los resultados concluyentes;
+«Solo comprobar, sin guardar cambios» permite hacer una prueba.
+
+La interfaz usa una tarea en segundo plano: no mantiene abierta una petición HTTP
+durante todo el catálogo. Muestra progreso y resumen, y permite salir de la vista
+o cerrar el navegador. Se admite una tarea a la vez y se conserva la última tarea
+en memoria hasta reiniciar el servidor; no se reanuda automáticamente tras un
+reinicio. Mientras está activa, el reinicio completo de la BD devuelve conflicto.
+Al terminar se actualizan las consultas del catálogo y del libro abierto.
+
+En el encabezado del detalle del libro, **Reparar portada** aparece como una acción
+de texto junto a los datos de la portada, separada de los botones de descarga. Comprueba ese libro y guarda el resultado
+concluyente. Si no se encuentra, la portada alternativa aparece sin recargar la
+página. Si la respuesta es positiva o inconcluyente, un diálogo explica el motivo
+y ofrece «Cerrar» o **Usar portada alternativa**. Esta última acción guarda
+`coverAvailable=false` sin borrar la URL. Se rechaza si la URL cambió desde la
+comprobación, para no modificar otra portada accidentalmente. Una comprobación
+posterior que encuentre la URL disponible puede volver a establecer `true`.
+Los textos de estas acciones no identifican el servidor de la portada alternativa.
+
+Endpoints utilizados por la interfaz:
+
+| Método | Ruta | Función |
+| --- | --- | --- |
+| GET | `/api/catalog/covers/config` | Valores predeterminados efectivos. |
+| POST | `/api/catalog/covers/task` | Inicia tarea completa; devuelve HTTP 202 con ID y estado. |
+| GET | `/api/catalog/covers/task` | Devuelve `{ "task": null }` o la última tarea con progreso y resumen. |
+| POST | `/api/catalog/covers/{eplId}/alternative` | Activa explícitamente la alternativa conservando la URL. |
+
+Ejemplo de cuerpo para iniciar una tarea (los tiempos de la API se expresan en milisegundos):
+
+```json
+{
+  "dryRun": false,
+  "onlyUnchecked": false,
+  "options": {
+    "connectTimeoutMs": 3000,
+    "requestTimeoutMs": 3000,
+    "batchTimeoutMs": 4000,
+    "concurrency": 4
+  }
+}
+```
+
+Si se omite `options`, usa los valores del servidor; `dryRun` se interpreta como
+`false` si se omite. `onlyUnchecked` también es `false` por defecto en este endpoint
+de tareas (el endpoint síncrono `/check` conserva su valor predeterminado `true`).
+Siempre recorre todo el catálogo con URL que cumpla ese filtro, sin límite de libros.
+La respuesta de la tarea incluye `onlyUnchecked` para conservar su alcance al navegar. Devuelve HTTP 409 si hay otra comprobación en curso y HTTP 400
+para parámetros inválidos. Los estados de tarea son `RUNNING`, `COMPLETED` y
+`FAILED`; el resumen omite detalles individuales para mantener pequeña la respuesta.
+Los endpoints síncronos GET/POST `/check` siguen disponibles con su comportamiento anterior.
+
+La activación manual exige el cuerpo `{"expectedCoverUrl":"URL comprobada"}`.
+Devuelve `{"eplId":123,"coverAvailable":false}`; HTTP 404 si no existe el libro,
+409 si cambió la URL y 400 si falta una URL válida para comparar.
+
+Timeouts, errores de red, HTTP 403/429/5xx, respuestas que no declaran un tipo imagen
+y redirecciones inválidas son inconcluyentes. Solo HTTP/HTTPS sin credenciales y
+destinos resueltos a direcciones públicas se admiten, también tras redirecciones.
+Una respuesta HTTP 200 con una imagen de error del proveedor no se puede distinguir
+de una portada mediante esta comprobación de cabeceras.
+
+La importación conserva el estado cuando la URL no cambia, aunque cambien otros
+datos del libro. Si cambia o desaparece la URL, el estado vuelve a `null`. Un
+reemplazo completo del catálogo crea registros nuevos sin comprobar. Si otro proceso
+cambia la URL o su estado mientras se comprueba, no se sobrescriben esos cambios:
+el resultado indica `CONCURRENT_CHANGE`.
+
 ## Reemplazar el catálogo
 
 ```sh
@@ -256,4 +470,3 @@ curl -s 'http://localhost:8088/api/catalog/books?eplId=32&size=20' | jq
 La búsqueda devuelve un listado vacío si no hay coincidencias; la ruta individual
 `GET /api/catalog/books/32` sigue devolviendo un objeto o `404` si no existe.
 Un `eplId` no numérico, fuera del rango de `Long`, cero o negativo devuelve `400`.
-

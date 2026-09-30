@@ -1,9 +1,10 @@
+import { BookCover } from "./BookCover";
 import { BookActions } from "./BookActions";
 import { useLocale } from "../../locales/useLocale";
 import { useTranslation } from "react-i18next";
 import { useBook } from "../../api/useBook";
 import { Link, useParams, useLocation } from "react-router-dom";
-import { ArrowLeft, BookOpen } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { catalogReturnUrl } from "./navigation";
 import { Loading, Failure } from "../../components/Feedback";
 export function BookDetail() {
@@ -27,11 +28,8 @@ export function BookDetail() {
         book && (
           <>
             <div className="detail-header">
-              <div className="detail-cover" aria-hidden="true">
-                <BookOpen size={52} />
-                <span>EPL {book.eplId}</span>
-              </div>
-              <div>
+              <BookCover book={book} detail />
+              <div className="detail-heading">
                 <div className="eyebrow">
                   {t("detail.heading", { id: book.eplId })}
                 </div>
@@ -46,7 +44,7 @@ export function BookDetail() {
                 </div>
               </div>
             </div>
-            <BookActions key={book.eplId} eplId={book.eplId} />
+            <BookActions key={book.eplId} book={book} />
             <div className="detail-grid">
               <section className="panel detail-section">
                 <h2>{t("detail.synopsis")} </h2>
