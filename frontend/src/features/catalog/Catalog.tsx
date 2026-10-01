@@ -1,7 +1,8 @@
+import { CatalogColumns, columnLabels, useCatalogColumns, type Column } from "./CatalogColumns";
 import { CatalogFilters, filterKeys, filterRequest } from "./CatalogFilters";
 import { BookCover } from "./BookCover";
 import { PageJump } from "../../components/PageJump";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { rememberCatalog } from "./navigation";
 import { useLocale } from "../../locales/useLocale";
 import { useTranslation } from "react-i18next";
@@ -9,12 +10,16 @@ import { useCatalogScroll } from "./useCatalogScroll";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Select } from "@mantine/core";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowUpRight, BookOpen } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { get, catalogParams, sorts, type BookPage } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 export function Catalog() {
   const { t } = useTranslation();
-  const { number, language } = useLocale();
+  const { number, language, date, status } = useLocale();
+  const columns = useCatalogColumns();
+  const resize = useRef<{ key: Column; x: number; width: number; widths: Partial<Record<Column, number>> } | null>(null);
+  const columnWidth = (key: Column) => columns.settings.widths[key] ?? (key === "title" ? 320 : 180);
+  const resized = Object.keys(columns.settings.widths).length > 0;
   const [search, setSearch] = useSearchParams();
   useEffect(() => {
     rememberCatalog(search.toString());
@@ -61,6 +66,7 @@ export function Catalog() {
                 })
               : t("catalog.books")}
           </span>
+          <div className="catalog-table-controls">
           <Select
             aria-label={t("catalog.sort")}
             value={params.get("sort")}
@@ -70,6 +76,8 @@ export function Catalog() {
               label: t(`sorts.${label}`),
             }))}
           />
+          <CatalogColumns settings={columns.settings} update={columns.update} />
+          </div>
         </div>
         {result.isPending ? (
           <Loading />
@@ -100,58 +108,54 @@ export function Catalog() {
           </div>
         ) : (
           <div className="table-scroll">
-            <table>
+            <table className={`catalog-table${resized ? " resized" : ""}`} style={resized ? { width: columns.visible.reduce((sum, key) => sum + columnWidth(key), 0) } : undefined}>
+              {resized && <colgroup>{columns.visible.map(key => <col key={key} style={{ width: columnWidth(key) }} />)}</colgroup>}
               <caption className="sr-only">{t("catalog.caption")} </caption>
               <thead>
                 <tr>
-                  <th scope="col">{t("catalog.book")} </th>
-                  <th scope="col">{t("catalog.author")} </th>
-                  <th scope="col">{t("catalog.language")} </th>
-                  <th scope="col">{t("catalog.year")} </th>
-                  <th scope="col">{t("catalog.revision")} </th>
-                  <th scope="col">
-                    <span className="sr-only">{t("catalog.detail")} </span>
-                  </th>
+                  {columns.visible.map(key => <th scope="col" key={key} data-column={key}>{t(columnLabels[key])}
+                    <button className="column-resizer" type="button" aria-label={t("columns.resize", { column: t(columnLabels[key]) })}
+                      onPointerDown={event => {
+                        const header = event.currentTarget.closest("th")!;
+                        const widths = { ...columns.settings.widths };
+                        header.closest("table")!.querySelectorAll<HTMLElement>("th[data-column]").forEach(cell => { widths[cell.dataset.column as Column] = cell.getBoundingClientRect().width; });
+                        resize.current = { key, x: event.clientX, width: header.getBoundingClientRect().width, widths };
+                        event.currentTarget.setPointerCapture(event.pointerId);
+                        event.preventDefault();
+                      }}
+                      onPointerMove={event => {
+                        if (!resize.current) return;
+                        const drag = resize.current;
+                        columns.update({ ...columns.settings, widths: { ...drag.widths, [drag.key]: Math.max(70, Math.min(1200, drag.width + event.clientX - drag.x)) } });
+                      }}
+                      onPointerUp={() => { resize.current = null; }}
+                      onPointerCancel={() => { resize.current = null; }}
+                      onLostPointerCapture={() => { resize.current = null; }}
+                      onKeyDown={event => {
+                        if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+                        event.preventDefault();
+                        const width = event.currentTarget.closest("th")!.getBoundingClientRect().width;
+                        columns.update({ ...columns.settings, widths: { ...columns.settings.widths, [key]: Math.max(70, Math.min(1200, width + (event.key === "ArrowRight" ? 20 : -20))) } });
+                      }} />
+                  </th>)}
+
                 </tr>
               </thead>
               <tbody>
                 {result.data.items.map((book) => (
                   <tr key={book.eplId}>
-                    <td>
-                      <Link
-                        className="book-title"
-                        onClick={rememberScroll}
-                        to={`/catalog/${book.eplId}`}
-                        state={{ catalogSearch: search.toString() }}
-                      >
-                        <BookCover book={book} />
-                        <span>
-                          {book.title}
-                          <small>EPL {book.eplId}</small>
-                        </span>
-                      </Link>
-                    </td>
-                    <td>{book.author}</td>
-                    <td>
-                      <span className="badge">{language(book.language)}</span>
-                    </td>
-                    <td>
-                      {number(book.publicationYear, { useGrouping: false })}
-                    </td>
-                    <td>{number(book.revision)}</td>
-                    <td>
-                      <Link
-                        className="row-link"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={t("catalog.openNew", { title: book.title })}
-                        aria-label={t("catalog.openNew", { title: book.title })}
-                        to={`/catalog/${book.eplId}`}
-                        state={{ catalogSearch: search.toString() }}
-                      >
-                        <ArrowUpRight size={18} />
-                      </Link>
-                    </td>
+                    {columns.visible.map(key => <td key={key}>
+                      {key === "title" ? <Link className="book-title" onClick={rememberScroll}
+                        to={`/catalog/${book.eplId}`} state={{ catalogSearch: search.toString() }}>
+                        <BookCover book={book} /><span>{book.title}</span>
+                      </Link> : key === "language" ? <span className="badge">{language(book.language)}</span>
+                        : key === "status" || key === "publicationStatus" ? status(book[key])
+                        : key === "publicationDate" || key === "insertDate" ? date(book[key])
+                        : key === "eplId" || key === "publicationYear" ? number(book[key], { useGrouping: false })
+                        : key === "revision" ? number(book.revision)
+                        : book[key] || "—"}
+                    </td>)}
+
                   </tr>
                 ))}
               </tbody>

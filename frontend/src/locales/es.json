@@ -521,5 +521,14 @@
     "from": "Desde",
     "to": "Hasta",
     "equal": "Igualar fechas"
+  },
+  "columns": {
+    "title": "Columnas",
+    "help": "Elige las columnas visibles y cambia su orden. Se guarda en este navegador.",
+    "up": "Mover {{column}} hacia arriba",
+    "down": "Mover {{column}} hacia abajo",
+    "reset": "Restaurar columnas",
+    "resize": "Ajustar ancho de {{column}}",
+    "drag": "Arrastrar {{column}}"
   }
 }

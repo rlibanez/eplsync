@@ -521,5 +521,14 @@
     "from": "From",
     "to": "To",
     "equal": "Match dates"
+  },
+  "columns": {
+    "title": "Columns",
+    "help": "Choose visible columns and change their order. Saved in this browser.",
+    "up": "Move {{column}} up",
+    "down": "Move {{column}} down",
+    "reset": "Reset columns",
+    "resize": "Resize {{column}}",
+    "drag": "Drag {{column}}"
   }
 }
