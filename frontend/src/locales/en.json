@@ -579,7 +579,7 @@
       "lastError": "Error information"
     },
     "reasons": {
-      "NO_CATALOG_MATCH": "No match in EPL Sync or the catalog"
+      "NO_CATALOG_MATCH": "No match in EPL Sync"
     },
     "close": "Close synchronization result",
     "completionDetected": "Completion detected",
@@ -589,11 +589,26 @@
       "newlyNotFound": "Records becoming not found in this check. Included in the total missing from the client.",
       "total": "Torrents returned by the client in this check.",
       "matched": "Client torrents associated with an EPL Sync record or a catalog book.",
-      "ignored": "Client torrents with no match in EPL Sync or the catalog.",
+      "ignored": "Client torrents with no match in EPL Sync.",
       "checked": "Download records checked, including proposed new records. A book may have several records.",
       "created": "New records for client torrents matching the catalog. Previews do not save them.",
       "updated": "Existing records with changes to status, completion or error information. Previews do not apply them.",
       "unchanged": "Records with no changes to status, completion or error information. Updating only tracking timestamps does not count as a change."
     }
+  },
+  "torrentLink": {
+    "title": "Link torrent",
+    "revision": "Revision in the torrent client",
+    "currentRevision": "Current catalog revision: {{revision}}",
+    "lookupError": "Could not retrieve the book. Check the EPL ID and connection.",
+    "help": "This download will be registered with the specified revision, preserving the current catalog book.",
+    "cancel": "Cancel",
+    "link": "Link",
+    "linked": "Linked",
+    "actions": "Actions",
+    "source": "Client torrent",
+    "destination": "Catalog book",
+    "unnamed": "Unnamed torrent",
+    "loading": "Loading book…"
   }
 }

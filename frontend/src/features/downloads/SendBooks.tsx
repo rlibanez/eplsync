@@ -1,3 +1,5 @@
+import { AppModal as Modal, ModalActions } from "../../components/AppModal";
+import { Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   useQuery,
@@ -5,14 +7,7 @@ import {
   useQueryClient,
   useIsMutating,
 } from "@tanstack/react-query";
-import {
-  Button,
-  TextInput,
-  Select,
-  Checkbox,
-  Modal,
-  Alert,
-} from "@mantine/core";
+import { Button, TextInput, Select, Checkbox, Alert } from "@mantine/core";
 import {
   Link,
   NavLink,
@@ -512,6 +507,7 @@ export function SendBooks() {
         </Button>
       </form>
       <Modal
+        icon={Send}
         opened={confirmed}
         onClose={() => setConfirmed(false)}
         title={t("send.confirmTitle")}
@@ -601,14 +597,14 @@ export function SendBooks() {
           )}
         </dl>
         <p>{t("send.defaults")}</p>
-        <div className="action-row">
+        <ModalActions>
           <Button variant="default" onClick={() => setConfirmed(false)}>
             {t("import.cancel")}
           </Button>
           <Button disabled={active || !canSend} onClick={send}>
             {t("send.confirm")}
           </Button>
-        </div>
+        </ModalActions>
       </Modal>
     </>
   );

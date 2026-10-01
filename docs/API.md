@@ -1133,3 +1133,33 @@ incorporación se convierten desde la zona del navegador a UTC, usando como extr
 superior la medianoche del día siguiente (exclusiva), incluso en cambios de horario.
 Los parámetros de fechas de publicación del API siguen aceptando límites abiertos;
 es el frontend el que añade hoy cuando solo se introduce un inicio.
+
+### Vincular un torrent existente con un libro
+
+`POST /api/torrent/downloads/link`
+
+Registra en EPL Sync un torrent ya presente en el cliente, por ejemplo una revisión
+anterior a la del catálogo. No envía, renombra ni modifica el torrent y no cambia
+la revisión ni los enlaces del libro.
+
+Todos los parámetros van en el cuerpo JSON:
+
+```json
+{
+  "clientInstanceId": "identificador devuelto por la sincronización",
+  "hash": "AAFF84D23D10B2D6386F58ABEA04DC12DB387954",
+  "eplId": 30193,
+  "revision": 1.7
+}
+```
+
+Devuelve el registro de descarga, con origen `DISCOVERED` y estado/fecha de
+finalización observados en el cliente. El libro debe existir y el torrent debe
+seguir presente en el mismo cliente. Se reconocen los hashes alternativos de
+torrents híbridos. Repetir la misma vinculación devuelve el registro existente;
+una asociación incompatible, un cliente cambiado o un torrent ausente devuelve
+409. Los datos inválidos devuelven 400 y un libro inexistente devuelve 404.
+
+En el resultado de sincronización, el torrent queda marcado como «Vinculado».
+Los contadores conservan el resultado de aquella comprobación; en la siguiente
+sincronización el torrent ya se reconoce a través del historial de descargas.

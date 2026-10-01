@@ -579,7 +579,7 @@
       "lastError": "Información de error"
     },
     "reasons": {
-      "NO_CATALOG_MATCH": "Sin correspondencia con EPL Sync ni con el catálogo"
+      "NO_CATALOG_MATCH": "Sin correspondencia con EPL Sync"
     },
     "close": "Cerrar resultado de la sincronización",
     "completionDetected": "Finalización detectada",
@@ -589,11 +589,26 @@
       "newlyNotFound": "Registros que pasan a no encontrados en esta comprobación. Están incluidos en el total de ausentes del cliente.",
       "total": "Torrents que el cliente devuelve en esta comprobación.",
       "matched": "Torrents del cliente relacionados con algún registro de EPL Sync o libro del catálogo.",
-      "ignored": "Torrents del cliente sin correspondencia con EPL Sync ni con el catálogo.",
+      "ignored": "Torrents del cliente sin correspondencia con EPL Sync.",
       "checked": "Registros de descarga revisados, incluidos los nuevos propuestos. Un libro puede tener varios registros.",
       "created": "Registros nuevos para torrents del cliente que coinciden con el catálogo. En simulación aún no se guardan.",
       "updated": "Registros existentes con cambios de estado, finalización o error. En simulación aún no se aplican.",
       "unchanged": "Registros sin cambios de estado, finalización ni error. Actualizar solo las fechas de comprobación no cuenta como cambio."
     }
+  },
+  "torrentLink": {
+    "title": "Vincular torrent",
+    "revision": "Revisión en el cliente torrent",
+    "currentRevision": "Revisión actual del catálogo: {{revision}}",
+    "lookupError": "No se ha podido consultar el libro. Comprueba el EPL ID y la conexión.",
+    "help": "Se registrará esta descarga con la revisión indicada, conservando el libro actual del catálogo.",
+    "cancel": "Cancelar",
+    "link": "Vincular",
+    "linked": "Vinculado",
+    "actions": "Acciones",
+    "source": "Torrent del cliente",
+    "destination": "Libro del catálogo",
+    "unnamed": "Torrent sin nombre",
+    "loading": "Consultando libro…"
   }
 }

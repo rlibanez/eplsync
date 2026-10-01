@@ -57,6 +57,11 @@ public class TorrentClientService {
         return selectedClient.withDefaults(download);
     }
 
+    public com.rlibanez.eplsync.torrent.downloads.DownloadRecord linkDownload(DownloadTrackingService.LinkRequest request) {
+        requireEnabled();
+        return tracking.link(request, selectedClient::listTorrents);
+    }
+
     public DownloadTrackingService.SyncResult syncDownloads(boolean dryRun, boolean includeDetails) {
         requireEnabled();
         return tracking.sync(selectedClient::listTorrents, dryRun, includeDetails);

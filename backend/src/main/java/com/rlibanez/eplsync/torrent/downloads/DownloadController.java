@@ -25,6 +25,10 @@ public class DownloadController {
             throw new IllegalArgumentException("includeDetails debe ser booleano");
         return client.syncDownloads(dryRun, Boolean.TRUE.equals(body.get("includeDetails")));
     }
+    @PostMapping("/link")
+    public DownloadRecord link(@RequestBody DownloadTrackingService.LinkRequest request) {
+        return client.linkDownload(request);
+    }
     @GetMapping("/summary")
     public DownloadQueryService.Summary summary(@RequestParam MultiValueMap<String, String> params) {
         return queries.summary(params);

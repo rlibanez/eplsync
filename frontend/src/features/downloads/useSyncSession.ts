@@ -32,6 +32,20 @@ export function useSyncSession() {
         report,
         view: { ...defaultSyncView },
       }),
+    markLinked: (hash: string) =>
+      cache.setQueryData<Session>(key, (previous) =>
+        previous?.report
+          ? {
+              ...previous,
+              report: {
+                ...previous.report,
+                ignoredTorrents: previous.report.ignoredTorrents.map((item) =>
+                  item.hash === hash ? { ...item, linked: true } : item,
+                ),
+              },
+            }
+          : previous,
+      ),
     close: () => cache.setQueryData<Session>(key, empty()),
     setView: (patch: Partial<typeof defaultSyncView>) =>
       cache.setQueryData<Session>(key, (previous) => ({

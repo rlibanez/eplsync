@@ -121,6 +121,50 @@ public class DownloadTrackingService {
         } finally { coordination.writeLock().unlock(); }
     }
 
+    public record LinkRequest(String clientInstanceId, String hash, Long eplId, Double revision) {}
+
+    public DownloadRecord link(LinkRequest request, Supplier<List<RemoteTorrent>> remoteReader) {
+        if (request == null || request.eplId() == null || request.eplId() <= 0
+                || request.revision() == null || !Double.isFinite(request.revision()) || request.revision() <= 0
+                || request.hash() == null || !request.hash().matches("(?i)([0-9a-f]{40}|[0-9a-f]{64})"))
+            throw new IllegalArgumentException("EPL ID, revisión y hash válidos son obligatorios");
+        return exclusive(() -> {
+            if (!instanceId().equals(request.clientInstanceId()))
+                throw new TorrentOperationException(HttpStatus.CONFLICT, "El cliente ha cambiado; vuelve a sincronizar");
+            var hash = request.hash().toUpperCase(Locale.ROOT);
+            var matches = remoteReader.get().stream().filter(t -> t.aliases().contains(hash)).toList();
+            if (matches.size() != 1)
+                throw new TorrentOperationException(HttpStatus.CONFLICT, "El torrent ya no está disponible o su identidad es ambigua");
+            var torrent = matches.getFirst();
+            synchronized (writes) {
+                return transactions.execute(tx -> {
+                    if (!books.existsById(request.eplId()))
+                        throw new TorrentOperationException(HttpStatus.NOT_FOUND, "El libro no existe en el catálogo");
+                    var existing = downloads.findByClientInstanceId(instanceId()).stream()
+                            .filter(row -> torrent.aliases().contains(row.getHash())).toList();
+                    if (!existing.isEmpty()) {
+                        if (existing.size() == 1 && existing.getFirst().getEplId().equals(request.eplId())
+                                && existing.getFirst().getRevision().equals(request.revision()))
+                            return existing.getFirst();
+                        throw new TorrentOperationException(HttpStatus.CONFLICT, "El torrent ya está vinculado a otro libro o revisión");
+                    }
+                    for (var book : books.findTorrentIdentities()) {
+                        if (magnets.hashes(book.getLinks()).stream().anyMatch(torrent.aliases()::contains)
+                                && (!book.getEplId().equals(request.eplId()) || !book.getRevision().equals(request.revision())))
+                            throw new TorrentOperationException(HttpStatus.CONFLICT, "El hash corresponde a otro libro o revisión del catálogo");
+                    }
+                    var now = Instant.now();
+                    var row = create(request.eplId(), request.revision(), torrent.hash(), DownloadRecord.Origin.DISCOVERED, now);
+                    row.setDiscoveredAt(now);
+                    observe(row, torrent, now);
+                    entityManager.persist(row);
+                    log.info("Torrent vinculado: eplId={}, revision={}, hash={}", row.getEplId(), row.getRevision(), row.getHash());
+                    return row;
+                });
+            }
+        });
+    }
+
     private SyncResult reconcile(List<RemoteTorrent> remote, Instant now, boolean dryRun, boolean includeDetails) {
         var byHash = new HashMap<String, RemoteTorrent>();
         var uniqueRemote = new LinkedHashMap<String, RemoteTorrent>();

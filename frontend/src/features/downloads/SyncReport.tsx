@@ -1,4 +1,6 @@
-import { useSyncSession } from "./useSyncSession";
+import { LinkTorrent } from "./LinkTorrent";
+import { useEffect, useRef, useState } from "react";
+import { defaultSyncView, useSyncSession } from "./useSyncSession";
 import { X } from "lucide-react";
 import { ActionIcon, Button, Select, TextInput, Tooltip } from "@mantine/core";
 import { Link } from "react-router-dom";
@@ -37,7 +39,12 @@ export interface SyncResult {
   };
   outcomes: { newlyCompleted: number; notFound: number; newlyNotFound: number };
   items: SyncItem[];
-  ignoredTorrents: { hash: string; name: string | null; reason: string }[];
+  ignoredTorrents: {
+    hash: string;
+    name: string | null;
+    linked?: boolean;
+    reason: string;
+  }[];
 }
 export function SyncReport({
   report,
@@ -48,12 +55,23 @@ export function SyncReport({
 }) {
   const { t } = useTranslation();
   const { date, number, status } = useLocale();
-  const { view, setView } = useSyncSession();
+  const { view, setView, markLinked } = useSyncSession();
+  const [linking, setLinking] = useState<
+    SyncResult["ignoredTorrents"][number] | null
+  >(null);
   const { tab, action, outcome, search, page, size } = view;
   const setTab = (tab: string) => setView({ tab });
   const setAction = (action: string) => setView({ action });
   const setOutcome = (outcome: string) => setView({ outcome });
-  const setSearch = (search: string) => setView({ search });
+  const [searchText, setSearchText] = useState(search);
+  const composing = useRef(false);
+  useEffect(() => {
+    setSearchText(view.search);
+  }, [report, view.search]);
+  const setSearch = (search: string) => {
+    setSearchText(search);
+    setView({ search, page: 0 });
+  };
   const setPage = (page: number) => setView({ page });
   const setSize = (size: number) => setView({ size });
   const needle = search.trim().toLocaleLowerCase();
@@ -79,6 +97,14 @@ export function SyncReport({
   const start = page * size;
   return (
     <section className="panel settings-section sync-report">
+      {linking && (
+        <LinkTorrent
+          torrent={linking}
+          clientInstanceId={report.clientInstanceId}
+          onClose={() => setLinking(null)}
+          onLinked={() => markLinked(linking.hash)}
+        />
+      )}
       <div className="sync-report-heading">
         <h2>{t("syncReport.title")}</h2>
         <Tooltip label={t("syncReport.close")}>
@@ -104,7 +130,7 @@ export function SyncReport({
             {Object.entries(report[group]).map(([key, value]) => (
               <div key={key}>
                 <dt>
-                  {(
+                  {
                     <Tooltip
                       label={t(`syncReport.explanations.${key}`)}
                       multiline
@@ -114,7 +140,7 @@ export function SyncReport({
                         {t(`syncReport.counts.${key}`)}
                       </span>
                     </Tooltip>
-                  )}
+                  }
                 </dt>
                 <dd>{number(value)}</dd>
               </div>
@@ -145,10 +171,18 @@ export function SyncReport({
       <div className="filters">
         <TextInput
           label={t("catalog.search")}
-          value={search}
-          onChange={(event) => {
+          value={searchText}
+          onCompositionStart={() => {
+            composing.current = true;
+          }}
+          onCompositionEnd={(event) => {
+            composing.current = false;
             setSearch(event.currentTarget.value);
-            setPage(0);
+          }}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setSearchText(value);
+            if (!composing.current) setView({ search: value, page: 0 });
           }}
         />
         {tab === "books" && (
@@ -186,6 +220,15 @@ export function SyncReport({
             />
           </>
         )}
+        <Button
+          variant="default"
+          onClick={() => {
+            setSearchText("");
+            setView({ ...defaultSyncView, tab });
+          }}
+        >
+          {t("catalog.clear")}
+        </Button>
       </div>
       <div className="table-scroll">
         <table>
@@ -197,6 +240,7 @@ export function SyncReport({
               ).map((key) => (
                 <th key={key}>{t(`syncReport.${key}`)}</th>
               ))}
+              {tab === "ignored" && <th>{t("torrentLink.actions")}</th>}
             </tr>
           </thead>
           <tbody>
@@ -250,9 +294,24 @@ export function SyncReport({
                     <td>{item.name || "—"}</td>
                     <td className="sync-hash">{item.hash}</td>
                     <td>
-                      {t(`syncReport.reasons.${item.reason}`, {
-                        defaultValue: item.reason,
-                      })}
+                      {item.linked
+                        ? t("torrentLink.linked")
+                        : t(`syncReport.reasons.${item.reason}`, {
+                            defaultValue: item.reason,
+                          })}
+                    </td>
+                    <td>
+                      <Button
+                        variant="light"
+                        disabled={item.linked}
+                        onClick={() => setLinking(item)}
+                      >
+                        {t(
+                          item.linked
+                            ? "torrentLink.linked"
+                            : "torrentLink.link",
+                        )}
+                      </Button>
                     </td>
                   </tr>
                 ))}

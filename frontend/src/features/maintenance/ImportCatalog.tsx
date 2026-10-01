@@ -1,6 +1,7 @@
+import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { CurrentCatalog } from "./CatalogMetadata";
 import { useEffect, useState } from "react";
-import { Alert, Button, Loader, Modal } from "@mantine/core";
+import { Alert, Button, Loader } from "@mantine/core";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Download, Eye } from "lucide-react";
@@ -218,6 +219,7 @@ export function ImportCatalog() {
         </section>
       )}
       <Modal
+        icon={Download}
         opened={confirm !== null}
         onClose={() => setConfirm(null)}
         title={t(
@@ -232,7 +234,7 @@ export function ImportCatalog() {
               : "import.confirmDescription",
           )}
         </p>
-        <div className="action-row">
+        <ModalActions>
           <Button variant="default" onClick={() => setConfirm(null)}>
             {t("import.cancel")}
           </Button>
@@ -247,7 +249,7 @@ export function ImportCatalog() {
           >
             {t(confirm === "reset" ? "reset.confirm" : "import.confirm")}
           </Button>
-        </div>
+        </ModalActions>
       </Modal>
     </>
   );

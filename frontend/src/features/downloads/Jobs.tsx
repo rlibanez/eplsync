@@ -1,6 +1,8 @@
+import { AppModal as Modal, ModalActions } from "../../components/AppModal";
+import { CircleStop } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Modal, Select, Progress } from "@mantine/core";
+import { Alert, Button, Select, Progress } from "@mantine/core";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -398,13 +400,14 @@ export function JobDetail() {
         />
       </section>
       <Modal
+        icon={CircleStop}
         opened={cancel}
         onClose={() => setCancel(false)}
         title={t("downloads.cancelJob")}
         centered
       >
         <p>{t("downloads.cancelConfirm")}</p>
-        <div className="action-row">
+        <ModalActions>
           <Button variant="default" onClick={() => setCancel(false)}>
             {t("import.cancel")}
           </Button>
@@ -417,7 +420,7 @@ export function JobDetail() {
           >
             {t("downloads.cancelJob")}
           </Button>
-        </div>
+        </ModalActions>
       </Modal>
     </>
   );

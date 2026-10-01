@@ -73,6 +73,40 @@ class DownloadTrackingTests {
     }
     DownloadRecord only() { return downloads.findAll().getFirst(); }
 
+    @Test void manualLinkPreservesCurrentRevisionAndIsRecognizedBySync() throws Exception {
+        book(1.8, HASH);
+        var completed = Instant.parse("2026-09-29T10:00:00Z");
+        when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent(OTHER, DownloadStatus.DOWNLOADED, completed)));
+        var body = "{\"clientInstanceId\":\"" + tracking.instanceId()
+                + "\",\"hash\":\"" + OTHER + "\",\"eplId\":32,\"revision\":1.7}";
+        mvc.perform(post("/api/torrent/downloads/link").contentType("application/json").content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.revision").value(1.7))
+                .andExpect(jsonPath("$.status").value("DOWNLOADED"));
+        assertThat(books.findById(32L).orElseThrow().getRevision()).isEqualTo(1.8);
+        assertThat(only().getCompletedAt()).isEqualTo(completed);
+        mvc.perform(post("/api/torrent/downloads/link").contentType("application/json").content(body))
+                .andExpect(status().isOk());
+        assertThat(downloads.count()).isEqualTo(1);
+        assertThat(service.syncDownloads(true, true).ignoredTorrents()).isEmpty();
+        mvc.perform(post("/api/torrent/downloads/link").contentType("application/json").content(body.replace("1.7", "1.6")))
+                .andExpect(status().isConflict());
+        verify(stubClient, never()).addTorrent(any());
+    }
+
+    @Test void manualLinkRejectsStaleMissingAndInvalidInputs() {
+        book(1.8, HASH);
+        var request = new DownloadTrackingService.LinkRequest(tracking.instanceId(), OTHER, 32L, 1.7);
+        assertThatThrownBy(() -> service.linkDownload(request)).isInstanceOf(TorrentOperationException.class);
+        when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent(OTHER, DownloadStatus.DOWNLOADING, null)));
+        assertThatThrownBy(() -> service.linkDownload(new DownloadTrackingService.LinkRequest("old", OTHER, 32L, 1.7)))
+                .isInstanceOf(TorrentOperationException.class);
+        assertThatThrownBy(() -> service.linkDownload(new DownloadTrackingService.LinkRequest(tracking.instanceId(), OTHER, 99L, 1.7)))
+                .isInstanceOf(TorrentOperationException.class);
+        assertThatThrownBy(() -> service.linkDownload(new DownloadTrackingService.LinkRequest(tracking.instanceId(), OTHER, 32L, -1.0)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(downloads.count()).isZero();
+    }
+
     @Autowired org.springframework.web.context.WebApplicationContext webContext;
 
     @Test void largePagesAreNotRejectedOrSilentlyTruncatedBySpring() throws Exception {

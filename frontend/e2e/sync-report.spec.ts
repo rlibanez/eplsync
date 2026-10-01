@@ -125,6 +125,17 @@ test("preview and execution show local searchable detail without repeating sync"
   await expect(
     report.getByText("Torrent ajeno", { exact: true }),
   ).toBeVisible();
+  const search = report.getByLabel("Buscar", { exact: true });
+  await search.pressSequentially("coraz");
+  await search.dispatchEvent("compositionstart");
+  await search.fill("corazón");
+  await expect(search).toHaveValue("corazón");
+  await search.dispatchEvent("compositionend", { data: "ó" });
+  await expect(search).toHaveValue("corazón");
+  await expect(report.locator("tbody tr")).toHaveCount(0);
+  await report.getByRole("button", { name: "Limpiar", exact: true }).click();
+  await expect(search).toHaveValue("");
+  await expect(report.locator("tbody tr")).toHaveCount(2);
   await report.getByLabel("Buscar", { exact: true }).fill("ajeno");
   await expect(report.locator("tbody tr")).toHaveCount(1);
   await page
@@ -165,4 +176,90 @@ test("preview and execution show local searchable detail without repeating sync"
     .click();
   await expect(report).toHaveCount(0);
   expect(calls).toEqual([true, false]);
+});
+
+test("ignored torrent can be linked with inferred editable identity", async ({
+  page,
+}) => {
+  await page.route("**/api/ui/config", (r) =>
+    r.fulfill({ json: { defaultLanguage: "es" } }),
+  );
+  await page.route("**/api/torrent/downloads?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+      },
+    }),
+  );
+  await page.route("**/api/torrent/downloads/summary?**", (r) =>
+    r.fulfill({ json: { total: 0, byStatus: {} } }),
+  );
+  const hash = "A".repeat(40);
+  await page.route("**/api/torrent/downloads/sync", (r) =>
+    r.fulfill({
+      json: {
+        dryRun: true,
+        applied: false,
+        client: "qbittorrent",
+        clientInstanceId: "instance",
+        checkedAt: "2026-10-01T12:00:00Z",
+        remote: { total: 1, matched: 0, ignored: 1 },
+        records: { checked: 0, created: 0, updated: 0, unchanged: 0 },
+        outcomes: { newlyCompleted: 0, notFound: 0, newlyNotFound: 0 },
+        items: [],
+        ignoredTorrents: [
+          {
+            hash,
+            name: "Stendhal - Rojo y negro [30193] (r1.7)",
+            reason: "NO_CATALOG_MATCH",
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/catalog/books/30193", (r) =>
+    r.fulfill({
+      json: { title: "Rojo y negro", author: "Stendhal", revision: 1.8 },
+    }),
+  );
+  let links = 0;
+  await page.route("**/api/torrent/downloads/link", (r) => {
+    expect(r.request().postDataJSON()).toEqual({
+      clientInstanceId: "instance",
+      hash,
+      eplId: 30193,
+      revision: 1.7,
+    });
+    links++;
+    return r.fulfill({
+      json: { id: "linked", revision: 1.7, status: "DOWNLOADED" },
+    });
+  });
+  await page.goto("/downloads");
+  await page
+    .getByRole("button", { name: "Previsualizar sincronización", exact: true })
+    .click();
+  const report = page.locator(".sync-report");
+  await report
+    .getByRole("button", { name: "Torrents ignorados", exact: true })
+    .click();
+  await expect(
+    report.getByText("Sin correspondencia con EPL Sync", { exact: true }),
+  ).toBeVisible();
+  await report.getByRole("button", { name: "Vincular", exact: true }).click();
+  const modal = page.getByRole("dialog");
+  await expect(modal.getByLabel("EPL ID")).toHaveValue("30193");
+  await expect(modal.getByLabel("Revisión en el cliente torrent")).toHaveValue(
+    "1.7",
+  );
+  await expect(
+    modal.getByText("Revisión actual del catálogo: 1.8"),
+  ).toBeVisible();
+  await modal.getByRole("button", { name: "Vincular", exact: true }).click();
+  await expect(modal).not.toBeVisible();
+  await expect(
+    report.getByRole("button", { name: "Vinculado", exact: true }),
+  ).toBeDisabled();
+  expect(links).toBe(1);
 });

@@ -1,6 +1,6 @@
 import { useSyncSession } from "./useSyncSession";
 import { SyncReport, type SyncResult } from "./SyncReport";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useIsMutating,
   useMutation,
@@ -34,21 +34,34 @@ interface Download {
   lastCheckedAt: string | null;
   lastError: string | null;
 }
+const initialFilters = {
+  eplId: "",
+  status: "",
+  origin: "",
+  completed: "",
+  sort: "createdAt,desc",
+};
+
 export function DownloadState() {
   const { t } = useTranslation();
   const { date, number, status } = useLocale();
   const cache = useQueryClient();
   const session = useSyncSession();
   const syncPending = useIsMutating({ mutationKey: ["torrent-sync"] }) > 0;
-  const [filters, setFilters] = useState({
-    eplId: "",
-    status: "",
-    origin: "",
-    completed: "",
-    sort: "createdAt,desc",
-  });
+  const [filters, setFilters] = useState(initialFilters);
+  const [draftEplId, setDraftEplId] = useState("");
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
+  useEffect(() => {
+    if (draftEplId === filters.eplId) return;
+    if (draftEplId !== "" && !/^[1-9]\d*$/.test(draftEplId)) return;
+    const timer = window.setTimeout(() => {
+      setFilters((current) => ({ ...current, eplId: draftEplId }));
+      setPage(0);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [draftEplId, filters.eplId]);
+
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters))
     if (value) params.set(key, value);
@@ -117,15 +130,15 @@ export function DownloadState() {
       {session.report && (
         <SyncReport report={session.report} onClose={session.close} />
       )}
-      <form
-        className="filters"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const data = new FormData(e.currentTarget);
-          filter("eplId", String(data.get("eplId") ?? ""));
-        }}
-      >
-        <TextInput name="eplId" label="EPL ID" type="number" min={1} />
+      <form className="filters" onSubmit={(e) => e.preventDefault()}>
+        <TextInput
+          name="eplId"
+          label="EPL ID"
+          type="number"
+          min={1}
+          value={draftEplId}
+          onChange={(e) => setDraftEplId(e.currentTarget.value)}
+        />
         <Select
           label={t("downloads.status")}
           clearable
@@ -138,6 +151,7 @@ export function DownloadState() {
         />
         <Select
           label={t("downloads.origin")}
+          value={filters.origin || null}
           clearable
           data={[
             { value: "EPLSYNC", label: "EPL Sync" },
@@ -147,6 +161,7 @@ export function DownloadState() {
         />
         <Select
           label={t("downloads.completed")}
+          value={filters.completed || null}
           clearable
           data={[
             { value: "true", label: t("downloads.yes") },
@@ -154,7 +169,18 @@ export function DownloadState() {
           ]}
           onChange={(v) => filter("completed", v ?? "")}
         />
-        <Button type="submit">{t("catalog.search")}</Button>
+        <Button
+          type="button"
+          variant="default"
+          onClick={() => {
+            setDraftEplId("");
+            setFilters(initialFilters);
+            setPage(0);
+            setSize(20);
+          }}
+        >
+          {t("catalog.clear")}
+        </Button>
       </form>
       {summary.data && (
         <div className="status-summary">

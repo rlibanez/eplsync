@@ -1,5 +1,6 @@
+import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { useEffect, useState } from "react";
-import { Alert, Button, Modal } from "@mantine/core";
+import { Alert, Button } from "@mantine/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Wrench } from "lucide-react";
@@ -125,6 +126,7 @@ export function RepairCover({ book }: { book: Book }) {
         </Alert>
       )}
       <Modal
+        icon={Wrench}
         opened={decision !== null}
         onClose={() => {
           if (!force.isPending) setDecision(null);
@@ -143,7 +145,7 @@ export function RepairCover({ book }: { book: Book }) {
             {t("covers.forceError")}
           </Alert>
         )}
-        <div className="action-row">
+        <ModalActions>
           <Button
             variant="default"
             disabled={force.isPending}
@@ -162,7 +164,7 @@ export function RepairCover({ book }: { book: Book }) {
               {t("covers.force")}
             </Button>
           )}
-        </div>
+        </ModalActions>
       </Modal>
     </>
   );
