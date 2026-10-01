@@ -1356,3 +1356,49 @@ summary {
 .catalog-metadata dd {
   overflow-wrap: anywhere;
 }
+
+.catalog-search {
+  padding: 18px 22px;
+  margin-bottom: 24px;
+}
+.catalog-search summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.catalog-search form {
+  margin-top: 22px;
+}
+.catalog-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(220px, calc((100% - 48px) / 4))), 1fr));
+  gap: 16px;
+}
+.catalog-date-range {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 20px 0;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 500px) {
+  .catalog-date-range {
+    grid-template-columns: 1fr;
+  }
+}
+
+.catalog-date-range {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: end;
+}
+.catalog-date-range .date-equal { align-self: end; margin-bottom: 0; width: 36px; padding: 0; }
+.catalog-date-range > button { margin-bottom: 6px; }
+@media (max-width: 600px) {
+  .catalog-date-range { grid-template-columns: minmax(0, 1fr) auto; }
+  .catalog-date-range > .mantine-InputWrapper-root { grid-column: 1; }
+}
+
+.catalog-search summary.filters-active {
+  color: var(--mantine-primary-color-light-color);
+}

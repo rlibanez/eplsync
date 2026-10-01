@@ -504,5 +504,22 @@
       "UPDATE": "Update",
       "REPLACE": "Catalog replacement"
     }
+  },
+  "filters": {
+    "heading": "Advanced search",
+    "active": "Active filters",
+    "title": "Title",
+    "author": "Author",
+    "eplId": "EPL Id",
+    "genres": "Genre",
+    "collection": "Collection",
+    "status": "Status",
+    "publicationStatus": "Publication status",
+    "years": "Publication year",
+    "published": "Published on EPL",
+    "added": "Added to EPL Sync",
+    "from": "From",
+    "to": "To",
+    "equal": "Match dates"
   }
 }

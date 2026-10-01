@@ -1,3 +1,4 @@
+import { CatalogFilters, filterKeys, filterRequest } from "./CatalogFilters";
 import { BookCover } from "./BookCover";
 import { PageJump } from "../../components/PageJump";
 import { useEffect } from "react";
@@ -6,16 +7,10 @@ import { useLocale } from "../../locales/useLocale";
 import { useTranslation } from "react-i18next";
 import { useCatalogScroll } from "./useCatalogScroll";
 import { useQuery } from "@tanstack/react-query";
-import { Button, TextInput, Select } from "@mantine/core";
+import { Button, Select } from "@mantine/core";
 import { Link, useSearchParams } from "react-router-dom";
-import { Search, ArrowUpRight, BookOpen } from "lucide-react";
-import {
-  get,
-  catalogParams,
-  languages,
-  sorts,
-  type BookPage,
-} from "../../api/catalog";
+import { ArrowUpRight, BookOpen } from "lucide-react";
+import { get, catalogParams, sorts, type BookPage } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 export function Catalog() {
   const { t } = useTranslation();
@@ -28,7 +23,8 @@ export function Catalog() {
   const query = params.toString();
   const result = useQuery({
     queryKey: ["catalog", query],
-    queryFn: ({ signal }) => get<BookPage>(`/catalog/books?${query}`, signal),
+    queryFn: ({ signal }) =>
+      get<BookPage>(`/catalog/books?${filterRequest(params)}`, signal),
   });
   const rememberScroll = useCatalogScroll(query, result.isSuccess);
   function change(key: string, value: string) {
@@ -50,58 +46,11 @@ export function Catalog() {
           {t("catalog.table")}{" "}
         </span>
       </div>
-      {(params.has("genres") || params.has("publicationYear")) && (
-        <p className="muted">
-          {params.get("genres")} {params.get("publicationYear")} ·{" "}
-          <Link to="/catalog">{t("catalog.clearFilters")}</Link>
-        </p>
-      )}
-      <form
+      <CatalogFilters
         key={search.toString()}
-        className="filters"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const data = new FormData(event.currentTarget);
-          const next = new URLSearchParams(params);
-          for (const key of ["title", "author", "language"]) {
-            const value = String(data.get(key) ?? "").trim();
-            if (value) next.set(key, value);
-            else next.delete(key);
-          }
-          next.set("page", "0");
-          setSearch(next);
-        }}
-      >
-        <TextInput
-          name="title"
-          label={t("catalog.title")}
-          placeholder={t("catalog.titlePlaceholder")}
-          maxLength={512}
-          defaultValue={params.get("title") ?? ""}
-          leftSection={<Search size={16} />}
-        />
-        <TextInput
-          name="author"
-          label={t("catalog.author")}
-          placeholder={t("catalog.authorPlaceholder")}
-          maxLength={255}
-          defaultValue={params.get("author") ?? ""}
-        />
-        <Select
-          name="language"
-          label={t("catalog.language")}
-          defaultValue={params.get("language") ?? ""}
-          data={[
-            { value: "", label: t("catalog.allLanguages") },
-            ...languages.map((value) => ({ value, label: language(value) })),
-          ]}
-          allowDeselect={false}
-        />
-        <Button type="submit">{t("catalog.search")} </Button>
-        <Button variant="subtle" color="gray" onClick={() => setSearch({})}>
-          {t("catalog.clear")}{" "}
-        </Button>
-      </form>
+        params={params}
+        onChange={setSearch}
+      />
       <section className="panel">
         <div className="table-toolbar">
           <span aria-live="polite">
@@ -133,15 +82,11 @@ export function Catalog() {
             <BookOpen size={36} />
             <h2>{t("catalog.empty")} </h2>
             <p>
-              {params.has("title") ||
-              params.has("author") ||
-              params.has("language")
+              {filterKeys.some((key) => params.has(key))
                 ? t("catalog.emptyFiltered")
                 : t("catalog.emptyCatalog")}
             </p>
-            {!params.has("title") &&
-              !params.has("author") &&
-              !params.has("language") &&
+            {!filterKeys.some((key) => params.has(key)) &&
               Number(params.get("page")) === 0 && (
                 <p>
                   <Link className="back-link" to="/settings/database">

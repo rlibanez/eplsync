@@ -1100,3 +1100,18 @@ menor; las otras categorías, por su valor almacenado ascendente. Los idiomas se
 convierten a su código ISO en la respuesta; la búsqueda compara el valor almacenado.
 Autores y géneros compuestos se mantienen intactos, sin normalización. Los valores
 nulos o vacíos se excluyen. Un tipo, página o tamaño inválido devuelve `400`.
+
+### Rango de incorporación al catálogo
+
+El filtro compartido admite `insertDateFrom` (instante ISO-8601 inclusivo) y
+`insertDateBefore` (instante ISO-8601 exclusivo). Los rangos invertidos de años,
+fechas de publicación e incorporación devuelven `400`.
+
+La búsqueda avanzada del frontend está plegada por defecto e indica si hay filtros
+activos. Ofrece título, autor, EPL Id, género, colección, idioma, estados y rangos
+para año de publicación, publicación en EPL e incorporación a EPL Sync. Un inicio
+sin fin busca hasta hoy; un fin sin inicio no impone límite inferior. Los días de
+incorporación se convierten desde la zona del navegador a UTC, usando como extremo
+superior la medianoche del día siguiente (exclusiva), incluso en cambios de horario.
+Los parámetros de fechas de publicación del API siguen aceptando límites abiertos;
+es el frontend el que añade hoy cuando solo se introduce un inicio.

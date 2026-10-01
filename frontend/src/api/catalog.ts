@@ -88,12 +88,22 @@ export function catalogParams(input: URLSearchParams) {
     ["title", 512],
     ["author", 255],
     ["genres", 512],
+    ["collection", 255],
+    ["publicationYearFrom", 4],
+    ["publicationYearTo", 4],
+    ["publicationDate", 10],
+    ["publicationDateFrom", 10],
+    ["publicationDateTo", 10],
+    ["addedFrom", 10],
+    ["addedTo", 10],
+    ["publicationStatus", 20],
     ["publicationYear", 4],
     ["eplId", 19],
   ] as const) {
     const value = input.get(key)?.trim();
     if (value) params.set(key, value.slice(0, max));
   }
+  for (const status of input.getAll("status")) params.append("status", status);
   const language = input.get("language");
   if (language && languages.includes(language))
     params.set("language", language);

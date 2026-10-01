@@ -78,8 +78,21 @@ public class CatalogBookFilter {
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate publicationDateTo;
 
+    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+    private java.time.Instant insertDateFrom;
+
+    // Exclusive upper bound: midnight after the last selected day.
+    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+    private java.time.Instant insertDateBefore;
+
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
+        if (publicationYearFrom != null && publicationYearTo != null && publicationYearFrom > publicationYearTo)
+            throw new IllegalArgumentException("publicationYearFrom debe ser <= publicationYearTo");
+        if (publicationDateFrom != null && publicationDateTo != null && publicationDateFrom.isAfter(publicationDateTo))
+            throw new IllegalArgumentException("publicationDateFrom debe ser <= publicationDateTo");
+        if (insertDateFrom != null && insertDateBefore != null && !insertDateFrom.isBefore(insertDateBefore))
+            throw new IllegalArgumentException("insertDateFrom debe ser anterior a insertDateBefore");
         author = norm(author);
         title = norm(title);
         genres = norm(genres);

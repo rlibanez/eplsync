@@ -38,6 +38,10 @@ public final class CatalogBookSpecifications {
         spec = andIfNotNull(spec, publicationDateEqualsOrBetween(f));
         spec = andIfNotNull(spec, statusIn(f));
 
+        if (f.getInsertDateFrom() != null)
+            spec = spec.and((root, q, cb) -> cb.greaterThanOrEqualTo(root.get("insertDate"), f.getInsertDateFrom()));
+        if (f.getInsertDateBefore() != null)
+            spec = spec.and((root, q, cb) -> cb.lessThan(root.get("insertDate"), f.getInsertDateBefore()));
         return spec;
     }
 

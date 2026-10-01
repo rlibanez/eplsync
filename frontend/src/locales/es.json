@@ -504,5 +504,22 @@
       "UPDATE": "Actualización",
       "REPLACE": "Reemplazo del catálogo"
     }
+  },
+  "filters": {
+    "heading": "Búsqueda avanzada",
+    "active": "Filtros activos",
+    "title": "Título",
+    "author": "Autor",
+    "eplId": "EPL Id",
+    "genres": "Género",
+    "collection": "Colección",
+    "status": "Estado",
+    "publicationStatus": "Estado de publicación",
+    "years": "Año de publicación",
+    "published": "Publicado en EPL",
+    "added": "Incorporado a EPL Sync",
+    "from": "Desde",
+    "to": "Hasta",
+    "equal": "Igualar fechas"
   }
 }
