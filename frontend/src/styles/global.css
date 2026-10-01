@@ -1352,3 +1352,7 @@ summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.catalog-metadata dd {
+  overflow-wrap: anywhere;
+}

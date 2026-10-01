@@ -470,3 +470,23 @@ curl -s 'http://localhost:8088/api/catalog/books?eplId=32&size=20' | jq
 La búsqueda devuelve un listado vacío si no hay coincidencias; la ruta individual
 `GET /api/catalog/books/32` sigue devolviendo un objeto o `404` si no existe.
 Un `eplId` no numérico, fuera del rango de `Long`, cero o negativo devuelve `400`.
+
+### Metadatos del catálogo actual
+
+Se conserva un único registro en `catalog_metadata`, con la última importación aplicada:
+URL de origen, nombre y fecha original del CSV en el ZIP, fecha de importación UTC,
+modo (`UPDATE` o `REPLACE`), filas totales (correctas + rechazadas), libros insertados,
+modificados y sin cambios, errores, duración total en milisegundos y SHA-256 del CSV
+extraído, antes de normalizarlo. La duración incluye descarga y extracción.
+La fecha del ZIP se conserva sin atribuirle una zona horaria. También aparece en el log
+de extracción; si falta, se indica como desconocida.
+
+Los libros y sus metadatos se guardan en la misma transacción. Una previsualización o
+un fallo no reemplazan los metadatos. Las actualizaciones completadas con filas
+rechazadas guardan el recuento de errores; el reinicio completo continúa exigiendo
+una importación sin errores. No se conserva historial de importaciones.
+
+`GET /api/catalog/import/metadata` devuelve `{ "metadata": null }` si aún no existe
+información, o el objeto con esos campos. Las respuestas de actualización y reinicio
+incluyen también `metadata`. Ajustes → Base de datos muestra un único resumen en
+«Catálogo actual»; los avisos de éxito desaparecen a los cinco segundos o al cerrarlos.

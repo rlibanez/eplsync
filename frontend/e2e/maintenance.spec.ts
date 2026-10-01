@@ -8,6 +8,12 @@ const summary = {
   errors: 0,
 };
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/catalog/import/metadata", (route) =>
+    route.fulfill({ json: { metadata: null } }),
+  );
+  await page.route("**/api/catalog/covers/task", (route) =>
+    route.fulfill({ json: { task: null } }),
+  );
   await page.route("**/api/ui/config", (route) =>
     route.fulfill({ json: { defaultLanguage: "en" } }),
   );
@@ -49,6 +55,7 @@ test("preview, confirmation and update survive navigation and refresh cached cat
     }),
   );
   await page.route("**/api/catalog/import/**", async (route) => {
+    if (route.request().url().endsWith("/metadata")) return route.fallback();
     expect(route.request().method()).toBe("POST");
     expect(route.request().postData()).toBe(null);
     if (route.request().url().endsWith("/preview")) {
@@ -293,4 +300,26 @@ test("busy reset preserves the database and does not retry automatically", async
     path: "test-results/reset-busy.png",
     fullPage: true,
   });
+});
+
+test("applied import has a single metadata summary and dismissible notice", async ({ page }) => {
+  const metadata = {
+    sourceModifiedAt: "2026-09-30T04:00:50", importedAt: "2026-10-01T06:33:18Z",
+    importMode: "UPDATE", durationMs: 4247, totalRows: 4, insertedRows: 1,
+    updatedRows: 1, unchangedRows: 2, errorRows: 0,
+    sourceFileName: "catalog.csv", sourceUrl: "https://example.test/catalog.zip", sourceSha256: "a".repeat(64),
+  };
+  await page.route("**/api/catalog/import/metadata", route => route.fulfill({ json: { metadata } }));
+  await page.route("**/api/catalog/import/update", route => route.fulfill({ json: { ...summary, metadata } }));
+  await page.goto("/settings/database");
+  await page.getByRole("button", { name: "Download and update" }).click();
+  await page.getByRole("button", { name: "Update now" }).click();
+  const notice = page.getByRole("status").filter({ hasText: "Catalog updated." });
+  await expect(notice).toBeVisible();
+  await expect(page.getByText(metadata.sourceUrl, { exact: true })).toHaveCount(1);
+  await expect(page.getByText("2026-09-30 04:00:50", { exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Update result", exact: true })).toHaveCount(0);
+  await notice.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(notice).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Current catalog" })).toBeVisible();
 });

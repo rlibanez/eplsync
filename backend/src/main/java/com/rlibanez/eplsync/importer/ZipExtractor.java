@@ -27,11 +27,19 @@ public class ZipExtractor {
      * @throws IOException              Si ocurre un error de E/S al leer o extraer.
      * @throws IllegalArgumentException Si no hay o hay múltiples archivos CSV.
      */
+    public record ExtractedCsv(Path path, String name, String modifiedAt) {}
+
     public Path extractCsv(Path zipFile) throws IOException {
+        return extractCsvWithMetadata(zipFile).path();
+    }
+
+    public ExtractedCsv extractCsvWithMetadata(Path zipFile) throws IOException {
         log.trace("Extrayendo archivo CSV desde ZIP: {}", zipFile);
 
         Path extractedFile = null;
         int csvCount = 0;
+        String originalName = null;
+        String modifiedAt = null;
 
         try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(zipFile))) {
             ZipEntry entry;
@@ -46,6 +54,8 @@ public class ZipExtractor {
                                         + zipFile);
                     }
                     String fileName = entryName.substring(entryName.lastIndexOf('/') + 1);
+                    originalName = fileName;
+                    modifiedAt = entry.getTimeLocal() == null ? null : entry.getTimeLocal().toString();
                     String prefix = fileName.replaceAll("[^a-zA-Z0-9]", "_");
                     String suffix = ".csv";
                     Path tempFile = Files.createTempFile(prefix + "-", suffix);
@@ -78,6 +88,6 @@ public class ZipExtractor {
                     "No se encontró ningún archivo CSV en el ZIP: " + zipFile);
         }
         
-        return extractedFile;
+        return new ExtractedCsv(extractedFile, originalName, modifiedAt);
     }
 }

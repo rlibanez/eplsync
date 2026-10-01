@@ -482,5 +482,27 @@
     "includeReviewedHelp": "Turn this off to check only covers that have not been reviewed.",
     "scopeUnchecked": "Scope: unchecked covers only.",
     "scopeAll": "Scope: all covers."
+  },
+  "metadata": {
+    "title": "Current catalog",
+    "loading": "Loading current catalog…",
+    "empty": "No import metadata is available yet. It will be saved with the next update.",
+    "unknown": "Unknown",
+    "sourceUrl": "Source URL",
+    "sourceFileName": "CSV file",
+    "sourceModifiedAt": "Catalog date",
+    "importedAt": "Imported at",
+    "importMode": "Import mode",
+    "totalRows": "CSV rows",
+    "insertedRows": "New books",
+    "updatedRows": "Updated books",
+    "unchangedRows": "Unchanged",
+    "errorRows": "Failed rows",
+    "durationMs": "Total duration",
+    "sourceSha256": "CSV SHA-256",
+    "modes": {
+      "UPDATE": "Update",
+      "REPLACE": "Catalog replacement"
+    }
   }
 }

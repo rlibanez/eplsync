@@ -23,7 +23,7 @@ public class DatabaseResetService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DatabaseResetService.class);
 
     public record ResetResult(boolean success, int catalogBooks, int downloads,
-            int jobs, int jobItems, int updatePlans, int cleanupRecords, int recordsImported) {}
+            int jobs, int jobItems, int updatePlans, int cleanupRecords, int recordsImported, com.rlibanez.eplsync.model.CatalogMetadata metadata) {}
 
     public DatabaseResetService(BulkStore bulk, ObjectProvider<BulkWorker> workers,
             DownloadTrackingService tracking, EntityManager em, PlatformTransactionManager manager, CatalogImportService catalog) {
@@ -54,7 +54,7 @@ public class DatabaseResetService {
                     var imported = catalog.importCatalog();
                     if (!imported.success() || imported.errors() > 0 || imported.recordsCreated() == 0)
                         throw new IllegalStateException("El catálogo está vacío o contiene errores; se conserva la base de datos anterior");
-                    return new ResetResult(true, books, downloads, jobs, items, plans, cleanup, imported.recordsCreated());
+                    return new ResetResult(true, books, downloads, jobs, items, plans, cleanup, imported.recordsCreated(), imported.metadata());
                 });
                 // Only discard the in-memory queue after the transaction commits.
                 if (worker != null) worker.clearIdleState();

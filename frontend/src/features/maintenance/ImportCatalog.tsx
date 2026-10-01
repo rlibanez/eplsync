@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { CurrentCatalog } from "./CatalogMetadata";
+import { useEffect, useState } from "react";
 import { Alert, Button, Loader, Modal } from "@mantine/core";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -11,9 +12,18 @@ export function ImportCatalog() {
   const { number } = useLocale();
   const { operation, run } = useImport();
   const [confirm, setConfirm] = useState<"update" | "reset" | null>(null);
+  const [noticeVisible, setNoticeVisible] = useState(false);
+  useEffect(() => {
+    setNoticeVisible(true);
+    if (!operation?.result?.success && !operation?.resetResult?.success) return;
+    if (operation?.result?.errors) return;
+    const timer = window.setTimeout(() => setNoticeVisible(false), 5000);
+    return () => window.clearTimeout(timer);
+  }, [operation]);
   const pending = operation?.pending ?? false;
   return (
     <>
+      <CurrentCatalog />
       <section className="panel settings-section">
         <h2>{t("import.source")}</h2>
         <p>{t("import.sourceDescription")}</p>
@@ -93,7 +103,30 @@ export function ImportCatalog() {
             ) && <p>{t("reset.uncertain")}</p>}
         </Alert>
       )}
-      {operation?.result && (
+      {operation?.result && operation.mode !== "preview" && noticeVisible && (
+        <Alert
+          withCloseButton
+          closeButtonLabel={t("covers.close")}
+          onClose={() => setNoticeVisible(false)}
+          color={
+            !operation.result.success
+              ? "red"
+              : operation.result.errors
+                ? "yellow"
+                : "teal"
+          }
+          role="status"
+        >
+          {t(
+            !operation.result.success
+              ? "import.unsuccessful"
+              : operation.result.errors
+                ? "import.partial"
+                : "import.updateDone",
+          )}
+        </Alert>
+      )}
+      {operation?.result && operation.mode === "preview" && (
         <section className="panel settings-section" aria-live="polite">
           <h2>
             {t(
@@ -102,25 +135,30 @@ export function ImportCatalog() {
                 : "import.updateResult",
             )}
           </h2>
-          <Alert
-            color={
-              !operation.result.success
-                ? "red"
-                : operation.result.errors
-                  ? "yellow"
-                  : "teal"
-            }
-          >
-            {t(
-              !operation.result.success
-                ? "import.unsuccessful"
-                : operation.result.errors
-                  ? "import.partial"
-                  : operation.mode === "preview"
-                    ? "import.previewDone"
-                    : "import.updateDone",
-            )}
-          </Alert>
+          {noticeVisible && (
+            <Alert
+              withCloseButton
+              closeButtonLabel={t("covers.close")}
+              onClose={() => setNoticeVisible(false)}
+              color={
+                !operation.result.success
+                  ? "red"
+                  : operation.result.errors
+                    ? "yellow"
+                    : "teal"
+              }
+            >
+              {t(
+                !operation.result.success
+                  ? "import.unsuccessful"
+                  : operation.result.errors
+                    ? "import.partial"
+                    : operation.mode === "preview"
+                      ? "import.previewDone"
+                      : "import.updateDone",
+              )}
+            </Alert>
+          )}
           <dl className="import-summary">
             {(
               [
@@ -145,13 +183,20 @@ export function ImportCatalog() {
       {operation?.resetResult && (
         <section className="panel settings-section" aria-live="polite">
           <h2>{t("reset.result")}</h2>
-          <Alert color={operation.resetResult.success ? "teal" : "red"}>
-            {t(
-              operation.resetResult.success
-                ? "reset.done"
-                : "import.unsuccessful",
-            )}
-          </Alert>
+          {noticeVisible && (
+            <Alert
+              withCloseButton
+              closeButtonLabel={t("covers.close")}
+              onClose={() => setNoticeVisible(false)}
+              color={operation.resetResult.success ? "teal" : "red"}
+            >
+              {t(
+                operation.resetResult.success
+                  ? "reset.done"
+                  : "import.unsuccessful",
+              )}
+            </Alert>
+          )}
           <dl className="import-summary">
             {(
               [

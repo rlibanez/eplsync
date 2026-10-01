@@ -1,3 +1,4 @@
+import type { Metadata } from "./CatalogMetadata";
 import {
   createContext,
   useContext,
@@ -10,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, NetworkError } from "../../api/catalog";
 export type ImportMode = "preview" | "update" | "reset";
 export interface ImportResult {
+  metadata?: Metadata;
   success: boolean;
   recordsProcessed: number;
   errors: number;
@@ -18,6 +20,7 @@ export interface ImportResult {
   recordsUnchanged: number;
 }
 export interface ResetResult {
+  metadata?: Metadata;
   success: boolean;
   catalogBooks: number;
   downloads: number;
@@ -102,7 +105,12 @@ export function ImportProvider({ children }: { children: ReactNode }) {
         void client.invalidateQueries({ queryKey: ["book"] });
       }
       if (mode === "reset" || mode === "update") {
-        for (const key of ["directory", "send-preview", "magnets"])
+        for (const key of [
+          "catalog-metadata",
+          "directory",
+          "send-preview",
+          "magnets",
+        ])
           void client.resetQueries({ queryKey: [key] });
       }
       if (mode === "reset") {

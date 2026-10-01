@@ -20,9 +20,17 @@ import java.net.URI;
 public class CatalogImportController {
 
     private final CatalogImportService catalogImportService;
+    private final com.rlibanez.eplsync.repository.CatalogMetadataRepository metadata;
 
-    public CatalogImportController(CatalogImportService catalogImportService) {
+    public CatalogImportController(CatalogImportService catalogImportService, com.rlibanez.eplsync.repository.CatalogMetadataRepository metadata) {
+        this.metadata = metadata;
         this.catalogImportService = catalogImportService;
+    }
+
+    @GetMapping("/metadata")
+    public ResponseEntity<?> metadata() {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(java.util.Collections.singletonMap("metadata", metadata.findById(1L).orElse(null)));
     }
 
     /**

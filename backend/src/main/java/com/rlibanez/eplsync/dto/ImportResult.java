@@ -10,5 +10,10 @@ public record ImportResult(
         int errors,
         int recordsUpdated,
         int recordsCreated,
-        int recordsUnchanged
-) {}
+        int recordsUnchanged,
+        com.rlibanez.eplsync.model.CatalogMetadata metadata
+) {
+    public ImportResult(boolean success, String message, int processed, int errors, int updated, int created, int unchanged) {
+        this(success, message, processed, errors, updated, created, unchanged, null);
+    }
+}

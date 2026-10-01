@@ -38,7 +38,7 @@ server:
 
 logging:
   file:
-    name: ${user.dir}/logs/eplsync.log
+    name: ./logs/eplsync.log
 
   logback:
     rollingpolicy:

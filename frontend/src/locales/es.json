@@ -482,5 +482,27 @@
     "includeReviewedHelp": "Desactívalo para comprobar únicamente portadas sin revisar.",
     "scopeUnchecked": "Alcance: solo portadas sin revisar.",
     "scopeAll": "Alcance: todas las portadas."
+  },
+  "metadata": {
+    "title": "Catálogo actual",
+    "loading": "Consultando el catálogo actual…",
+    "empty": "Todavía no hay información de una importación. Se guardará en la próxima actualización.",
+    "unknown": "Desconocida",
+    "sourceUrl": "URL de origen",
+    "sourceFileName": "Archivo CSV",
+    "sourceModifiedAt": "Fecha del catálogo",
+    "importedAt": "Importado el",
+    "importMode": "Modo de importación",
+    "totalRows": "Filas del CSV",
+    "insertedRows": "Libros nuevos",
+    "updatedRows": "Libros actualizados",
+    "unchangedRows": "Sin cambios",
+    "errorRows": "Filas con errores",
+    "durationMs": "Duración total",
+    "sourceSha256": "SHA-256 del CSV",
+    "modes": {
+      "UPDATE": "Actualización",
+      "REPLACE": "Reemplazo del catálogo"
+    }
   }
 }

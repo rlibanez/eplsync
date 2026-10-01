@@ -19,7 +19,7 @@ class CatalogImportControllerTests {
         when(service.importCatalog(null)).thenReturn(new ImportResult(true, "Importación completada", 3, 0, 0, 3, 0));
         when(service.updateCatalog("https://example.com/catalog.zip"))
                 .thenReturn(new ImportResult(true, "Importación completada", 3, 0, 1, 1, 1));
-        var mvc = MockMvcBuilders.standaloneSetup(new CatalogImportController(service)).build();
+        var mvc = MockMvcBuilders.standaloneSetup(new CatalogImportController(service, org.mockito.Mockito.mock(com.rlibanez.eplsync.repository.CatalogMetadataRepository.class))).build();
         mvc.perform(post("/api/catalog/import"))
                 .andExpect(status().isNotFound());
         verifyNoInteractions(service);
@@ -55,7 +55,7 @@ class CatalogImportControllerTests {
     @Test
     void invalidParameterTypesReturn400WithoutDownloading() throws Exception {
         var service = mock(CatalogImportService.class);
-        var mvc = MockMvcBuilders.standaloneSetup(new CatalogImportController(service))
+        var mvc = MockMvcBuilders.standaloneSetup(new CatalogImportController(service, org.mockito.Mockito.mock(com.rlibanez.eplsync.repository.CatalogMetadataRepository.class)))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         for (String parameter : List.of("page", "size", "includeDetails")) {
             mvc.perform(post("/api/catalog/import/preview").param(parameter, "invalid"))
