@@ -1,3 +1,4 @@
+import faviconTemplate from "../../public/favicon.svg?raw";
 import {
   createContext,
   useContext,
@@ -68,6 +69,14 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     );
     document.documentElement.dataset.palette = palette;
   }, [palette]);
+  useLayoutEffect(() => {
+    const hue = palettes[palette];
+    const background = scheme === "dark" ? `hsl(${hue} 23% 20%)` : `hsl(${hue} 35% 90%)`;
+    const foreground = scheme === "dark" ? `hsl(${hue} 40% 76%)` : `hsl(${hue} 55% 29%)`;
+    const svg = faviconTemplate.replace("#294536", background).replace("#a8d9bb", foreground);
+    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (icon) icon.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }, [palette, scheme]);
   return (
     <Context.Provider value={{ palette, setPalette, scheme, setScheme }}>
       <MantineProvider

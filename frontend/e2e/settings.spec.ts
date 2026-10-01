@@ -36,6 +36,8 @@ test("palette changes the interface and survives navigation and reload", async (
   page,
 }) => {
   await page.goto("/settings/general");
+  const favicon = page.locator('link[rel="icon"]');
+  const initialIcon = await favicon.getAttribute("href");
   const previous = await page
     .locator("#sidebar")
     .evaluate((e) => getComputedStyle(e).backgroundColor);
@@ -46,9 +48,15 @@ test("palette changes the interface and survives navigation and reload", async (
       .locator("#sidebar")
       .evaluate((e) => getComputedStyle(e).backgroundColor),
   ).not.toBe(previous);
+  await expect(favicon).not.toHaveAttribute("href", initialIcon!);
+  const blueIcon = await favicon.getAttribute("href");
+  await page.getByRole("radio", { name: "Claro", exact: true }).check();
+  await expect(favicon).not.toHaveAttribute("href", blueIcon!);
+  const lightIcon = await favicon.getAttribute("href");
   await page.getByRole("link", { name: "Torrent", exact: true }).click();
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-palette", "blue");
+  await expect(favicon).toHaveAttribute("href", lightIcon!);
   await page.getByRole("link", { name: "General", exact: true }).click();
   await expect(
     page.getByRole("radio", { name: "Azul", exact: true }),

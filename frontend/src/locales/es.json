@@ -197,7 +197,9 @@
     "scheme": "Modo de color",
     "light": "Claro",
     "dark": "Oscuro",
-    "covers": "Portadas"
+    "covers": "Portadas",
+    "about": "Acerca de",
+    "repository": "Repositorio del proyecto"
   },
   "import": {
     "description": "Descarga el catálogo de ePubLibre y crea o actualiza tu biblioteca local.",

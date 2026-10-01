@@ -197,7 +197,9 @@
     "scheme": "Color mode",
     "light": "Light",
     "dark": "Dark",
-    "covers": "Covers"
+    "covers": "Covers",
+    "about": "About",
+    "repository": "Project repository"
   },
   "import": {
     "description": "Download the ePubLibre catalog and create or update your local library.",
