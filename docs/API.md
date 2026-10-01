@@ -156,6 +156,13 @@ curl -s \
   'http://192.168.2.2:8088/api/catalog/books?language=es&page=0&size=100&sort=eplId,asc' | jq
 ```
 
+En `GET /api/catalog/books`, los nombres de los parámetros distinguen mayúsculas y
+minúsculas, con una excepción: `eplid` se acepta como alias de `eplId` (nombre oficial).
+Si aparecen ambos, deben indicar el mismo entero positivo; valores distintos,
+vacíos o inválidos devuelven `400`. Los parámetros desconocidos también devuelven
+`400` para evitar listar todo el catálogo por un filtro mal escrito.
+La consulta por filtro devuelve una lista; la ruta `/api/catalog/books/32` devuelve un objeto.
+
 Los resultados incluyen `download.items`, con `id`, `revision`, `status` y
 `completed` de los registros de descarga asociados. Es información guardada en
 EPLsync; consultar un libro no ejecuta un sync.

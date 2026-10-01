@@ -50,7 +50,39 @@ public class CatalogBookController {
     public Object search(@Valid @ModelAttribute CatalogBookFilter filter,
             Pageable pageable,
             @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size) {
+            @RequestParam(required = false) Integer size,
+            jakarta.servlet.http.HttpServletRequest request) {
+
+        var names = new java.util.HashSet<String>(java.util.Set.of("page", "size", "sort", "eplid"));
+        for (var property : org.springframework.beans.BeanUtils.getPropertyDescriptors(CatalogBookFilter.class)) {
+            if (property.getWriteMethod() != null) names.add(property.getName());
+        }
+        for (String name : request.getParameterMap().keySet()) {
+            if (!names.contains(name)) {
+                String hint = names.stream().filter(known -> known.equalsIgnoreCase(name))
+                        .findFirst().map(known -> "; utiliza " + known).orElse("");
+                throw new IllegalArgumentException("Parámetro desconocido: " + name + hint);
+            }
+        }
+        // Validate both spellings, including repeated values, before applying the alias.
+        Long requestedId = null;
+        for (String name : java.util.List.of("eplId", "eplid")) {
+            String[] values = request.getParameterValues(name);
+            if (values == null) continue;
+            for (String value : values) {
+                long id;
+                try {
+                    id = Long.parseLong(value.trim());
+                } catch (NumberFormatException ex) {
+                    throw new IllegalArgumentException(name + " debe ser un entero mayor que cero");
+                }
+                if (id < 1) throw new IllegalArgumentException(name + " debe ser un entero mayor que cero");
+                if (requestedId != null && requestedId.longValue() != id)
+                    throw new IllegalArgumentException("eplId y eplid deben indicar el mismo identificador");
+                requestedId = id;
+            }
+        }
+        if (requestedId != null) filter.setEplId(requestedId);
 
         if ((page != null && page < 0) || (size != null && size < 1))
             throw new IllegalArgumentException("page >= 0 y size > 0");
