@@ -532,5 +532,68 @@
     "reset": "Reset columns",
     "resize": "Resize {{column}}",
     "drag": "Drag {{column}}"
+  },
+  "syncReport": {
+    "title": "Synchronization result",
+    "applied": "Changes applied",
+    "preview": "Preview: no changes saved",
+    "previewAction": "Preview synchronization",
+    "remote": "Torrent client",
+    "records": "EPL Sync records",
+    "outcomes": "Highlighted outcomes",
+    "details": "Synchronization details",
+    "books": "Books",
+    "ignored": "Ignored torrents",
+    "action": "Action",
+    "outcome": "Highlighted outcome",
+    "book": "Book",
+    "previous": "Previous status",
+    "result": "Resulting status",
+    "changes": "Detected changes",
+    "name": "Name",
+    "hash": "Hash",
+    "reason": "Reason",
+    "empty": "No items match these filters.",
+    "actions": {
+      "ALL": "All",
+      "CHANGED": "New and modified",
+      "CREATE": "New",
+      "UPDATE": "Modified",
+      "UNCHANGED": "Unchanged"
+    },
+    "counts": {
+      "total": "Remote torrents",
+      "matched": "Matched",
+      "ignored": "Ignored",
+      "checked": "Evaluated records",
+      "created": "New",
+      "updated": "Modified",
+      "unchanged": "Unchanged",
+      "newlyCompleted": "Detected completions",
+      "notFound": "Missing from client",
+      "newlyNotFound": "Newly missing"
+    },
+    "fields": {
+      "status": "Status",
+      "completedAt": "Completion",
+      "lastError": "Error information"
+    },
+    "reasons": {
+      "NO_CATALOG_MATCH": "No match in EPL Sync or the catalog"
+    },
+    "close": "Close synchronization result",
+    "completionDetected": "Completion detected",
+    "explanations": {
+      "newlyCompleted": "Downloads completed in the torrent client that EPL Sync had not yet recorded as completed. This is not the total number of completed downloads.",
+      "notFound": "Downloads recorded in EPL Sync whose torrent no longer appears in the client. Includes previously detected absences. This does not mean the downloaded files have been deleted.",
+      "newlyNotFound": "Records becoming not found in this check. Included in the total missing from the client.",
+      "total": "Torrents returned by the client in this check.",
+      "matched": "Client torrents associated with an EPL Sync record or a catalog book.",
+      "ignored": "Client torrents with no match in EPL Sync or the catalog.",
+      "checked": "Download records checked, including proposed new records. A book may have several records.",
+      "created": "New records for client torrents matching the catalog. Previews do not save them.",
+      "updated": "Existing records with changes to status, completion or error information. Previews do not apply them.",
+      "unchanged": "Records with no changes to status, completion or error information. Updating only tracking timestamps does not count as a change."
+    }
   }
 }

@@ -1422,3 +1422,10 @@ summary {
 .column-drag { display: flex; cursor: grab; color: var(--muted); padding: 6px 0; }
 .column-drag:active { cursor: grabbing; }
 .column-choice.drop-target { outline: 2px solid var(--accent); border-radius: 4px; }
+
+.sync-report { margin-bottom: 24px; }
+.sync-report td:first-child { width: auto; min-width: 180px; }
+.sync-hash { overflow-wrap: anywhere; }
+
+.sync-report-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.sync-count-help { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }

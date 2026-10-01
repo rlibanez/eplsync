@@ -53,7 +53,7 @@ volver a seleccionarlo. Los intentos `ERROR` se pueden volver a seleccionar.
 
 Previsualización de solo lectura: no consulta qBittorrent, no sincroniza y no
 escribe registros. Usa el último estado guardado; si se necesita información
-actual del cliente, ejecutar antes `POST /api/torrent/downloads/sync`.
+actual del cliente, ejecutar antes `POST /api/torrent/downloads/sync` con cuerpo JSON `{"dryRun":false}`.
 
 ```bash
 curl -s 'http://192.168.2.2:8088/api/torrent/updates?page=0&size=50' | jq

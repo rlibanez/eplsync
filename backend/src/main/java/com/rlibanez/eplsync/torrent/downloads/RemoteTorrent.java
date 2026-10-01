@@ -4,7 +4,7 @@ import java.time.Instant;
 
 /** Estado observado por un adaptador; nunca incluye credenciales; contentPath pertenece al cliente remoto. */
 public record RemoteTorrent(String hash, DownloadStatus status, Instant completedAt,
-        java.util.Set<String> aliases, String contentPath) {
+        java.util.Set<String> aliases, String contentPath, String name) {
     public RemoteTorrent {
         hash = hash.toUpperCase(java.util.Locale.ROOT);
         var normalized = new java.util.HashSet<String>();
@@ -13,6 +13,9 @@ public record RemoteTorrent(String hash, DownloadStatus status, Instant complete
         aliases = java.util.Set.copyOf(normalized);
     }
 
+    public RemoteTorrent(String hash, DownloadStatus status, Instant completedAt, java.util.Set<String> aliases, String contentPath) {
+        this(hash, status, completedAt, aliases, contentPath, null);
+    }
     public RemoteTorrent(String hash, DownloadStatus status, Instant completedAt, java.util.Set<String> aliases) {
         this(hash, status, completedAt, aliases, null);
     }

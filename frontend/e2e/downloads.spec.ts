@@ -79,19 +79,23 @@ test("state reads local records and sync is explicit", async ({ page }) => {
   );
   await page.route("**/api/torrent/downloads/sync", (r) => {
     expect(r.request().method()).toBe("POST");
-    expect(r.request().postData()).toBe(null);
+    expect(r.request().postDataJSON()).toEqual({
+      dryRun: false,
+      includeDetails: true,
+    });
     syncs++;
     synced = true;
     return r.fulfill({
       json: {
         checkedAt: "2026-09-30T09:00:00Z",
-        remoteTorrents: 1,
-        checked: 1,
-        created: 0,
-        updated: 1,
-        completed: 1,
-        notFound: 0,
-        ignored: 0,
+        client: "qbittorrent",
+        dryRun: false,
+        applied: true,
+        remote: { total: 1, matched: 1, ignored: 0 },
+        records: { checked: 1, created: 0, updated: 1, unchanged: 0 },
+        outcomes: { newlyCompleted: 1, notFound: 0, newlyNotFound: 0 },
+        items: [],
+        ignoredTorrents: [],
       },
     });
   });
@@ -103,9 +107,9 @@ test("state reads local records and sync is explicit", async ({ page }) => {
   await page
     .getByRole("button", { name: "Sincronizar con el cliente" })
     .click();
-  await expect(page.getByRole("alert")).toContainText(
-    "Sincronización completada",
-  );
+  await expect(
+    page.getByText("Cambios aplicados", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("cell", { name: "Descargado", exact: true }),
   ).toBeVisible();
@@ -312,7 +316,9 @@ test("directory opens a filtered catalog, pagination includes 10 to 500", async 
   await page.goto("/directory?section=genres");
   await page.getByRole("link", { name: "Ficción", exact: true }).click();
   await expect(page).toHaveURL(/genres=Ficci/);
-  await expect(page.getByRole("link", { name: "Dune EPL 32" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Dune", exact: true }),
+  ).toBeVisible();
 });
 test("light scheme and ten palettes persist with clean settings navigation", async ({
   page,

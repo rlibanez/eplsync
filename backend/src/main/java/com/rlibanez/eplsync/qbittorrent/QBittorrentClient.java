@@ -226,7 +226,7 @@ public class QBittorrentClient implements TorrentClient {
                 try { completedAt = java.time.Instant.ofEpochSecond(completion); }
                 catch (java.time.DateTimeException ex) { throw new QBittorrentConnectionException(UPSTREAM); }
             }
-            result.add(new RemoteTorrent(hash, status, completedAt, torrentHashes(item), item.path("content_path").asString("")));
+            result.add(new RemoteTorrent(hash, status, completedAt, torrentHashes(item), item.path("content_path").asString(""), item.path("name").asString("")));
         }
         return java.util.List.copyOf(result);
     }

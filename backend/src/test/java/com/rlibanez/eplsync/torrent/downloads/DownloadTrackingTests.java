@@ -214,23 +214,23 @@ class DownloadTrackingTests {
         service.addTorrent(command(1.6, HASH));
         var id = only().getId();
         when(stubClient.listTorrents()).thenReturn(List.of());
-        service.syncDownloads();
+        service.syncDownloads(false, true);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.NOT_FOUND);
         var completion = Instant.parse("2026-01-01T10:00:00Z");
         when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent("B".repeat(40),
                 DownloadStatus.DOWNLOADED, completion, java.util.Set.of(HASH.toLowerCase(Locale.ROOT), "B".repeat(64)))));
-        var result = service.syncDownloads();
-        assertThat(result.remoteTorrents()).isEqualTo(1);
-        assertThat(result.updated()).isEqualTo(1);
-        assertThat(result.completed()).isEqualTo(1);
-        assertThat(result.created()).isZero();
-        assertThat(result.notFound()).isZero();
-        assertThat(result.ignored()).isZero();
+        var result = service.syncDownloads(false, true);
+        assertThat(result.remote().total()).isEqualTo(1);
+        assertThat(result.records().updated()).isEqualTo(1);
+        assertThat(result.outcomes().newlyCompleted()).isEqualTo(1);
+        assertThat(result.records().created()).isZero();
+        assertThat(result.outcomes().notFound()).isZero();
+        assertThat(result.remote().ignored()).isZero();
         assertThat(only().getId()).isEqualTo(id);
         assertThat(only().getHash()).isEqualTo(HASH);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.DOWNLOADED);
         assertThat(only().getCompletedAt()).isEqualTo(completion);
-        assertThat(service.syncDownloads().completed()).isZero();
+        assertThat(service.syncDownloads(false, true).outcomes().newlyCompleted()).isZero();
     }
 
     @Test void discoversHybridByCatalogHashAndIgnoresOneUnrelatedTorrent() {
@@ -240,27 +240,27 @@ class DownloadTrackingTests {
                         java.util.Set.of(HASH, "B".repeat(64))),
                 new RemoteTorrent("C".repeat(40), DownloadStatus.DOWNLOADED, null,
                         java.util.Set.of("C".repeat(64)))));
-        var result = service.syncDownloads();
-        assertThat(result.remoteTorrents()).isEqualTo(2);
-        assertThat(result.created()).isEqualTo(1);
-        assertThat(result.ignored()).isEqualTo(1);
+        var result = service.syncDownloads(false, true);
+        assertThat(result.remote().total()).isEqualTo(2);
+        assertThat(result.records().created()).isEqualTo(1);
+        assertThat(result.remote().ignored()).isEqualTo(1);
         assertThat(only().getHash()).isEqualTo(HASH);
         assertThat(only().getOrigin()).isEqualTo(DownloadRecord.Origin.DISCOVERED);
-        assertThat(service.syncDownloads().created()).isZero();
+        assertThat(service.syncDownloads(false, true).records().created()).isZero();
     }
 
     @Test void completionDisappearanceAndReappearancePreserveEvidenceAndIdentity() {
         service.addTorrent(command(1.0, HASH));
         var id = only().getId(); var completion = Instant.parse("2026-01-01T10:00:00Z");
         when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent(HASH.toLowerCase(Locale.ROOT), DownloadStatus.DOWNLOADED, completion)));
-        assertThat(service.syncDownloads().completed()).isEqualTo(1);
+        assertThat(service.syncDownloads(false, true).outcomes().newlyCompleted()).isEqualTo(1);
         assertThat(only().getCompletedAt()).isEqualTo(completion);
         when(stubClient.listTorrents()).thenReturn(List.of());
-        assertThat(service.syncDownloads().notFound()).isEqualTo(1);
+        assertThat(service.syncDownloads(false, true).outcomes().notFound()).isEqualTo(1);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.NOT_FOUND);
         assertThat(only().getCompletedAt()).isEqualTo(completion);
         when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent(HASH, DownloadStatus.DOWNLOADED, null)));
-        service.syncDownloads();
+        service.syncDownloads(false, true);
         assertThat(only().getId()).isEqualTo(id);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.DOWNLOADED);
         assertThat(only().getCompletedAt()).isEqualTo(completion);
@@ -270,11 +270,11 @@ class DownloadTrackingTests {
         book(1.0, HASH + "," + OTHER);
         when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent(HASH, DownloadStatus.PAUSED, null),
                 new RemoteTorrent(OTHER, DownloadStatus.DOWNLOADED, null), new RemoteTorrent("C".repeat(40), DownloadStatus.DOWNLOADED, null)));
-        var result = service.syncDownloads();
-        assertThat(result.created()).isEqualTo(2); assertThat(result.ignored()).isEqualTo(1);
+        var result = service.syncDownloads(false, true);
+        assertThat(result.records().created()).isEqualTo(2); assertThat(result.remote().ignored()).isEqualTo(1);
         assertThat(downloads.findAll()).allMatch(row -> row.getOrigin() == DownloadRecord.Origin.DISCOVERED
                 && row.getDiscoveredAt() != null && row.getSubmittedAt() == null && row.getRequestedAt() == null);
-        assertThat(service.syncDownloads().created()).isZero();
+        assertThat(service.syncDownloads(false, true).records().created()).isZero();
         service.addTorrent(command(2.0, HASH));
         assertThat(downloads.findAll()).allMatch(row -> row.getRevision() == 1.0 && row.getOrigin() == DownloadRecord.Origin.DISCOVERED);
     }
@@ -285,14 +285,14 @@ class DownloadTrackingTests {
         assertThatThrownBy(() -> service.addTorrent(command)).isInstanceOf(IllegalArgumentException.class);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.ERROR);
         assertThat(only().getLastError()).doesNotContain("secret");
-        service.syncDownloads(); service.syncDownloads();
+        service.syncDownloads(false, true); service.syncDownloads(false, true);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.ERROR);
         doThrow(new TorrentConnectionException(TorrentConnectionException.Reason.TIMEOUT)).when(stubClient).addTorrent(any());
         assertThatThrownBy(() -> service.addTorrent(command)).isInstanceOf(TorrentConnectionException.class);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.UNKNOWN);
         var checked = only().getLastCheckedAt();
         when(stubClient.listTorrents()).thenThrow(new TorrentConnectionException(TorrentConnectionException.Reason.UPSTREAM));
-        assertThatThrownBy(service::syncDownloads).isInstanceOf(TorrentConnectionException.class);
+        assertThatThrownBy(() -> service.syncDownloads(false, true)).isInstanceOf(TorrentConnectionException.class);
         assertThat(only().getLastCheckedAt()).isEqualTo(checked);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.UNKNOWN);
     }
@@ -304,7 +304,7 @@ class DownloadTrackingTests {
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.ALREADY_EXISTS);
         assertThat(only().getSubmittedAt()).isNull();
         properties.setEnabled(false);
-        assertThatThrownBy(service::syncDownloads).isInstanceOf(TorrentOperationException.class);
+        assertThatThrownBy(() -> service.syncDownloads(false, true)).isInstanceOf(TorrentOperationException.class);
         verify(stubClient, never()).listTorrents();
     }
 
@@ -312,11 +312,11 @@ class DownloadTrackingTests {
         service.addTorrent(command(1.0, HASH));
         var oldInstance = only().getClientInstanceId();
         properties.setBaseUrl("http://localhost:9090");
-        service.syncDownloads();
+        service.syncDownloads(false, true);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.SUBMITTED);
         service.addTorrent(command(1.0, HASH));
         assertThat(downloads.findAll()).hasSize(2);
-        books.deleteAll(); service.syncDownloads();
+        books.deleteAll(); service.syncDownloads(false, true);
         assertThat(downloads.findAll()).filteredOn(row -> row.getClientInstanceId().equals(oldInstance))
                 .allMatch(row -> row.getStatus() == DownloadStatus.SUBMITTED);
         assertThat(downloads.count()).isEqualTo(2);
@@ -327,9 +327,9 @@ class DownloadTrackingTests {
         var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
         when(stubClient.listTorrents()).thenAnswer(inv -> { entered.countDown(); release.await(5, TimeUnit.SECONDS); return List.of(); });
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var future = executor.submit(service::syncDownloads);
+            var future = executor.submit(() -> service.syncDownloads(false, true));
             assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThatThrownBy(service::syncDownloads).isInstanceOf(TorrentOperationException.class);
+            assertThatThrownBy(() -> service.syncDownloads(false, true)).isInstanceOf(TorrentOperationException.class);
             release.countDown(); future.get(5, TimeUnit.SECONDS);
         }
         var sending = new CountDownLatch(1); var finish = new CountDownLatch(1);
@@ -337,15 +337,70 @@ class DownloadTrackingTests {
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             var future = executor.submit(() -> service.addTorrent(command));
             assertThat(sending.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThatThrownBy(service::syncDownloads).isInstanceOf(TorrentOperationException.class);
+            assertThatThrownBy(() -> service.syncDownloads(false, true)).isInstanceOf(TorrentOperationException.class);
             finish.countDown(); future.get(5, TimeUnit.SECONDS);
         }
+    }
+
+    @Test void previewCalculatesSameChangesWithoutWritingAnyFields() {
+        service.addTorrent(command(1.0, HASH));
+        book(1.0, HASH + "," + OTHER);
+        var before = only();
+        when(stubClient.listTorrents()).thenReturn(List.of(
+                new RemoteTorrent(HASH, DownloadStatus.DOWNLOADED, Instant.parse("2026-01-01T10:00:00Z")),
+                new RemoteTorrent(OTHER, DownloadStatus.PAUSED, null),
+                new RemoteTorrent("C".repeat(40), DownloadStatus.DOWNLOADING, null, Set.of(), null, "Unrelated")));
+        var preview = service.syncDownloads(true, true);
+        assertThat(preview.dryRun()).isTrue(); assertThat(preview.applied()).isFalse();
+        assertThat(preview.records()).isEqualTo(new DownloadTrackingService.RecordCounts(2,1,1,0));
+        assertThat(preview.remote()).isEqualTo(new DownloadTrackingService.RemoteCounts(3,2,1));
+        assertThat(preview.ignoredTorrents()).singleElement().satisfies(item -> assertThat(item.name()).isEqualTo("Unrelated"));
+        assertThat(preview.items()).filteredOn(item -> item.action().equals("CREATE")).singleElement()
+                .satisfies(item -> assertThat(item.downloadId()).isNull());
+        assertThat(downloads.count()).isEqualTo(1);
+        assertThat(only()).usingRecursiveComparison().isEqualTo(before);
+        var applied = service.syncDownloads(false, true);
+        assertThat(applied.records()).isEqualTo(preview.records());
+        assertThat(applied.outcomes()).isEqualTo(preview.outcomes());
+        assertThat(applied.remote()).isEqualTo(preview.remote());
+        assertThat(applied.applied()).isTrue();
+        assertThat(downloads.count()).isEqualTo(2);
+        var repeated = service.syncDownloads(true, false);
+        assertThat(repeated.records().unchanged()).isEqualTo(2);
+        assertThat(repeated.items()).isNull(); assertThat(repeated.ignoredTorrents()).isNull();
+    }
+
+    @Test void missingCountsDistinguishNewAndRepeatedAbsences() {
+        service.addTorrent(command(1.0, HASH));
+        var preview = service.syncDownloads(true, true);
+        assertThat(preview.outcomes().newlyNotFound()).isEqualTo(1);
+        assertThat(only().getStatus()).isEqualTo(DownloadStatus.SUBMITTED);
+        service.syncDownloads(false, false);
+        var repeated = service.syncDownloads(true, true);
+        assertThat(repeated.outcomes().notFound()).isEqualTo(1);
+        assertThat(repeated.outcomes().newlyNotFound()).isZero();
+        assertThat(repeated.records().unchanged()).isEqualTo(1);
+    }
+
+    @Test void syncRequiresStrictJsonOptionsAndDoesNotAcceptLegacyRequests() throws Exception {
+        for (String body : List.of("{}", "null", "{\"dryRun\":null}", "{\"dryRun\":\"true\"}",
+                "{\"dryRun\":1}", "{\"dryRun\":true,\"includeDetails\":null}", "{\"dryRun\":true,\"unknown\":true}"))
+            mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json").content(body))
+                    .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/torrent/downloads/sync")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/torrent/downloads/sync")).andExpect(status().isMethodNotAllowed());
+        mvc.perform(post("/api/torrent/downloads/sync?dryRun=true").contentType("application/json").content("{\"dryRun\":true}"))
+                .andExpect(status().isBadRequest());
+        verify(stubClient, never()).listTorrents();
+        mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json").content("{\"dryRun\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.dryRun").value(true))
+                .andExpect(jsonPath("$.applied").value(false)).andExpect(jsonPath("$.items").doesNotExist());
     }
 
     @Test void apiProvidesFullDetailsFiltersAndCatalogSummary() throws Exception {
         book(2.0, HASH);
         when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent(HASH, DownloadStatus.DOWNLOADED, Instant.parse("2026-01-01T10:00:00Z"))));
-        mvc.perform(post("/api/torrent/downloads/sync")).andExpect(status().isOk()).andExpect(jsonPath("$.created").value(1));
+        mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json").content("{\"dryRun\":false}")).andExpect(status().isOk()).andExpect(jsonPath("$.records.created").value(1));
         mvc.perform(get("/api/torrent/downloads").param("eplId", "32").param("completed", "true")
                 .param("status", "DOWNLOADED,NOT_FOUND").param("origin", "DISCOVERED").param("revision", "2")
                 .param("completedAtFrom", "2026-01-01T00:00:00Z").param("sort", "revision,desc"))

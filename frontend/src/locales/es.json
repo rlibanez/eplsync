@@ -532,5 +532,68 @@
     "reset": "Restaurar columnas",
     "resize": "Ajustar ancho de {{column}}",
     "drag": "Arrastrar {{column}}"
+  },
+  "syncReport": {
+    "title": "Resultado de la sincronización",
+    "applied": "Cambios aplicados",
+    "preview": "Simulación: sin cambios guardados",
+    "previewAction": "Previsualizar sincronización",
+    "remote": "Cliente torrent",
+    "records": "Registros de EPL Sync",
+    "outcomes": "Resultados destacados",
+    "details": "Detalle de la sincronización",
+    "books": "Libros",
+    "ignored": "Torrents ignorados",
+    "action": "Acción",
+    "outcome": "Resultado destacado",
+    "book": "Libro",
+    "previous": "Estado anterior",
+    "result": "Estado resultante",
+    "changes": "Cambios detectados",
+    "name": "Nombre",
+    "hash": "Hash",
+    "reason": "Motivo",
+    "empty": "No hay elementos con estos filtros.",
+    "actions": {
+      "ALL": "Todos",
+      "CHANGED": "Nuevos y modificados",
+      "CREATE": "Nuevos",
+      "UPDATE": "Modificados",
+      "UNCHANGED": "Sin cambios"
+    },
+    "counts": {
+      "total": "Torrents recibidos",
+      "matched": "Relacionados",
+      "ignored": "Ignorados",
+      "checked": "Registros evaluados",
+      "created": "Nuevos",
+      "updated": "Modificados",
+      "unchanged": "Sin cambios",
+      "newlyCompleted": "Finalizaciones detectadas",
+      "notFound": "Ausentes del cliente",
+      "newlyNotFound": "Nuevas ausencias"
+    },
+    "fields": {
+      "status": "Estado",
+      "completedAt": "Finalización",
+      "lastError": "Información de error"
+    },
+    "reasons": {
+      "NO_CATALOG_MATCH": "Sin correspondencia con EPL Sync ni con el catálogo"
+    },
+    "close": "Cerrar resultado de la sincronización",
+    "completionDetected": "Finalización detectada",
+    "explanations": {
+      "newlyCompleted": "Descargas terminadas en el cliente torrent que EPL Sync aún no tenía registradas como completadas. No es el total de descargas terminadas.",
+      "notFound": "Descargas registradas en EPL Sync cuyo torrent ya no aparece en el cliente. Incluye ausencias detectadas anteriormente. No implica que los archivos descargados se hayan borrado.",
+      "newlyNotFound": "Registros que pasan a no encontrados en esta comprobación. Están incluidos en el total de ausentes del cliente.",
+      "total": "Torrents que el cliente devuelve en esta comprobación.",
+      "matched": "Torrents del cliente relacionados con algún registro de EPL Sync o libro del catálogo.",
+      "ignored": "Torrents del cliente sin correspondencia con EPL Sync ni con el catálogo.",
+      "checked": "Registros de descarga revisados, incluidos los nuevos propuestos. Un libro puede tener varios registros.",
+      "created": "Registros nuevos para torrents del cliente que coinciden con el catálogo. En simulación aún no se guardan.",
+      "updated": "Registros existentes con cambios de estado, finalización o error. En simulación aún no se aplican.",
+      "unchanged": "Registros sin cambios de estado, finalización ni error. Actualizar solo las fechas de comprobación no cuenta como cambio."
+    }
   }
 }

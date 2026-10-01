@@ -57,9 +57,9 @@ public class TorrentClientService {
         return selectedClient.withDefaults(download);
     }
 
-    public DownloadTrackingService.SyncResult syncDownloads() {
+    public DownloadTrackingService.SyncResult syncDownloads(boolean dryRun, boolean includeDetails) {
         requireEnabled();
-        return tracking.sync(selectedClient::listTorrents);
+        return tracking.sync(selectedClient::listTorrents, dryRun, includeDetails);
     }
 
     public <T> T exclusiveClient(java.util.function.Function<TorrentClient, T> action) {

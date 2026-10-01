@@ -645,35 +645,53 @@ Cuentan **registros**, no libros ni torrents únicos.
 ## 11. Sincronización de descargas
 
 ```bash
-curl -s -X POST \
-  'http://192.168.2.2:8088/api/torrent/downloads/sync' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/downloads/sync' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"includeDetails":true}' | jq
 ```
 
-No admite parámetros ni necesita cuerpo. Consulta el cliente y:
+`dryRun` es obligatorio y debe ser booleano JSON. `includeDetails` es opcional,
+booleano y por defecto `false`. No se admiten opciones en la URL, campos desconocidos,
+valores nulos ni cadenas en lugar de booleanos (`400`). GET no está soportado (`405`).
+Para aplicar, enviar el mismo cuerpo con `"dryRun":false`.
 
-- Actualiza registros conocidos.
-- Descubre torrents que coinciden por hash con el catálogo.
-- Reconoce identidades v1 y v2 de torrents híbridos.
-- Detecta ausencias y conserva el historial.
-- No envía descargas ni ejecuta limpiezas.
+Ambos modos consultan el estado actual del cliente. La simulación no escribe ningún
+registro ni fecha. La ejecución guarda los cambios en una transacción. No añade,
+renombra ni elimina torrents. Una ejecución posterior recalcula el resultado: no
+aplica una instantánea de una simulación anterior. Conflictos con otra sincronización
+o envíos en curso devuelven `409`.
 
-### Contadores de respuesta
+La respuesta contiene `client`, `clientInstanceId`, `checkedAt` (UTC), `dryRun`,
+`applied` y tres grupos de contadores:
 
-| Campo | Significado |
+| Grupo | Campos y significado |
 | --- | --- |
-| `remoteTorrents` | Torrents observados en el cliente. |
-| `checked` | Registros examinados, incluidos los nuevos. |
-| `created` | Registros descubiertos y creados. |
-| `updated` | Registros existentes cuyo estado o evidencia de finalización cambió. |
-| `completed` | Finalizaciones registradas por primera vez en este sync. |
-| `notFound` | Registros contabilizados como ausentes. |
-| `ignored` | Torrents remotos sin correspondencia. |
-| `checkedAt` | Instante de la instantánea en UTC. |
+| `remote` | `total`, `matched`, `ignored`: torrents únicos recibidos, relacionados y ajenos. `total = matched + ignored`. |
+| `records` | `checked`, `created`, `updated`, `unchanged`: registros existentes y nuevos propuestos. `checked = created + updated + unchanged`. |
+| `outcomes` | `newlyCompleted`, `notFound`, `newlyNotFound`: finalización detectada por primera vez, estado resultante NOT_FOUND y transición nueva a NOT_FOUND. |
 
-También devuelve `client` y `clientInstanceId`. Los contadores se solapan: no son
-categorías independientes que deban sumarse.
+`updated` considera cambios de estado, finalización y error. Cambiar únicamente
+`lastCheckedAt` o `lastSeenAt` no cuenta como cambio funcional. `outcomes` se solapa
+con las acciones; no debe sumarse a `records`. Un torrent puede relacionarse con
+varios registros. Los contadores describen lo calculado en ambos modos;
+`applied=true` confirma que la ejecución terminó correctamente.
 
-Puede devolver `409` si hay envíos o una sincronización incompatible en curso.
+Con `includeDetails=true` se incluyen dos listas completas, sin paginación del servidor:
+
+- `items`: todos los registros evaluados, incluidos los sin cambios. Campos:
+  `downloadId`, `eplId`, `title`, `hash`, `action` (`CREATE`, `UPDATE`, `UNCHANGED`),
+  `previousStatus`, `resultingStatus`, `foundInClient`, `changedFields`,
+  `newlyCompleted`, `newlyNotFound`, `previousCompletedAt`, `resultingCompletedAt`,
+  `previousError`, `resultingError`. La creación simulada tiene `downloadId=null`;
+  el título puede faltar si el libro ya no está en el catálogo. `changedFields`
+  contiene cambios de registros existentes; una creación usa `action=CREATE`.
+- `ignoredTorrents`: `hash`, `name` (si está disponible), `reason=NO_CATALOG_MATCH`.
+
+Sin detalle ambas listas se omiten. DESCARGAS → Estado muestra el resumen y permite
+filtrar, buscar y paginar estas listas localmente, sin repetir consultas al cliente.
+El último resultado y los filtros de su detalle se conservan en memoria al navegar
+entre vistas, hasta cerrarlo con la X, sustituirlo por otro resultado o recargar la
+página. No se almacena un historial de resultados de sincronización.
 
 ## 12. Previsualización de actualizaciones
 

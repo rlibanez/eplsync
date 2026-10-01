@@ -26,7 +26,7 @@ un hash distinto conserva su registro. Reenviar el mismo hash no duplica el regi
 ni cambia su revisión original, origen o evidencia de finalización.
 
 ```bash
-curl -X POST 'http://localhost:8088/api/torrent/downloads/sync'
+curl -X POST 'http://localhost:8088/api/torrent/downloads/sync' -H 'Content-Type: application/json' -d '{"dryRun":false}'
 curl 'http://localhost:8088/api/torrent/downloads?eplId=32&page=0&size=20&sort=revision,desc'
 ```
 
@@ -35,7 +35,7 @@ mediante `GET /api/v2/torrents/info`, sin filtros de categoría, y:
 
 - Actualiza registros conocidos por hash, incluidos los ya completados. En qBittorrent
   compara `hash`, `infohash_v1` e `infohash_v2`: un torrent híbrido cuenta una sola
-  vez en `remoteTorrents` e `ignored`. Conserva el hash original del registro; un
+  vez en `remote.total` y `remote.ignored`. Conserva el hash original del registro; un
   falso `NOT_FOUND` por esta diferencia se corrige al repetir el sync.
 - Descubre torrents cuyos hashes coincidan con `links` del catálogo actual.
 - Ignora torrents que no coinciden con el historial ni con el catálogo.
@@ -54,10 +54,12 @@ ni modifica qBittorrent. Mientras hay envíos en curso u otra sincronización, d
 `409`; se puede repetir después. Los envíos que lleguen durante una sincronización
 esperan a que termine. La coordinación presupone una instancia de EPLSync por BD.
 
-La respuesta incluye `client`, `clientInstanceId`, `remoteTorrents`, `checked`,
-`created`, `updated` (cambio de estado o evidencia de finalización), `completed`
-(nuevas finalizaciones registradas), `notFound`, `ignored` (torrents remotos ajenos)
-y `checkedAt`. Son contadores de esta sincronización, no del job de envío.
+La petición exige un cuerpo JSON con `dryRun` booleano. Con `true` calcula el resultado
+sin escribir ni fechas de seguimiento. `includeDetails=true` añade `items` e
+`ignoredTorrents`; omitido, solo devuelve el resumen. No admite parámetros en la URL.
+La respuesta separa los torrents (`remote`), las acciones de registros (`records`)
+y los resultados destacados (`outcomes`), además de `dryRun`, `applied`, `client`,
+`clientInstanceId` y `checkedAt`. Véase [el contrato completo](API.md#11-sincronización-de-descargas).
 
 Cada registro contiene `id`, `eplId`, `revision`, `hash`, `client`,
 `clientInstanceId`, `status`, `origin`, `createdAt`, `requestedAt`, `submittedAt`,
@@ -148,7 +150,7 @@ consulta SQL, sin cargar las entidades. `total` es la suma de `byStatus`.
 
 Es una consulta de solo lectura sobre el último estado guardado en EPLsync; no
 consulta qBittorrent ni ejecuta un sync. Para actualizar esos estados, ejecutar
-antes `POST /api/torrent/downloads/sync`. El filtro `completed=true` conserva su
+antes `POST /api/torrent/downloads/sync` con cuerpo `{"dryRun":false}`. El filtro `completed=true` conserva su
 significado habitual (existe `completedAt`); puede incluir registros `NOT_FOUND`
 que terminaron de descargarse anteriormente.
 

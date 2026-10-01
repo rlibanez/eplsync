@@ -1,6 +1,13 @@
+import { useSyncSession } from "./useSyncSession";
+import { SyncReport, type SyncResult } from "./SyncReport";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Select, TextInput, Alert } from "@mantine/core";
+import {
+  useIsMutating,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { Button, Select, TextInput } from "@mantine/core";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -27,20 +34,12 @@ interface Download {
   lastCheckedAt: string | null;
   lastError: string | null;
 }
-interface Sync {
-  checkedAt: string;
-  remoteTorrents: number;
-  checked: number;
-  created: number;
-  updated: number;
-  completed: number;
-  notFound: number;
-  ignored: number;
-}
 export function DownloadState() {
   const { t } = useTranslation();
   const { date, number, status } = useLocale();
   const cache = useQueryClient();
+  const session = useSyncSession();
+  const syncPending = useIsMutating({ mutationKey: ["torrent-sync"] }) > 0;
   const [filters, setFilters] = useState({
     eplId: "",
     status: "",
@@ -71,9 +70,17 @@ export function DownloadState() {
       ),
   });
   const sync = useMutation({
-    mutationFn: () => post<Sync>("/torrent/downloads/sync"),
+    mutationKey: ["torrent-sync"],
+    mutationFn: (dryRun: boolean) =>
+      post<SyncResult>("/torrent/downloads/sync", {
+        dryRun,
+        includeDetails: true,
+      }),
     retry: false,
-    onSuccess: () => {
+    onSuccess: (report) => {
+      session.save(report);
+      if (!report.applied) return;
+      void cache.invalidateQueries({ queryKey: ["catalog"] });
       void cache.invalidateQueries({ queryKey: ["downloads"] });
       void cache.invalidateQueries({ queryKey: ["download-summary"] });
       void cache.invalidateQueries({ queryKey: ["book"] });
@@ -87,37 +94,28 @@ export function DownloadState() {
     <>
       <div className="page-heading">
         <h1>{t("downloads.stateTitle")}</h1>
-        <Button loading={sync.isPending} onClick={() => sync.mutate()}>
-          {t("downloads.sync")}
-        </Button>
+        <div className="action-row">
+          <Button
+            variant="default"
+            disabled={syncPending}
+            loading={sync.isPending && sync.variables === true}
+            onClick={() => sync.mutate(true)}
+          >
+            {t("syncReport.previewAction")}
+          </Button>
+          <Button
+            disabled={syncPending}
+            loading={sync.isPending && sync.variables === false}
+            onClick={() => sync.mutate(false)}
+          >
+            {t("downloads.sync")}
+          </Button>
+        </div>
       </div>
       <p className="muted">{t("downloads.localNote")}</p>
       <ActionFailure error={sync.error} />
-      {sync.data && (
-        <Alert color="green">
-          {t("downloads.synced", { date: date(sync.data.checkedAt) })}
-          <details>
-            <summary>{t("downloads.syncDetails")}</summary>
-            <dl className="import-summary">
-              {(
-                [
-                  "remoteTorrents",
-                  "checked",
-                  "created",
-                  "updated",
-                  "completed",
-                  "notFound",
-                  "ignored",
-                ] as const
-              ).map((key) => (
-                <div key={key}>
-                  <dt>{t(`downloads.syncCounts.${key}`)}</dt>
-                  <dd>{number(sync.data![key])}</dd>
-                </div>
-              ))}
-            </dl>
-          </details>
-        </Alert>
+      {session.report && (
+        <SyncReport report={session.report} onClose={session.close} />
       )}
       <form
         className="filters"
