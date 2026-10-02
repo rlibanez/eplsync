@@ -93,6 +93,13 @@ class DatabaseResetTests {
         verifyNoInteractions(downloader);
     }
     void assertRebuilt() { assertRows(0); }
+    @Test void resetAlsoDiscardsRetainedCsvPreviews() {
+        var token = catalog.previewCatalog(null,0,50).summary().preview().token();
+        service.reset();
+        assertRows(0);
+        assertThatThrownBy(() -> catalog.retainedPreview(token))
+                .isInstanceOf(com.rlibanez.eplsync.exception.CatalogPreviewException.class).hasMessage("PREVIEW_EXPIRED");
+    }
     @Test void rollsBackEveryDeletionIfLastTableFails() {
         tx.executeWithoutResult(status -> em.createNativeQuery("CREATE TRIGGER fail_catalog_reset BEFORE DELETE ON app_events "
                 + "BEGIN SELECT RAISE(ABORT, 'test reset failure'); END").executeUpdate());

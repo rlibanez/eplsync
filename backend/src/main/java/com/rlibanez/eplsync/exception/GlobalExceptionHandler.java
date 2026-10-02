@@ -153,6 +153,24 @@ public class GlobalExceptionHandler {
         log.debug("Conexión asíncrona cerrada por el cliente: {}", ex.getMessage());
     }
 
+    @ExceptionHandler({org.springframework.web.multipart.support.MissingServletRequestPartException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class})
+    public ResponseEntity<ErrorResponse> handleMissingInput(Exception ex, HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(buildError(HttpStatus.BAD_REQUEST,
+                "Solicitud inválida", ex.getMessage(), request));
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<?> handleUploadSize() {
+        return ResponseEntity.status(413).body(java.util.Map.of("code", "ZIP_TOO_LARGE"));
+    }
+
+    @ExceptionHandler(CatalogPreviewException.class)
+    public ResponseEntity<?> handleCatalogPreview(CatalogPreviewException ex) {
+        return ResponseEntity.status((ex.code().equals("PREVIEW_EXPIRED") || ex.code().equals("ARCHIVE_EXPIRED")) ? 410 : 409)
+                .body(java.util.Map.of("code", ex.code()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(
             Exception ex,

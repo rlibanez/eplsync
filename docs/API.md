@@ -122,6 +122,125 @@ Con `includeDetails=true`, la respuesta contiene `summary`, `page`, `size`,
 > `preview` no escribe en el catálogo, pero sí descarga y procesa el ZIP.
 > `reset` reemplaza el catálogo; no es una previsualización.
 
+### Asistente de importación y ZIP guardado
+
+`GET /api/catalog/import/source` devuelve la URL efectiva de `eplsync.catalog.zip-url`
+y el único ZIP guardado, si existe:
+
+```json
+{
+  "defaultUrl": "https://example.org/catalog.zip",
+  "archive": {
+    "id": "identificador-del-zip",
+    "name": "catalog.zip",
+    "sourceUrl": "https://example.org/catalog.zip",
+    "storedAt": "2026-10-02T12:00:00Z",
+    "expiresAt": "2026-10-03T12:00:00Z",
+    "size": 35127296,
+    "sha256": "sha256-del-zip",
+    "csvName": "catalog.csv",
+    "csvModifiedAt": "2026-10-02T04:00:00"
+  }
+}
+```
+
+`archive` es `null` si no hay archivo disponible; `sourceUrl` es `null` para cargas
+locales. La fecha del CSV procede de su entrada en el ZIP, sin atribuirle zona horaria;
+puede ser `null`. El SHA-256 del ZIP es distinto del SHA-256 del CSV en los metadatos.
+
+`POST /api/catalog/import/run` acepta estos cuerpos JSON:
+
+```json
+{"source":"URL","url":"https://example.org/other.zip","mode":"PREVIEW"}
+```
+
+```json
+{"source":"SAVED","archiveId":"identificador-del-zip","mode":"UPDATE"}
+```
+
+- `mode`: `PREVIEW` o `UPDATE`. Ambos devuelven un `ImportResult`.
+- Con `URL`, omitir `url` utiliza la URL configurada. Una URL personalizada afecta
+  solo a esta operación; no modifica la configuración.
+- Con `SAVED`, `archiveId` es obligatorio. Un ZIP caducado o sustituido devuelve
+  `410` con `code: ARCHIVE_EXPIRED`; nunca se usa otro archivo silenciosamente.
+
+Para cargas locales acepta `multipart/form-data`:
+
+```bash
+curl -X POST http://localhost:8088/api/catalog/import/run -F 'mode=PREVIEW' -F 'file=@catalog.zip;type=application/zip'
+```
+
+Admite archivos no vacíos con extensión `.zip`, hasta 128 MiB por defecto
+(`spring.servlet.multipart.max-file-size`). El ZIP debe contener un único CSV.
+Superar el límite devuelve `413` con `code: ZIP_TOO_LARGE`.
+
+Se conserva **un único ZIP**. Iniciar una descarga o carga nueva elimina el anterior
+y su previsualización, aunque la nueva operación falle. Elegir una opción del
+asistente o cancelarlo no elimina nada. Un ZIP válido puede mantenerse aunque falle
+el procesamiento de su CSV. Los CSV extraídos se borran al terminar cada operación.
+
+### Aplicar o descartar la previsualización
+
+Previsualizar conserva el ZIP y añade al resumen:
+
+```json
+"preview": {
+  "token": "identificador-opaco",
+  "expiresAt": "2026-10-03T12:00:00Z",
+  "sourceModifiedAt": "2026-10-02T04:00:00"
+}
+```
+
+`POST /api/catalog/import/preview` también mantiene este comportamiento; con
+`includeDetails=true`, estos datos están en `summary.preview`. No modifica libros
+ni metadatos; registra el inicio y resultado en Eventos.
+
+| Método | Endpoint | Resultado |
+| --- | --- | --- |
+| GET | `/api/catalog/import/preview/{token}` | Recupera el resumen guardado sin recalcular. |
+| POST | `/api/catalog/import/preview/apply` | Actualiza desde el ZIP previsualizado, sin descargar de nuevo. |
+| POST | `/api/catalog/import/preview/refresh` | Recalcula desde el mismo ZIP sin ampliar su caducidad. |
+| POST | `/api/catalog/import/preview/discard` | Descarta solo la previsualización; devuelve `204` y conserva el ZIP. |
+
+Los tres POST reciben `{"token":"identificador-opaco"}` en JSON. Aplicar consume la
+previsualización pero conserva el ZIP. Un fallo revierte la transacción y mantiene
+el archivo disponible. Dos aplicaciones simultáneas del mismo token no importan
+dos veces. Descartar es idempotente.
+
+Si el catálogo o sus metadatos cambiaron desde la previsualización, Aplicar devuelve
+`409` con `PREVIEW_STALE`: hay que Recalcular y revisar antes de confirmar. Un ZIP
+alterado devuelve `409` con `PREVIEW_FILE_CHANGED`. Un token caducado, sustituido o
+consumido devuelve `410` con `PREVIEW_EXPIRED`.
+
+Configuración:
+
+```yaml
+eplsync:
+  catalog:
+    import:
+      retention: 24h
+```
+
+La retención se fija al guardar el ZIP, entre más de cero y siete días. Reutilizar,
+importar o descartar **no renueva** su vencimiento. La limpieza se ejecuta cada minuto
+y al consultar o usar el archivo. El reinicio completo elimina ZIP y previsualización.
+
+El archivo y su descriptor se guardan en `${java.io.tmpdir}/eplsync-catalog-import`,
+sin configurar directorio ni número de archivos. Sobreviven al reinicio del proceso
+si el directorio sigue disponible; no se garantiza su conservación al recrear el
+contenedor. Este directorio debe ser exclusivo de una instancia.
+
+En Ajustes → Base de datos, «Importar catálogo» abre el asistente de origen y acción.
+Al iniciar, se cierra; progreso y resultado aparecen en la sección de importación.
+La previsualización ofrece Actualizar catálogo, Descartar y, si procede, Recalcular.
+La X equivale a Descartar y conserva el ZIP. La pestaña guarda el token para recuperar
+el resumen al recargar. El ZIP vuelve a estar disponible al abrir el asistente, con
+fecha, tamaño y SHA-256 copiable.
+
+Los endpoints directos `/update` y `/reset` descargan desde la URL solicitada y
+sustituyen el ZIP guardado. `/missing/preview` descarga temporalmente su fuente para
+analizar ausentes y no sustituye el ZIP del asistente.
+
 ### Reiniciar toda la base de datos
 
 `POST /api/maintenance/reset` requiere un cuerpo JSON `{"confirm":true}`.

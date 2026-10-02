@@ -179,10 +179,21 @@ cambio de idioma, persistencia, configuración del despliegue, formatos y selecc
 
 ## Mantenimiento y preferencias
 
-«Ajustes → Base de datos» utiliza `POST /api/catalog/import/preview`
-para un resumen sin cambios y `POST /api/catalog/import/update` para la primera
-carga o una actualización. El servidor descarga el ZIP configurado, extrae el CSV
-e inserta/actualiza libros. La previsualización no congela el CSV ni reserva una actualización.
+«Ajustes → Base de datos → Importar catálogo» abre un asistente con URL editable
+(inicialmente la configurada), carga de ZIP local o reutilización del ZIP guardado.
+El segundo paso permite previsualizar o actualizar. Usa `GET /api/catalog/import/source`
+y `POST /api/catalog/import/run` (JSON para URL/guardado, multipart para archivo local).
+Al iniciar, cierra el asistente y muestra progreso y resultado en la sección de importación.
+
+`CatalogImportStore` conserva un único ZIP y un descriptor con SHA-256, fechas y la
+previsualización opcional. Los CSV extraídos se eliminan al terminar cada operación.
+`eplsync.catalog.import.retention` vale 24h; reutilizar el archivo no renueva la fecha.
+Iniciar una nueva fuente elimina el ZIP anterior. Aplicar, Descartar y la X conservan
+el ZIP. Aplicar verifica en la transacción que el catálogo no haya cambiado; Recalcular
+actualiza el resumen desde el mismo ZIP. La pestaña guarda el token en sessionStorage
+para recuperar la previsualización al recargar. El descriptor permite recuperarla tras
+reiniciar el proceso si sigue disponible el directorio temporal. La caducidad se revisa
+al acceder al archivo y cada minuto. No hay ajustes de número de archivos o directorio.
 
 La acción «Reiniciar base de datos» usa `POST /api/maintenance/reset` con
 `{"confirm":true}` después de una confirmación destacada en rojo. Vacía las ocho

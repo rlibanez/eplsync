@@ -64,4 +64,40 @@ class CatalogImportControllerTests {
         }
         verifyNoInteractions(service);
     }
+    @Test void wizardRoutesJsonAndMultipartAndRejectsInvalidSources() throws Exception {
+        var service = mock(CatalogImportService.class);
+        var mvc = MockMvcBuilders.standaloneSetup(new CatalogImportController(service, mock(com.rlibanez.eplsync.repository.CatalogMetadataRepository.class)))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+        var result = new ImportResult(true, "OK", 1, 0, 0, 1, 0);
+        when(service.updateCatalog("https://example.test/custom.zip")).thenReturn(result);
+        when(service.runSaved("archive",CatalogImportService.Mode.UPDATE)).thenReturn(result);
+        when(service.runUpload(any(),eq(CatalogImportService.Mode.PREVIEW))).thenReturn(result);
+        mvc.perform(post("/api/catalog/import/run").contentType("application/json")
+            .content("{\"source\":\"URL\",\"mode\":\"UPDATE\",\"url\":\"https://example.test/custom.zip\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.recordsCreated").value(1));
+        mvc.perform(post("/api/catalog/import/run").contentType("application/json")
+            .content("{\"source\":\"SAVED\",\"mode\":\"UPDATE\",\"archiveId\":\"archive\"}"))
+            .andExpect(status().isOk());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/catalog/import/run")
+            .file(new org.springframework.mock.web.MockMultipartFile("file","books.zip","application/zip",new byte[]{1})).param("mode","PREVIEW"))
+            .andExpect(status().isOk());
+        clearInvocations(service);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/catalog/import/run")
+            .param("mode","PREVIEW")).andExpect(status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/catalog/import/run")
+            .file(new org.springframework.mock.web.MockMultipartFile("file","books.zip","application/zip",new byte[]{1})))
+            .andExpect(status().isBadRequest());
+
+        for (String invalid : List.of(
+                "{\"source\":\"SAVED\",\"mode\":\"UPDATE\"}",
+                "{\"source\":\"OTHER\",\"mode\":\"UPDATE\"}",
+                "{\"source\":\"URL\"}",
+                "{\"source\":\"URL\",\"mode\":\"UPDATE\",\"url\":\"file:///tmp/books.zip\"}",
+                "{\"source\":\"URL\",\"mode\":\"UPDATE\",\"url\":\"http:books.zip\"}")) {
+            mvc.perform(post("/api/catalog/import/run").contentType("application/json").content(invalid))
+                .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(service);
+    }
+
 }

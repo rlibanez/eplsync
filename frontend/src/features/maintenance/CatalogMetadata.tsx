@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
 import { Failure } from "../../components/Feedback";
 export interface Metadata {
-  sourceUrl: string;
+  sourceUrl: string | null;
+  sourceType?: "URL" | "LOCAL_FILE" | "SAVED_ZIP" | null;
+  sourceArchiveName?: string | null;
   sourceFileName: string;
   sourceModifiedAt: string | null;
   importedAt: string;
@@ -16,6 +18,7 @@ export interface Metadata {
   missingRows?: number | null;
   durationMs: number;
   sourceSha256: string;
+  sourceZipSha256?: string | null;
 }
 export function MetadataDetails({ metadata }: { metadata: Metadata }) {
   const { t, i18n } = useTranslation();
@@ -35,11 +38,21 @@ export function MetadataDetails({ metadata }: { metadata: Metadata }) {
           "missingRows",
           "sourceFileName",
           "sourceUrl",
-          "sourceSha256",
+          "sourceZipSha256",
         ] as const
       ).map((key) => {
         const value = metadata[key];
         let display = value == null ? t("metadata.unknown") : String(value);
+        if (key === "sourceUrl") {
+          const type = metadata.sourceType;
+          if (type === "SAVED_ZIP") {
+            display = t("metadata.savedZip");
+            if (metadata.sourceArchiveName) display += ` · ${metadata.sourceArchiveName}`;
+          } else if (type === "LOCAL_FILE" || !metadata.sourceUrl) {
+            display = t("metadata.localFile");
+            if (metadata.sourceArchiveName) display += ` · ${metadata.sourceArchiveName}`;
+          }
+        }
         // ZIP dates are local wall times. Do not parse them as browser-local instants.
         if (key === "sourceModifiedAt" && value)
           display = String(value).replace("T", " ");

@@ -2,6 +2,11 @@ spring:
   application:
     name: eplsync
 
+  servlet:
+    multipart:
+      max-file-size: 128MB
+      max-request-size: 129MB
+
   datasource:
     url: jdbc:sqlite:./data/eplsync.db
     driver-class-name: org.sqlite.JDBC
@@ -60,6 +65,8 @@ eplsync:
       max-age-days: ${EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS:365}
   catalog:
     zip-url: "https://epublibre.org/rssweb/csv/epub.zip"
+    import:
+      retention: 24h # Conservación del único ZIP guardado desde su descarga/carga.
     cover-check:
       # Debe cumplirse connect-timeout ≤ request-timeout ≤ batch-timeout:
       connect-timeout: 3s # Límite para establecer una conexión HTTP.

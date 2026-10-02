@@ -166,10 +166,15 @@ class QBittorrentClientTests {
         book.setLanguage(com.rlibanez.eplsync.model.enums.Language.ESPANOL);
         book.setLinks(links);
         org.mockito.Mockito.when(repository.findById(2663L)).thenReturn(java.util.Optional.of(book));
+        // Event persistence is covered separately; execute the supplied operation here.
+        var events = org.mockito.Mockito.mock(com.rlibanez.eplsync.events.EventJournal.class);
+        org.mockito.Mockito.when(events.run(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(call -> ((java.util.function.Supplier<?>) call.getArgument(3)).get());
         var service = new com.rlibanez.eplsync.service.TorrentDownloadService(repository, properties,
                 new com.rlibanez.eplsync.torrent.MagnetLinkBuilder(properties),
                 new com.rlibanez.eplsync.torrent.TorrentNameResolver(),
-                new TorrentClientService(properties, List.of(client()), tracking()), null);
+                new TorrentClientService(properties, List.of(client()), tracking()), events);
         return MockMvcBuilders.standaloneSetup(new com.rlibanez.eplsync.controller.TorrentDownloadController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }

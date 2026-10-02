@@ -509,6 +509,14 @@ extraído, antes de normalizarlo. La duración incluye descarga y extracción.
 La fecha del ZIP se conserva sin atribuirle una zona horaria. También aparece en el log
 de extracción; si falta, se indica como desconocida.
 
+El origen incluye `sourceType` (`URL`, `LOCAL_FILE` o `SAVED_ZIP`) y
+`sourceArchiveName` (nombre del ZIP). La URL original se conserva cuando existe,
+incluso si se reutiliza el ZIP. Aplicar una previsualización conserva la opción elegida al crearla: URL, archivo local
+o ZIP guardado. Recalcular y reiniciar el servidor también conservan esa selección.
+En la interfaz, «Origen» muestra la URL, «Archivo local» o «ZIP guardado en el
+servidor», acompañado del nombre disponible. Las importaciones antiguas no permiten
+reconstruir si se reutilizó el ZIP ni su nombre; sin URL se muestra «Archivo local».
+
 Los libros y sus metadatos se guardan en la misma transacción. Una previsualización o
 un fallo no reemplazan los metadatos. Las actualizaciones completadas con filas
 rechazadas guardan el recuento de errores; la eliminación de ausentes exige
@@ -518,3 +526,28 @@ una importación sin errores. No se conserva historial de importaciones.
 información, o el objeto con esos campos. Las respuestas de actualización y reemplazo del catálogo
 incluyen también `metadata`. El reinicio completo elimina este registro. Ajustes → Base de datos muestra un único resumen en
 «Catálogo actual»; los avisos de éxito desaparecen a los cinco segundos o al cerrarlos.
+
+### Importar desde URL, ZIP local o archivo guardado
+
+En Ajustes → Base de datos, «Importar catálogo» abre un asistente. Primero se elige
+una URL (editable, inicialmente la configurada), un ZIP local o el ZIP guardado.
+Después se selecciona Previsualizar o Actualizar catálogo. El asistente se cierra
+y los resultados aparecen en la sección de importación.
+
+Solo se conserva **un ZIP**, durante 24 horas por defecto
+(`eplsync.catalog.import.retention`). El asistente muestra su fecha de CSV,
+fecha de guardado, caducidad, tamaño y SHA-256 copiable. Iniciar una descarga o
+carga nueva elimina el archivo anterior. Importarlo, descartar la previsualización
+o cerrar su resumen con la X no elimina el ZIP ni renueva su caducidad.
+
+La previsualización ofrece Actualizar catálogo y Descartar. Si los datos locales
+cambian, Recalcular actualiza el resumen desde el mismo ZIP. Aplicar no descarga
+otra copia. Los CSV extraídos se borran al terminar cada operación. El reinicio
+completo de la base de datos también elimina el ZIP guardado.
+
+Consulta los [endpoints y la configuración](API.md#asistente-de-importación-y-zip-guardado).
+
+«Catálogo actual» y el asistente muestran el SHA-256 del ZIP. Los metadatos conservan
+`sourceZipSha256` (ZIP) y `sourceSha256` (CSV); este último no se muestra en la interfaz.
+Las importaciones anteriores sin hash del ZIP muestran «Desconocida» hasta una nueva
+importación; no se utiliza el hash del CSV como sustituto.

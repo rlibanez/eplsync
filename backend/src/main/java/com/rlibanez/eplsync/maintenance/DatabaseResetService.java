@@ -16,6 +16,7 @@ public class DatabaseResetService {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CoverTaskService coverTasks;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogMissingService missing;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogImportStore previews;
     private final BulkStore bulk;
     private final ObjectProvider<BulkWorker> workers;
     private final DownloadTrackingService tracking;
@@ -64,6 +65,7 @@ public class DatabaseResetService {
                 if (worker != null) worker.clearIdleState();
                 if (coverTasks != null) coverTasks.clearIdleState();
                 if (missing != null) missing.clear();
+                if (previews != null) previews.clear();
                 log.warn("Base de datos reiniciada: {}", result);
                 return result;
             });

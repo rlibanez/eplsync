@@ -1,4 +1,4 @@
-import { test, expect, emitEvent } from "./fixtures";
+import { test, expect, emitEvent, type Page } from "./fixtures";
 const summary = {
   success: true,
   recordsProcessed: 4,
@@ -7,8 +7,42 @@ const summary = {
   recordsUnchanged: 2,
   errors: 0,
   missingBooks: 2,
+  preview: {
+    token: "saved-preview",
+    expiresAt: "2099-10-03T04:00:00Z",
+    sourceModifiedAt: "2026-10-02T04:00:00",
+  },
 };
+async function chooseUrl(page: Page) {
+  await page
+    .getByRole("button", { name: "Import catalog", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("textbox", { name: "URL" })).toHaveValue(
+    "https://example.test/catalog.zip",
+  );
+  await dialog.getByRole("button", { name: "Next", exact: true }).click();
+  return dialog;
+}
+async function previewUrl(page: Page) {
+  const dialog = await chooseUrl(page);
+  await dialog
+    .getByRole("button", { name: "Preview changes", exact: true })
+    .click();
+}
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/catalog/import/source", (route) =>
+    route.fulfill({
+      json: { defaultUrl: "https://example.test/catalog.zip", archive: null },
+    }),
+  );
+
+  await page.route("**/api/catalog/import/preview/discard", (route) =>
+    route.fulfill({ status: 204 }),
+  );
+  await page.route("**/api/catalog/import/preview/saved-preview", (route) =>
+    route.fulfill({ json: summary }),
+  );
   await page.route("**/api/catalog/import/metadata", (route) =>
     route.fulfill({ json: { metadata: null } }),
   );
@@ -19,118 +53,91 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({ json: { defaultLanguage: "en" } }),
   );
 });
-test("preview, confirmation and update survive navigation and refresh cached catalog", async ({
+test("editable URL wizard closes while importing and result survives navigation", async ({
   page,
 }) => {
-  let updated = false;
-  let updates = 0;
-  let previews = 0;
   let release!: () => void;
+  let requests = 0;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await page.route("**/api/catalog/books?**", (route) =>
-    route.fulfill({
-      json: {
-        items: updated
-          ? [
-              {
-                eplId: 32,
-                title: "New book",
-                author: "An author",
-                language: "en",
-                revision: 1,
-                publicationYear: 2026,
-              },
-            ]
-          : [],
-        meta: {
-          page: 0,
-          size: 20,
-          totalItems: updated ? 1 : 0,
-          totalPages: updated ? 1 : 0,
-          hasNext: false,
-          hasPrevious: false,
-        },
-      },
-    }),
-  );
-  await page.route("**/api/catalog/import/**", async (route) => {
-    if (route.request().url().endsWith("/metadata")) return route.fallback();
-    expect(route.request().method()).toBe("POST");
-    expect(route.request().postData()).toBe(null);
-    if (route.request().url().endsWith("/preview")) {
-      previews++;
-      return route.fulfill({ json: summary });
-    }
-    expect(route.request().url()).toMatch(/\/update$/);
-    updates++;
+  await page.route("**/api/catalog/import/run", async (route) => {
+    requests++;
+    expect(route.request().postDataJSON()).toEqual({
+      source: "URL",
+      url: "https://example.test/custom.zip",
+      mode: "UPDATE",
+    });
     await gate;
-    updated = true;
-    await route.fulfill({ json: summary });
+    await route.fulfill({ json: { ...summary, preview: null } });
     await emitEvent(page, {});
   });
-  await page.goto("/catalog");
+  await page.goto("/settings/database");
   await page
-    .getByRole("link", { name: "Import the catalog for the first time" })
+    .getByRole("button", { name: "Import catalog", exact: true })
     .click();
-  await page.getByRole("button", { name: "Preview changes" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("textbox", { name: "URL" })).toHaveValue(
+    "https://example.test/catalog.zip",
+  );
+  await dialog
+    .getByRole("textbox", { name: "URL" })
+    .fill("https://example.test/custom.zip");
+  await dialog.getByRole("button", { name: "Next", exact: true }).click();
+  await dialog.screenshot({ path: "test-results/import-wizard-operation.png" });
+  await dialog
+    .getByRole("button", { name: "Update catalog", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
   await expect(
-    page.getByText("Preview complete. The database has not been modified."),
-  ).toBeVisible();
-  expect(previews).toBe(1);
-  expect(updates).toBe(0);
-  await page.getByRole("button", { name: "Download and update" }).click();
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  expect(updates).toBe(0);
-  await page.getByRole("button", { name: "Download and update" }).click();
-  await page.getByRole("button", { name: "Update now" }).click();
-  await expect(
-    page.getByRole("button", { name: "Download and update" }),
-  ).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: "Preview changes" }),
+    page.getByRole("button", { name: "Import catalog", exact: true }),
   ).toBeDisabled();
   await page
     .locator("#sidebar")
-    .getByRole("link", { name: "Settings" })
+    .getByRole("link", { name: "Settings", exact: true })
     .click();
-  await page.getByRole("main").getByRole("link", { name: "Database" }).click();
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: "Database", exact: true })
+    .click();
   await expect(page.getByRole("main").getByRole("status")).toContainText(
-    "Downloading and updating",
+    "Updating catalog",
   );
-  const remote = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Remote catalog", exact: true }),
-  });
-  await expect(remote.getByRole("status")).toContainText(
-    "Downloading and updating",
-  );
-  await remote.screenshot({ path: "test-results/remote-catalog-progress.png" });
   release();
   await expect(
-    page
-      .locator(".notification-toasts")
-      .getByText("Completed", { exact: true }),
+    page.getByRole("heading", { name: "Update results", exact: true }),
   ).toBeVisible();
-  expect(updates).toBe(1);
   await page
-    .locator("#sidebar")
-    .getByRole("navigation")
-    .getByRole("link", { name: "Catalog", exact: true })
+    .getByRole("button", { name: "Close results", exact: true })
     .click();
-  await expect(page.getByRole("link", { name: "New book" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Update results", exact: true }),
+  ).toBeHidden();
+  expect(requests).toBe(1);
+  // A per-import URL must not become the server's default.
+  await chooseUrl(page);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Back", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Cancel", exact: true })
+    .click();
 });
 test("update failure warns about uncertain completion without automatic retry", async ({
   page,
 }) => {
   let updates = 0;
-  await page.route("**/api/catalog/import/update", (route) => {
+  await page.route("**/api/catalog/import/run", (route) => {
     updates++;
     return route.abort();
   });
   await page.goto("/maintenance/catalog");
-  await page.getByRole("button", { name: "Download and update" }).click();
-  await page.getByRole("button", { name: "Update now" }).click();
+  const wizard = await chooseUrl(page);
+  await wizard
+    .getByRole("button", { name: "Update catalog", exact: true })
+    .click();
   await expect(page.locator(".notification-toasts")).toContainText(
     "The connection to the server was lost.",
   );
@@ -138,7 +145,7 @@ test("update failure warns about uncertain completion without automatic retry", 
     "It has not been retried automatically.",
   );
   await expect(
-    page.getByRole("button", { name: "Download and update" }),
+    page.getByRole("button", { name: "Import catalog" }),
   ).toBeEnabled();
   expect(updates).toBe(1);
 });
@@ -344,7 +351,7 @@ test("applied import has a single metadata summary and dismissible notice", asyn
   await page.route("**/api/catalog/import/metadata", (route) =>
     route.fulfill({ json: { metadata } }),
   );
-  await page.route("**/api/catalog/import/update", async (route) => {
+  await page.route("**/api/catalog/import/run", async (route) => {
     await route.fulfill({ json: { ...summary, metadata } });
     await emitEvent(page, {});
   });
@@ -353,8 +360,10 @@ test("applied import has a single metadata summary and dismissible notice", asyn
     has: page.getByRole("heading", { name: "Current catalog", exact: true }),
   });
   await expect(current.getByRole("link")).toHaveCount(0);
-  await page.getByRole("button", { name: "Download and update" }).click();
-  await page.getByRole("button", { name: "Update now" }).click();
+  const wizard = await chooseUrl(page);
+  await wizard
+    .getByRole("button", { name: "Update catalog", exact: true })
+    .click();
   const notice = page.getByRole("status").filter({ hasText: "Completed" });
   await expect(notice).toBeVisible();
   await expect(page.getByText(metadata.sourceUrl, { exact: true })).toHaveCount(
@@ -438,11 +447,11 @@ test("absent books are reviewed inside a scrollable dialog and deleted only afte
 test("preview summary fits its content and reports absent books", async ({
   page,
 }) => {
-  await page.route("**/api/catalog/import/preview", (route) =>
+  await page.route("**/api/catalog/import/run", (route) =>
     route.fulfill({ json: summary }),
   );
   await page.goto("/settings/database");
-  await page.getByRole("button", { name: "Preview changes" }).click();
+  await previewUrl(page);
   const preview = page.locator(".import-preview-result");
   await expect(preview).toContainText("Absent from CSV");
   expect(
@@ -452,14 +461,14 @@ test("preview summary fits its content and reports absent books", async ({
         node.parentElement!.getBoundingClientRect().width,
     ),
   ).toBe(true);
-  await preview.getByRole("button", { name: "Close changes preview" }).click();
+  await preview.getByRole("button", { name: "Discard preview" }).click();
   await expect(preview).toBeHidden();
 });
 
 test("catalog preview uses server events without duplicate notifications and shows starts by default", async ({
   page,
 }) => {
-  await page.route("**/api/catalog/import/preview", async (route) => {
+  await page.route("**/api/catalog/import/run", async (route) => {
     await emitEvent(page, {
       action: "PREVIEW",
       outcome: "STARTED",
@@ -471,7 +480,7 @@ test("catalog preview uses server events without duplicate notifications and sho
     });
   });
   await page.goto("/settings/database");
-  await page.getByRole("button", { name: "Preview changes" }).click();
+  await previewUrl(page);
   const toasts = page.locator(".notification-toasts");
   await expect(
     toasts.getByText("Comparing the CSV with the current catalog…", {
@@ -485,4 +494,232 @@ test("catalog preview uses server events without duplicate notifications and sho
       exact: true,
     }),
   ).toHaveCount(1);
+});
+
+test("retained preview survives reload, applies without download and X discards", async ({
+  page,
+}) => {
+  let downloads = 0,
+    applies = 0,
+    discards = 0;
+  await page.route("**/api/catalog/import/run", (route) => {
+    downloads++;
+    return route.fulfill({ json: summary });
+  });
+  await page.route("**/api/catalog/import/preview/apply", (route) => {
+    applies++;
+    expect(route.request().postDataJSON()).toEqual({ token: "saved-preview" });
+    return route.fulfill({ json: { ...summary, preview: null } });
+  });
+  await page.route("**/api/catalog/import/preview/discard", (route) => {
+    discards++;
+    expect(route.request().postDataJSON()).toEqual({ token: "saved-preview" });
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto("/settings/database");
+  await previewUrl(page);
+  const box = page.locator(
+    ".import-preview-result[aria-labelledby=import-preview-heading]",
+  );
+  await expect(box.getByText("Expires at:", { exact: false })).toHaveCount(0);
+  await page.reload();
+  await expect(
+    box.getByRole("button", { name: "Update catalog", exact: true }),
+  ).toBeEnabled();
+  await box.screenshot({ path: "test-results/retained-preview.png" });
+  await box
+    .getByRole("button", { name: "Update catalog", exact: true })
+    .click();
+  await expect(box).toBeHidden();
+  expect(downloads).toBe(1);
+  expect(applies).toBe(1);
+  await previewUrl(page);
+  await box
+    .getByRole("button", { name: "Discard preview", exact: true })
+    .click();
+  await expect(box).toBeHidden();
+  expect(discards).toBe(1);
+  await page.reload();
+  await expect(box).toBeHidden();
+});
+
+test("stale preview is recalculated from the retained ZIP before applying", async ({
+  page,
+}) => {
+  let downloads = 0,
+    applies = 0,
+    recalculated = false;
+  await page.route("**/api/catalog/import/run", (route) => {
+    downloads++;
+    return route.fulfill({ json: summary });
+  });
+  await page.route("**/api/catalog/import/preview/apply", (route) => {
+    applies++;
+    return recalculated
+      ? route.fulfill({ json: summary })
+      : route.fulfill({ status: 409, json: { code: "PREVIEW_STALE" } });
+  });
+  await page.route("**/api/catalog/import/preview/refresh", (route) => {
+    expect(route.request().postDataJSON()).toEqual({ token: "saved-preview" });
+    recalculated = true;
+    return route.fulfill({ json: { ...summary, recordsUpdated: 3 } });
+  });
+  await page.goto("/settings/database");
+  await previewUrl(page);
+  const box = page.locator(
+    ".import-preview-result[aria-labelledby=import-preview-heading]",
+  );
+  await box
+    .getByRole("button", { name: "Update catalog", exact: true })
+    .click();
+  await expect(box.getByRole("alert")).toContainText("The catalog has changed");
+  await expect(
+    box.getByRole("button", { name: "Update catalog", exact: true }),
+  ).toBeDisabled();
+  await box.getByRole("button", { name: "Recalculate", exact: true }).click();
+  await box
+    .getByRole("button", { name: "Update catalog", exact: true })
+    .click();
+  await expect(box).toBeHidden();
+  expect(downloads).toBe(1);
+  expect(applies).toBe(2);
+});
+
+test("failed discard retains the summary and expired apply requests a new preview", async ({
+  page,
+}) => {
+  await page.route("**/api/catalog/import/run", (route) =>
+    route.fulfill({ json: summary }),
+  );
+  await page.route("**/api/catalog/import/preview/discard", (route) =>
+    route.fulfill({ status: 500, json: {} }),
+  );
+  await page.route("**/api/catalog/import/preview/apply", (route) =>
+    route.fulfill({ status: 410, json: { code: "PREVIEW_EXPIRED" } }),
+  );
+  await page.goto("/settings/database");
+  await previewUrl(page);
+  const box = page.locator(
+    ".import-preview-result[aria-labelledby=import-preview-heading]",
+  );
+  await box.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(box).toBeVisible();
+  await expect(
+    box.getByRole("button", { name: "Update catalog", exact: true }),
+  ).toBeEnabled();
+  await box
+    .getByRole("button", { name: "Update catalog", exact: true })
+    .click();
+  await expect(box).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Import catalog", exact: true }),
+  ).toBeEnabled();
+});
+
+test("saved ZIP details, reuse and dismissing a preview retain the archive", async ({
+  page,
+}) => {
+  const archive = {
+    id: "saved-zip",
+    name: "catalog.zip",
+    sourceUrl: "https://example.test/catalog.zip",
+    storedAt: "2026-10-02T12:00:00Z",
+    expiresAt: "2099-10-03T12:00:00Z",
+    size: 35127296,
+    sha256: "a".repeat(64),
+    csvName: "catalog.csv",
+    csvModifiedAt: "2026-10-02T04:00:00",
+  };
+  await page.route("**/api/catalog/import/source", (route) =>
+    route.fulfill({
+      json: { defaultUrl: "https://example.test/catalog.zip", archive },
+    }),
+  );
+  let runs = 0;
+  await page.route("**/api/catalog/import/run", (route) => {
+    runs++;
+    expect(route.request().postDataJSON()).toEqual({
+      source: "SAVED",
+      archiveId: "saved-zip",
+      mode: "PREVIEW",
+    });
+    return route.fulfill({ json: summary });
+  });
+  await page.goto("/settings/database");
+  await page
+    .getByRole("button", { name: "Import catalog", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("radio", { name: "Saved archive" }),
+  ).toBeChecked();
+  await expect(dialog).toContainText("2026-10-02 04:00:00");
+  await expect(dialog).toContainText(archive.sha256);
+  await dialog.screenshot({ path: "test-results/import-wizard-saved.png" });
+  await dialog.getByRole("button", { name: "Next", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "Preview changes", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Discard preview", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Import catalog", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("radio", { name: "Saved archive" }),
+  ).toBeChecked();
+  await dialog.getByRole("radio", { name: "URL", exact: true }).check();
+  await expect(dialog).not.toContainText(
+    "even if the new download or upload fails",
+  );
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(runs).toBe(1);
+});
+test("local ZIP is uploaded as multipart and invalid file cannot advance", async ({
+  page,
+}) => {
+  let uploads = 0;
+  await page.route("**/api/catalog/import/run", (route) => {
+    uploads++;
+    expect(route.request().headers()["content-type"]).toContain(
+      "multipart/form-data",
+    );
+    const body = route.request().postDataBuffer()!.toString();
+    expect(body).toContain('filename="books.zip"');
+    expect(body).toContain('name="mode"');
+    expect(body).toContain("UPDATE");
+    return route.fulfill({ json: { ...summary, preview: null } });
+  });
+  await page.goto("/settings/database");
+  await page
+    .getByRole("button", { name: "Import catalog", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("radio", { name: "Upload ZIP file", exact: true })
+    .check();
+  const input = dialog.locator("input[type=file]");
+  await input.setInputFiles({
+    name: "books.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("invalid"),
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Next", exact: true }),
+  ).toBeDisabled();
+  await input.setInputFiles({
+    name: "books.zip",
+    mimeType: "application/zip",
+    buffer: Buffer.from("mock transport ZIP"),
+  });
+  await dialog.getByRole("button", { name: "Next", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "Update catalog", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByRole("heading", { name: "Update results", exact: true }),
+  ).toBeVisible();
+  expect(uploads).toBe(1);
 });

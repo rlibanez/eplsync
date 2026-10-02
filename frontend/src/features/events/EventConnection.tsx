@@ -82,7 +82,11 @@ export function EventConnection() {
                 : event.category === "CATALOG" &&
                     event.outcome === "STARTED" &&
                     ["UPDATE", "REPLACE"].includes(event.action)
-                  ? translate.current("import.updateStarted")
+                  ? translate.current(
+                      event.details.retainedZip
+                        ? "import.applyPending"
+                        : "import.updateStarted",
+                    )
                   : translate.current("events.outcomes." + event.outcome),
         tone: eventTone(event),
         phase: ["STARTED", "RESUMED", "RECOVERED"].includes(event.outcome)

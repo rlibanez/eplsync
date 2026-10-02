@@ -21,6 +21,8 @@ import static org.mockito.Mockito.*;
     "spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false",
     "eplsync.torrent.enabled=false", "eplsync.torrent.bulk.worker-enabled=false"})
 class CatalogMissingTests {
+    @Autowired com.rlibanez.eplsync.service.CatalogImportStore previews;
+    @AfterEach void clearPreviews() { previews.clear(); }
     @Autowired CatalogMissingService missing;
     @Autowired CatalogImportService imports;
     @Autowired CatalogBookRepository books;
@@ -31,6 +33,7 @@ class CatalogMissingTests {
     String csv;
     TransactionTemplate tx;
     @BeforeEach void setup() throws Exception {
+        previews.clear();
         tx = new TransactionTemplate(manager);
         tx.executeWithoutResult(s -> {
             em.createQuery("delete from BulkItem").executeUpdate();

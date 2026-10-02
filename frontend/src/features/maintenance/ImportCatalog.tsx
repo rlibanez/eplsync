@@ -1,18 +1,29 @@
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
+import { ImportWizard } from "./ImportWizard";
 import { MissingBooks } from "./MissingBooks";
 import { CurrentCatalog } from "./CatalogMetadata";
 import { useState } from "react";
 import { ActionIcon, Button, Loader, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { Download, Eye, X } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { useImport } from "./ImportProvider";
 import { useLocale } from "../../locales/useLocale";
 export function ImportCatalog() {
   const { t } = useTranslation();
   const { number } = useLocale();
-  const { operation, run, dismissPreview, dismissReset } = useImport();
-  const [confirm, setConfirm] = useState<"update" | "reset" | null>(null);
-  const pending = operation?.pending ?? false;
+  const {
+    operation,
+    preview,
+    previewIssue,
+    restoring,
+    run,
+    dismissPreview,
+    dismissReset,
+    dismissResult,
+  } = useImport();
+  const [confirm, setConfirm] = useState<"reset" | null>(null);
+  const [wizard, setWizard] = useState(false);
+  const pending = restoring || (operation?.pending ?? false);
   return (
     <>
       <CurrentCatalog />
@@ -23,16 +34,19 @@ export function ImportCatalog() {
             <Loader size="sm" />
             <span>
               {t(
-                operation?.mode === "preview"
+                operation?.mode === "preview" || operation?.mode === "refresh"
                   ? "import.previewPending"
-                  : "import.updatePending",
+                  : operation?.mode === "apply"
+                    ? "import.applyPending"
+                    : operation?.mode === "discard"
+                      ? "import.discardPending"
+                      : "import.updatePending",
               )}
             </span>
           </div>
         )}
         <p>{t("import.sourceDescription")}</p>
-        <p className="muted">{t("import.previewNote")}</p>
-        {operation?.result && operation.mode === "preview" && (
+        {preview && (
           <section
             className="import-preview-result"
             aria-live="polite"
@@ -44,6 +58,7 @@ export function ImportCatalog() {
                 <ActionIcon
                   variant="subtle"
                   aria-label={t("import.closePreview")}
+                  disabled={pending}
                   onClick={dismissPreview}
                 >
                   <X size={18} />
@@ -64,30 +79,102 @@ export function ImportCatalog() {
                 <div key={key}>
                   <dt>{t(`import.${key}`)}</dt>
                   <dd>
-                    {operation.result![key] == null
+                    {preview[key] == null
                       ? t("metadata.unknown")
-                      : number(operation.result![key]!)}
+                      : number(preview[key]!)}
                   </dd>
                 </div>
               ))}
+              {preview.preview && (
+                <div>
+                  <dt>{t("import.csvDate")}</dt>
+                  <dd>
+                    {preview.preview.sourceModifiedAt?.replace("T", " ") ??
+                      t("metadata.unknown")}
+                  </dd>
+                </div>
+              )}
             </dl>
+            {previewIssue && (
+              <p role="alert">{t(`import.previewErrors.${previewIssue}`)}</p>
+            )}
+            <div className="action-row">
+              <Button
+                disabled={
+                  pending ||
+                  !preview.preview ||
+                  previewIssue === "PREVIEW_STALE" ||
+                  previewIssue === "PREVIEW_FILE_CHANGED"
+                }
+                onClick={() => void run("apply")}
+              >
+                {t("import.apply")}
+              </Button>
+              <Button
+                variant="default"
+                disabled={pending || !preview.preview}
+                onClick={dismissPreview}
+              >
+                {t("import.discard")}
+              </Button>
+              {previewIssue === "PREVIEW_STALE" && (
+                <Button
+                  variant="default"
+                  disabled={pending}
+                  onClick={() => void run("refresh")}
+                >
+                  {t("import.refreshPreview")}
+                </Button>
+              )}
+            </div>
           </section>
         )}
+        {operation?.result &&
+          !operation.pending &&
+          ["update", "apply"].includes(operation.mode) && (
+            <section className="import-preview-result" aria-live="polite">
+              <div className="import-preview-heading">
+                <h3>{t("import.result")}</h3>
+                <Tooltip label={t("import.closeResult")}>
+                  <ActionIcon
+                    variant="subtle"
+                    aria-label={t("import.closeResult")}
+                    onClick={dismissResult}
+                  >
+                    <X size={18} />
+                  </ActionIcon>
+                </Tooltip>
+              </div>
+              <dl className="import-summary">
+                {(
+                  [
+                    "recordsProcessed",
+                    "recordsCreated",
+                    "recordsUpdated",
+                    "recordsUnchanged",
+                    "errors",
+                    "missingBooks",
+                  ] as const
+                ).map((key) => (
+                  <div key={key}>
+                    <dt>{t(`import.${key}`)}</dt>
+                    <dd>
+                      {operation.result![key] == null
+                        ? t("metadata.unknown")
+                        : number(operation.result![key]!)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
         <div className="action-row">
-          <Button
-            leftSection={<Eye size={17} />}
-            variant="default"
-            disabled={pending}
-            onClick={() => void run("preview")}
-          >
-            {t("import.preview")}
-          </Button>
           <Button
             leftSection={<Download size={17} />}
             disabled={pending}
-            onClick={() => setConfirm("update")}
+            onClick={() => setWizard(true)}
           >
-            {t("import.update")}
+            {t("import.wizardTitle")}
           </Button>
         </div>
       </section>
@@ -153,6 +240,13 @@ export function ImportCatalog() {
           {t("reset.action")}
         </Button>
       </section>
+      <ImportWizard
+        opened={wizard}
+        onClose={() => setWizard(false)}
+        onStart={(mode, source) => {
+          void run(mode, source);
+        }}
+      />
       <Modal
         icon={Download}
         opened={confirm !== null}

@@ -25,6 +25,8 @@ import java.nio.file.Path;
 public class CatalogImportService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.rlibanez.eplsync.events.EventJournal events;
+    @org.springframework.beans.factory.annotation.Autowired private CatalogImportStore previews;
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
     private java.util.Map<String, ?> eventSummary(ImportResult result) {
         return java.util.Map.of("processed", result.recordsProcessed(), "created", result.recordsCreated(),
             "updated", result.recordsUpdated(), "unchanged", result.recordsUnchanged(), "errors", result.errors());
@@ -86,42 +88,41 @@ public class CatalogImportService {
 
     private ImportResult performImport(String zipUrl, boolean truncateBeforeImport) {
         long started = System.nanoTime();
-        return withCatalogFile(zipUrl, csv -> {
-            var metadata = new com.rlibanez.eplsync.model.CatalogMetadata();
-            metadata.setSourceUrl(zipUrl == null ? catalogZipUrl : zipUrl);
-            metadata.setSourceFileName(csv.name());
-            metadata.setSourceModifiedAt(csv.modifiedAt());
-            metadata.setImportMode(truncateBeforeImport ? "REPLACE" : "UPDATE");
-            try (var input = Files.newInputStream(csv.path())) {
-                var digest = java.security.MessageDigest.getInstance("SHA-256");
-                byte[] buffer = new byte[65536];
-                int count;
-                while ((count = input.read(buffer)) != -1) digest.update(buffer, 0, count);
-                metadata.setSourceSha256(java.util.HexFormat.of().formatHex(digest.digest()));
-            } catch (java.security.NoSuchAlgorithmException e) {
-                throw new IllegalStateException(e);
+        String source = zipUrl == null ? catalogZipUrl : zipUrl;
+        return previews.replace(source, zipName(source), () -> fileDownloader.download(source, "epublibre-", ".zip"),
+                (archive,csv) -> importFile(csv, archive, "URL", truncateBeforeImport, started));
+    }
+
+    private ImportResult importFile(ZipExtractor.ExtractedCsv csv, CatalogImportStore.Archive archive, String sourceType, boolean truncateBeforeImport, long started) throws IOException {
+        var metadata = new com.rlibanez.eplsync.model.CatalogMetadata();
+        metadata.setSourceUrl(archive.sourceUrl());
+        metadata.setSourceType(sourceType);
+        metadata.setSourceArchiveName(archive.name());
+        metadata.setSourceFileName(csv.name());
+        metadata.setSourceModifiedAt(csv.modifiedAt());
+        metadata.setImportMode(truncateBeforeImport ? "REPLACE" : "UPDATE");
+        metadata.setSourceSha256(CatalogImportStore.digest(csv.path()));
+        metadata.setSourceZipSha256(archive.sha256());
+        return transactions.execute(status -> {
+            try {
+                ImportStats stats = csvImporter.importFile(csv.path(), truncateBeforeImport);
+                metadata.setTotalRows((long) stats.processed() + stats.errors());
+                metadata.setInsertedRows(stats.created());
+                metadata.setUpdatedRows(stats.updated());
+                metadata.setUnchangedRows(stats.unchanged());
+                metadata.setErrorRows(stats.errors());
+                metadata.setMissingRows(stats.missingBooks());
+                metadata.setImportedAt(java.time.Instant.now());
+                metadata.setDurationMs((System.nanoTime() - started) / 1_000_000);
+                metadataRepository.saveAndFlush(metadata);
+                var result = new ImportResult(true, "Importación completada", stats.processed(), stats.errors(),
+                        stats.updated(), stats.created(), stats.unchanged(), stats.missingBooks(), metadata);
+                if (events != null) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG,
+                        truncateBeforeImport ? "REPLACE" : "UPDATE", eventSummary(result));
+                return result;
+            } catch (IOException e) {
+                throw new CatalogImportException("Error durante la importación", e);
             }
-            return transactions.execute(status -> {
-                try {
-                    ImportStats stats = csvImporter.importFile(csv.path(), truncateBeforeImport);
-                    metadata.setTotalRows((long) stats.processed() + stats.errors());
-                    metadata.setInsertedRows(stats.created());
-                    metadata.setUpdatedRows(stats.updated());
-                    metadata.setUnchangedRows(stats.unchanged());
-                    metadata.setErrorRows(stats.errors());
-                    metadata.setMissingRows(stats.missingBooks());
-                    metadata.setImportedAt(java.time.Instant.now());
-                    metadata.setDurationMs((System.nanoTime() - started) / 1_000_000);
-                    metadataRepository.saveAndFlush(metadata);
-                    var result = new ImportResult(true, "Importación completada", stats.processed(), stats.errors(),
-                            stats.updated(), stats.created(), stats.unchanged(), stats.missingBooks(), metadata);
-                    if (events != null) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG,
-                            truncateBeforeImport ? "REPLACE" : "UPDATE", eventSummary(result));
-                    return result;
-                } catch (IOException e) {
-                    throw new CatalogImportException("Error durante la importación", e);
-                }
-            });
         });
     }
 
@@ -131,10 +132,110 @@ public class CatalogImportService {
 
     public ImportPreviewResult previewCatalog(String zipUrl, int page, int size) {
         java.util.function.Supplier<ImportPreviewResult> work =
-                () -> withCatalogFile(zipUrl, csv -> csvImporter.previewFile(csv.path(), page, size));
+                () -> {
+                    String source = zipUrl == null ? catalogZipUrl : zipUrl;
+                    return previews.replace(source, zipName(source), () -> fileDownloader.download(source, "epublibre-", ".zip"),
+                            (archive,csv) -> previews.preview(archive, evaluate(csv, page, size), "URL"));
+                };
         if (events == null) return work.get();
         return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "PREVIEW",
                 java.util.Map.of("dryRun", true), work, result -> eventSummary(result.summary()));
+    }
+
+    private CatalogImportStore.Evaluation evaluate(ZipExtractor.ExtractedCsv csv, int page, int size) {
+        return transactions.execute(tx -> {
+            try {
+                String version = catalogVersion();
+                return new CatalogImportStore.Evaluation(version, csvImporter.previewFile(csv.path(), page, size));
+            } catch (IOException ex) { throw new CatalogImportException("Error previsualizando CSV", ex); }
+        });
+    }
+
+    // Stream the database content into a digest without retaining book synopses in memory.
+    // Includes metadata, additions, deletions and cover repairs, not unrelated event/download rows.
+    private String catalogVersion() {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            for (String query : java.util.List.of("select * from catalog_books order by epl_id", "select * from catalog_metadata order by id")) {
+                jdbc.query(query, (org.springframework.jdbc.core.RowCallbackHandler) row -> {
+                    for (int column = 1; column <= row.getMetaData().getColumnCount(); column++) {
+                        String value = row.getString(column);
+                        byte[] bytes = value == null ? new byte[0] : value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        digest.update(java.nio.ByteBuffer.allocate(4).putInt(value == null ? -1 : bytes.length).array());
+                        digest.update(bytes);
+                    }
+                });
+                digest.update((byte) 0xff);
+            }
+            return java.util.HexFormat.of().formatHex(digest.digest());
+        } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
+    }
+
+    public ImportResult retainedPreview(String token) { return previews.usePreview(token, CatalogImportStore.Snapshot::summary); }
+    public ImportResult refreshPreview(String token) {
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "PREVIEW",
+                java.util.Map.of("dryRun", true),
+                () -> previews.refresh(token, csv -> evaluate(csv, 0, 50)), this::eventSummary);
+    }
+    public void discardPreview(String token) { previews.discard(token); }
+    public ImportResult applyPreview(String token) {
+        long started = System.nanoTime();
+        return previews.usePreview(token, saved -> {
+            var savedArchive = previews.archive();
+            if (savedArchive == null) throw new com.rlibanez.eplsync.exception.CatalogPreviewException("PREVIEW_EXPIRED");
+            return previews.useArchive(savedArchive.id(), (archive,csv) -> {
+            var result = events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "UPDATE",
+                java.util.Map.of("retainedZip", true), () -> transactions.execute(tx -> {
+                    if (!saved.catalogVersion().equals(catalogVersion()))
+                        throw new com.rlibanez.eplsync.exception.CatalogPreviewException("PREVIEW_STALE");
+                    try {
+                        // Older preview descriptors lack the selection; retain their original file provenance.
+                        String sourceType = saved.sourceType() != null ? saved.sourceType()
+                                : archive.sourceUrl() != null ? "URL" : "LOCAL_FILE";
+                        return importFile(csv, archive, sourceType, false, started);
+                    }
+                    catch (IOException ex) { throw new CatalogImportException("Error aplicando CSV", ex); }
+                }), this::eventSummary);
+            previews.discard(token);
+            return result;
+            });
+        });
+    }
+
+    public String defaultUrl() { return catalogZipUrl; }
+    public CatalogImportStore.Archive savedArchive() { return previews.archive(); }
+    public enum Mode { PREVIEW, UPDATE }
+    public ImportResult runSaved(String archiveId, Mode mode) {
+        long started = System.nanoTime();
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG,
+                mode == Mode.PREVIEW ? "PREVIEW" : "UPDATE", java.util.Map.of("retainedZip", true, "dryRun", mode == Mode.PREVIEW),
+                () -> previews.useArchive(archiveId, (archive,csv) -> processSource(archive, csv, mode, "SAVED_ZIP", started)), this::eventSummary);
+    }
+    public ImportResult runUpload(org.springframework.web.multipart.MultipartFile file, Mode mode) {
+        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().replace('\\', '/');
+        name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "");
+        if (file.isEmpty() || !name.toLowerCase(java.util.Locale.ROOT).endsWith(".zip"))
+            throw new IllegalArgumentException("Selecciona un archivo ZIP no vacío");
+        String displayName = name;
+        long started = System.nanoTime();
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG,
+            mode == Mode.PREVIEW ? "PREVIEW" : "UPDATE", java.util.Map.of("dryRun", mode == Mode.PREVIEW),
+            () -> previews.replace(null, displayName, () -> {
+                Path uploaded = Files.createTempFile("eplsync-upload-", ".zip");
+                try { file.transferTo(uploaded); return uploaded; }
+                catch (Exception ex) { cleanupTempFile(uploaded); throw ex; }
+            }, (archive,csv) -> processSource(archive,csv,mode,"LOCAL_FILE",started)), this::eventSummary);
+    }
+    private ImportResult processSource(CatalogImportStore.Archive archive, ZipExtractor.ExtractedCsv csv, Mode mode, String sourceType, long started) throws IOException {
+        if (mode == Mode.PREVIEW) return previews.preview(archive, evaluate(csv,0,50), sourceType).summary();
+        var result = importFile(csv, archive, sourceType, false, started);
+        previews.discardCurrentPreview();
+        return result;
+    }
+    private String zipName(String source) {
+        String path = java.net.URI.create(source).getPath();
+        String name = path == null ? "" : path.substring(path.lastIndexOf('/') + 1);
+        return name.isBlank() ? "catalog.zip" : name;
     }
 
     @FunctionalInterface
@@ -167,6 +268,8 @@ public class CatalogImportService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new CatalogImportInterruptedException("La operación de importación fue interrumpida", e);
+        } catch (com.rlibanez.eplsync.exception.CatalogPreviewException e) {
+            throw e;
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (CatalogDownloadException e) {

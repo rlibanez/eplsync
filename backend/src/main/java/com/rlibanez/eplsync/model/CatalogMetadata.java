@@ -11,6 +11,8 @@ import java.time.Instant;
 public class CatalogMetadata {
     @Id private Long id = 1L;
     private String sourceUrl;
+    private String sourceType; // URL, LOCAL_FILE or SAVED_ZIP; null for older imports.
+    private String sourceArchiveName;
     private String sourceFileName;
     // ZIP local timestamps have no reliable timezone; preserve the source representation.
     private String sourceModifiedAt;
@@ -24,4 +26,5 @@ public class CatalogMetadata {
     private Long missingRows;
     private long durationMs;
     private String sourceSha256;
+    private String sourceZipSha256;
 }

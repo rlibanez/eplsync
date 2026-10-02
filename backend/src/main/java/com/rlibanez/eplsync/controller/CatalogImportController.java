@@ -65,6 +65,53 @@ public class CatalogImportController {
         return ResponseEntity.ok(includeDetails ? preview : preview.summary());
     }
 
+    public record PreviewRequest(@jakarta.validation.constraints.NotBlank String token) {}
+
+    @GetMapping("/preview/{token}")
+    public ResponseEntity<ImportResult> retainedPreview(@PathVariable String token) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(catalogImportService.retainedPreview(token));
+    }
+    @PostMapping("/preview/apply")
+    public ImportResult applyPreview(@jakarta.validation.Valid @RequestBody PreviewRequest request) {
+        return catalogImportService.applyPreview(request.token());
+    }
+    @PostMapping("/preview/refresh")
+    public ImportResult refreshPreview(@jakarta.validation.Valid @RequestBody PreviewRequest request) {
+        return catalogImportService.refreshPreview(request.token());
+    }
+    @PostMapping("/preview/discard")
+    public ResponseEntity<Void> discardPreview(@jakarta.validation.Valid @RequestBody PreviewRequest request) {
+        catalogImportService.discardPreview(request.token());
+        return ResponseEntity.noContent().build();
+    }
+
+    public enum Source { URL, SAVED }
+    public record RunRequest(@jakarta.validation.constraints.NotNull Source source,
+                             @jakarta.validation.constraints.NotNull CatalogImportService.Mode mode,
+                             String url, String archiveId) {}
+    public record ImportSource(String defaultUrl, com.rlibanez.eplsync.service.CatalogImportStore.Archive archive) {}
+    @GetMapping("/source")
+    public ResponseEntity<ImportSource> source() {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(new ImportSource(catalogImportService.defaultUrl(), catalogImportService.savedArchive()));
+    }
+    @PostMapping(value = "/run", consumes = "application/json")
+    public ImportResult run(@jakarta.validation.Valid @RequestBody RunRequest request) {
+        if (request.source() == Source.SAVED) {
+            if (request.archiveId() == null || request.archiveId().isBlank()) throw new IllegalArgumentException("Falta archiveId");
+            return catalogImportService.runSaved(request.archiveId(), request.mode());
+        }
+        String url = validateUrl(request.url());
+        return request.mode() == CatalogImportService.Mode.PREVIEW
+                ? catalogImportService.previewCatalog(url,0,50).summary() : catalogImportService.updateCatalog(url);
+    }
+    @PostMapping(value = "/run", consumes = "multipart/form-data")
+    public ImportResult upload(@RequestPart("file") org.springframework.web.multipart.MultipartFile file,
+                              @RequestParam CatalogImportService.Mode mode) {
+        return catalogImportService.runUpload(file, mode);
+    }
+
     private String validateUrl(String url) {
         if (url != null && url.isBlank()) {
             url = null;
@@ -73,7 +120,7 @@ public class CatalogImportController {
         if (url != null) {
             URI uri = URI.create(url);
             String scheme = uri.getScheme();
-            if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
+            if (uri.getHost() == null || uri.getHost().isBlank() || scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
                 throw new IllegalArgumentException("La URL debe usar HTTP o HTTPS");
             }
         }

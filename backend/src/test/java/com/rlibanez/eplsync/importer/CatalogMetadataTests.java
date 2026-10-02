@@ -17,6 +17,8 @@ import static org.mockito.Mockito.*;
     "spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false",
     "eplsync.torrent.enabled=false", "eplsync.torrent.bulk.worker-enabled=false"})
 class CatalogMetadataTests {
+    @Autowired com.rlibanez.eplsync.service.CatalogImportStore previews;
+    @AfterEach void clearPreviews() { previews.clear(); }
     @Autowired CatalogImportService service;
     @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired CatalogMetadataRepository metadata;
@@ -24,6 +26,7 @@ class CatalogMetadataTests {
     @MockitoBean FileDownloader downloader;
     String csv;
     @BeforeEach void setup() throws Exception {
+        previews.clear();
         metadata.deleteAll(); books.deleteAllInBatch();
         csv = "EPL Id,Título,Autor,Revisión\n2,Nuevo,Autor,1.0\n";
         when(downloader.download(anyString(), anyString(), anyString())).thenAnswer(call -> {
@@ -60,6 +63,9 @@ class CatalogMetadataTests {
         var stored = metadata.findById(1L).orElseThrow();
         assertThat(stored.getSourceModifiedAt()).isEqualTo("2026-09-30T04:00:50");
         assertThat(stored.getSourceFileName()).isEqualTo("catalog.csv");
+        assertThat(stored.getSourceType()).isEqualTo("URL");
+        assertThat(stored.getSourceArchiveName()).isEqualTo("catalog.zip");
+        assertThat(stored.getSourceZipSha256()).isEqualTo(previews.archive().sha256());
         assertThat(stored.getSourceUrl()).isEqualTo("https://example.test/catalog.zip");
         assertThat(stored.getTotalRows()).isEqualTo(1);
         assertThat(stored.getInsertedRows()).isEqualTo(1);

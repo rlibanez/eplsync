@@ -1582,3 +1582,41 @@ summary {
 .missing-books-list th:last-child { width: 90px; }
 
 .reset-result { margin-bottom: 20px; }
+
+.import-archive-details {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.import-archive-details > div {
+  margin-bottom: 10px;
+}
+.import-archive-details > div:last-child {
+  margin-bottom: 0;
+}
+.import-archive-details dt {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.import-archive-details dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+.import-archive-hash {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.import-archive-hash code {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  font-size: 12px;
+}
+.import-archive-hash button {
+  flex-shrink: 0;
+}
+.import-wizard-selection {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
