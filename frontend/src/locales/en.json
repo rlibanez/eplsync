@@ -212,7 +212,7 @@
     "previewNote": "Preview does not save changes. Each operation downloads a fresh catalog, so results may vary.",
     "previewPending": "Preparing preview…",
     "updatePending": "Downloading and updating…",
-    "pendingDescription": "This may take several minutes. You can browse other screens and return here; keep this tab open to receive the result.",
+    "pendingDescription": "Comparing the CSV with the current catalog…",
     "failed": "Could not retrieve the result",
     "networkError": "The connection to the server was lost.",
     "httpError": "The server returned an error (HTTP {{status}}). Check the logs for details.",
@@ -234,7 +234,9 @@
     "cancel": "Cancel",
     "confirm": "Update now",
     "firstLoad": "Import the catalog for the first time",
-    "closePreview": "Close changes preview"
+    "closePreview": "Close changes preview",
+    "missingBooks": "Absent from CSV",
+    "updateStarted": "Downloading and importing the catalog…"
   },
   "breadcrumbs": {
     "label": "Breadcrumbs",
@@ -242,14 +244,13 @@
   },
   "reset": {
     "title": "Reset the entire database",
-    "description": "Download the ZIP/CSV and rebuild the catalog from scratch. Delete download history, jobs and their items, and update plans and cleanup records.",
-    "kept": "Does not delete qBittorrent torrents or files. Server configuration, logs and browser preferences are preserved. If downloading or importing fails, the previous database is preserved.",
+    "description": "Empties all tables. Keeps server configuration, logs and browser preferences. Does not modify anything in the torrent client. Does not download or import the CSV.",
     "action": "Reset database",
-    "pending": "Downloading and rebuilding the database…",
+    "pending": "Emptying the database…",
     "busy": "Operations or sends are in progress. Wait for them to finish; if jobs are sending torrents, pause or cancel them before trying again. The database has not been reset.",
     "uncertain": "The reset result could not be confirmed. Check the catalog and logs before trying again. The operation has not been retried automatically.",
     "result": "Reset result",
-    "done": "Database reset and catalog imported from scratch.",
+    "done": "Database reset. All tables are empty.",
     "catalogBooks": "Books deleted",
     "downloads": "Download records deleted",
     "jobs": "Jobs deleted",
@@ -257,9 +258,12 @@
     "updatePlans": "Update plans deleted",
     "cleanupRecords": "Cleanup records deleted",
     "confirmTitle": "Reset the entire database?",
-    "confirmDescription": "This action is irreversible. The ZIP/CSV will be downloaded and the catalog rebuilt from scratch. Download history, jobs (including queued or paused jobs), and update plans and cleanup records will be deleted. qBittorrent torrents and files will not be touched.",
-    "confirm": "Reset and import",
-    "recordsImported": "Books imported"
+    "confirmDescription": "ALL EPL Sync data will be deleted, including events and metadata. The catalog will not be reimported. Client torrents and files will be kept. This action cannot be undone.",
+    "confirm": "Empty database",
+    "recordsImported": "Books imported",
+    "metadataRecords": "Metadata records deleted",
+    "events": "Events deleted",
+    "closeResult": "Close reset result"
   },
   "torrent": {
     "title": "Torrent client connection",
@@ -507,7 +511,8 @@
     "modes": {
       "UPDATE": "Update",
       "REPLACE": "Catalog replacement"
-    }
+    },
+    "missingRows": "Absent from the last imported CSV"
   },
   "filters": {
     "heading": "Advanced search",
@@ -699,7 +704,9 @@
       "CHECK": "Cover check",
       "DOWNLOAD": "Download job",
       "SYNC": "Torrent synchronization",
-      "SEND_BOOK": "Single book submission"
+      "SEND_BOOK": "Single book submission",
+      "DELETE_MISSING": "Absent book deletion",
+      "PREVIEW": "Catalog preview"
     },
     "fields": {
       "processed": "Processed",
@@ -728,7 +735,8 @@
       "eplId": "EPL ID",
       "hash": "Hash",
       "client": "Torrent client",
-      "submissionStatus": "Submission result"
+      "submissionStatus": "Submission result",
+      "deleted": "Books deleted"
     },
     "unread": "{{count}} operations with updates",
     "startedAt": "Started",
@@ -747,5 +755,18 @@
     "bookAccepted": "The torrent client accepted book {{eplId}}. The download may still be in progress.",
     "unread_one": "{{count}} operation with updates",
     "unread_other": "{{count}} operations with updates"
+  },
+  "missing": {
+    "title": "Delete absent books",
+    "description": "{{count}} books in EPL Sync that are absent from the downloaded EPL CSV will be deleted.",
+    "kept": "Download and job history is preserved. Client torrents and files are not deleted. This preview expires after 15 minutes.",
+    "bookTitle": "Title",
+    "revision": "Revision",
+    "empty": "No books are absent from the CSV. There is nothing to delete.",
+    "confirm": "Delete books",
+    "conflict": "The preview expired, the catalog changed or related jobs are pending. Close this dialog, check jobs and preview again.",
+    "error": "The operation could not be completed. Deletion requires a valid, non-empty CSV without errors.",
+    "sectionTitle": "Catalog cleanup",
+    "sectionDescription": "Review and remove catalog books no longer present in the EPL CSV. Download and job history is preserved."
   }
 }

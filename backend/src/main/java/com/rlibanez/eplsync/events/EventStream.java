@@ -26,14 +26,20 @@ public class EventStream {
         emitter.onTimeout(() -> { closed.set(true); signals.offer(true); emitter.complete(); });
         emitter.onError(ex -> { closed.set(true); signals.offer(true); });
         // Subscribe before taking the snapshot, so events cannot slip between replay and live delivery.
+        long initialResetVersion = journal.resetVersion();
         var listener = journal.listen(() -> signals.offer(true));
         try { writers.submit(() -> {
             try (listener) {
+                long resetVersion = initialResetVersion;
                 long latest = journal.cursor();
                 long cursor = after == null ? latest : Math.min(after, latest);
                 emitter.send(SseEmitter.event().name(after != null && after > latest ? "reset" : "ready")
                         .id(Long.toString(cursor)).data(Map.of("cursor", cursor)));
                 while (!closed.get()) {
+                    if (resetVersion != journal.resetVersion()) {
+                        resetVersion = journal.resetVersion();
+                        emitter.send(SseEmitter.event().name("database-reset").data(Map.of("cursor", journal.cursor())));
+                    }
                     var rows = journal.after(cursor, 100);
                     for (var row : rows) {
                         emitter.send(SseEmitter.event().name("event").id(Long.toString(row.id())).data(row));

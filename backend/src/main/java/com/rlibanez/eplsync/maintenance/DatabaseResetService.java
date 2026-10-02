@@ -5,7 +5,6 @@ import com.rlibanez.eplsync.torrent.bulk.BulkWorker;
 import com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService;
 import com.rlibanez.eplsync.exception.TorrentOperationException;
 import jakarta.persistence.EntityManager;
-import com.rlibanez.eplsync.service.CatalogImportService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,7 +14,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class DatabaseResetService {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
-    private final CatalogImportService catalog;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CoverTaskService coverTasks;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogMissingService missing;
     private final BulkStore bulk;
     private final ObjectProvider<BulkWorker> workers;
     private final DownloadTrackingService tracking;
@@ -24,19 +24,17 @@ public class DatabaseResetService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DatabaseResetService.class);
 
     public record ResetResult(boolean success, int catalogBooks, int downloads,
-            int jobs, int jobItems, int updatePlans, int cleanupRecords, int recordsImported, com.rlibanez.eplsync.model.CatalogMetadata metadata) {}
+            int jobs, int jobItems, int updatePlans, int cleanupRecords, int metadataRecords, int events) {}
 
     public DatabaseResetService(BulkStore bulk, ObjectProvider<BulkWorker> workers,
-            DownloadTrackingService tracking, EntityManager em, PlatformTransactionManager manager, CatalogImportService catalog) {
-        this.catalog = catalog;
+            DownloadTrackingService tracking, EntityManager em, PlatformTransactionManager manager) {
+
         this.bulk = bulk; this.workers = workers; this.tracking = tracking; this.em = em;
         this.transactions = new TransactionTemplate(manager);
     }
 
     public ResetResult reset() {
-        if (events == null) return performReset();
-        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "RESET",
-            this::performReset, result -> java.util.Map.of("imported", result.recordsImported()));
+        return performReset();
     }
     private ResetResult performReset() {
         // Worker dispatch and job creation use this same monitor. Do not hold a
@@ -44,6 +42,7 @@ public class DatabaseResetService {
         synchronized (bulk) {
             BulkWorker worker = workers.getIfAvailable();
             if (worker != null && worker.hasInFlightSends()) throw busy();
+            if (coverTasks != null && coverTasks.current() != null && coverTasks.current().state().equals("RUNNING")) throw busy();
             return tracking.exclusive(() -> {
                 ResetResult result = transactions.execute(status -> {
                     // Also protect installations with the worker disabled after an interrupted send.
@@ -56,16 +55,15 @@ public class DatabaseResetService {
                     int jobs = delete("BulkJob");
                     int downloads = delete("DownloadRecord");
                     int books = delete("CatalogBook");
+                    int metadata = delete("CatalogMetadata");
+                    int eventCount = events == null ? em.createNativeQuery("delete from app_events").executeUpdate() : events.clearForReset();
                     em.clear();
-                    var imported = catalog.importCatalog();
-                    if (!imported.success() || imported.errors() > 0 || imported.recordsCreated() == 0)
-                        throw new IllegalStateException("El catálogo está vacío o contiene errores; se conserva la base de datos anterior");
-                    if (events != null) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "RESET",
-                            java.util.Map.of("imported", imported.recordsCreated()));
-                    return new ResetResult(true, books, downloads, jobs, items, plans, cleanup, imported.recordsCreated(), imported.metadata());
+                    return new ResetResult(true, books, downloads, jobs, items, plans, cleanup, metadata, eventCount);
                 });
                 // Only discard the in-memory queue after the transaction commits.
                 if (worker != null) worker.clearIdleState();
+                if (coverTasks != null) coverTasks.clearIdleState();
+                if (missing != null) missing.clear();
                 log.warn("Base de datos reiniciada: {}", result);
                 return result;
             });

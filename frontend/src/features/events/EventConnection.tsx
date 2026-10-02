@@ -47,6 +47,10 @@ export function EventConnection() {
       publish(true);
       refresh();
     });
+    channel.addEventListener("database-reset", () => {
+      publish(true);
+      void cache.invalidateQueries();
+    });
     channel.addEventListener("refresh", () => {
       publish(true);
       refresh();
@@ -67,7 +71,19 @@ export function EventConnection() {
                   : "events.bookAccepted",
                 { eplId: event.details.eplId },
               )
-            : translate.current("events.outcomes." + event.outcome),
+            : event.category === "CATALOG" &&
+                event.action === "PREVIEW" &&
+                event.outcome === "STARTED"
+              ? translate.current("import.pendingDescription")
+              : event.category === "CATALOG" &&
+                  event.action === "PREVIEW" &&
+                  event.outcome === "SUCCEEDED"
+                ? translate.current("import.previewDone")
+                : event.category === "CATALOG" &&
+                    event.outcome === "STARTED" &&
+                    ["UPDATE", "REPLACE"].includes(event.action)
+                  ? translate.current("import.updateStarted")
+                  : translate.current("events.outcomes." + event.outcome),
         tone: eventTone(event),
         phase: ["STARTED", "RESUMED", "RECOVERED"].includes(event.outcome)
           ? "start"

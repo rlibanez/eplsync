@@ -55,6 +55,10 @@ public class CoverTaskService {
     public CoverTaskService(CoverCheckService checks, CoverProbeFactory probes, CoverCheckProperties defaults, MaintenanceGate gate) {
         this.checks = checks; this.probes = probes; this.defaults = defaults; this.gate = gate;
     }
+    public synchronized void clearIdleState() {
+        if (current != null && current.state.equals("RUNNING")) throw new IllegalStateException("Cover task is running");
+        current = null;
+    }
     public Options defaults() { return Options.from(defaults); }
     public Status current() { var task = current; return task == null ? null : task.status(); }
 
@@ -70,9 +74,10 @@ public class CoverTaskService {
 
     private void run(Task task, CoverCheckProperties properties) {
         if (!gate.enter(false)) {
-            task.error = "MAINTENANCE_BUSY"; task.state = "FAILED";
+            task.error = "MAINTENANCE_BUSY";
             if (events != null) events.record(com.rlibanez.eplsync.events.EventJournal.Category.COVERS, "CHECK",
                 com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED, task.origin, task.id, java.util.Map.of("reason", "MAINTENANCE_BUSY"));
+            task.state = "FAILED";
             return;
         }
         CoverProbe probe = null;

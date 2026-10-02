@@ -66,6 +66,17 @@ public class EventJournal {
     public AutoCloseable listen(Runnable listener) {
         listeners.add(listener); return () -> listeners.remove(listener);
     }
+    private final java.util.concurrent.atomic.AtomicLong resetVersion = new java.util.concurrent.atomic.AtomicLong();
+    public long resetVersion() { return resetVersion.get(); }
+    public int clearForReset() {
+        return transactions.execute(tx -> {
+            int count = jdbc.update("DELETE FROM app_events");
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { resetVersion.incrementAndGet(); signal(); }
+            });
+            return count;
+        });
+    }
     private void signal() {
         for (var listener : listeners) try { listener.run(); } catch (RuntimeException ex) { log.debug("Suscriptor de eventos desconectado", ex); }
     }

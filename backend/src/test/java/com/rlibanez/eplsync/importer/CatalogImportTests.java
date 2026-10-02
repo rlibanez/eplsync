@@ -40,7 +40,7 @@ class CatalogImportTests {
         Instant created = repository.findById(1L).orElseThrow().getInsertDate();
         Instant beforeUpdate = Instant.now().minusSeconds(1);
         var result = importer.importFile(csv("1,2,Autor,Modificado\n2,1,Autor,Igual\n4,1,Autor,Nuevo\n"), false);
-        assertThat(result).isEqualTo(new CatalogBookCsvImporter.ImportStats(3, 0, 1, 1, 1));
+        assertThat(result).isEqualTo(new CatalogBookCsvImporter.ImportStats(3, 0, 1, 1, 1, 1L));
         assertThat(repository.count()).isEqualTo(4);
         var updated = repository.findById(1L).orElseThrow();
         assertThat(updated.getTitle()).isEqualTo("Modificado");
@@ -49,7 +49,7 @@ class CatalogImportTests {
         assertThat(repository.findById(2L).orElseThrow().getLastModifiedDate()).isNull();
         assertThat(repository.findById(4L).orElseThrow().getInsertDate()).isBetween(beforeUpdate, Instant.now().plusSeconds(1));
         var repeated = importer.importFile(directory.resolve("catalog.csv"), false);
-        assertThat(repeated).isEqualTo(new CatalogBookCsvImporter.ImportStats(3, 0, 0, 0, 3));
+        assertThat(repeated).isEqualTo(new CatalogBookCsvImporter.ImportStats(3, 0, 0, 0, 3, 1L));
         assertThat(repository.findById(1L).orElseThrow().getLastModifiedDate())
                 .isEqualTo(updated.getLastModifiedDate());
     }
@@ -59,7 +59,7 @@ class CatalogImportTests {
         importer.importFile(csv("1,1,Autor,Original\n2,1,Autor,Eliminar\n"), false);
         importer.importFile(csv("1,2,Autor,Modificado\n"), false);
         var result = importer.importFile(csv("1,3,Autor,Reemplazo\n3,1,Autor,Nuevo\n"), true);
-        assertThat(result).isEqualTo(new CatalogBookCsvImporter.ImportStats(2, 0, 0, 2, 0));
+        assertThat(result).isEqualTo(new CatalogBookCsvImporter.ImportStats(2, 0, 0, 2, 0, 0L));
         assertThat(repository.existsById(2L)).isFalse();
         assertThat(repository.findById(1L).orElseThrow().getLastModifiedDate()).isNull();
         assertThat(repository.count()).isEqualTo(2);
@@ -92,7 +92,7 @@ class CatalogImportTests {
         assertThat(repository.count()).isEqualTo(2);
         assertThat(repository.findById(1L).orElseThrow()).usingRecursiveComparison().isEqualTo(original);
         assertThat(importer.importFile(file, false))
-                .isEqualTo(new CatalogBookCsvImporter.ImportStats(4, 1, 1, 2, 1));
+                .isEqualTo(new CatalogBookCsvImporter.ImportStats(4, 1, 1, 2, 1, null));
     }
 
     @Test
@@ -115,7 +115,7 @@ class CatalogImportTests {
         assertThat(preview.summary().errors()).isEqualTo(1);
         assertThat(preview.createdBooks()).extracting("eplId").containsExactly(1L, 2L);
         assertThat(importer.importFile(file, false))
-                .isEqualTo(new CatalogBookCsvImporter.ImportStats(2, 1, 0, 2, 0));
+                .isEqualTo(new CatalogBookCsvImporter.ImportStats(2, 1, 0, 2, 0, null));
     }
 
     @Test
@@ -124,11 +124,11 @@ class CatalogImportTests {
         for (int id = 1; id <= 1001; id++) rows.append(id).append(",1,Autor,Libro\n");
         Path file = csv(rows.toString());
         assertThat(importer.importFile(file, true))
-                .isEqualTo(new CatalogBookCsvImporter.ImportStats(1001, 0, 0, 1001, 0));
+                .isEqualTo(new CatalogBookCsvImporter.ImportStats(1001, 0, 0, 1001, 0, 0L));
         var preview = importer.previewFile(file, 0, 50);
         assertThat(preview.summary().recordsUnchanged()).isEqualTo(1001);
         assertThat(importer.importFile(file, false))
-                .isEqualTo(new CatalogBookCsvImporter.ImportStats(1001, 0, 0, 0, 1001));
+                .isEqualTo(new CatalogBookCsvImporter.ImportStats(1001, 0, 0, 0, 1001, 0L));
         assertThat(repository.findById(1001L).orElseThrow().getLastModifiedDate()).isNull();
     }
 
@@ -170,7 +170,7 @@ class CatalogImportTests {
                 "https://example.org/1.jpg", "https://example.org/2.jpg", null, null,
                 "https://example.org/5.jpg", "https://example.org/6.jpg");
         assertThat(importer.importFile(file, false))
-                .isEqualTo(new CatalogBookCsvImporter.ImportStats(6, 0, 0, 6, 0));
+                .isEqualTo(new CatalogBookCsvImporter.ImportStats(6, 0, 0, 6, 0, 0L));
         assertThat(repository.findById(5L).orElseThrow().getSynopsis())
                 .contains("Primera línea\nSegunda línea con \"comillas\"");
         assertThat(repository.findById(2L).orElseThrow().getCoverUrl()).isEqualTo("https://example.org/2.jpg");

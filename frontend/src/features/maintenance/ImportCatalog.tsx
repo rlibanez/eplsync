@@ -1,4 +1,5 @@
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
+import { MissingBooks } from "./MissingBooks";
 import { CurrentCatalog } from "./CatalogMetadata";
 import { useState } from "react";
 import { ActionIcon, Button, Loader, Tooltip } from "@mantine/core";
@@ -9,7 +10,7 @@ import { useLocale } from "../../locales/useLocale";
 export function ImportCatalog() {
   const { t } = useTranslation();
   const { number } = useLocale();
-  const { operation, run, dismissPreview } = useImport();
+  const { operation, run, dismissPreview, dismissReset } = useImport();
   const [confirm, setConfirm] = useState<"update" | "reset" | null>(null);
   const pending = operation?.pending ?? false;
   return (
@@ -57,11 +58,16 @@ export function ImportCatalog() {
                   "recordsUpdated",
                   "recordsUnchanged",
                   "errors",
+                  "missingBooks",
                 ] as const
               ).map((key) => (
                 <div key={key}>
                   <dt>{t(`import.${key}`)}</dt>
-                  <dd>{number(operation.result![key])}</dd>
+                  <dd>
+                    {operation.result![key] == null
+                      ? t("metadata.unknown")
+                      : number(operation.result![key]!)}
+                  </dd>
                 </div>
               ))}
             </dl>
@@ -85,6 +91,11 @@ export function ImportCatalog() {
           </Button>
         </div>
       </section>
+      <section className="panel settings-section">
+        <h2>{t("missing.sectionTitle")}</h2>
+        <p>{t("missing.sectionDescription")}</p>
+        <MissingBooks disabled={pending} />
+      </section>
       <section className="panel settings-section danger-panel">
         <h2>{t("reset.title")}</h2>
         {pending && operation?.mode === "reset" && (
@@ -94,7 +105,45 @@ export function ImportCatalog() {
           </div>
         )}
         <p>{t("reset.description")}</p>
-        <p className="muted">{t("reset.kept")}</p>
+        {operation?.resetResult && (
+          <section
+            className="import-preview-result reset-result"
+            aria-live="polite"
+            aria-labelledby="reset-result-heading"
+          >
+            <div className="import-preview-heading">
+              <h3 id="reset-result-heading">{t("reset.result")}</h3>
+              <Tooltip label={t("reset.closeResult")}>
+                <ActionIcon
+                  variant="subtle"
+                  aria-label={t("reset.closeResult")}
+                  onClick={dismissReset}
+                >
+                  <X size={18} />
+                </ActionIcon>
+              </Tooltip>
+            </div>
+            <dl className="import-summary">
+              {(
+                [
+                  "catalogBooks",
+                  "downloads",
+                  "jobs",
+                  "jobItems",
+                  "updatePlans",
+                  "cleanupRecords",
+                  "metadataRecords",
+                  "events",
+                ] as const
+              ).map((key) => (
+                <div key={key}>
+                  <dt>{t(`reset.${key}`)}</dt>
+                  <dd>{number(operation.resetResult![key])}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
         <Button
           color="red"
           variant="light"
@@ -104,29 +153,6 @@ export function ImportCatalog() {
           {t("reset.action")}
         </Button>
       </section>
-      {operation?.resetResult && (
-        <section className="panel settings-section" aria-live="polite">
-          <h2>{t("reset.result")}</h2>
-          <dl className="import-summary">
-            {(
-              [
-                "catalogBooks",
-                "downloads",
-                "jobs",
-                "jobItems",
-                "updatePlans",
-                "cleanupRecords",
-                "recordsImported",
-              ] as const
-            ).map((key) => (
-              <div key={key}>
-                <dt>{t(`reset.${key}`)}</dt>
-                <dd>{number(operation.resetResult![key])}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      )}
       <Modal
         icon={Download}
         opened={confirm !== null}

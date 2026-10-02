@@ -13,6 +13,7 @@ export interface Metadata {
   updatedRows: number;
   unchangedRows: number;
   errorRows: number;
+  missingRows?: number | null;
   durationMs: number;
   sourceSha256: string;
 }
@@ -31,6 +32,7 @@ export function MetadataDetails({ metadata }: { metadata: Metadata }) {
           "updatedRows",
           "unchangedRows",
           "errorRows",
+          "missingRows",
           "sourceFileName",
           "sourceUrl",
           "sourceSha256",

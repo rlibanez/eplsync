@@ -169,7 +169,7 @@ class QBittorrentClientTests {
         var service = new com.rlibanez.eplsync.service.TorrentDownloadService(repository, properties,
                 new com.rlibanez.eplsync.torrent.MagnetLinkBuilder(properties),
                 new com.rlibanez.eplsync.torrent.TorrentNameResolver(),
-                new TorrentClientService(properties, List.of(client()), tracking()));
+                new TorrentClientService(properties, List.of(client()), tracking()), null);
         return MockMvcBuilders.standaloneSetup(new com.rlibanez.eplsync.controller.TorrentDownloadController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }

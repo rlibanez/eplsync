@@ -1562,3 +1562,23 @@ summary {
 .import-preview-result .import-summary { margin-bottom: 0; }
 
 .import-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+
+.import-preview-result {
+  width: fit-content;
+  max-width: 100%;
+  min-width: min(100%, 360px);
+}
+.missing-books-list {
+  max-height: 320px;
+  overflow: auto;
+  margin-block: 16px;
+}
+.missing-books-list table { width: 100%; }
+.missing-books-list th, .missing-books-list td { padding: 8px 12px; text-align: left; }
+.missing-books-list td:nth-child(2) { overflow-wrap: anywhere; }
+
+.missing-books-list th:first-child { width: 90px; }
+.missing-books-list th:nth-child(2) { width: auto; }
+.missing-books-list th:last-child { width: 90px; }
+
+.reset-result { margin-bottom: 20px; }

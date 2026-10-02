@@ -12,7 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 export const notificationDefaults = {
-  starts: false,
+  starts: true,
   finishes: true,
   success: true,
   warning: true,

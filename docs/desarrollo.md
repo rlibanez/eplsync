@@ -185,12 +185,14 @@ carga o una actualización. El servidor descarga el ZIP configurado, extrae el C
 e inserta/actualiza libros. La previsualización no congela el CSV ni reserva una actualización.
 
 La acción «Reiniciar base de datos» usa `POST /api/maintenance/reset` con
-`{"confirm":true}` después de una confirmación destacada en rojo. Descarga el ZIP/CSV, vacía las seis
-tablas de datos y reconstruye el catálogo en una transacción. Un fallo o un CSV
-vacío o con errores revierte el borrado y la importación. Conserva el esquema,
-la configuración, los logs y las preferencias del navegador. No modifica torrents
-ni archivos en qBittorrent. El antiguo `/api/catalog/import/reset` sigue limitado
-al reemplazo del catálogo.
+`{"confirm":true}` después de una confirmación destacada en rojo. Vacía las ocho
+tablas de datos en una transacción, incluidos metadatos y eventos. No descarga ni
+importa el CSV. Conserva el esquema, la configuración, los logs y las preferencias
+del navegador. No modifica torrents ni archivos del cliente.
+`/api/catalog/import/reset` sigue limitado al reemplazo del catálogo y no se usa
+desde el frontend. «Eliminar ausentes» permite revisar y eliminar solo los libros
+que no están en un CSV válido, con un token temporal que congela la lista de candidatos;
+el historial de descargas y trabajos se conserva.
 
 Un filtro coordina las peticiones API de esta instancia: el reinicio requiere
 acceso exclusivo y devuelve `409` si hay otras peticiones activas. El monitor del
@@ -306,12 +308,13 @@ SVG utiliza el mismo libro abierto del logo provisional.
 ### Eventos persistentes y notificaciones
 
 **Eventos**, encima de Ajustes, consulta el registro compartido `app_events` en
-SQLite. Recoge actualizaciones/reemplazos/reinicios del catálogo, comprobaciones
+SQLite. Recoge actualizaciones/reemplazos y eliminación de ausentes del catálogo, comprobaciones
 colectivas de portadas (incluidas simulaciones), sincronizaciones aplicadas y el
 ciclo de vida de los jobs. Funciona tanto desde la interfaz como desde la API;
 el historial se conserva al cerrar el navegador y al reiniciar la aplicación.
-El reinicio de datos del catálogo no elimina este registro: tiene mantenimiento
-independiente en Ajustes → General → Mantenimiento de eventos.
+El reemplazo del catálogo conserva los eventos. El reinicio completo de la base
+de datos sí los elimina, sin registrar su propio evento persistente. También hay
+mantenimiento independiente en Ajustes → General → Mantenimiento de eventos.
 
 Se guardan fecha UTC, categoría, acción, resultado, origen, identificador de
 operación y un resumen de contadores; no se duplican libros, respuestas completas,
@@ -392,7 +395,7 @@ cursor entre visitas: volver a Eventos siempre consulta los datos actuales.
 Ajustes > General > Notificaciones configura inicios (incluidas reanudaciones y
 recuperaciones), finales/cambios de estado, resultados correctos/con avisos/con
 errores, y duración de 1 a 60 segundos. Por defecto se muestran todos los resultados
-y no los inicios. Las preferencias se guardan por navegador en
+y los inicios. Las preferencias se guardan por navegador en
 `eplsync.notificationPreferences`, se aplican también a avisos locales y no
 afectan al registro persistente ni al contador. Un aviso ya mostrado conserva su
 duración; los cambios se aplican a los siguientes.

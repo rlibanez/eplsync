@@ -109,11 +109,12 @@ public class CatalogImportService {
                     metadata.setUpdatedRows(stats.updated());
                     metadata.setUnchangedRows(stats.unchanged());
                     metadata.setErrorRows(stats.errors());
+                    metadata.setMissingRows(stats.missingBooks());
                     metadata.setImportedAt(java.time.Instant.now());
                     metadata.setDurationMs((System.nanoTime() - started) / 1_000_000);
                     metadataRepository.saveAndFlush(metadata);
                     var result = new ImportResult(true, "Importación completada", stats.processed(), stats.errors(),
-                            stats.updated(), stats.created(), stats.unchanged(), metadata);
+                            stats.updated(), stats.created(), stats.unchanged(), stats.missingBooks(), metadata);
                     if (events != null) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG,
                             truncateBeforeImport ? "REPLACE" : "UPDATE", eventSummary(result));
                     return result;
@@ -124,8 +125,16 @@ public class CatalogImportService {
         });
     }
 
+    public CatalogBookCsvImporter.Analysis analyzeMissing() {
+        return withCatalogFile(null, csv -> csvImporter.analyzeMissing(csv.path()));
+    }
+
     public ImportPreviewResult previewCatalog(String zipUrl, int page, int size) {
-        return withCatalogFile(zipUrl, csv -> csvImporter.previewFile(csv.path(), page, size));
+        java.util.function.Supplier<ImportPreviewResult> work =
+                () -> withCatalogFile(zipUrl, csv -> csvImporter.previewFile(csv.path(), page, size));
+        if (events == null) return work.get();
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "PREVIEW",
+                java.util.Map.of("dryRun", true), work, result -> eventSummary(result.summary()));
     }
 
     @FunctionalInterface
@@ -158,6 +167,8 @@ public class CatalogImportService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new CatalogImportInterruptedException("La operación de importación fue interrumpida", e);
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (CatalogDownloadException e) {
             throw new CatalogImportException(e.getMessage(), e);
         } catch (IOException e) {

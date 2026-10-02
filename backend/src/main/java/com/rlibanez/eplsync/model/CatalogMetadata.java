@@ -21,6 +21,7 @@ public class CatalogMetadata {
     private long updatedRows;
     private long unchangedRows;
     private long errorRows;
+    private Long missingRows;
     private long durationMs;
     private String sourceSha256;
 }

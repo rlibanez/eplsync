@@ -18,6 +18,7 @@ import static org.mockito.Mockito.*;
     "eplsync.torrent.enabled=false", "eplsync.torrent.bulk.worker-enabled=false"})
 class CatalogMetadataTests {
     @Autowired CatalogImportService service;
+    @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired CatalogMetadataRepository metadata;
     @Autowired CatalogBookRepository books;
     @MockitoBean FileDownloader downloader;
@@ -34,6 +35,25 @@ class CatalogMetadataTests {
             }
             return zip;
         });
+    }
+    @Test void previewRecordsGroupedStartAndResultWithoutImportingBooks() {
+        long cursor = events.cursor();
+        service.previewCatalog(null, 0, 20);
+        var entries = events.after(cursor, 10);
+        assertThat(entries).hasSize(2);
+        assertThat(entries).allSatisfy(entry -> {
+            assertThat(entry.action()).isEqualTo("PREVIEW");
+            assertThat(entry.details().get("dryRun")).isEqualTo(true);
+        });
+        assertThat(entries.getFirst().outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED);
+        assertThat(entries.getLast().outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
+        assertThat(entries.getLast().operationId()).isEqualTo(entries.getFirst().operationId());
+        assertThat(books.count()).isZero();
+        assertThat(metadata.count()).isZero();
+        csv = "EPL Id,Título,Autor,Revisión\n3,\"unterminated";
+        cursor = events.cursor();
+        assertThatThrownBy(() -> service.previewCatalog(null,0,20)).isInstanceOf(RuntimeException.class);
+        assertThat(events.after(cursor,10).getLast().outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
     }
     @Test void storesOriginalDateCountsAndDigestAndReplacesSingleton() throws Exception {
         var result = service.updateCatalog("https://example.test/catalog.zip");

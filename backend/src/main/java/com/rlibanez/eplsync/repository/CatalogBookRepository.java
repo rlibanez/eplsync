@@ -12,6 +12,13 @@ import com.rlibanez.eplsync.model.CatalogBook;
 @Repository
 public interface CatalogBookRepository extends JpaRepository<CatalogBook, Long>, JpaSpecificationExecutor<CatalogBook> {
 
+    interface MissingIdentity {
+        Long getEplId(); String getTitle(); Double getRevision();
+        java.time.Instant getInsertDate(); java.time.Instant getLastModifiedDate();
+    }
+    @org.springframework.data.jpa.repository.Query("select b.eplId as eplId, b.title as title, b.revision as revision, b.insertDate as insertDate, b.lastModifiedDate as lastModifiedDate from CatalogBook b order by b.eplId")
+    java.util.List<MissingIdentity> findMissingIdentities();
+
     interface CoverIdentity {
         Long getEplId();
         String getCoverUrl();

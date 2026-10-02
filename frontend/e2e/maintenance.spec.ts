@@ -6,6 +6,7 @@ const summary = {
   recordsUpdated: 1,
   recordsUnchanged: 2,
   errors: 0,
+  missingBooks: 2,
 };
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/catalog/import/metadata", (route) =>
@@ -207,16 +208,18 @@ test("full reset requires the red confirmation and clears cached catalog after s
   await page.route("**/api/catalog/books?**", (route) =>
     route.fulfill({
       json: {
-        items: [
-          {
-            eplId: 32,
-            title: resets ? "Reimported book" : "Old book",
-            author: "Author",
-            language: "en",
-            revision: 1,
-            publicationYear: 2026,
-          },
-        ],
+        items: resets
+          ? []
+          : [
+              {
+                eplId: 32,
+                title: "Old book",
+                author: "Author",
+                language: "en",
+                revision: 1,
+                publicationYear: 2026,
+              },
+            ],
         meta: {
           page: 0,
           size: 20,
@@ -232,7 +235,6 @@ test("full reset requires the red confirmation and clears cached catalog after s
     expect(route.request().method()).toBe("POST");
     expect(route.request().postDataJSON()).toEqual({ confirm: true });
     resets++;
-    void emitEvent(page, { action: "RESET" });
     return route.fulfill({
       json: {
         success: true,
@@ -242,7 +244,8 @@ test("full reset requires the red confirmation and clears cached catalog after s
         jobItems: 4,
         updatePlans: 5,
         cleanupRecords: 6,
-        recordsImported: 1,
+        metadataRecords: 1,
+        events: 2,
       },
     });
   });
@@ -257,11 +260,9 @@ test("full reset requires the red confirmation and clears cached catalog after s
     .getByRole("button", { name: "Reset database", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("This action is irreversible.");
-  await expect(dialog).toContainText(
-    "qBittorrent torrents and files will not be touched.",
-  );
-  const confirm = dialog.getByRole("button", { name: "Reset and import" });
+  await expect(dialog).toContainText("This action cannot be undone.");
+  await expect(dialog).toContainText("Client torrents and files will be kept.");
+  const confirm = dialog.getByRole("button", { name: "Empty database" });
   await expect(confirm).toHaveCSS("background-color", "rgb(224, 49, 49)");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(resets).toBe(0);
@@ -275,16 +276,26 @@ test("full reset requires the red confirmation and clears cached catalog after s
   await expect(
     page
       .locator(".notification-toasts")
-      .getByText("Completed", { exact: true }),
+      .getByText("Database reset. All tables are empty.", { exact: true }),
   ).toBeVisible();
+  expect(resets).toBe(1);
+  const resetPanel = page.locator(".danger-panel");
+  await expect(
+    resetPanel.getByRole("heading", { name: "Reset result" }),
+  ).toBeVisible();
+  await resetPanel.getByRole("button", { name: "Close reset result" }).click();
+  await expect(page.getByRole("heading", { name: "Reset result" })).toHaveCount(
+    0,
+  );
+  await expect(
+    resetPanel.getByRole("button", { name: "Reset database", exact: true }),
+  ).toBeEnabled();
   expect(resets).toBe(1);
   await page
     .locator("#sidebar")
     .getByRole("link", { name: "Catalog", exact: true })
     .click();
-  await expect(
-    page.getByRole("link", { name: "Reimported book" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Old book" })).toHaveCount(0);
 });
 
 test("busy reset preserves the database and does not retry automatically", async ({
@@ -301,7 +312,7 @@ test("busy reset preserves the database and does not retry automatically", async
     .click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Reset and import" })
+    .getByRole("button", { name: "Empty database" })
     .click();
   await expect(page.locator(".notification-toasts")).toContainText(
     "The database has not been reset.",
@@ -362,4 +373,116 @@ test("applied import has a single metadata summary and dismissible notice", asyn
   await expect(
     page.getByRole("heading", { name: "Current catalog" }),
   ).toBeVisible();
+});
+
+test("absent books are reviewed inside a scrollable dialog and deleted only after confirmation", async ({
+  page,
+}) => {
+  let deletes = 0;
+  const items = Array.from({ length: 50 }, (_, i) => ({
+    eplId: i + 100,
+    title: `Absent book ${i + 100}`,
+    revision: 1.2,
+  }));
+  await page.route("**/api/catalog/import/missing/preview", (route) =>
+    route.fulfill({
+      json: { token: "review", total: 51, size: 50, page: 0, items },
+    }),
+  );
+  await page.route("**/api/catalog/import/missing/review?**", (route) =>
+    route.fulfill({
+      json: {
+        token: "review",
+        total: 51,
+        size: 50,
+        page: 1,
+        items: [{ eplId: 150, title: "Last absent book", revision: 1 }],
+      },
+    }),
+  );
+  await page.route("**/api/catalog/import/missing/delete", (route) => {
+    deletes++;
+    expect(route.request().postDataJSON()).toEqual({
+      token: "review",
+      confirm: true,
+    });
+    return route.fulfill({ json: { deleted: 51 } });
+  });
+  await page.goto("/settings/database");
+  await page
+    .getByRole("button", { name: "Delete absent books", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("51 books");
+  await expect(dialog.getByRole("table")).toContainText("Absent book 100");
+  expect(deletes).toBe(0);
+  const scroll = dialog.locator(".missing-books-list");
+  expect(
+    await scroll.evaluate((node) => node.scrollHeight > node.clientHeight),
+  ).toBe(true);
+  await dialog.screenshot({ path: "test-results/absent-books-dialog.png" });
+  await dialog.getByRole("button", { name: "2", exact: true }).click();
+  await expect(dialog.getByRole("table")).toContainText("Last absent book");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(deletes).toBe(0);
+  await page
+    .getByRole("button", { name: "Delete absent books", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Delete books", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  expect(deletes).toBe(1);
+});
+
+test("preview summary fits its content and reports absent books", async ({
+  page,
+}) => {
+  await page.route("**/api/catalog/import/preview", (route) =>
+    route.fulfill({ json: summary }),
+  );
+  await page.goto("/settings/database");
+  await page.getByRole("button", { name: "Preview changes" }).click();
+  const preview = page.locator(".import-preview-result");
+  await expect(preview).toContainText("Absent from CSV");
+  expect(
+    await preview.evaluate(
+      (node) =>
+        node.getBoundingClientRect().width <
+        node.parentElement!.getBoundingClientRect().width,
+    ),
+  ).toBe(true);
+  await preview.getByRole("button", { name: "Close changes preview" }).click();
+  await expect(preview).toBeHidden();
+});
+
+test("catalog preview uses server events without duplicate notifications and shows starts by default", async ({
+  page,
+}) => {
+  await page.route("**/api/catalog/import/preview", async (route) => {
+    await emitEvent(page, {
+      action: "PREVIEW",
+      outcome: "STARTED",
+      details: { dryRun: true },
+    });
+    await route.fulfill({
+      headers: { "X-EPLSync-Operation-Id": "test-operation" },
+      json: summary,
+    });
+  });
+  await page.goto("/settings/database");
+  await page.getByRole("button", { name: "Preview changes" }).click();
+  const toasts = page.locator(".notification-toasts");
+  await expect(
+    toasts.getByText("Comparing the CSV with the current catalog…", {
+      exact: true,
+    }),
+  ).toHaveCount(1);
+  await expect(page.locator(".import-preview-result")).toBeVisible();
+  await emitEvent(page, { action: "PREVIEW", details: { dryRun: true } });
+  await expect(
+    toasts.getByText("Preview complete. The database has not been modified.", {
+      exact: true,
+    }),
+  ).toHaveCount(1);
 });

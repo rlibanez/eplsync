@@ -41,7 +41,7 @@ class DatabaseResetTests {
     @Autowired DownloadTrackingService tracking;
     TransactionTemplate tx;
     String csv;
-    private static final String[] ENTITIES = {"UpdateCleanup", "UpdatePlan", "BulkItem", "BulkJob", "DownloadRecord", "CatalogBook"};
+    private static final String[] ENTITIES = {"UpdateCleanup", "UpdatePlan", "BulkItem", "BulkJob", "DownloadRecord", "CatalogBook", "CatalogMetadata"};
 
     @BeforeEach void seed() throws Exception {
         csv = "EPL Id,Título,Autor,Revisión\n2,Nuevo,Autor,1.0\n";
@@ -58,6 +58,9 @@ class DatabaseResetTests {
         tx.executeWithoutResult(status -> {
             em.createNativeQuery("DROP TRIGGER IF EXISTS fail_catalog_reset").executeUpdate();
             for (String entity : ENTITIES) em.createQuery("delete from " + entity).executeUpdate();
+            em.createNativeQuery("DELETE FROM app_events").executeUpdate();
+            em.persist(new com.rlibanez.eplsync.model.CatalogMetadata());
+            events.record(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "UPDATE", com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED, com.rlibanez.eplsync.events.EventContext.Origin.MANUAL, "seed", java.util.Map.of());
             em.persist(CatalogBook.builder().eplId(1L).title("Libro").author("Autor").revision(1.0).build());
             var download = new DownloadRecord(); download.setId("download"); download.setEplId(1L);
             download.setRevision(1.0); download.setHash("a".repeat(40)); download.setClient("qbittorrent");
@@ -81,48 +84,17 @@ class DatabaseResetTests {
         });
     }
     @Test void resetsAllDataAndCanBeRepeated() {
-        long cursor = events.cursor();
         var result = service.reset();
-        assertThat(result).isEqualTo(new DatabaseResetService.ResetResult(true, 1, 1, 1, 1, 1, 1, 1, result.metadata()));
+        assertThat(result).isEqualTo(new DatabaseResetService.ResetResult(true, 1, 1, 1, 1, 1, 1, 1, 1));
         assertRebuilt();
-        var rows = events.after(cursor, 10);
-        assertThat(rows).hasSize(2).allSatisfy(row -> assertThat(row.action()).isEqualTo("RESET"));
-        assertThat(rows.getLast().outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
-        var repeated = service.reset();
-        assertThat(repeated).isEqualTo(new DatabaseResetService.ResetResult(true, 1, 0, 0, 0, 0, 0, 1, repeated.metadata()));
+        assertThat(events.after(0, 100)).isEmpty();
+        assertThat(service.reset()).isEqualTo(new DatabaseResetService.ResetResult(true, 0, 0, 0, 0, 0, 0, 0, 0));
         assertRebuilt();
+        verifyNoInteractions(downloader);
     }
-    void assertRebuilt() {
-        tx.executeWithoutResult(status -> {
-            for (String entity : ENTITIES) assertThat(em.createQuery("select count(e) from " + entity + " e", Long.class)
-                    .getSingleResult()).as(entity).isEqualTo(entity.equals("CatalogBook") ? 1L : 0L);
-            assertThat(em.find(CatalogBook.class, 1L)).isNull();
-            assertThat(em.find(CatalogBook.class, 2L).getTitle()).isEqualTo("Nuevo");
-        });
-    }
-    @Test void emptyCatalogPreservesAllPreviousData() {
-        csv = "EPL Id,Título,Autor,Revisión\n";
-        assertThatThrownBy(service::reset).isInstanceOf(IllegalStateException.class);
-        assertRows(1);
-    }
-    @Test void partialCatalogPreservesAllPreviousData() {
-        csv += ",Incomplete,Autor,1.0\n";
-        assertThatThrownBy(service::reset).isInstanceOf(IllegalStateException.class);
-        assertRows(1);
-    }
-    @Test void downloadFailurePreservesAllPreviousData() throws Exception {
-        when(downloader.download(anyString(), anyString(), anyString())).thenThrow(new java.io.IOException("offline"));
-        assertThatThrownBy(service::reset).isInstanceOf(RuntimeException.class);
-        assertRows(1);
-    }
-    @Test void importFailurePreservesAllPreviousData() {
-        tx.executeWithoutResult(status -> em.createNativeQuery("CREATE TRIGGER fail_catalog_reset BEFORE INSERT ON catalog_books "
-                + "BEGIN SELECT RAISE(ABORT, 'test import failure'); END").executeUpdate());
-        assertThatThrownBy(service::reset).isInstanceOf(RuntimeException.class);
-        assertRows(1);
-    }
+    void assertRebuilt() { assertRows(0); }
     @Test void rollsBackEveryDeletionIfLastTableFails() {
-        tx.executeWithoutResult(status -> em.createNativeQuery("CREATE TRIGGER fail_catalog_reset BEFORE DELETE ON catalog_books "
+        tx.executeWithoutResult(status -> em.createNativeQuery("CREATE TRIGGER fail_catalog_reset BEFORE DELETE ON app_events "
                 + "BEGIN SELECT RAISE(ABORT, 'test reset failure'); END").executeUpdate());
         assertThatThrownBy(service::reset).isInstanceOf(RuntimeException.class);
         assertRows(1);
@@ -136,7 +108,7 @@ class DatabaseResetTests {
         var worker = mock(BulkWorker.class);
         @SuppressWarnings("unchecked") ObjectProvider<BulkWorker> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(worker);
-        var guarded = new DatabaseResetService(bulk,provider,tracking,em,manager,catalog);
+        var guarded = new DatabaseResetService(bulk,provider,tracking,em,manager);
         when(worker.hasInFlightSends()).thenReturn(true);
         assertThatThrownBy(guarded::reset).isInstanceOf(TorrentOperationException.class); assertRows(1);
         verify(worker,never()).clearIdleState();
@@ -151,7 +123,7 @@ class DatabaseResetTests {
         for (String body : new String[]{"{}", "{\"confirm\":false}", "{\"confirm\":null}"})
             mvc.perform(post("/api/maintenance/reset").contentType("application/json").content(body)).andExpect(status().isBadRequest());
         verifyNoInteractions(mocked);
-        when(mocked.reset()).thenReturn(new DatabaseResetService.ResetResult(true,0,0,0,0,0,0,1,null));
+        when(mocked.reset()).thenReturn(new DatabaseResetService.ResetResult(true,0,0,0,0,0,0,0,0));
         mvc.perform(post("/api/maintenance/reset").contentType("application/json").content("{\"confirm\":true}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true));
         verify(mocked).reset();

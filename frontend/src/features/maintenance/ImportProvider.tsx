@@ -15,6 +15,7 @@ export type ImportMode = "preview" | "update" | "reset";
 export interface ImportResult {
   metadata?: Metadata;
   success: boolean;
+  missingBooks?: number | null;
   recordsProcessed: number;
   errors: number;
   recordsUpdated: number;
@@ -30,7 +31,8 @@ export interface ResetResult {
   jobItems: number;
   updatePlans: number;
   cleanupRecords: number;
-  recordsImported: number;
+  metadataRecords: number;
+  events: number;
 }
 interface Operation {
   mode: ImportMode;
@@ -43,6 +45,7 @@ const Context = createContext<{
   operation: Operation | null;
   run: (mode: ImportMode) => Promise<void>;
   dismissPreview: () => void;
+  dismissReset: () => void;
 } | null>(null);
 export function ImportProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient();
@@ -71,13 +74,6 @@ export function ImportProvider({ children }: { children: ReactNode }) {
           : "import.update",
     );
     const href = "/settings/database";
-    if (mode === "preview")
-      notify({
-        title,
-        message: t("import.pendingDescription"),
-        tone: "info",
-        href,
-      });
     try {
       let response: Response;
       try {
@@ -109,10 +105,14 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       if (mode === "reset") {
         const resetResult: ResetResult = await response.json();
         setOperation({ mode, pending: false, resetResult });
+        notify({ title, message: t("reset.done"), tone: "success", href });
       } else {
         const result: ImportResult = await response.json();
         setOperation({ mode, pending: false, result });
-        if (mode === "preview")
+        if (
+          mode === "preview" &&
+          !response.headers.get("X-EPLSync-Operation-Id")
+        )
           notify({
             title,
             message: t(
@@ -143,10 +143,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
               : "import.unexpectedError",
         { status: error instanceof ApiError ? error.status : "" },
       );
-      if (
-        mode === "preview" ||
-        !(error instanceof ApiError && error.eventOperationId)
-      )
+      if (!(error instanceof ApiError && error.eventOperationId))
         notify({
           title,
           message:
@@ -184,6 +181,10 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       }
       if (mode === "reset") {
         for (const key of [
+          "events",
+          "event-operations",
+          "event-unread",
+          "cover-task",
           "downloads",
           "download-summary",
           "jobs",
@@ -200,6 +201,10 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       value={{
         operation,
         run,
+        dismissReset: () =>
+          setOperation((current) =>
+            current?.mode === "reset" && !current.pending ? null : current,
+          ),
         dismissPreview: () =>
           setOperation((current) =>
             current?.mode === "preview" && !current.pending ? null : current,

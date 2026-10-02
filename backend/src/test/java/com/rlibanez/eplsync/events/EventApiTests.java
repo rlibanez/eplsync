@@ -89,6 +89,17 @@ class EventApiTests {
             assertThat(frame(input, "event")).contains("id:" + missed.id());
         }
     }
+    @Test @Timeout(15) void fullResetInvalidatesConnectedBrowsersWithoutPersistingAnEvent() throws Exception {
+        var old = record();
+        var response = http.send(HttpRequest.newBuilder(uri("/stream")).build(), HttpResponse.BodyHandlers.ofInputStream());
+        try (var input = new BufferedReader(new InputStreamReader(response.body()))) {
+            frame(input, "ready");
+            new TransactionTemplate(manager).executeWithoutResult(tx -> journal.clearForReset());
+            assertThat(frame(input, "database-reset")).contains("\"cursor\":" + old.id());
+            assertThat(journal.after(0,100)).isEmpty();
+            assertThat(record().id()).isGreaterThan(old.id());
+        }
+    }
     String frame(BufferedReader input, String name) throws IOException {
         String line;
         StringBuilder frame = new StringBuilder();

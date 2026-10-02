@@ -212,7 +212,7 @@
     "previewNote": "La previsualización no guarda cambios. Cada operación descarga una copia nueva del catálogo, por lo que el resultado puede variar.",
     "previewPending": "Preparando previsualización…",
     "updatePending": "Descargando y actualizando…",
-    "pendingDescription": "Puede tardar varios minutos. Puedes consultar otras pantallas y volver aquí; mantén abierta esta pestaña para recibir el resultado.",
+    "pendingDescription": "Comparando el CSV con el catálogo actual…",
     "failed": "No se pudo obtener el resultado",
     "networkError": "Se perdió la conexión con el servidor.",
     "httpError": "El servidor respondió con un error (HTTP {{status}}). Consulta los logs para conocer el detalle.",
@@ -234,7 +234,9 @@
     "cancel": "Cancelar",
     "confirm": "Actualizar ahora",
     "firstLoad": "Importar el catálogo por primera vez",
-    "closePreview": "Cerrar resumen de cambios previstos"
+    "closePreview": "Cerrar resumen de cambios previstos",
+    "missingBooks": "Ausentes del CSV",
+    "updateStarted": "Descargando e importando el catálogo…"
   },
   "breadcrumbs": {
     "label": "Ruta de navegación",
@@ -242,14 +244,13 @@
   },
   "reset": {
     "title": "Reiniciar toda la base de datos",
-    "description": "Descarga el ZIP/CSV y reconstruye el catálogo desde cero. Elimina el historial de descargas, los trabajos y sus elementos, y los planes y registros de limpieza.",
-    "kept": "No elimina torrents ni archivos de qBittorrent. Conserva la configuración del servidor, los logs y las preferencias del navegador. Si la descarga o importación falla, se conserva la base de datos anterior.",
+    "description": "Vacía todas las tablas. Conserva la configuración del servidor, los logs y las preferencias del navegador. No modifica nada en el cliente torrent. No descarga ni importa el CSV.",
     "action": "Reiniciar base de datos",
-    "pending": "Descargando y reconstruyendo la base de datos…",
+    "pending": "Vaciando la base de datos…",
     "busy": "Hay operaciones o envíos en curso. Espera a que terminen; si hay trabajos enviando torrents, páusalos o cancélalos antes de volver a intentarlo. No se ha reiniciado la base de datos.",
     "uncertain": "No se ha podido confirmar el resultado del reinicio. Comprueba el catálogo y los logs antes de volver a intentarlo. No se ha repetido la operación automáticamente.",
     "result": "Resultado del reinicio",
-    "done": "Base de datos reiniciada y catálogo importado desde cero.",
+    "done": "Base de datos reiniciada. Todas las tablas están vacías.",
     "catalogBooks": "Libros eliminados",
     "downloads": "Registros de descarga eliminados",
     "jobs": "Trabajos eliminados",
@@ -257,9 +258,12 @@
     "updatePlans": "Planes de actualización eliminados",
     "cleanupRecords": "Registros de limpieza eliminados",
     "confirmTitle": "¿Reiniciar toda la base de datos?",
-    "confirmDescription": "Esta acción es irreversible. Se descargará el ZIP/CSV y se reconstruirá el catálogo desde cero. Se borrarán el historial de descargas, los trabajos (incluidos los pendientes o pausados), y los planes y registros de limpieza de EPL Sync. Los torrents y archivos de qBittorrent no se tocarán.",
-    "confirm": "Reiniciar e importar",
-    "recordsImported": "Libros importados"
+    "confirmDescription": "Se borrarán TODOS los datos de EPL Sync, incluidos eventos y metadatos. No se volverá a importar el catálogo. Los torrents y archivos del cliente no se tocarán. Esta acción es irreversible.",
+    "confirm": "Vaciar base de datos",
+    "recordsImported": "Libros importados",
+    "metadataRecords": "Registros de metadatos eliminados",
+    "events": "Eventos eliminados",
+    "closeResult": "Cerrar resultado del reinicio"
   },
   "torrent": {
     "title": "Conexión con el cliente torrent",
@@ -507,7 +511,8 @@
     "modes": {
       "UPDATE": "Actualización",
       "REPLACE": "Reemplazo del catálogo"
-    }
+    },
+    "missingRows": "Ausentes del último CSV importado"
   },
   "filters": {
     "heading": "Búsqueda avanzada",
@@ -699,7 +704,9 @@
       "CHECK": "Comprobación de portadas",
       "DOWNLOAD": "Trabajo de descargas",
       "SYNC": "Sincronización torrent",
-      "SEND_BOOK": "Envío individual de libro"
+      "SEND_BOOK": "Envío individual de libro",
+      "DELETE_MISSING": "Eliminación de libros ausentes",
+      "PREVIEW": "Previsualización del catálogo"
     },
     "fields": {
       "processed": "Procesados",
@@ -728,7 +735,8 @@
       "eplId": "EPL ID",
       "hash": "Hash",
       "client": "Cliente torrent",
-      "submissionStatus": "Resultado del envío"
+      "submissionStatus": "Resultado del envío",
+      "deleted": "Libros eliminados"
     },
     "unread": "{{count}} ejecuciones con novedades",
     "startedAt": "Inicio",
@@ -747,5 +755,18 @@
     "bookAccepted": "El cliente torrent ha aceptado el libro {{eplId}}. La descarga puede seguir en curso.",
     "unread_one": "{{count}} ejecución con novedades",
     "unread_other": "{{count}} ejecuciones con novedades"
+  },
+  "missing": {
+    "title": "Eliminar ausentes",
+    "description": "Se eliminarán {{count}} libros presentes en EPL Sync que ya no aparecen en el CSV descargado de EPL.",
+    "kept": "Se conserva el historial de descargas y trabajos. No se eliminan torrents ni archivos del cliente. La lista caduca a los 15 minutos.",
+    "bookTitle": "Título",
+    "revision": "Revisión",
+    "empty": "No hay libros ausentes del CSV. No es necesario eliminar nada.",
+    "confirm": "Eliminar libros",
+    "conflict": "La lista ha caducado, el catálogo ha cambiado o hay trabajos pendientes relacionados. Cierra el diálogo, comprueba los trabajos y vuelve a previsualizar.",
+    "error": "No se pudo completar la operación. La eliminación requiere un CSV válido, sin errores y con libros.",
+    "sectionTitle": "Limpieza del catálogo",
+    "sectionDescription": "Revisa y elimina los libros del catálogo que ya no aparecen en el CSV de EPL. Se conserva el historial de descargas y trabajos."
   }
 }

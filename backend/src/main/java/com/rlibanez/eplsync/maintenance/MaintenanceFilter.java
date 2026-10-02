@@ -25,7 +25,8 @@ public class MaintenanceFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain chain) throws ServletException, IOException {
         boolean reset = request.getMethod().equals("POST")
-                && request.getServletPath().equals("/api/maintenance/reset");
+                && (request.getServletPath().equals("/api/maintenance/reset")
+                    || request.getServletPath().equals("/api/catalog/import/missing/delete"));
         if (!gate.enter(reset)) {
             response.setStatus(409);
             response.setContentType("application/json");

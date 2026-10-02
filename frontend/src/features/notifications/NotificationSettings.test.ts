@@ -5,9 +5,9 @@ import {
   parseNotificationPreferences,
 } from "./NotificationSettings";
 describe("notification preferences", () => {
-  it("defaults to all results without starts", () => {
+  it("defaults to starts and all results", () => {
     expect(allowsNotification(notificationDefaults, "info", "start")).toBe(
-      false,
+      true,
     );
     for (const tone of ["success", "warning", "error", "info"] as const)
       expect(allowsNotification(notificationDefaults, tone)).toBe(true);

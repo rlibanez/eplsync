@@ -40,7 +40,10 @@ public class CatalogBookCsvImporter {
     @PersistenceContext
     private EntityManager em;
 
-    public record ImportStats(int processed, int errors, int updated, int created, int unchanged) {
+    public record ImportStats(int processed, int errors, int updated, int created, int unchanged, Long missingBooks) {
+        public ImportStats(int processed, int errors, int updated, int created, int unchanged) {
+            this(processed, errors, updated, created, unchanged, null);
+        }
     }
 
     public CatalogBookCsvImporter(CatalogBookRepository repository) {
@@ -67,12 +70,21 @@ public class CatalogBookCsvImporter {
         var result = processFile(csvPath, true, page, size);
         var stats = result.summary();
         return new ImportPreviewResult(new ImportResult(true, "Previsualización completada",
-                stats.processed(), stats.errors(), stats.updated(), stats.created(), stats.unchanged()),
+                stats.processed(), stats.errors(), stats.updated(), stats.created(), stats.unchanged(), stats.missingBooks(), null),
                 page, size, result.createdBooks(), result.updatedBooks());
     }
 
+    public record MissingBook(Long eplId, String title, Double revision, java.time.Instant insertDate, java.time.Instant lastModifiedDate) {}
+    public record Analysis(ImportStats summary, List<MissingBook> missingBooks) {}
+    @Transactional(readOnly = true)
+    public Analysis analyzeMissing(Path path) throws IOException {
+        var result = processFile(path, true, 0, 1);
+        if (result.summary().errors() > 0 || result.summary().processed() == 0)
+            throw new IllegalArgumentException("El CSV está vacío o contiene errores; no se pueden eliminar ausentes");
+        return new Analysis(result.summary(), result.missingBooks());
+    }
     private record ProcessResult(ImportStats summary, List<CatalogBook> createdBooks,
-                                 List<BookUpdate> updatedBooks) {}
+                                 List<BookUpdate> updatedBooks, List<MissingBook> missingBooks) {}
 
     private ProcessResult processFile(Path csvPath, boolean preview, int page, int size) throws IOException {
         List<CatalogBook> createdBooks = new ArrayList<>();
@@ -196,8 +208,12 @@ public class CatalogBookCsvImporter {
             em.clear();
         }
 
-        return new ProcessResult(new ImportStats(processed, errors, updated, created, unchanged),
-                List.copyOf(createdBooks), List.copyOf(updatedBooks));
+        var missing = errors == 0 ? repository.findMissingIdentities().stream()
+            .filter(book -> !seenIds.contains(book.getEplId()))
+            .map(book -> new MissingBook(book.getEplId(), book.getTitle(), book.getRevision(), book.getInsertDate(), book.getLastModifiedDate()))
+            .toList() : List.<MissingBook>of();
+        return new ProcessResult(new ImportStats(processed, errors, updated, created, unchanged, errors == 0 ? (long) missing.size() : null),
+                List.copyOf(createdBooks), List.copyOf(updatedBooks), missing);
     }
 
     /** Compara solo datos del CSV, excluyendo las fechas de auditoría local. */

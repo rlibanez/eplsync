@@ -236,22 +236,50 @@ nueva `insertDate` y `lastModifiedDate` queda en `null`.
 ## Reiniciar toda la base de datos
 
 `POST /api/maintenance/reset` requiere un cuerpo JSON `{"confirm":true}`.
-Elimina el catálogo, el historial local de descargas, los trabajos y sus elementos,
-los planes de actualización y los registros de limpieza. Descarga el ZIP de la URL
-configurada, extrae el CSV y reconstruye el catálogo desde cero en la misma operación.
+Vacía las ocho tablas de datos: libros, metadatos del catálogo, descargas,
+trabajos, elementos de trabajos, planes de actualización, registros de limpieza y eventos.
+**No descarga ni importa el CSV**. El frontend utiliza este endpoint; no utiliza
+`/api/catalog/import/reset`, que continúa reemplazando solo el catálogo desde el CSV.
 
-Conserva el archivo SQLite y su esquema, la configuración, los logs y las
-preferencias del navegador. No borra ni modifica torrents o archivos en qBittorrent.
-El borrado y la importación son transaccionales: un fallo de descarga o importación
-revierte todos los cambios. Un CSV vacío o con filas erróneas también cancela el reinicio.
+Conserva el archivo SQLite y su esquema, la configuración, los logs y las preferencias
+del navegador. No modifica torrents ni archivos del cliente. Todos los borrados se
+realizan en una transacción: si uno falla, se revierten todos.
 
-Devuelve `200` con `success` y los contadores de filas eliminadas `catalogBooks`,
-`downloads`, `jobs`, `jobItems`, `updatePlans` y `cleanupRecords`, además de `recordsImported` con el total de libros
-importados. La confirmación
-ausente o distinta de `true` produce `400`; las peticiones API, sincronizaciones
-o envíos en curso pueden impedir el reinicio con `409`. Pausa o cancela los
-trabajos y espera a que finalicen sus envíos antes de volver a intentarlo.
+Devuelve `200` con `success` y los contadores `catalogBooks`, `downloads`, `jobs`,
+`jobItems`, `updatePlans`, `cleanupRecords`, `metadataRecords` y `events`.
+La confirmación ausente o distinta de `true` produce `400`; las peticiones API,
+comprobaciones de portadas o envíos en curso pueden impedir el reinicio con `409`.
 Los trabajos en pausa o en cola también se borran al confirmar el reinicio.
+
+El propio reinicio no genera un evento persistente, para dejar la tabla vacía:
+se registra en `eplsync.log` y la interfaz muestra una notificación temporal.
+El canal SSE emite `database-reset` para invalidar los datos de los navegadores
+conectados. Se conserva la secuencia interna de SQLite para no reutilizar IDs de eventos.
+
+### Libros ausentes del CSV
+
+La previsualización y la actualización incluyen `missingBooks`: número de libros
+locales ausentes del CSV. `metadata.missingRows` conserva el resultado del último
+CSV importado (es histórico, no un recuento en tiempo real). Si hay filas erróneas,
+el valor es `null`, pues no se puede determinar con seguridad qué libros faltan.
+
+| Método | Endpoint | Uso |
+| --- | --- | --- |
+| POST | `/api/catalog/import/missing/preview` | Descarga el CSV y prepara una lista de libros ausentes, sin modificar datos. |
+| GET | `/api/catalog/import/missing/{token}?page=0&size=50` | Consulta la lista ya calculada, sin descargar de nuevo. |
+| POST | `/api/catalog/import/missing/delete` | Elimina los libros de la lista confirmada. |
+
+La previsualización devuelve `token`, `expiresAt`, `total`, `page`, `size` e `items`
+con `eplId`, `title` y `revision`. Se conservan como máximo ocho listas en memoria,
+durante 15 minutos; reiniciar la aplicación o vaciar la base de datos las invalida.
+Las páginas admiten entre 1 y 100 elementos.
+
+La confirmación requiere el cuerpo `{"token":"…","confirm":true}` y devuelve
+`{"deleted":N}`. No vuelve a descargar el CSV: solo elimina los libros revisados.
+Un CSV vacío o con errores impide preparar la lista. Una lista caducada, cambios
+en el catálogo o trabajos pendientes relacionados producen `409` y requieren revisión.
+La eliminación es transaccional y conserva el historial de descargas y trabajos,
+además de los torrents y archivos del cliente. Queda registrada en Eventos.
 
 ## Actualizar el catálogo
 
@@ -483,10 +511,10 @@ de extracción; si falta, se indica como desconocida.
 
 Los libros y sus metadatos se guardan en la misma transacción. Una previsualización o
 un fallo no reemplazan los metadatos. Las actualizaciones completadas con filas
-rechazadas guardan el recuento de errores; el reinicio completo continúa exigiendo
+rechazadas guardan el recuento de errores; la eliminación de ausentes exige
 una importación sin errores. No se conserva historial de importaciones.
 
 `GET /api/catalog/import/metadata` devuelve `{ "metadata": null }` si aún no existe
-información, o el objeto con esos campos. Las respuestas de actualización y reinicio
-incluyen también `metadata`. Ajustes → Base de datos muestra un único resumen en
+información, o el objeto con esos campos. Las respuestas de actualización y reemplazo del catálogo
+incluyen también `metadata`. El reinicio completo elimina este registro. Ajustes → Base de datos muestra un único resumen en
 «Catálogo actual»; los avisos de éxito desaparecen a los cinco segundos o al cerrarlos.
