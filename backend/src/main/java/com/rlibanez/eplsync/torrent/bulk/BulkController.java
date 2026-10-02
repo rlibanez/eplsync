@@ -15,27 +15,6 @@ public class BulkController {
     private final BulkStore store;
     public BulkController(BulkStore store) { this.store = store; }
 
-    @PostMapping(value = "/books", params = "!selection")
-    public ResponseEntity<BulkStore.View> create(@Valid @ModelAttribute CatalogBookFilter filter,
-            Pageable pageable, @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size, @RequestParam(defaultValue = "false") boolean all,
-            @RequestBody(required = false) BulkRequest request, jakarta.servlet.http.HttpServletRequest servletRequest) {
-        var known = new java.util.HashSet<String>(java.util.List.of("page", "size", "sort", "all"));
-        for (var field : CatalogBookFilter.class.getDeclaredFields()) known.add(field.getName());
-        for (String parameter : servletRequest.getParameterMap().keySet())
-            if (!known.contains(parameter)) throw new IllegalArgumentException("Parámetro de selección no admitido: " + parameter);
-        if ((page != null && page < 0) || (size != null && (size < 1)))
-            throw new IllegalArgumentException("page >= 0 y size > 0");
-        log.info("Solicitud bulk: filtros={}, page={}, size={}, sort={}, all={}",
-                safeLog(filter), page, size, safeLog(pageable.getSort()), all);
-        synchronized (store) {
-            var job = store.create(filter, pageable, page != null || size != null, all, request);
-            log.info("Trabajo bulk creado: jobId={}, libros={}, torrents={}, política={}, batchSize={}, concurrency={}, interval={}",
-                    job.jobId(), job.selectedBooks(), job.selectedTorrents(), job.multipleHashes(), job.batchSize(), job.concurrency(), job.interval());
-            return ResponseEntity.accepted().location(URI.create("/api/torrent/jobs/" + job.jobId())).body(job);
-        }
-    }
-
     @GetMapping("/jobs")
     public PageResponse<BulkStore.View> list(@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size, @RequestParam(required = false) String status,

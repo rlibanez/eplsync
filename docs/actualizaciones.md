@@ -6,15 +6,17 @@ Las rutas y los comandos parten de la raíz del repositorio salvo que se indique
 
 ## Mantener una biblioteca en español
 
-`GET /api/torrent/refresh?language=es` previsualiza los libros sin historial para
+`POST /api/torrent/refresh` previsualiza los libros sin historial para
 el cliente actual y los libros con una revisión superior. `POST` en esa misma
 ruta crea un único job con ambos grupos, aplicando el filtro a los dos.
 
 ```bash
-curl -s 'http://192.168.2.2:8088/api/torrent/refresh?language=es&multipleHashes=all&size=1000' | jq
-curl -s -X POST 'http://192.168.2.2:8088/api/torrent/refresh?language=es' \
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/refresh' \
   -H 'Content-Type: application/json' \
-  -d '{"previousVersions":"removeTorrentAndFiles","multipleHashes":"all"}' | jq
+  -d '{"dryRun":true,"filters":{"language":"es"},"multipleHashes":"all","size":1000}' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/refresh' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":false,"previousVersions":"removeTorrentAndFiles","multipleHashes":"all","filters":{"language":"es"}}' | jq
 ```
 
 El resultado incluye un `jobId`. La limpieza se ejecuta posteriormente con
@@ -24,20 +26,20 @@ libros nuevos no generan borrados. Omitir `previousVersions` conserva todo.
 
 También se pueden separar las selecciones:
 
-- `GET/POST /api/torrent/books?selection=new&language=es`: solo novedades.
-- `GET/POST /api/torrent/updates?language=es`: solo revisiones superiores.
+- `POST /api/torrent/books`: solo novedades.
+- `POST /api/torrent/updates`: solo revisiones superiores.
 
 Las tres selecciones admiten los filtros de `CatalogBookFilter`. Un libro es nuevo
 si no tiene historial en la instancia actual, independientemente de su fecha de
 importación. Los estados `ERROR`, `UNKNOWN` o `NOT_FOUND` siguen siendo historial:
 no convierten el libro en nuevo. Se excluyen libros con envíos pendientes.
 Si hubo cambios manuales en qBittorrent, ejecutar sync antes para actualizar el
-historial; los GET son de solo lectura local y no sincronizan automáticamente.
+historial; las simulaciones (`dryRun=true`) son de solo lectura local y no sincronizan automáticamente.
 
-GET admite `page`, `size` y `multipleHashes` en la URL. POST procesa todos los
-candidatos filtrados, sin paginación; recibe las opciones de envío en JSON.
-En `/refresh`, las opciones son las mismas que en `/updates`. En
-`/books?selection=new` son las de bulk y no se usa `previousVersions`.
+Todos los parámetros se envían en el body JSON: `dryRun` es obligatorio y los filtros
+van en `filters`. Con `dryRun=true`, `page` y `size` paginan los candidatos. Con
+`dryRun=false` se crea el trabajo sobre todos los candidatos; no admite paginación.
+`/books` con `selection="new"` selecciona novedades y no admite `previousVersions`.
 
 Consulta la [referencia completa, parámetros y ejemplos](API.md#18-novedades-y-envío-combinado-con-filtros).
 
@@ -56,8 +58,12 @@ escribe registros. Usa el último estado guardado; si se necesita información
 actual del cliente, ejecutar antes `POST /api/torrent/downloads/sync` con cuerpo JSON `{"dryRun":false}`.
 
 ```bash
-curl -s 'http://192.168.2.2:8088/api/torrent/updates?page=0&size=50' | jq
-curl -s 'http://192.168.2.2:8088/api/torrent/updates?eplId=1234&multipleHashes=all' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"page":0,"size":50}' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"filters":{"eplId":1234},"multipleHashes":"all"}' | jq
 ```
 
 La respuesta contiene `items` y `meta`. Cada candidato incluye `eplId`, `title`,
@@ -71,9 +77,9 @@ Crear el job (selecciona **todos los candidatos que cumplan los filtros**, no
 solo la página mostrada en la previsualización):
 
 ```bash
-curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates?eplId=1234' \
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates' \
   -H 'Content-Type: application/json' \
-  -d '{"previousVersions":"keep","multipleHashes":"all","concurrency":2,"interval":"100ms"}' | jq
+  -d '{"dryRun":false,"previousVersions":"keep","multipleHashes":"all","concurrency":2,"interval":"100ms","filters":{"eplId":1234}}' | jq
 ```
 
 Devuelve `202`, el job bulk y `Location: /api/torrent/jobs/{jobId}`. El cuerpo es

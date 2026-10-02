@@ -73,13 +73,13 @@ class CoverCheckTests {
         book(3, "https://example.org/error.jpg", true);
         book(4, null, null);
         var before = repository.findAll();
-        mvc.perform(get("/api/catalog/covers/check").param("onlyUnchecked", "false"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("onlyUnchecked", "false"))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.dryRun").value(true)).andExpect(jsonPath("$.checked").value(3))
                 .andExpect(jsonPath("$.wouldChange").value(2)).andExpect(jsonPath("$.updated").value(0))
                 .andExpect(jsonPath("$.inconclusive").value(1));
         assertThat(repository.findAll()).usingRecursiveComparison().isEqualTo(before);
-        mvc.perform(post("/api/catalog/covers/check").param("onlyUnchecked", "false"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", false).field("onlyUnchecked", "false"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.dryRun").value(false))
                 .andExpect(jsonPath("$.updated").value(2));
         assertThat(repository.findById(1L).orElseThrow().getCoverAvailable()).isTrue();
@@ -107,9 +107,9 @@ class CoverCheckTests {
     }
 
     @Test void rejectsInvalidLimitsWithoutNetworkRequests() throws Exception {
-        mvc.perform(get("/api/catalog/covers/check").param("size", "0")).andExpect(status().isBadRequest());
-        mvc.perform(post("/api/catalog/covers/check").param("afterId", "-1")).andExpect(status().isBadRequest());
-        mvc.perform(get("/api/catalog/covers/check").param("coverAvailable", "invalid")).andExpect(status().isBadRequest());
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("size", "0")).andExpect(status().isBadRequest());
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", false).field("afterId", "-1")).andExpect(status().isBadRequest());
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("coverAvailable", "invalid")).andExpect(status().isBadRequest());
         verifyNoInteractions(probe);
     }
 
@@ -119,8 +119,8 @@ class CoverCheckTests {
         book(3, "https://example.org/error.jpg", null);
         var before = repository.findAll();
         for (boolean available : new boolean[] {true, false}) {
-            mvc.perform(get("/api/catalog/covers/check").param("onlyUnchecked", "false")
-                    .param("coverAvailable", Boolean.toString(available)))
+            mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("onlyUnchecked", "false")
+                    .field("coverAvailable", Boolean.toString(available)))
                     .andExpect(status().isOk()).andExpect(jsonPath("$.checked").value(3))
                     .andExpect(jsonPath("$.available").value(1)).andExpect(jsonPath("$.unavailable").value(1))
                     .andExpect(jsonPath("$.inconclusive").value(1)).andExpect(jsonPath("$.updated").value(0))
@@ -135,12 +135,12 @@ class CoverCheckTests {
         book(1, "https://example.org/ok.jpg", null);
         book(2, "https://example.org/ok.jpg", null);
         book(3, "https://example.org/missing.jpg", null);
-        mvc.perform(get("/api/catalog/covers/check").param("coverAvailable", "false").param("size", "2"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("coverAvailable", "false").field("size", "2"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0))
                 .andExpect(jsonPath("$.checked").value(2)).andExpect(jsonPath("$.hasMore").value(true))
                 .andExpect(jsonPath("$.nextAfterId").value(2));
-        mvc.perform(get("/api/catalog/covers/check").param("coverAvailable", "false")
-                .param("size", "2").param("afterId", "2"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("coverAvailable", "false")
+                .field("size", "2").field("afterId", "2"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].eplId").value(3))
                 .andExpect(jsonPath("$.hasMore").value(false));
     }
@@ -172,7 +172,7 @@ class CoverCheckTests {
             var first = executor.submit(() -> service.check(true, 0, null, 20, true));
             try {
                 assertThat(started.await(2, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
-                mvc.perform(get("/api/catalog/covers/check")).andExpect(status().isConflict());
+                mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true)).andExpect(status().isConflict());
                 assertThat(repository.findById(1L)).isPresent();
             } finally {
                 release.countDown();
@@ -186,7 +186,7 @@ class CoverCheckTests {
             book(id, id % 2 == 0 ? "https://example.org/ok.jpg" : "https://example.org/missing.jpg", true);
         }
         book(124, null, null);
-        mvc.perform(get("/api/catalog/covers/check").param("onlyUnchecked", "false").param("coverAvailable", "false"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("onlyUnchecked", "false").field("coverAvailable", "false"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.checked").value(123))
                 .andExpect(jsonPath("$.available").value(61)).andExpect(jsonPath("$.unavailable").value(62))
                 .andExpect(jsonPath("$.items.length()").value(62)).andExpect(jsonPath("$.items[61].eplId").value(123))
@@ -200,14 +200,14 @@ class CoverCheckTests {
 
     @Test void omittedSizePostChecksAllUncheckedAndExplicitSizeCanExceedFifty() throws Exception {
         for (int id = 1; id <= 103; id++) book(id, "https://example.org/ok.jpg", null);
-        mvc.perform(get("/api/catalog/covers/check").param("size", "75"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("size", "75"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.checked").value(75))
                 .andExpect(jsonPath("$.nextAfterId").value(75)).andExpect(jsonPath("$.hasMore").value(true));
-        mvc.perform(post("/api/catalog/covers/check"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", false))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.checked").value(103))
                 .andExpect(jsonPath("$.updated").value(103)).andExpect(jsonPath("$.hasMore").value(false));
         assertThat(repository.findAll()).allSatisfy(book -> assertThat(book.getCoverAvailable()).isTrue());
-        mvc.perform(get("/api/catalog/covers/check"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.checked").value(0));
     }
 }

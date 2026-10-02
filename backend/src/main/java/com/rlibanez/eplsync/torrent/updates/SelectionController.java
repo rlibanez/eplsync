@@ -21,66 +21,40 @@ public class SelectionController {
         this.planner = planner; this.bulk = bulk;
     }
 
-    @GetMapping(value = "/books", params = "selection")
-    public PageResponse<UpdatePlanner.Candidate> previewNew(@Valid @ModelAttribute CatalogBookFilter filter,
-            @RequestParam String selection, @RequestParam(required = false) String multipleHashes,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
-            @RequestParam MultiValueMap<String, String> params) {
-        SelectionQueries.validate(params, "selection", "multipleHashes", "page", "size");
-        requireNew(selection);
-        return preview(filter, false, multipleHashes, page, size, UpdatePlanner.Selection.NEW);
-    }
-
-    @PostMapping(value = "/books", params = "selection")
-    public ResponseEntity<BulkStore.View> createNew(@Valid @ModelAttribute CatalogBookFilter filter,
-            @RequestParam String selection, @RequestBody(required = false) BulkRequest request,
-            @RequestParam MultiValueMap<String, String> params) {
-        SelectionQueries.validate(params, "selection");
-        requireNew(selection);
-        var input = request == null ? null : new UpdateRequest(PreviousVersions.KEEP, request.options(),
-                request.batchSize(), request.concurrency(), request.interval(), request.multipleHashes());
-        return create(filter, false, input, UpdatePlanner.Selection.NEW);
-    }
-
-    @GetMapping("/refresh")
-    public PageResponse<UpdatePlanner.Candidate> previewBoth(@Valid @ModelAttribute CatalogBookFilter filter,
-            @RequestParam(defaultValue = "false") boolean includeNotFound,
-            @RequestParam(required = false) String multipleHashes,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
-            @RequestParam MultiValueMap<String, String> params) {
-        SelectionQueries.validate(params, "includeNotFound", "multipleHashes", "page", "size");
-        return preview(filter, includeNotFound, multipleHashes, page, size, UpdatePlanner.Selection.BOTH);
-    }
-
-    @PostMapping("/refresh")
-    public ResponseEntity<BulkStore.View> createBoth(@Valid @ModelAttribute CatalogBookFilter filter,
-            @RequestParam(defaultValue = "false") boolean includeNotFound,
-            @RequestBody(required = false) UpdateRequest request,
-            @RequestParam MultiValueMap<String, String> params) {
-        SelectionQueries.validate(params, "includeNotFound");
-        return create(filter, includeNotFound, request, UpdatePlanner.Selection.BOTH);
-    }
-
-    private PageResponse<UpdatePlanner.Candidate> preview(CatalogBookFilter filter, boolean includeNotFound,
-            String multipleHashes, int page, int size, UpdatePlanner.Selection selection) {
-        if (page < 0 || size < 1) throw new IllegalArgumentException("page >= 0 y size > 0");
-        return SelectionQueries.page(planner.preview(filter, includeNotFound, MultipleHashes.parse(multipleHashes), selection), page, size);
-    }
-
-    private ResponseEntity<BulkStore.View> create(CatalogBookFilter filter, boolean includeNotFound,
-            UpdateRequest request, UpdatePlanner.Selection selection) {
+    @PostMapping("/books")
+    public ResponseEntity<?> books(@RequestBody java.util.Map<String,Object> body,
+            jakarta.servlet.http.HttpServletRequest request) {
+        var input = com.rlibanez.eplsync.api.OperationBody.read(body,TorrentOperationRequest.class,request);
+        log.info("Solicitud torrent: dryRun={}, filtros={}", input.dryRun(), SelectionQueries.safeLog(input.filters()));
+        if (input.selection() != null) {
+            if (!"new".equals(input.selection())) throw new IllegalArgumentException("selection debe ser new");
+            if (input.includeNotFound() != null || input.previousVersions() != null)
+                throw new IllegalArgumentException("Las novedades no admiten includeNotFound ni previousVersions");
+            return selected(input, UpdatePlanner.Selection.NEW);
+        }
+        if (input.includeNotFound() != null || input.previousVersions() != null)
+            throw new IllegalArgumentException("El envío general no admite includeNotFound ni previousVersions");
         synchronized (bulk) {
-            log.info("Solicitud de novedades/actualizaciones: selección={}, filtros={}, includeNotFound={}, previousVersions={}",
-                    selection, SelectionQueries.safeLog(filter), includeNotFound,
-                    request == null ? PreviousVersions.KEEP : request.policy());
-            var job = planner.create(filter, includeNotFound, request, selection);
-            log.info("Trabajo de novedades/actualizaciones creado: jobId={}, libros={}, torrents={}",
-                    job.jobId(), job.selectedBooks(), job.selectedTorrents());
+            if (input.dryRun()) return ResponseEntity.ok(bulk.preview(input.filter(), input.pageable(),
+                    input.paginated(), Boolean.TRUE.equals(input.all()), input.bulk(), Boolean.TRUE.equals(input.includeDetails())));
+            var job = bulk.create(input.filter(),input.pageable(),input.paginated(),Boolean.TRUE.equals(input.all()),input.bulk());
             return ResponseEntity.accepted().location(URI.create("/api/torrent/jobs/" + job.jobId())).body(job);
         }
     }
-
-    private void requireNew(String selection) {
-        if (!"new".equals(selection)) throw new IllegalArgumentException("selection debe ser new");
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refresh(@RequestBody java.util.Map<String,Object> body,
+            jakarta.servlet.http.HttpServletRequest request) {
+        return selected(com.rlibanez.eplsync.api.OperationBody.read(body,TorrentOperationRequest.class,request), UpdatePlanner.Selection.BOTH);
+    }
+    private ResponseEntity<?> selected(TorrentOperationRequest input, UpdatePlanner.Selection selection) {
+        if (input.includeDetails() != null || input.all() != null || input.sort() != null || selection == UpdatePlanner.Selection.BOTH && input.selection() != null)
+            throw new IllegalArgumentException("Opciones de selección no admitidas");
+        if (input.dryRun()) return ResponseEntity.ok(SelectionQueries.page(planner.preview(input.filter(),
+                Boolean.TRUE.equals(input.includeNotFound()),input.multipleHashes(),selection),input.pageNumber(),input.pageSize()));
+        if (input.paginated()) throw new IllegalArgumentException("page y size solo paginan la previsualización");
+        synchronized (bulk) {
+            var job = planner.create(input.filter(),Boolean.TRUE.equals(input.includeNotFound()),input.update(),selection);
+            return ResponseEntity.accepted().location(URI.create("/api/torrent/jobs/"+job.jobId())).body(job);
+        }
     }
 }

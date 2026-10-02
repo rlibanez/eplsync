@@ -47,24 +47,6 @@ public class CatalogImportController {
         return ResponseEntity.ok(catalogImportService.importCatalog(validateUrl(url)));
     }
 
-    /** Actualiza el catálogo conservando los libros y sus fechas de alta. */
-    @PostMapping("/update")
-    public ResponseEntity<ImportResult> updateCatalog(
-            @RequestParam(required = false) @URL(message = "La URL no es válida") String url) {
-        return ResponseEntity.ok(catalogImportService.updateCatalog(validateUrl(url)));
-    }
-
-    /** Devuelve el resumen del dry-run; includeDetails permite consultar el detalle paginado. */
-    @PostMapping("/preview")
-    public ResponseEntity<?> previewCatalog(
-            @RequestParam(required = false) @URL(message = "La URL no es válida") String url,
-            @RequestParam(defaultValue = "false") boolean includeDetails,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "50") @Min(1) int size) {
-        var preview = catalogImportService.previewCatalog(validateUrl(url), page, size);
-        return ResponseEntity.ok(includeDetails ? preview : preview.summary());
-    }
-
     public record PreviewRequest(@jakarta.validation.constraints.NotBlank String token) {}
 
     @GetMapping("/preview/{token}")
@@ -88,8 +70,9 @@ public class CatalogImportController {
 
     public enum Source { URL, SAVED }
     public record RunRequest(@jakarta.validation.constraints.NotNull Source source,
-                             @jakarta.validation.constraints.NotNull CatalogImportService.Mode mode,
-                             String url, String archiveId) {}
+                             boolean dryRun,
+                             String url, String archiveId, Boolean includeDetails,
+                             @Min(0) Integer page, @Min(1) Integer size) {}
     public record ImportSource(String defaultUrl, com.rlibanez.eplsync.service.CatalogImportStore.Archive archive) {}
     @GetMapping("/source")
     public ResponseEntity<ImportSource> source() {
@@ -97,19 +80,31 @@ public class CatalogImportController {
                 .body(new ImportSource(catalogImportService.defaultUrl(), catalogImportService.savedArchive()));
     }
     @PostMapping(value = "/run", consumes = "application/json")
-    public ImportResult run(@jakarta.validation.Valid @RequestBody RunRequest request) {
+    public Object run(@RequestBody java.util.Map<String,Object> body, jakarta.servlet.http.HttpServletRequest servletRequest) {
+        var request = com.rlibanez.eplsync.api.OperationBody.read(body,RunRequest.class,servletRequest);
+        var mode = request.dryRun() ? CatalogImportService.Mode.PREVIEW : CatalogImportService.Mode.UPDATE;
         if (request.source() == Source.SAVED) {
+            if (request.page() != null || request.size() != null || Boolean.TRUE.equals(request.includeDetails()))
+                throw new IllegalArgumentException("El detalle paginado solo se admite al previsualizar una URL");
             if (request.archiveId() == null || request.archiveId().isBlank()) throw new IllegalArgumentException("Falta archiveId");
-            return catalogImportService.runSaved(request.archiveId(), request.mode());
+            return catalogImportService.runSaved(request.archiveId(), mode);
         }
         String url = validateUrl(request.url());
-        return request.mode() == CatalogImportService.Mode.PREVIEW
-                ? catalogImportService.previewCatalog(url,0,50).summary() : catalogImportService.updateCatalog(url);
+        if (request.dryRun()) {
+            var preview = catalogImportService.previewCatalog(url,request.page() == null ? 0 : request.page(),request.size() == null ? 50 : request.size());
+            return Boolean.TRUE.equals(request.includeDetails()) ? preview : preview.summary();
+        }
+        if (request.page() != null || request.size() != null || Boolean.TRUE.equals(request.includeDetails()))
+            throw new IllegalArgumentException("El detalle paginado solo se admite al previsualizar una URL");
+        return catalogImportService.updateCatalog(url);
     }
+    public record UploadRequest(boolean dryRun) {}
     @PostMapping(value = "/run", consumes = "multipart/form-data")
     public ImportResult upload(@RequestPart("file") org.springframework.web.multipart.MultipartFile file,
-                              @RequestParam CatalogImportService.Mode mode) {
-        return catalogImportService.runUpload(file, mode);
+                              @RequestPart("options") java.util.Map<String,Object> body,
+                              jakarta.servlet.http.HttpServletRequest request) {
+        var options = com.rlibanez.eplsync.api.OperationBody.read(body,UploadRequest.class,request);
+        return catalogImportService.runUpload(file, options.dryRun() ? CatalogImportService.Mode.PREVIEW : CatalogImportService.Mode.UPDATE);
     }
 
     private String validateUrl(String url) {

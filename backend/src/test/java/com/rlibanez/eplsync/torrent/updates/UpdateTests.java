@@ -97,18 +97,18 @@ class UpdateTests {
 
     @Test void filteredPreviewsSeparateNewAndUpdatedWithoutWritesOrClientCalls() throws Exception {
         mixedCatalogue();
-        mvc.perform(get("/api/torrent/refresh").param("language", "es"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/refresh", true).field("language", "es"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2))
                 .andExpect(jsonPath("$.items[0].eplId").value(1))
                 .andExpect(jsonPath("$.items[1].eplId").value(2))
                 .andExpect(jsonPath("$.items[1].existingDownloads").isEmpty());
-        mvc.perform(get("/api/torrent/books").param("selection", "new").param("language", "es"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", true).field("selection", "new").field("language", "es"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].eplId").value(2));
-        mvc.perform(get("/api/torrent/updates").param("language", "es"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", true).field("language", "es"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].eplId").value(1));
-        mvc.perform(get("/api/torrent/refresh").param("language", "es").param("page", "1").param("size", "1"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/refresh", true).field("language", "es").field("page", "1").field("size", "1"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2))
                 .andExpect(jsonPath("$.items[0].eplId").value(2));
         assertThat(jobs.count()).isZero(); assertThat(plans.count()).isZero();
@@ -118,10 +118,10 @@ class UpdateTests {
 
     @Test void combinedPostCreatesOneJobWithOptionsAndOnlyOldRevisionCleanup() throws Exception {
         mixedCatalogue();
-        mvc.perform(post("/api/torrent/refresh").param("language", "es")
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/refresh", false).field("language", "es")
                 .contentType("application/json").content("""
                 {"previousVersions":"removeTorrentAndFiles", "multipleHashes":"all",
-                 "batch-size":17,"concurrency":3,"interval":"250ms",
+                 "batchSize":17,"concurrency":3,"interval":"250ms",
                  "options":{"start":false,"qbittorrent":{"category":"Libros","tags":["es"]}}}
                 """))
                 .andExpect(status().isAccepted()).andExpect(header().exists("Location"))
@@ -150,13 +150,13 @@ class UpdateTests {
 
     @Test void filteredUpdateAndNewPostsUseSeparateSelections() throws Exception {
         mixedCatalogue();
-        mvc.perform(post("/api/torrent/updates").param("language", "es"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).field("language", "es"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1));
         assertThat(items.findAll()).extracting(BulkItem::getEplId).containsExactly(1L);
-        mvc.perform(post("/api/torrent/books").param("selection", "new").param("language", "es"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("selection", "new").field("language", "es"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1));
         assertThat(items.findAll()).extracting(BulkItem::getEplId).containsExactlyInAnyOrder(1L, 2L);
-        mvc.perform(post("/api/torrent/refresh").param("language", "es"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/refresh", false).field("language", "es"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(0));
         assertThat(plans.findAll()).allMatch(p -> p.getPreviousVersions() == PreviousVersions.KEEP);
     }
@@ -168,10 +168,10 @@ class UpdateTests {
         history(4, 1.0, String.format("%040X", 4), DownloadStatus.UNKNOWN);
         var foreign = history(5, 1.0, String.format("%040X", 5), DownloadStatus.DOWNLOADED);
         foreign.setClientInstanceId("another-instance"); downloads.save(foreign);
-        mvc.perform(get("/api/torrent/books").param("selection", "new"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", true).field("selection", "new"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].eplId").value(5));
-        mvc.perform(get("/api/torrent/refresh").param("includeNotFound", "true"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/refresh", true).field("includeNotFound", "true"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
     }
 
@@ -194,11 +194,11 @@ class UpdateTests {
             mvc.perform(post(path).param("language", "es", "en")).andExpect(status().isBadRequest());
             mvc.perform(post(path).param("size", "1")).andExpect(status().isBadRequest());
         }
-        mvc.perform(post("/api/torrent/books").param("selection", "unknown")).andExpect(status().isBadRequest());
-        mvc.perform(post("/api/torrent/refresh").contentType("application/json")
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("selection", "unknown")).andExpect(status().isBadRequest());
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/refresh", false).contentType("application/json")
                 .content("{\"options\":{\"hash\":\"" + NEW + "\"}}"))
                 .andExpect(status().isBadRequest());
-        mvc.perform(post("/api/torrent/refresh").contentType("application/json")
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/refresh", false).contentType("application/json")
                 .content("{\"concurrency\":0}"))
                 .andExpect(status().isBadRequest());
         assertThat(jobs.count()).isZero(); assertThat(plans.count()).isZero(); assertThat(cleanup.count()).isZero();
@@ -345,10 +345,10 @@ class UpdateTests {
 
     @Test void previewIsReadOnlyAndSupportsSingleBookAndPagination() throws Exception {
         history(2, 1.0, OTHER, DownloadStatus.SUBMITTED); book(2, 2.0, "D".repeat(40));
-        mvc.perform(get("/api/torrent/updates").param("eplId", "1"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", true).field("eplId", "1"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].catalogRevision").value(1.2));
-        mvc.perform(get("/api/torrent/updates").param("page", "1").param("size", "1"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", true).field("page", "1").field("size", "1"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].eplId").value(2));
         assertThat(jobs.count()).isZero(); assertThat(plans.count()).isZero();
         assertThat(downloads.count()).isEqualTo(2);
@@ -357,11 +357,11 @@ class UpdateTests {
     }
 
     @Test void invalidApiParametersCannotAccidentallySelectAllBooks() throws Exception {
-        mvc.perform(post("/api/torrent/updates").param("eplid", "1")).andExpect(status().isBadRequest());
-        mvc.perform(post("/api/torrent/updates").param("eplId", "1", "2")).andExpect(status().isBadRequest());
-        mvc.perform(get("/api/torrent/updates").param("page", "-1")).andExpect(status().isBadRequest());
-        mvc.perform(get("/api/torrent/updates").param("multipleHashes", "invalid")).andExpect(status().isBadRequest());
-        mvc.perform(post("/api/torrent/updates").contentType("application/json")
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).field("eplid", "1")).andExpect(status().isBadRequest());
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).field("eplId", "1", "2")).andExpect(status().isBadRequest());
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", true).field("page", "-1")).andExpect(status().isBadRequest());
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", true).field("multipleHashes", "invalid")).andExpect(status().isBadRequest());
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).contentType("application/json")
                 .content("{\"previousVersions\":\"deleteAll\"}")).andExpect(status().isBadRequest());
         assertThat(jobs.count()).isZero(); verifyNoInteractions(stubClient);
     }
@@ -463,7 +463,7 @@ class UpdateTests {
     }
 
     @Test void defaultsKeepOldTorrentsAndCleanupDoesNotContactClient() throws Exception {
-        mvc.perform(post("/api/torrent/updates").param("eplId", "1"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).field("eplId", "1"))
                 .andExpect(status().isAccepted()).andExpect(header().exists("Location"));
         var jobId = plans.findAll().getFirst().getJobId();
         clearInvocations(stubClient);

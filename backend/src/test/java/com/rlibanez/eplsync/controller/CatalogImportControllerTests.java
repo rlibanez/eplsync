@@ -23,7 +23,7 @@ class CatalogImportControllerTests {
         mvc.perform(post("/api/catalog/import"))
                 .andExpect(status().isNotFound());
         verifyNoInteractions(service);
-        mvc.perform(post("/api/catalog/import/update").param("url", "https://example.com/catalog.zip"))
+        mvc.perform(post("/api/catalog/import/run").contentType("application/json").content("{\"source\":\"URL\",\"dryRun\":false,\"url\":\"https://example.com/catalog.zip\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recordsProcessed").value(3))
                 .andExpect(jsonPath("$.recordsUpdated").value(1))
@@ -34,7 +34,7 @@ class CatalogImportControllerTests {
         when(service.previewCatalog(null, 0, 50)).thenReturn(new ImportPreviewResult(
                 new ImportResult(true, "Previsualización completada", 3, 0, 1, 1, 1),
                 0, 50, List.of(), List.of()));
-        mvc.perform(post("/api/catalog/import/preview"))
+        mvc.perform(post("/api/catalog/import/run").contentType("application/json").content("{\"source\":\"URL\",\"dryRun\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recordsProcessed").value(3))
                 .andExpect(jsonPath("$.recordsCreated").value(1))
@@ -43,7 +43,7 @@ class CatalogImportControllerTests {
                 .andExpect(jsonPath("$.updatedBooks").doesNotExist())
                 .andExpect(jsonPath("$.summary").doesNotExist())
                 .andExpect(jsonPath("$.page").doesNotExist());
-        mvc.perform(post("/api/catalog/import/preview").param("includeDetails", "true"))
+        mvc.perform(post("/api/catalog/import/run").contentType("application/json").content("{\"source\":\"URL\",\"dryRun\":true,\"includeDetails\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.summary.recordsUpdated").value(1))
                 .andExpect(jsonPath("$.createdBooks").isArray())
@@ -58,7 +58,7 @@ class CatalogImportControllerTests {
         var mvc = MockMvcBuilders.standaloneSetup(new CatalogImportController(service, org.mockito.Mockito.mock(com.rlibanez.eplsync.repository.CatalogMetadataRepository.class)))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         for (String parameter : List.of("page", "size", "includeDetails")) {
-            mvc.perform(post("/api/catalog/import/preview").param(parameter, "invalid"))
+            mvc.perform(post("/api/catalog/import/run").contentType("application/json").content("{\"source\":\"URL\",\"dryRun\":true,\"" + parameter + "\":\"invalid\"}"))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.message").value("Solicitud inválida"));
         }
@@ -73,27 +73,27 @@ class CatalogImportControllerTests {
         when(service.runSaved("archive",CatalogImportService.Mode.UPDATE)).thenReturn(result);
         when(service.runUpload(any(),eq(CatalogImportService.Mode.PREVIEW))).thenReturn(result);
         mvc.perform(post("/api/catalog/import/run").contentType("application/json")
-            .content("{\"source\":\"URL\",\"mode\":\"UPDATE\",\"url\":\"https://example.test/custom.zip\"}"))
+            .content("{\"source\":\"URL\",\"dryRun\":false,\"url\":\"https://example.test/custom.zip\"}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.recordsCreated").value(1));
         mvc.perform(post("/api/catalog/import/run").contentType("application/json")
-            .content("{\"source\":\"SAVED\",\"mode\":\"UPDATE\",\"archiveId\":\"archive\"}"))
+            .content("{\"source\":\"SAVED\",\"dryRun\":false,\"archiveId\":\"archive\"}"))
             .andExpect(status().isOk());
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/catalog/import/run")
-            .file(new org.springframework.mock.web.MockMultipartFile("file","books.zip","application/zip",new byte[]{1})).param("mode","PREVIEW"))
+            .file(new org.springframework.mock.web.MockMultipartFile("file","books.zip","application/zip",new byte[]{1})).file(new org.springframework.mock.web.MockMultipartFile("options","","application/json","{\"dryRun\":true}".getBytes())))
             .andExpect(status().isOk());
         clearInvocations(service);
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/catalog/import/run")
-            .param("mode","PREVIEW")).andExpect(status().isBadRequest());
+            .file(new org.springframework.mock.web.MockMultipartFile("options","","application/json","{\"dryRun\":true}".getBytes()))).andExpect(status().isBadRequest());
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/catalog/import/run")
             .file(new org.springframework.mock.web.MockMultipartFile("file","books.zip","application/zip",new byte[]{1})))
             .andExpect(status().isBadRequest());
 
         for (String invalid : List.of(
-                "{\"source\":\"SAVED\",\"mode\":\"UPDATE\"}",
-                "{\"source\":\"OTHER\",\"mode\":\"UPDATE\"}",
+                "{\"source\":\"SAVED\",\"dryRun\":false}",
+                "{\"source\":\"OTHER\",\"dryRun\":false}",
                 "{\"source\":\"URL\"}",
-                "{\"source\":\"URL\",\"mode\":\"UPDATE\",\"url\":\"file:///tmp/books.zip\"}",
-                "{\"source\":\"URL\",\"mode\":\"UPDATE\",\"url\":\"http:books.zip\"}")) {
+                "{\"source\":\"URL\",\"dryRun\":false,\"url\":\"file:///tmp/books.zip\"}",
+                "{\"source\":\"URL\",\"dryRun\":false,\"url\":\"http:books.zip\"}")) {
             mvc.perform(post("/api/catalog/import/run").contentType("application/json").content(invalid))
                 .andExpect(status().isBadRequest());
         }

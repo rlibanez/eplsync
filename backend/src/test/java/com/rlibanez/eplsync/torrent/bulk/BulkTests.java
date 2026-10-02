@@ -55,6 +55,21 @@ class BulkTests {
                 .links(String.format("%040X", id)).build());
     }
     @AfterEach void close() { if (worker != null) worker.close(); properties.setEnabled(false); }
+    @Test void dryRunPreparesSameItemsWithoutPersistingOrSending() {
+        var before = events.cursor();
+        var preview = store.preview(new CatalogBookFilter(),PageRequest.of(0,20),false,true,null,true);
+        assertThat(preview.dryRun()).isTrue();
+        assertThat(preview.applied()).isFalse();
+        assertThat(preview.selectedBooks()).isEqualTo(5);
+        assertThat(preview.items()).hasSize(5);
+        assertThat(jobs.count()).isZero(); assertThat(items.count()).isZero();
+        assertThat(events.cursor()).isEqualTo(before);
+        verify(client,never()).addTorrent(any());
+        var applied = create(null);
+        assertThat(applied.selectedBooks()).isEqualTo(preview.selectedBooks());
+        assertThat(applied.selectedItems()).isEqualTo(preview.selectedItems());
+        assertThat(applied.skipped()).isEqualTo(preview.skipped());
+    }
     private BulkStore.View create(BulkRequest request) {
         return store.create(new CatalogBookFilter(), PageRequest.of(0, 20), false, true, request);
     }
@@ -286,7 +301,7 @@ class BulkTests {
         assertThat(store.list(0, 20, List.of(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT)).items())
                 .extracting(BulkStore.View::status).containsExactlyInAnyOrder(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT);
         assertThat(store.list(100, 20, null).items()).isEmpty();
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
@@ -320,7 +335,7 @@ class BulkTests {
         rows.get(4).setState(BulkItem.State.FAILED); rows.get(4).setMessage("Envío rechazado");
         items.saveAll(rows);
         create(null); // Otro job no debe contaminar el filtro ni sus contadores.
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         String path = "/api/torrent/jobs/" + job.jobId() + "/items";
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path)
@@ -347,12 +362,11 @@ class BulkTests {
     @Test void endpointsAcceptOverridesAndExposeProgressWithoutSnapshots() throws Exception {
         var conversion = new org.springframework.format.support.DefaultFormattingConversionService();
         new com.rlibanez.eplsync.config.LanguageWebConfiguration().addFormatters(conversion);
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
                 .setConversionService(conversion)
                 .setCustomArgumentResolvers(new org.springframework.data.web.PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
-        var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books").param("language", "en").param("size", "2").param("page", "1")
+        var response = mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("language", "en").field("size", "2").field("page", "1")
                 .contentType("application/json").content("""
                 {"batchSize":1,"concurrency":2,"interval":"1s","options":{"start":false}}
                 """))
@@ -370,10 +384,10 @@ class BulkTests {
         for (String action : List.of("pause", "resume", "cancel"))
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(location + "/" + action))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk());
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/torrent/books"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/torrent/books")
-                .param("language", "en").param("pages", "27"))
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false)
+                .field("language", "en").field("pages", "27"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
         verify(client, never()).addTorrent(any());
     }

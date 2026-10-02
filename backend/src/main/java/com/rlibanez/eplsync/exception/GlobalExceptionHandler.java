@@ -86,9 +86,9 @@ public class GlobalExceptionHandler {
                         "El parámetro '" + ex.getName() + "' tiene un formato incorrecto", request));
     }
 
-    @ExceptionHandler(NoResourceFoundException.class)
+    @ExceptionHandler({NoResourceFoundException.class, org.springframework.web.servlet.NoHandlerFoundException.class})
     public ResponseEntity<ErrorResponse> handleNoResourceFound(
-            NoResourceFoundException ex,
+            Exception ex,
             HttpServletRequest request) {
 
         log.debug("Recurso no encontrado: {}", ex.getMessage());

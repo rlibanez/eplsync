@@ -63,12 +63,25 @@ public class BulkStore {
 
     @Transactional
     public View create(CatalogBookFilter filter, Pageable pageable, boolean paginated, boolean all, BulkRequest request) {
+        return (View) prepare(filter,pageable,paginated,all,request,false,false);
+    }
+    public record Preview(boolean dryRun, boolean applied, long selectedBooks, long selectedItems,
+                          long skipped, List<ItemView> items) {}
+    @Transactional(readOnly = true)
+    public Preview preview(CatalogBookFilter filter, Pageable pageable, boolean paginated, boolean all,
+                           BulkRequest request, boolean includeDetails) {
+        return (Preview) prepare(filter,pageable,paginated,all,request,true,includeDetails);
+    }
+    private Object prepare(CatalogBookFilter filter, Pageable pageable, boolean paginated, boolean all,
+                           BulkRequest request, boolean dryRun, boolean includeDetails) {
+        var details = new ArrayList<ItemView>();
+        long skipped = 0;
         client.requireEnabled();
         filter.normalize();
         if (!paginated && !all && !hasFilter(filter))
             throw new IllegalArgumentException("Sin filtros ni paginación se requiere all=true");
         var input = request == null ? new BulkRequest(null, null, null, null) : request;
-        var job = newJob(input);
+        var job = newJob(input, !dryRun);
         int batchSize = job.getBatchSize();
         var policy = job.getMultipleHashes();
         var sort = pageable.getSort();
@@ -115,7 +128,9 @@ public class BulkStore {
                     item.setState(BulkItem.State.SKIPPED);
                     item.setMessage(hashes.isEmpty() ? "El libro no tiene hashes torrent válidos"
                             : "Libro omitido por multipleHashes=skip: tiene varios hashes");
-                    items.save(item);
+                    if (!dryRun) items.save(item);
+                    if (item.getState() == BulkItem.State.SKIPPED) skipped++;
+                    if (dryRun && includeDetails) details.add(new ItemView(null,item.getEplId(),item.getHash(),item.getState(),0,item.getMessage()));
                     continue;
                 }
                 var selectedHashes = policy == MultipleHashes.ALL ? hashes : List.of(hashes.getFirst());
@@ -136,22 +151,26 @@ public class BulkStore {
                             item.setState(BulkItem.State.SKIPPED); item.setMessage(safeMessage(ex));
                         }
                     }
-                    items.save(item);
+                    if (!dryRun) items.save(item);
+                    if (item.getState() == BulkItem.State.SKIPPED) skipped++;
+                    if (dryRun && includeDetails) details.add(new ItemView(null,item.getEplId(),item.getHash(),item.getState(),0,item.getMessage()));
                 }
             }
             offset += batch.size(); remaining -= batch.size();
-            em.flush(); em.clear();
+            if (!dryRun) { em.flush(); em.clear(); }
+            else em.clear();
             if (totalBooks > 0) {
                 int progressPercent = (int) (selectedBooks * 100 / totalBooks);
                 int checkpointPercent = progressPercent / 10 * 10;
                 if (checkpointPercent >= 10 && checkpointPercent > lastProgressCheckpoint) {
-                    log.info("Preparación bulk en progreso: jobId={}, progreso={}%, librosProcesados={}/{}, itemsPreparados={}",
-                            job.getId(), progressPercent, selectedBooks, totalBooks, position);
+                    log.info("Preparación bulk en progreso: dryRun={}, jobId={}, progreso={}%, librosProcesados={}/{}, itemsPreparados={}",
+                            dryRun, job.getId(), progressPercent, selectedBooks, totalBooks, position);
                     lastProgressCheckpoint = checkpointPercent;
                 }
             }
             if (batch.size() < size) break;
         }
+        if (dryRun) return new Preview(true,false,selectedBooks,position,skipped,details);
         job.setSelectedBooks(selectedBooks);
         if (items.countByJobIdAndState(job.getId(), BulkItem.State.PENDING) == 0) job.setState(BulkJob.State.COMPLETED);
         jobs.saveAndFlush(job);
@@ -160,7 +179,8 @@ public class BulkStore {
         return view(job.getId());
     }
 
-    private BulkJob newJob(BulkRequest input) {
+    private BulkJob newJob(BulkRequest input) { return newJob(input, true); }
+    private BulkJob newJob(BulkRequest input, boolean persist) {
         if (input.options() != null && input.options().hash() != null)
             throw new IllegalArgumentException("Bulk selecciona el hash de cada libro; no admite options.hash");
         int batchSize = input.batchSize() == null ? properties.getBulk().getBatchSize() : input.batchSize();
@@ -185,7 +205,7 @@ public class BulkStore {
         job.setClient(properties.getClient()); job.setTargetFingerprint(fingerprint());
         job.setBatchSize(batchSize); job.setConcurrency(concurrency); job.setIntervalMillis(interval);
         job.setCreatedAt(Instant.now()); job.setUpdatedAt(job.getCreatedAt());
-        jobs.saveAndFlush(job);
+        if (persist) jobs.saveAndFlush(job);
         return job;
     }
 

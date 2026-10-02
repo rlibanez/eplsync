@@ -38,16 +38,22 @@ comprobación no modifica el estado anterior.
 
 ```sh
 # Prueba de un libro, incluso si ya tenía un estado guardado: no escribe nada.
-curl -s 'http://localhost:8088/api/catalog/covers/check?eplId=2725&onlyUnchecked=false'
+curl -s -X POST 'http://localhost:8088/api/catalog/covers/check' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"eplId":2725,"onlyUnchecked":false}'
 
 # Comprueba de nuevo y guarda los resultados concluyentes de ese libro.
-curl -s -X POST 'http://localhost:8088/api/catalog/covers/check?eplId=2725&onlyUnchecked=false'
+curl -s -X POST 'http://localhost:8088/api/catalog/covers/check' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":false,"eplId":2725,"onlyUnchecked":false}'
 
 # Primer lote de URLs sin comprobar.
-curl -s 'http://localhost:8088/api/catalog/covers/check?size=20'
+curl -s -X POST 'http://localhost:8088/api/catalog/covers/check' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"size":20}'
 ```
 
-Los dos métodos aceptan los mismos parámetros:
+El POST exige `dryRun` booleano en el cuerpo JSON y acepta estas opciones:
 
 | Parámetro | Predeterminado | Comportamiento |
 | --- | --- | --- |
@@ -56,7 +62,7 @@ Los dos métodos aceptan los mismos parámetros:
 | `afterId` | `0` | Selecciona IDs mayores, en orden ascendente. |
 | `onlyUnchecked` | `true` | Selecciona solo estados `null`; `false` permite revisar cualquiera. |
 
-GET admite además `coverAvailable=true` o `coverAvailable=false` para mostrar
+El body admite además `coverAvailable=true` o `coverAvailable=false` para mostrar
 solo resultados disponibles o no encontrados, respectivamente. Si se omite,
 se muestran todos, incluidos los inconcluyentes. Este filtro se aplica al resultado
 **recién comprobado**, no al estado almacenado en BD, y solo filtra `items`:
@@ -65,32 +71,34 @@ los contadores y el cursor siguen describiendo todos los libros comprobados.
 ```sh
 # Comprobar TODO el catálogo con URL, incluso estados ya guardados, sin escribir.
 # Mostrar únicamente los resultados no encontrados.
-curl -s 'http://localhost:8088/api/catalog/covers/check?coverAvailable=false&onlyUnchecked=false'
+curl -s -X POST 'http://localhost:8088/api/catalog/covers/check' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"coverAvailable":false,"onlyUnchecked":false}'
 ```
 
 **Sin `size`, una llamada recorre automáticamente todos los libros seleccionados**,
 leyendo la base de datos en lotes internos pequeños. No hay límite total de libros.
-El GET sin parámetros comprueba todos los que tengan URL y estado `null`; para
+El POST con `{"dryRun":true}` comprueba todos los que tengan URL y estado `null`; para
 incluir los ya comprobados, usar `onlyUnchecked=false`. Al completar el recorrido,
 `hasMore=false` y `nextAfterId=null`.
 
 Si se especifica `size`, limita libros comprobados, no coincidencias del filtro:
 puede devolver `items: []` y `hasMore: true`. En ese caso se puede continuar con
 `afterId=nextAfterId` y los mismos filtros. El filtro de visualización es exclusivo
-del GET y no restringe las escrituras del POST.
+de la respuesta y no restringe las escrituras cuando `dryRun=false`.
 
 La petición es síncrona: devuelve el resumen y los detalles al terminar el recorrido.
 Con decenas de miles de URLs puede tardar mucho; el cliente o proxy debe permitir
 mantener la conexión abierta durante ese tiempo. No es un trabajo en segundo plano.
 POST guarda los resultados en una transacción después de completar las comprobaciones.
-Los libros sin URL se omiten. Para repetir exactamente la selección de un GET hay que usar sus mismos
+Los libros sin URL se omiten. Para repetir exactamente la selección de una simulación hay que usar sus mismos
 parámetros en el POST, no su cursor de continuación. POST vuelve a consultar las
-URLs: no aplica una instantánea previamente guardada por GET.
+URLs: no aplica una instantánea previamente guardada por la simulación.
 
 La respuesta incluye `dryRun`, `checked`, `available`, `unavailable`,
 `inconclusive`, `wouldChange`, `updated`, `hasMore`, `nextAfterId` e `items`.
 Cada resultado contiene `eplId`, `coverUrl`, `previousAvailable`, `available`,
-`httpStatus`, `reason`, `wouldChange` y `updated`. En GET, `updated` siempre es cero
+`httpStatus`, `reason`, `wouldChange` y `updated`. Con `dryRun=true`, `updated` siempre es cero
 y los elementos tienen `updated=false`. Un resultado inconcluyente tiene
 `available=null`; no significa que se vaya a borrar un estado previo.
 
@@ -198,14 +206,13 @@ Ejemplo de cuerpo para iniciar una tarea (los tiempos de la API se expresan en m
 }
 ```
 
-Si se omite `options`, usa los valores del servidor; `dryRun` se interpreta como
-`false` si se omite. `onlyUnchecked` también es `false` por defecto en este endpoint
+Si se omite `options`, usa los valores del servidor; `dryRun` es obligatorio y debe ser un booleano JSON. `onlyUnchecked` también es `false` por defecto en este endpoint
 de tareas (el endpoint síncrono `/check` conserva su valor predeterminado `true`).
 Siempre recorre todo el catálogo con URL que cumpla ese filtro, sin límite de libros.
 La respuesta de la tarea incluye `onlyUnchecked` para conservar su alcance al navegar. Devuelve HTTP 409 si hay otra comprobación en curso y HTTP 400
 para parámetros inválidos. Los estados de tarea son `RUNNING`, `COMPLETED` y
 `FAILED`; el resumen omite detalles individuales para mantener pequeña la respuesta.
-Los endpoints síncronos GET/POST `/check` siguen disponibles con su comportamiento anterior.
+El endpoint síncrono POST `/check` exige igualmente `dryRun` en JSON; su antiguo GET ya no se admite.
 
 La activación manual exige el cuerpo `{"expectedCoverUrl":"URL comprobada"}`.
 Devuelve `{"eplId":123,"coverAvailable":false}`; HTTP 404 si no existe el libro,
@@ -284,7 +291,9 @@ además de los torrents y archivos del cliente. Queda registrada en Eventos.
 ## Actualizar el catálogo
 
 ```sh
-curl -i -X POST http://localhost:8088/api/catalog/import/update
+curl -s -X POST 'http://localhost:8088/api/catalog/import/run' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":false,"source":"URL"}'
 ```
 
 Identifica cada libro por `eplId`. Inserta los nuevos y actualiza los existentes
@@ -314,7 +323,9 @@ la transacción completa, incluido el borrado del modo reemplazo.
 ## Previsualizar una actualización
 
 ```sh
-curl -i -X POST http://localhost:8088/api/catalog/import/preview
+curl -s -X POST 'http://localhost:8088/api/catalog/import/run' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"source":"URL"}'
 ```
 
 Descarga y compara el CSV sin insertar, actualizar ni borrar libros. Por defecto
@@ -324,7 +335,9 @@ solo devuelve `success`, `message`, `recordsProcessed`, `errors`, `recordsUpdate
 Para consultar los libros completos desde un frontend, solicita explícitamente el detalle:
 
 ```sh
-curl -i -X POST 'http://localhost:8088/api/catalog/import/preview?includeDetails=true&page=0&size=50'
+curl -s -X POST 'http://localhost:8088/api/catalog/import/run' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"includeDetails":true,"page":0,"size":50,"source":"URL"}'
 ```
 
 Con `includeDetails=true` devuelve:
@@ -478,7 +491,7 @@ artificiales de 100, 500 o 2000 elementos. Spring tampoco recorta `size` a 2000.
 Los parámetros usan enteros de 32 bits (máximo representable: 2147483647).
 Los valores por defecto y el comportamiento sin paginación se mantienen.
 
-Por ejemplo, `POST /api/torrent/books?language=es&page=0&size=10000&sort=eplId,asc`
+Por ejemplo, `POST /api/torrent/books`
 selecciona hasta 10000 libros; no inicia 10000 envíos simultáneos. `batchSize`,
 `concurrency` e `interval` siguen controlando la ejecución. En listados GET, una
 página grande genera una respuesta mayor y requiere más memoria y tiempo.

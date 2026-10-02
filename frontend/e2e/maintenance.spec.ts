@@ -66,7 +66,7 @@ test("editable URL wizard closes while importing and result survives navigation"
     expect(route.request().postDataJSON()).toEqual({
       source: "URL",
       url: "https://example.test/custom.zip",
-      mode: "UPDATE",
+      dryRun: false,
     });
     await gate;
     await route.fulfill({ json: { ...summary, preview: null } });
@@ -641,7 +641,7 @@ test("saved ZIP details, reuse and dismissing a preview retain the archive", asy
     expect(route.request().postDataJSON()).toEqual({
       source: "SAVED",
       archiveId: "saved-zip",
-      mode: "PREVIEW",
+      dryRun: true,
     });
     return route.fulfill({ json: summary });
   });
@@ -687,8 +687,8 @@ test("local ZIP is uploaded as multipart and invalid file cannot advance", async
     );
     const body = route.request().postDataBuffer()!.toString();
     expect(body).toContain('filename="books.zip"');
-    expect(body).toContain('name="mode"');
-    expect(body).toContain("UPDATE");
+    expect(body).toContain('name="options"');
+    expect(body).toContain('"dryRun":false');
     return route.fulfill({ json: { ...summary, preview: null } });
   });
   await page.goto("/settings/database");

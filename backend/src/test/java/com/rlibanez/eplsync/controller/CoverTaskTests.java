@@ -92,7 +92,7 @@ class CoverTaskTests {
         try {
             assertThat(entered.await(2, TimeUnit.SECONDS)).isTrue();
             mvc.perform(get("/api/catalog/covers/task")).andExpect(jsonPath("$.task.state").value("RUNNING"));
-            mvc.perform(post("/api/catalog/covers/task").contentType("application/json").content("{}"))
+            mvc.perform(post("/api/catalog/covers/task").contentType("application/json").content("{\"dryRun\":false}"))
                     .andExpect(status().isConflict());
             assertThat(gate.enter(true)).isFalse();
         } finally { release.countDown(); }
@@ -102,7 +102,7 @@ class CoverTaskTests {
 
     @Test void invalidPerRunParametersAreRejectedBeforeStarting() throws Exception {
         mvc.perform(post("/api/catalog/covers/task").contentType("application/json").content("""
-                {"options":{"connectTimeoutMs":3000,"requestTimeoutMs":1000,"batchTimeoutMs":4000,"concurrency":2}}
+                {"dryRun":false,"options":{"connectTimeoutMs":3000,"requestTimeoutMs":1000,"batchTimeoutMs":4000,"concurrency":2}}
                 """)).andExpect(status().isBadRequest());
         verifyNoInteractions(factory);
     }

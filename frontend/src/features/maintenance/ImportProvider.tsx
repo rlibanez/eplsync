@@ -151,11 +151,16 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       let response: Response;
       try {
         if (source && (mode === "preview" || mode === "update")) {
-          const action = mode.toUpperCase();
+          const dryRun = mode === "preview";
           if (source.source === "UPLOAD") {
             const body = new FormData();
             body.append("file", source.file);
-            body.append("mode", action);
+            body.append(
+              "options",
+              new Blob([JSON.stringify({ dryRun })], {
+                type: "application/json",
+              }),
+            );
             response = await fetch("/api/catalog/import/run", {
               method: "POST",
               headers: { Accept: "application/json" },
@@ -168,7 +173,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
                 Accept: "application/json",
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ ...source, mode: action }),
+              body: JSON.stringify({ ...source, dryRun }),
             });
           }
         } else {
@@ -177,20 +182,23 @@ export function ImportProvider({ children }: { children: ReactNode }) {
               ? "/api/maintenance/reset"
               : retainedAction
                 ? `/api/catalog/import/preview/${mode}`
-                : `/api/catalog/import/${mode}`,
+                : "/api/catalog/import/run",
             {
               method: "POST",
               headers: {
                 Accept: "application/json",
-                ...(mode === "reset" || retainedAction
-                  ? { "Content-Type": "application/json" }
-                  : {}),
+                "Content-Type": "application/json",
               },
               ...(mode === "reset"
                 ? { body: JSON.stringify({ confirm: true }) }
                 : retainedAction
                   ? { body: JSON.stringify({ token }) }
-                  : {}),
+                  : {
+                      body: JSON.stringify({
+                        source: "URL",
+                        dryRun: mode === "preview",
+                      }),
+                    }),
             },
           );
         }

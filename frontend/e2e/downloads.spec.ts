@@ -193,14 +193,16 @@ test("bulk preview pagination does not restrict submission and leads to job cont
       },
     });
   });
-  await page.route("**/api/torrent/books?**", (r) => {
+  await page.route("**/api/torrent/books", (r) => {
     sends++;
-    const p = new URL(r.request().url()).searchParams;
-    expect(p.get("author")).toBe("Herbert");
-    expect(p.has("page")).toBe(false);
-    expect(p.has("size")).toBe(false);
-    expect(p.has("all")).toBe(false);
-    expect(r.request().postDataJSON()).toEqual({ options: {} });
+    expect(new URL(r.request().url()).search).toBe("");
+    expect(r.request().postDataJSON()).toEqual({
+      dryRun: false,
+      filters: { author: "Herbert" },
+      all: false,
+      sort: ["title,asc", "eplId,asc"],
+      options: {},
+    });
     return r.fulfill({ status: 202, json: current });
   });
   await page.route("**/api/torrent/jobs/test-job", (r) =>
@@ -281,9 +283,9 @@ test("unfiltered bulk requires an explicit whole-catalog choice and network erro
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({ json: { items: [book], meta: meta() } }),
   );
-  await page.route("**/api/torrent/books?**", (r) => {
+  await page.route("**/api/torrent/books", (r) => {
     calls++;
-    expect(new URL(r.request().url()).searchParams.get("all")).toBe("true");
+    expect(r.request().postDataJSON().all).toBe(true);
     return r.abort();
   });
   await page.goto("/downloads/send/multiple");

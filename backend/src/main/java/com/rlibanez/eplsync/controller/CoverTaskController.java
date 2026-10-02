@@ -24,7 +24,8 @@ public class CoverTaskController {
     }
 
     @PostMapping("/task")
-    public ResponseEntity<CoverTaskService.Status> start(@RequestBody Start request) {
+    public ResponseEntity<CoverTaskService.Status> start(@RequestBody java.util.Map<String,Object> body, jakarta.servlet.http.HttpServletRequest servletRequest) {
+        var request = com.rlibanez.eplsync.api.OperationBody.read(body, Start.class, servletRequest);
         return ResponseEntity.accepted().cacheControl(CacheControl.noStore()).body(tasks.start(Boolean.TRUE.equals(request.dryRun()), Boolean.TRUE.equals(request.onlyUnchecked()), request.options()));
     }
 

@@ -114,11 +114,13 @@ test("404 activates alternative cover without reloading the document", async ({
 }) => {
   let book = { ...initialBook };
   await page.route("**/api/catalog/books/32", (r) => r.fulfill({ json: book }));
-  await page.route("**/api/catalog/covers/check?*", (r) => {
+  await page.route("**/api/catalog/covers/check", (r) => {
     expect(r.request().method()).toBe("POST");
-    const url = new URL(r.request().url());
-    expect(url.searchParams.get("eplId")).toBe("32");
-    expect(url.searchParams.get("onlyUnchecked")).toBe("false");
+    expect(r.request().postDataJSON()).toEqual({
+      dryRun: false,
+      eplId: 32,
+      onlyUnchecked: false,
+    });
     book = { ...book, coverAvailable: false };
     return r.fulfill({ json: result(false, "NOT_FOUND") });
   });
@@ -167,7 +169,7 @@ test("timeout explains uncertainty and closing preserves the original cover", as
   page,
 }) => {
   let forced = 0;
-  await page.route("**/api/catalog/covers/check?*", (r) =>
+  await page.route("**/api/catalog/covers/check", (r) =>
     r.fulfill({ json: result(null, "TIMEOUT") }),
   );
   await page.route("**/api/catalog/covers/32/alternative", (r) => {
@@ -200,7 +202,7 @@ for (const available of [null, true]) {
     await page.route("**/api/catalog/books/32", (r) =>
       r.fulfill({ json: book }),
     );
-    await page.route("**/api/catalog/covers/check?*", (r) => {
+    await page.route("**/api/catalog/covers/check", (r) => {
       book = { ...book, coverAvailable: available };
       return r.fulfill({
         json: result(available, available ? "AVAILABLE" : "TIMEOUT"),
@@ -231,7 +233,7 @@ test("failed manual override is visible and is not retried", async ({
   page,
 }) => {
   let attempts = 0;
-  await page.route("**/api/catalog/covers/check?*", (r) =>
+  await page.route("**/api/catalog/covers/check", (r) =>
     r.fulfill({ json: result(null, "TIMEOUT") }),
   );
   await page.route("**/api/catalog/covers/32/alternative", (r) => {

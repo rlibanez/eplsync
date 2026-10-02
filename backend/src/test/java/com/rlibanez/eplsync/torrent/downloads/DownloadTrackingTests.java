@@ -186,7 +186,7 @@ class DownloadTrackingTests {
         realMvc.perform(get("/api/catalog/books").param("size", "10000"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000))
                 .andExpect(jsonPath("$.items.length()").value(2001));
-        realMvc.perform(post("/api/torrent/books").param("size", "10000").param("sort", "eplId,asc"))
+        realMvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("size", "10000").field("sort", "eplId,asc"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(2001));
         realMvc.perform(get("/api/catalog/magnets").param("size", "10000"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000));
@@ -222,13 +222,13 @@ class DownloadTrackingTests {
         api.perform(get("/api/catalog/magnets").param("eplId", "32"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0]").value(org.hamcrest.Matchers.containsString(HASH)));
-        api.perform(post("/api/torrent/books").param("eplId", "32"))
+        api.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("eplId", "32"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1));
         assertThat(bulkItems.findAll()).hasSize(1).allMatch(item -> item.getEplId().equals(32L));
         for (String invalid : List.of("0", "-1", "abc", "9223372036854775808")) {
             api.perform(get("/api/catalog/books").param("eplId", invalid)).andExpect(status().isBadRequest());
             api.perform(get("/api/catalog/magnets").param("eplId", invalid)).andExpect(status().isBadRequest());
-            api.perform(post("/api/torrent/books").param("eplId", invalid)).andExpect(status().isBadRequest());
+            api.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("eplId", invalid)).andExpect(status().isBadRequest());
         }
         assertThat(bulkJobs.count()).isEqualTo(1);
         verify(stubClient, never()).addTorrent(any(), any());

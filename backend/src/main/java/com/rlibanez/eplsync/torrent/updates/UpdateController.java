@@ -19,29 +19,19 @@ public class UpdateController {
         this.planner = planner; this.cleanup = cleanup; this.bulk = bulk;
     }
 
-    @GetMapping
-    public PageResponse<UpdatePlanner.Candidate> preview(@Valid @ModelAttribute CatalogBookFilter filter,
-            @RequestParam(defaultValue = "false") boolean includeNotFound,
-            @RequestParam(required = false) String multipleHashes,
-            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
-            @RequestParam org.springframework.util.MultiValueMap<String, String> params) {
-        SelectionQueries.validate(params, "includeNotFound", "multipleHashes", "page", "size");
-        if (page < 0 || size < 1) throw new IllegalArgumentException("page >= 0 y size > 0");
-        return SelectionQueries.page(planner.preview(filter, includeNotFound, MultipleHashes.parse(multipleHashes),
-                UpdatePlanner.Selection.UPDATES), page, size);
-    }
-
     @PostMapping
-    public ResponseEntity<BulkStore.View> create(@Valid @ModelAttribute CatalogBookFilter filter,
-            @RequestParam(defaultValue = "false") boolean includeNotFound,
-            @RequestBody(required = false) UpdateRequest request,
-            @RequestParam org.springframework.util.MultiValueMap<String, String> params) {
-        SelectionQueries.validate(params, "includeNotFound");
+    public ResponseEntity<?> run(@RequestBody java.util.Map<String,Object> body,
+            jakarta.servlet.http.HttpServletRequest request) {
+        var input = com.rlibanez.eplsync.api.OperationBody.read(body, TorrentOperationRequest.class, request);
+        log.info("Solicitud torrent: dryRun={}, filtros={}", input.dryRun(), SelectionQueries.safeLog(input.filters()));
+        if (input.includeDetails() != null || input.selection() != null || input.all() != null || input.sort() != null)
+            throw new IllegalArgumentException("selection, all y sort no se admiten en updates");
+        if (input.dryRun()) return ResponseEntity.ok(SelectionQueries.page(planner.preview(input.filter(),
+                Boolean.TRUE.equals(input.includeNotFound()), input.multipleHashes(), UpdatePlanner.Selection.UPDATES),
+                input.pageNumber(), input.pageSize()));
+        if (input.paginated()) throw new IllegalArgumentException("page y size solo paginan la previsualización");
         synchronized (bulk) {
-            log.info("Solicitud de actualización: filtros={}, includeNotFound={}, previousVersions={}", SelectionQueries.safeLog(filter),
-                    includeNotFound, request == null ? PreviousVersions.KEEP : request.policy());
-            var job = planner.create(filter, includeNotFound, request, UpdatePlanner.Selection.UPDATES);
-            log.info("Trabajo de actualización creado: jobId={}, libros={}", job.jobId(), job.selectedBooks());
+            var job = planner.create(input.filter(), Boolean.TRUE.equals(input.includeNotFound()), input.update(), UpdatePlanner.Selection.UPDATES);
             return ResponseEntity.accepted().location(URI.create("/api/torrent/jobs/" + job.jobId())).body(job);
         }
     }

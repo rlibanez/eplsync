@@ -2,22 +2,11 @@ package com.rlibanez.eplsync.torrent.updates;
 
 import com.rlibanez.eplsync.dto.PageResponse;
 import com.rlibanez.eplsync.filter.CatalogBookFilter;
-import org.springframework.util.MultiValueMap;
 import java.util.*;
 
 /** Strict query validation prevents misspelled filters from widening a submission. */
 final class SelectionQueries {
     private SelectionQueries() {}
-
-    static void validate(MultiValueMap<String, String> params, String... extra) {
-        var allowed = new HashSet<>(List.of(extra));
-        for (var field : CatalogBookFilter.class.getDeclaredFields()) allowed.add(field.getName());
-        params.forEach((key, values) -> {
-            if (!allowed.contains(key) || values.isEmpty() || values.stream().anyMatch(String::isBlank)
-                    || !key.equals("status") && values.size() != 1)
-                throw new IllegalArgumentException("Parámetro desconocido, vacío o repetido: " + key);
-        });
-    }
 
     static <T> PageResponse<T> page(List<T> result, int page, int size) {
         if (page < 0 || size < 1) throw new IllegalArgumentException("page >= 0 y size > 0");

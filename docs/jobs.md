@@ -1,5 +1,11 @@
 # Envíos masivos y jobs
 
+Los envíos múltiples usan POST con `dryRun` obligatorio en JSON y todos los parámetros
+en el body. Los filtros van en `filters`; `sort` es una lista. `dryRun=true` prepara
+una simulación sin crear trabajos ni enviar torrents; `includeDetails=true` permite
+ver los elementos previstos. `dryRun=false` crea el job. No hay parámetros en la URL.
+
+
 [Documentación](README.md) · [Inicio](../README.md)
 
 Las rutas y los comandos parten de la raíz del repositorio salvo que se indique otro directorio.
@@ -23,26 +29,17 @@ preparación de una selección grande puede tardar y ocupa una transacción de S
 Ejemplo: todos los libros en inglés con opciones y ejecución personalizadas:
 
 ```sh
-curl -X POST 'http://localhost:8088/api/torrent/books?language=en' \
+curl -s -X POST 'http://localhost:8088/api/torrent/books' \
   -H 'Content-Type: application/json' \
-  -d '{
-    "options": {
-      "start": false,
-      "qbittorrent": {
-        "category": "Libros",
-        "tags": ["EPLsync", "{language}"]
-      }
-    },
-    "batchSize": 100,
-    "concurrency": 2,
-    "interval": "500ms"
-  }'
+  -d '{"dryRun":false,"options":{"start":false,"qbittorrent":{"category":"Libros","tags":["EPLsync","{language}"]}},"batchSize":100,"concurrency":2,"interval":"500ms","filters":{"language":"en"}}'
 ```
 
 Ejemplo para enviar solo la segunda página de 50 resultados con los valores por defecto:
 
 ```sh
-curl -X POST 'http://localhost:8088/api/torrent/books?author=Brandon&page=1&size=50'
+curl -s -X POST 'http://localhost:8088/api/torrent/books' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":false,"filters":{"author":"Brandon"},"page":1,"size":50}'
 ```
 
 Configuración predeterminada:
@@ -135,9 +132,9 @@ En `eplsync.torrent.bulk.multiple-hashes` se configura el valor predeterminado
 (`skip`). La petición puede sobrescribirlo mediante `multipleHashes`:
 
 ```sh
-curl -X POST 'http://localhost:8088/api/torrent/books?language=en' \
+curl -s -X POST 'http://localhost:8088/api/torrent/books' \
   -H 'Content-Type: application/json' \
-  -d '{"multipleHashes":"all","options":{"start":false}}'
+  -d '{"dryRun":false,"multipleHashes":"all","options":{"start":false},"filters":{"language":"en"}}'
 ```
 
 - `all`: un elemento por cada hash válido del libro, en el orden de `links`.

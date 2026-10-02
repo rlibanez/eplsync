@@ -30,9 +30,11 @@ el despliegue pueden sobrescribir los predeterminados del repositorio.
 
 ## 1. Convenciones generales
 
-- Los filtros y parámetros de selección van en la URL.
+- En consultas GET, filtros y paginación van en la URL. En operaciones POST con
+  simulación, todas las opciones van en el body JSON; los filtros torrent van en `filters`.
 - Las opciones de envío van en un cuerpo JSON con `Content-Type: application/json`.
-- Los campos de opciones omitidos o `null` heredan la configuración correspondiente.
+- Los campos opcionales omitidos o `null` heredan la configuración correspondiente.
+  `dryRun` es obligatorio y nunca admite `null`.
 - `page` empieza en `0`; `size` debe ser positivo. No existe el antiguo máximo de
   2.000 elementos. Los parámetros siguen sujetos al rango de sus tipos numéricos.
 - Los estados distinguen mayúsculas y minúsculas salvo que se indique otra cosa.
@@ -77,31 +79,56 @@ La previsualización de importación utiliza un formato propio, descrito más ab
 | Ejecutar cleanup | Sí, cuando corresponde | Sí | Sí, según la política guardada |
 | Renombrar un torrent | Sí | No modifica el catálogo | Sí |
 
+### Simulación y ejecución
+
+Las operaciones con simulación usan **POST con un body JSON y `dryRun` obligatorio**:
+`true` calcula el resultado; `false` ejecuta. Omitirlo, enviarlo como `null`, texto o
+número devuelve `400`. También se rechazan opciones desconocidas y parámetros en
+la URL en estos endpoints:
+
+- `/api/torrent/downloads/sync`
+- `/api/catalog/covers/check` y `/api/catalog/covers/task`
+- `/api/torrent/books`, `/api/torrent/updates` y `/api/torrent/refresh`
+- `/api/catalog/import/run`
+
+En selecciones torrent, los filtros se agrupan en `filters`; `status` y `sort` son
+listas JSON. En portadas, las opciones son campos directos del body. Las cargas ZIP
+usan multipart: `file` y `options`, una parte `application/json` con `{"dryRun":true}`
+o `{"dryRun":false}`. No se admite el antiguo campo `mode`.
+
+Los GET consultan recursos existentes. Aplicar/descartar/recalcular una previsualización
+y preparar/confirmar una lista de ausentes conservan sus POST específicos y tokens:
+no vuelven a seleccionar silenciosamente otros datos. Una simulación puede registrar
+eventos o guardar un archivo temporal, pero no aplica los cambios de negocio.
+
+Se han retirado los GET de simulación y los POST de importación `/preview` y `/update`;
+no hay alias de compatibilidad. Usa `/run` con `dryRun`. El reemplazo del catálogo
+`/import/reset` sigue siendo una operación distinta, sin simulación.
+
 ## 2. Importación del catálogo
 
 | Método | Endpoint | Acción |
 | --- | --- | --- |
 | POST | `/api/catalog/import/reset` | Reemplaza el catálogo de libros con el CSV descargado. |
-| POST | `/api/catalog/import/update` | Inserta y actualiza libros; conserva los que no aparecen en el CSV. |
-| POST | `/api/catalog/import/preview` | Previsualiza cambios sin modificar el catálogo. |
+| POST | `/api/catalog/import/run` | `dryRun=true`: previsualiza; `false`: inserta y actualiza conservando ausentes. |
 
-### Parámetros de URL
+### Opciones de importación
 
-| Parámetro | Endpoints | Descripción | Predeterminado |
-| --- | --- | --- | --- |
-| `url` | Los tres | URL HTTP/HTTPS del ZIP. | `eplsync.catalog.zip-url` |
-| `includeDetails` | `preview` | Incluye detalles además del resumen. | `false` |
-| `page` | `preview` | Página desde cero. | `0` |
-| `size` | `preview` | Tamaño positivo. | `50` |
+`/run` recibe `source` (`URL` o `SAVED`) y `dryRun` en JSON. Para `URL`, `url` es
+opcional y por defecto usa `eplsync.catalog.zip-url`. Para `SAVED`, requiere `archiveId`.
+Solo al previsualizar una URL admite `includeDetails` (false), `page` (0) y `size` (50).
+El endpoint separado `/reset` conserva su parámetro URL opcional `url`.
 
 ```bash
 # Previsualizar cambios con detalle
-curl -s -X POST \
-  'http://192.168.2.2:8088/api/catalog/import/preview?includeDetails=true&page=0&size=50' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/catalog/import/run' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"includeDetails":true,"page":0,"size":50,"source":"URL"}' | jq
 
 # Actualizar el catálogo
-curl -s -X POST \
-  'http://192.168.2.2:8088/api/catalog/import/update' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/catalog/import/run' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":false,"source":"URL"}' | jq
 
 # Reemplazar el catálogo
 curl -s -X POST \
@@ -151,14 +178,14 @@ puede ser `null`. El SHA-256 del ZIP es distinto del SHA-256 del CSV en los meta
 `POST /api/catalog/import/run` acepta estos cuerpos JSON:
 
 ```json
-{"source":"URL","url":"https://example.org/other.zip","mode":"PREVIEW"}
+{"source":"URL","url":"https://example.org/other.zip","dryRun":true}
 ```
 
 ```json
-{"source":"SAVED","archiveId":"identificador-del-zip","mode":"UPDATE"}
+{"source":"SAVED","archiveId":"identificador-del-zip","dryRun":false}
 ```
 
-- `mode`: `PREVIEW` o `UPDATE`. Ambos devuelven un `ImportResult`.
+- `dryRun` es obligatorio: `true` previsualiza y `false` actualiza. Ambos devuelven un `ImportResult`.
 - Con `URL`, omitir `url` utiliza la URL configurada. Una URL personalizada afecta
   solo a esta operación; no modifica la configuración.
 - Con `SAVED`, `archiveId` es obligatorio. Un ZIP caducado o sustituido devuelve
@@ -167,7 +194,7 @@ puede ser `null`. El SHA-256 del ZIP es distinto del SHA-256 del CSV en los meta
 Para cargas locales acepta `multipart/form-data`:
 
 ```bash
-curl -X POST http://localhost:8088/api/catalog/import/run -F 'mode=PREVIEW' -F 'file=@catalog.zip;type=application/zip'
+curl -X POST http://localhost:8088/api/catalog/import/run -F 'options={"dryRun":true};type=application/json' -F 'file=@catalog.zip;type=application/zip'
 ```
 
 Admite archivos no vacíos con extensión `.zip`, hasta 128 MiB por defecto
@@ -191,7 +218,7 @@ Previsualizar conserva el ZIP y añade al resumen:
 }
 ```
 
-`POST /api/catalog/import/preview` también mantiene este comportamiento; con
+`POST /api/catalog/import/run` también mantiene este comportamiento; con
 `includeDetails=true`, estos datos están en `summary.preview`. No modifica libros
 ni metadatos; registra el inicio y resultado en Eventos.
 
@@ -237,7 +264,7 @@ La X equivale a Descartar y conserva el ZIP. La pestaña guarda el token para re
 el resumen al recargar. El ZIP vuelve a estar disponible al abrir el asistente, con
 fecha, tamaño y SHA-256 copiable.
 
-Los endpoints directos `/update` y `/reset` descargan desde la URL solicitada y
+`/run` con `source="URL"` y `/reset` descargan desde la URL solicitada y
 sustituyen el ZIP guardado. `/missing/preview` descarga temporalmente su fuente para
 analizar ausentes y no sustituye el ZIP del asistente.
 
@@ -334,10 +361,9 @@ Estos filtros funcionan en:
 - `GET /api/catalog/books`
 - `GET /api/catalog/magnets`
 - `GET /api/catalog/magnets/export`
-- `POST /api/torrent/books`
-- `GET/POST /api/torrent/books?selection=new`
-- `GET/POST /api/torrent/updates`
-- `GET/POST /api/torrent/refresh`
+- `POST /api/torrent/books` (selección general o `selection="new"` en JSON)
+- `POST /api/torrent/updates`
+- `POST /api/torrent/refresh`
 
 | Parámetro | Significado / valores |
 | --- | --- |
@@ -416,8 +442,7 @@ ePubLibre si es `false`; conserva la URL original en la respuesta y en la BD.
 
 | Método | Endpoint | Resultado |
 | --- | --- | --- |
-| GET | `/api/catalog/covers/check` | Comprueba el catálogo seleccionado y devuelve resultados, sin escribir en BD. |
-| POST | `/api/catalog/covers/check` | Comprueba el catálogo seleccionado y guarda disponibilidad concluyente. |
+| POST | `/api/catalog/covers/check` | `dryRun=true`: simula; `false`: guarda disponibilidad concluyente. |
 
 Parámetros compartidos: `eplId` opcional, `size` opcional (entero positivo),
 `afterId=0` y `onlyUnchecked=true`. **Sin `size` recorre todo el catálogo seleccionado**,
@@ -426,14 +451,14 @@ sin límite total. Para comprobar también estados ya guardados, usar
 continuar con `afterId=nextAfterId` mientras `hasMore=true`.
 
 Ejemplo completo sin escrituras, mostrando solo resultados no encontrados:
-`GET /api/catalog/covers/check?onlyUnchecked=false&coverAvailable=false`.
+`POST /api/catalog/covers/check` con `{"dryRun":true,"onlyUnchecked":false,"coverAvailable":false}`.
 
 La respuesta llega al terminar; una comprobación completa puede requerir una
-conexión HTTP de larga duración. POST realiza una nueva comprobación y guarda al
-final; no aplica una instantánea del GET anterior. HTTP 409 indica que otra
+conexión HTTP de larga duración. Con `dryRun=false` realiza una nueva comprobación y guarda al
+final; no aplica una instantánea de una simulación anterior. HTTP 409 indica que otra
 comprobación está en curso.
 
-Solo GET: `coverAvailable=true|false` filtra `items` por el resultado de la
+En ambos modos: `coverAvailable=true|false` filtra `items` por el resultado de la
 comprobación actual (no por el estado almacenado). Sin ese parámetro muestra todos.
 Los contadores y `nextAfterId`/`hasMore` corresponden al recorrido completo, aunque no
 haya coincidencias. `size` limita las comprobaciones, no los resultados filtrados.
@@ -446,7 +471,7 @@ Ver [comportamiento y ejemplos](catalogo.md#comprobar-disponibilidad-de-portadas
 Para la interfaz de **Ajustes → Portadas**, `GET /api/catalog/covers/config` expone
 los valores iniciales; `POST /api/catalog/covers/task` inicia una tarea completa
 en segundo plano y `GET /api/catalog/covers/task` consulta su estado. El POST acepta
-`dryRun`, `onlyUnchecked` (ambos `false` por defecto en este endpoint de tareas)
+`dryRun` obligatorio y `onlyUnchecked` (opcional, `false` por defecto en este endpoint de tareas)
 y `options` con `connectTimeoutMs`, `requestTimeoutMs`, `batchTimeoutMs`
 y `concurrency`, sin modificar la configuración global. La última tarea se conserva
 en memoria hasta reiniciar el servidor. Véase [gestión desde la interfaz](catalogo.md#gestión-de-portadas-desde-la-interfaz).
@@ -574,7 +599,7 @@ POST /api/torrent/books
 
 Admite los [filtros compartidos](#3-consulta-de-libros-y-filtros-compartidos) y:
 
-| Parámetro de URL | Significado |
+| Campo del body JSON | Significado |
 | --- | --- |
 | `page`, `size` | Seleccionan una página de **libros**. Defaults parciales: `0` y `20`. |
 | `sort` | Orden de selección; se añade `eplId` como desempate cuando falta. |
@@ -584,30 +609,22 @@ Sin `page`/`size`, selecciona todos los libros que cumplan los filtros.
 Si tampoco hay filtros, se requiere `all=true`.
 
 ```bash
-curl -s -X POST \
-  'http://192.168.2.2:8088/api/torrent/books?language=es&page=0&size=1000&sort=eplId,asc' \
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/books' \
   -H 'Content-Type: application/json' \
-  -d '{
-    "batchSize": 100,
-    "concurrency": 4,
-    "interval": "100ms",
-    "multipleHashes": "all",
-    "options": {
-      "start": true,
-      "qbittorrent": {
-        "category": "Epublibre",
-        "tags": ["EPLsync", "{language}"],
-        "autoManagement": true
-      }
-    }
-  }' | jq
+  -d '{"dryRun":false,"batchSize":100,"concurrency":4,"interval":"100ms","multipleHashes":"all","options":{"start":true,"qbittorrent":{"category":"Epublibre","tags":["EPLsync","{language}"],"autoManagement":true}},"filters":{"language":"es"},"page":0,"size":1000,"sort":["eplId,asc"]}' | jq
 ```
+
+Con `dryRun=true`, devuelve `200` con `dryRun`, `applied=false`, `selectedBooks`,
+`selectedItems`, `skipped` e `items`. `includeDetails=true` incluye en `items` cada
+registro previsto (sin ID persistente), con `eplId`, `hash`, `status` y `message`.
+La preparación comparte selección, deduplicación y validación con la ejecución;
+no crea trabajos, no guarda items ni envía torrents. Por defecto `items` está vacío.
 
 ### Opciones del cuerpo
 
 | Campo | Valores / significado |
 | --- | --- |
-| `batchSize` | `1–1000`; elementos cargados por lote desde SQLite. Alias: `batch-size`. |
+| `batchSize` | `1–1000`; elementos cargados por lote desde SQLite.  |
 | `concurrency` | `1–16`; máximo de operaciones simultáneas. |
 | `interval` | `0ms–60s`; admite `100ms`, `2s` o duraciones ISO-8601. Separación global entre inicios. |
 | `multipleHashes` | `all`, `skip` o `first`. |
@@ -625,8 +642,9 @@ entorno puede sobrescribirlos.
 
 ```bash
 # Seleccionar todo el catálogo
-curl -s -X POST \
-  'http://192.168.2.2:8088/api/torrent/books?all=true' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/books' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":false,"all":true}' | jq
 ```
 
 Devuelve `202`, un `jobId` y `Location: /api/torrent/jobs/{jobId}`.
@@ -857,22 +875,25 @@ página. No se almacena un historial de resultados de sincronización.
 ## 12. Previsualización de actualizaciones
 
 ```http
-GET /api/torrent/updates
+POST /api/torrent/updates
 ```
 
 | Parámetro | Descripción / predeterminado |
 | --- | --- |
-| `eplId` | Limita la búsqueda a un libro; omitido: todos los candidatos. |
+| `filters.eplId` | Limita la búsqueda a un libro; omitido: todos los candidatos. |
 | `includeNotFound` | `false`; con `true` incluye historial elegible desaparecido del cliente. |
 | `multipleHashes` | `all`, `skip`, `first`; omitido: configuración bulk. |
 | `page` | `0`. |
 | `size` | `50`. |
 
 ```bash
-curl -s \
-  'http://192.168.2.2:8088/api/torrent/updates?multipleHashes=all&page=0&size=1000' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"multipleHashes":"all","page":0,"size":1000}' | jq
 
-curl -s 'http://192.168.2.2:8088/api/torrent/updates?eplId=1234' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"filters":{"eplId":1234}}' | jq
 ```
 
 Devuelve `items` y `meta`. Cada candidato incluye:
@@ -899,17 +920,14 @@ Admite todos los filtros compartidos de `CatalogBookFilter`, incluido
 POST /api/torrent/updates
 ```
 
-### Parámetros de URL
+### Cuerpo JSON obligatorio
 
-| Parámetro | Descripción |
-| --- | --- |
-| Filtros del catálogo | Incluidos `eplId`, `language`, `author`, etc.; limitan los candidatos. |
-| `includeNotFound` | Igual que en la previsualización; predeterminado: `false`. |
-
-### Cuerpo JSON opcional
+`dryRun=false` crea el trabajo. Los filtros van en `filters`; `includeNotFound`
+es opcional y vale `false` por defecto. No se admiten parámetros en la URL.
 
 ```json
 {
+  "dryRun": false,
   "previousVersions": "keep",
   "multipleHashes": "all",
   "batchSize": 100,
@@ -926,7 +944,7 @@ POST /api/torrent/updates
 }
 ```
 
-`batchSize` (alias `batch-size`), `concurrency`, `interval`, `multipleHashes` y
+`batchSize`, `concurrency`, `interval`, `multipleHashes` y
 `options` tienen el significado y límites del bulk. `options.hash` no se admite.
 
 | `previousVersions` | Política de limpieza posterior |
@@ -936,10 +954,9 @@ POST /api/torrent/updates
 | `removeTorrentAndFiles` | Permitir eliminar el torrent anterior y sus archivos. |
 
 ```bash
-curl -s -X POST \
-  'http://192.168.2.2:8088/api/torrent/updates?eplId=1234' \
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates' \
   -H 'Content-Type: application/json' \
-  -d '{"previousVersions":"removeTorrent","multipleHashes":"all"}' | jq
+  -d '{"dryRun":false,"previousVersions":"removeTorrent","multipleHashes":"all","filters":{"eplId":1234}}' | jq
 ```
 
 Devuelve `202`, un `jobId` y `Location: /api/torrent/jobs/{jobId}`. El progreso y
@@ -1078,8 +1095,7 @@ mediante la configuración de despliegue.
 | POST | `/api/events/delete` |
 | POST | `/api/catalog/import/reset` |
 | POST | `/api/maintenance/reset` |
-| POST | `/api/catalog/import/update` |
-| POST | `/api/catalog/import/preview` |
+| POST | `/api/catalog/import/run` |
 | GET | `/api/catalog/books` |
 | GET | `/api/catalog/books/{eplId}` |
 | GET | `/api/catalog/books/{eplId}/magnets` |
@@ -1089,8 +1105,7 @@ mediante la configuración de despliegue.
 | GET | `/api/torrent/client/connection` |
 | POST | `/api/torrent/books/{eplId}` |
 | POST | `/api/torrent/books` (bulk normal o `selection=new`) |
-| GET | `/api/torrent/books?selection=new` |
-| GET | `/api/torrent/refresh` |
+| POST | `/api/torrent/books` |
 | POST | `/api/torrent/refresh` |
 | GET | `/api/torrent/jobs` |
 | GET | `/api/torrent/jobs/{jobId}` |
@@ -1101,7 +1116,6 @@ mediante la configuración de despliegue.
 | GET | `/api/torrent/downloads` |
 | GET | `/api/torrent/downloads/summary` |
 | POST | `/api/torrent/downloads/sync` |
-| GET | `/api/torrent/updates` |
 | POST | `/api/torrent/updates` |
 | GET | `/api/torrent/updates/{jobId}` |
 | POST | `/api/torrent/updates/{jobId}/cleanup` |
@@ -1135,12 +1149,12 @@ clientes durante un trabajo pueden no verse hasta que se vuelva a consultar.
 
 | Método | Endpoint | Selección |
 | --- | --- | --- |
-| GET | `/api/torrent/books?selection=new` | Previsualiza libros sin historial en el cliente actual. |
-| POST | `/api/torrent/books?selection=new` | Crea un job solo con esos libros nuevos. |
-| GET | `/api/torrent/updates` | Previsualiza revisiones superiores de libros gestionados. |
-| POST | `/api/torrent/updates` | Crea un job solo con esas revisiones superiores. |
-| GET | `/api/torrent/refresh` | Previsualiza la unión de novedades y revisiones superiores. |
-| POST | `/api/torrent/refresh` | Crea **un único job** con ambos grupos. |
+| POST | `/api/torrent/books` | `selection="new", dryRun=true`: previsualiza libros sin historial en el cliente actual. |
+| POST | `/api/torrent/books` | `selection="new", dryRun=false`: crea un job solo con esos libros nuevos. |
+| POST | `/api/torrent/updates` | `dryRun=true`: previsualiza revisiones superiores de libros gestionados. |
+| POST | `/api/torrent/updates` | `dryRun=false`: crea un job solo con esas revisiones superiores. |
+| POST | `/api/torrent/refresh` | `dryRun=true`: previsualiza la unión de novedades y revisiones superiores. |
+| POST | `/api/torrent/refresh` | `dryRun=false`: crea **un único job** con ambos grupos. |
 
 Todos admiten los [filtros del catálogo](#3-consulta-de-libros-y-filtros-compartidos),
 como `language=es`, `author`, `eplId`, `publicationYearFrom` o `status`.
@@ -1167,62 +1181,45 @@ implícitamente. Los torrents ya existentes se comprueban durante el envío.
 
 ### Parámetros y respuestas
 
-| Parámetro | GET | POST |
-| --- | --- | --- |
-| Filtros de `CatalogBookFilter` | URL | URL |
-| `selection=new` | Obligatorio en `/books` | Obligatorio en `/books` |
-| `includeNotFound` | URL, solo `/updates` y `/refresh`; predeterminado `false` | Igual |
-| `multipleHashes` | URL: `all`, `first`, `skip` | Cuerpo JSON |
-| `page`, `size` | URL: `0`, `50` por defecto; `page >= 0`, `size > 0` | No admitidos |
+| Campo del body | Uso |
+| --- | --- |
+| `dryRun` | Obligatorio: `true` previsualiza, `false` crea el trabajo. |
+| `filters` | Objeto con los filtros de `CatalogBookFilter`. |
+| `selection` | `"new"` en `/books` para seleccionar solo novedades. |
+| `includeNotFound` | Solo `/updates` y `/refresh`; predeterminado `false`. |
+| `multipleHashes` | `all`, `first`, `skip`; por defecto configuración del servidor. |
+| `page`, `size` | Solo simulación de candidatos: `0`, `50` por defecto. |
 
-GET devuelve `items` y `meta`. Cada item contiene `eplId`, `title`,
-`catalogRevision`, `existingDownloads` y `targetHashes`. En las novedades,
-`existingDownloads` está vacío; en las actualizaciones contiene las versiones
-anteriores. La paginación se aplica **después de seleccionar los candidatos**.
+La simulación devuelve `items` y `meta`. Cada candidato contiene `eplId`, `title`,
+`catalogRevision`, `existingDownloads` y `targetHashes`. Las novedades tienen
+`existingDownloads` vacío. No consulta ni modifica torrents del cliente.
 
-POST selecciona **todos los candidatos que cumplan los filtros**, no solo la página
-previsualizada. No requiere `all=true`: sin filtros, selecciona los candidatos de
-todos los idiomas. Los parámetros desconocidos, vacíos o repetidos se rechazan con
-`400` (salvo `status`, que permite varios valores).
+La ejecución selecciona **todos los candidatos filtrados**, sin paginación y sin
+necesitar `all=true`. Recibe `previousVersions` (solo updates/refresh), `multipleHashes`,
+`batchSize`, `concurrency`, `interval` y `options`; los valores omitidos heredan el servidor.
+`options.hash` no se admite. La política anterior predeterminada es `keep`.
 
-El cuerpo opcional de `POST /refresh` es el mismo que el de `POST /updates`:
-`previousVersions`, `multipleHashes`, `batchSize` (alias `batch-size`), `concurrency`,
-`interval` y `options`. Los límites y opciones de descarga son los del bulk;
-`options.hash` no se admite. `previousVersions` es `keep` por defecto, y solo afecta
-a las versiones anteriores de los libros actualizados.
-
-`POST /books?selection=new` usa el cuerpo bulk: las mismas opciones excepto
-`previousVersions`, porque las novedades no tienen versiones anteriores que limpiar.
-Los valores de descarga y ejecución omitidos heredan `application.yaml`.
-
-POST devuelve `202`, el resumen del job y `Location: /api/torrent/jobs/{jobId}`.
-Los endpoints habituales de progreso, items, pausa, reanudación y cancelación sirven
-para estos jobs. Repetir el POST no vuelve a reservar libros pendientes. Sin
-candidatos se devuelve un job vacío `COMPLETED`. La selección y las opciones se
-congelan al crear el job; el GET previo no reserva libros.
+Con `dryRun=false` devuelve `202`, resumen y `Location: /api/torrent/jobs/{jobId}`.
+Los recursos de progreso, pausa, reanudación y cancelación no cambian. Previsualizar
+no reserva libros; al ejecutar se vuelve a evaluar la selección. No se reservan
+libros que ya tengan un envío pendiente; sin candidatos se crea un job vacío completado.
 
 ### Flujo recomendado: mantener una biblioteca en español
 
 Después de importar el CSV, previsualizar novedades y revisiones nuevas juntas:
 
 ```bash
-curl -s \
-  'http://192.168.2.2:8088/api/torrent/refresh?language=es&multipleHashes=all&size=1000' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/refresh' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"filters":{"language":"es"},"multipleHashes":"all","size":1000}' | jq
 ```
 
 Enviar ambos grupos y preparar la limpieza posterior de versiones anteriores:
 
 ```bash
-curl -s -X POST 'http://192.168.2.2:8088/api/torrent/refresh?language=es' \
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/refresh' \
   -H 'Content-Type: application/json' \
-  -d '{
-    "previousVersions": "removeTorrentAndFiles",
-    "multipleHashes": "all",
-    "batchSize": 100,
-    "concurrency": 2,
-    "interval": "100ms",
-    "options": {"qbittorrent": {"category": "Epublibre"}}
-  }' | jq
+  -d '{"dryRun":false,"previousVersions":"removeTorrentAndFiles","multipleHashes":"all","batchSize":100,"concurrency":2,"interval":"100ms","options":{"qbittorrent":{"category":"Epublibre"}},"filters":{"language":"es"}}' | jq
 ```
 
 La categoría debe existir en qBittorrent. Para conservar los archivos antiguos,
@@ -1249,17 +1246,22 @@ para procesar todos los planes pendientes. No existe un endpoint separado
 Para trabajar con cada grupo por separado:
 
 ```bash
-curl -s 'http://192.168.2.2:8088/api/torrent/books?selection=new&language=es&multipleHashes=all' | jq
-curl -s -X POST 'http://192.168.2.2:8088/api/torrent/books?selection=new&language=es' \
-  -H 'Content-Type: application/json' -d '{"multipleHashes":"all"}' | jq
-
-curl -s 'http://192.168.2.2:8088/api/torrent/updates?language=es&multipleHashes=all' | jq
-curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates?language=es' \
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/books' \
   -H 'Content-Type: application/json' \
-  -d '{"previousVersions":"removeTorrent","multipleHashes":"all"}' | jq
+  -d '{"dryRun":true,"selection":"new","filters":{"language":"es"},"multipleHashes":"all"}' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/books' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":false,"multipleHashes":"all","selection":"new","filters":{"language":"es"}}' | jq
+
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":true,"filters":{"language":"es"},"multipleHashes":"all"}' | jq
+curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":false,"previousVersions":"removeTorrent","multipleHashes":"all","filters":{"language":"es"}}' | jq
 ```
 
-El bulk normal `POST /api/torrent/books?language=es` conserva su comportamiento:
+El bulk normal `POST /api/torrent/books` conserva su comportamiento:
 selecciona todos los libros en español, sin limitarse a novedades y sin preparar
 limpieza de revisiones anteriores.
 

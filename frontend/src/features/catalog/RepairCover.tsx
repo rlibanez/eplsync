@@ -30,9 +30,11 @@ export function RepairCover({ book }: { book: Book }) {
     },
     retry: false,
     mutationFn: () =>
-      post<CoverReport>(
-        `/catalog/covers/check?eplId=${book.eplId}&onlyUnchecked=false`,
-      ),
+      post<CoverReport>("/catalog/covers/check", {
+        dryRun: false,
+        eplId: book.eplId,
+        onlyUnchecked: false,
+      }),
     onError: () =>
       setDecision({
         eplId: book.eplId,

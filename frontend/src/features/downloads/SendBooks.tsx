@@ -148,13 +148,20 @@ export function SendBooks() {
         body: payload,
       });
     } else {
-      const query = new URLSearchParams(filters!);
-      query.append("sort", "title,asc");
-      query.append("sort", "eplId,asc");
-      if (!filters!.size) query.set("all", "true");
+      const selectedFilters: Record<string, unknown> = Object.fromEntries(
+        filters!,
+      );
+      if (selectedFilters.eplId)
+        selectedFilters.eplId = Number(selectedFilters.eplId);
+      if (filters!.has("status"))
+        selectedFilters.status = filters!.getAll("status");
       mutation.mutate({
-        url: `/torrent/books?${query}`,
+        url: "/torrent/books",
         body: {
+          dryRun: false,
+          filters: selectedFilters,
+          sort: ["title,asc", "eplId,asc"],
+          all: !filters!.size,
           options: payload,
           ...(concurrency ? { concurrency: Number(concurrency) } : {}),
           ...(batchSize ? { batchSize: Number(batchSize) } : {}),
