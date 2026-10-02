@@ -32,6 +32,7 @@ public final class CatalogBookSpecifications {
         spec = andIfNotNull(spec, titleContains(f.getTitle()));
         spec = andIfNotNull(spec, genresContains(f.getGenres()));
         spec = andIfNotNull(spec, collectionContains(f.getCollection()));
+        if (f.getRevision() != null) spec = spec.and((root, q, cb) -> cb.equal(root.get("revision"), f.getRevision()));
         spec = andIfNotNull(spec, publicationYearEqualsOrBetween(f));
         spec = andIfNotNull(spec, languageEquals(f));
         spec = andIfNotNull(spec, publicationStatusEquals(f));

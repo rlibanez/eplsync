@@ -72,7 +72,8 @@
     "previous": "Previous",
     "next": "Next",
     "clearFilters": "Clear filters",
-    "openNew": "Open “{{title}}” in a new tab"
+    "openNew": "Open “{{title}}” in a new tab",
+    "filterByValue": "Filter by {{field}}: {{value}}"
   },
   "detail": {
     "back": "Back to catalog",
@@ -522,7 +523,8 @@
     "added": "Added to EPL Sync",
     "from": "From",
     "to": "To",
-    "equal": "Match dates"
+    "equal": "Match dates",
+    "clearApplied": "Clear filters"
   },
   "columns": {
     "title": "Columns",

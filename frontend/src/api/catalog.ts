@@ -99,6 +99,7 @@ export function catalogParams(input: URLSearchParams) {
     ["publicationStatus", 20],
     ["publicationYear", 4],
     ["eplId", 19],
+    ["revision", 24],
   ] as const) {
     const value = input.get(key)?.trim();
     if (value) params.set(key, value.slice(0, max));

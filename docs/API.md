@@ -167,6 +167,17 @@ Los resultados incluyen `download.items`, con `id`, `revision`, `status` y
 `completed` de los registros de descarga asociados. Es información guardada en
 EPLsync; consultar un libro no ejecuta un sync.
 
+El filtro de catálogo `revision` permite seleccionar una revisión numérica exacta
+(por ejemplo, `GET /api/catalog/books?revision=1.1`) y combinarla con los demás filtros.
+Debe ser un número finito mayor o igual a cero.
+
+En la tabla del catálogo, los valores de las columnas (excepto el título, que abre
+el detalle) permiten aplicar filtros rápidos. Conservan los demás filtros,
+ordenación y tamaño de página, y vuelven a la primera página. Los géneros se
+seleccionan individualmente. Años y fechas se convierten en rangos de un solo día
+o año; la incorporación usa el día de la zona horaria del navegador. Los campos
+de texto conservan la búsqueda por coincidencia parcial del buscador avanzado.
+
 ### Filtros compartidos
 
 Estos filtros funcionan en:
@@ -182,6 +193,7 @@ Estos filtros funcionan en:
 | Parámetro | Significado / valores |
 | --- | --- |
 | `eplId` | Identificador exacto, entero positivo de tipo `Long`. |
+| `revision` | Revisión numérica exacta, finita y mayor o igual a cero. |
 | `author` | El autor contiene el texto indicado; hasta 255 caracteres. |
 | `title` | El título contiene el texto indicado; hasta 512 caracteres. |
 | `genres` | Los géneros contienen el texto indicado; hasta 512 caracteres. |

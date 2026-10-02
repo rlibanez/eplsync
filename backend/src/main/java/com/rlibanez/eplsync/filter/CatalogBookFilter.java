@@ -32,6 +32,9 @@ public class CatalogBookFilter {
     @Min(1)
     private Long eplId;
 
+    @jakarta.validation.constraints.DecimalMin("0.0")
+    private Double revision;
+
     // --- Texto (contains, case-insensitive donde aplique) ---
     @Size(max = 255)
     private String author;
@@ -87,6 +90,8 @@ public class CatalogBookFilter {
 
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
+        if (revision != null && (!Double.isFinite(revision) || revision < 0))
+            throw new IllegalArgumentException("revision debe ser un número finito mayor o igual a cero");
         if (publicationYearFrom != null && publicationYearTo != null && publicationYearFrom > publicationYearTo)
             throw new IllegalArgumentException("publicationYearFrom debe ser <= publicationYearTo");
         if (publicationDateFrom != null && publicationDateTo != null && publicationDateFrom.isAfter(publicationDateTo))

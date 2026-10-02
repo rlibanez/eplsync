@@ -1,3 +1,4 @@
+import { CatalogValue, quickFilter } from "./CatalogValue";
 import { CatalogColumns, columnLabels, useCatalogColumns, type Column } from "./CatalogColumns";
 import { CatalogFilters, filterKeys, filterRequest } from "./CatalogFilters";
 import { BookCover } from "./BookCover";
@@ -15,8 +16,9 @@ import { get, catalogParams, sorts, type BookPage } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 export function Catalog() {
   const { t } = useTranslation();
-  const { number, language, date, status } = useLocale();
+  const { number } = useLocale();
   const columns = useCatalogColumns();
+  const filtersOpen = useRef(false);
   const resize = useRef<{ key: Column; x: number; width: number; widths: Partial<Record<Column, number>> } | null>(null);
   const columnWidth = (key: Column) => columns.settings.widths[key] ?? (key === "title" ? 320 : 180);
   const resized = Object.keys(columns.settings.widths).length > 0;
@@ -52,6 +54,8 @@ export function Catalog() {
         </span>
       </div>
       <CatalogFilters
+        initiallyOpen={filtersOpen.current}
+        onToggle={(open) => { filtersOpen.current = open; }}
         key={search.toString()}
         params={params}
         onChange={setSearch}
@@ -148,12 +152,8 @@ export function Catalog() {
                       {key === "title" ? <Link className="book-title" onClick={rememberScroll}
                         to={`/catalog/${book.eplId}`} state={{ catalogSearch: search.toString() }}>
                         <BookCover book={book} /><span>{book.title}</span>
-                      </Link> : key === "language" ? <span className="badge">{language(book.language)}</span>
-                        : key === "status" || key === "publicationStatus" ? status(book[key])
-                        : key === "publicationDate" || key === "insertDate" ? date(book[key])
-                        : key === "eplId" || key === "publicationYear" ? number(book[key], { useGrouping: false })
-                        : key === "revision" ? number(book.revision)
-                        : book[key] || "—"}
+                      </Link> : <CatalogValue book={book} column={key}
+                        onFilter={(column, value) => setSearch(current => quickFilter(catalogParams(current), column, value))} />}
                     </td>)}
 
                   </tr>

@@ -1429,3 +1429,39 @@ summary {
 
 .sync-report-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .sync-count-help { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+
+.catalog-value-filter {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  text-decoration: none;
+}
+.catalog-value-filter:hover,
+.catalog-value-filter:focus-visible {
+  color: var(--mantine-primary-color-light-color);
+  text-decoration: none;
+}
+.catalog-value-filter:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.catalog-search summary {
+  position: relative;
+  padding-inline-end: 9em;
+  min-height: 26px;
+}
+.catalog-search .catalog-clear-filters {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: inherit;
+  font-weight: 400;
+}

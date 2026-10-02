@@ -9,6 +9,7 @@ export const filterKeys = [
   "author",
   "language",
   "eplId",
+  "revision",
   "genres",
   "collection",
   "status",
@@ -48,7 +49,11 @@ export function filterRequest(params: URLSearchParams) {
 export function CatalogFilters({
   params,
   onChange,
+  initiallyOpen = false,
+  onToggle,
 }: {
+  initiallyOpen?: boolean;
+  onToggle?: (open: boolean) => void;
   params: URLSearchParams;
   onChange: (params: URLSearchParams) => void;
 }) {
@@ -92,12 +97,29 @@ export function CatalogFilters({
     setEqual(v => ({ ...v, [from]: false }));
   }
   return (
-    <details className="catalog-search panel">
+    <details className="catalog-search panel" open={initiallyOpen}
+      onToggle={(event) => onToggle?.(event.currentTarget.open)}>
       <summary className={filterKeys.some((key) => params.has(key)) ? "filters-active" : undefined}>
         {t("filters.heading")}
         {filterKeys.some((k) => params.has(k))
           ? ` · ${t("filters.active")}`
           : ""}
+        {filterKeys.some((key) => params.has(key)) && (
+          <Button type="button" variant="subtle" size="compact-sm" fw={400}
+            className="catalog-clear-filters"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const details = event.currentTarget.closest("details");
+              onToggle?.(details?.open ?? false);
+              const next = new URLSearchParams(params);
+              filterKeys.forEach((key) => next.delete(key));
+              next.set("page", "0");
+              onChange(next);
+            }}>
+            {t("filters.clearApplied")}
+          </Button>
+        )}
       </summary>
       <form
         onSubmit={(event) => {
@@ -157,6 +179,8 @@ export function CatalogFilters({
           />
           <TextInput label={t("filters.eplId")} value={values.eplId}
             onChange={e => set("eplId", e.currentTarget.value)} type="number" min={1} step={1} />
+          <TextInput label={t("catalog.revision")} value={values.revision}
+            onChange={e => set("revision", e.currentTarget.value)} type="number" min={0} step="any" />
         </div>
         {ranges.map(([from, to, label]) => (
           <fieldset className="catalog-date-range" key={from}>

@@ -73,6 +73,18 @@ class DownloadTrackingTests {
     }
     DownloadRecord only() { return downloads.findAll().getFirst(); }
 
+    @Test void catalogFiltersByExactRevisionAndCombinesOtherFilters() throws Exception {
+        book(1.1, HASH);
+        books.save(CatalogBook.builder().eplId(33L).revision(1.2).title("Other").author("Author").links(OTHER).build());
+        mvc.perform(get("/api/catalog/books").param("revision", "1.1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].eplId").value(32));
+        mvc.perform(get("/api/catalog/books").param("revision", "1.2").param("eplId", "32"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        for (String invalid : List.of("-1", "NaN", "Infinity", "abc"))
+            mvc.perform(get("/api/catalog/books").param("revision", invalid)).andExpect(status().isBadRequest());
+    }
+
     @Test void manualLinkPreservesCurrentRevisionAndIsRecognizedBySync() throws Exception {
         book(1.8, HASH);
         var completed = Instant.parse("2026-09-29T10:00:00Z");

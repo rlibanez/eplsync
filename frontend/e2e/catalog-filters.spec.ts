@@ -73,3 +73,27 @@ test("advanced filters are collapsed and convert complete local days across DST"
   await expect(heading).not.toHaveClass("filters-active");
   await expect.poll(() => heading.evaluate(el => getComputedStyle(el).color)).toBe(normalColor);
 });
+
+test("clear applied filters from the heading preserves table preferences and disclosure state", async ({ page }) => {
+  await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
+  await page.route("**/api/catalog/books?**", r => r.fulfill({ json: {
+    items: [], meta: { page: 0, size: 50, totalItems: 0, totalPages: 0, hasNext: false, hasPrevious: false },
+  } }));
+  for (const expanded of [false, true]) {
+    await page.goto("/catalog?author=Author&status=DISPONIBLE&status=VERIFICADO&revision=1.1&addedFrom=2026-01-01&page=3&size=50&sort=author,asc");
+    const panel = page.locator(".catalog-search");
+    const summary = panel.locator("summary");
+    if (expanded) await summary.click();
+    const clear = panel.getByRole("button", { name: "Limpiar filtros", exact: true });
+    await clear.focus();
+    await page.keyboard.press("Enter");
+    await expect(clear).toHaveCount(0);
+    await expect.poll(() => panel.evaluate(el => (el as HTMLDetailsElement).open)).toBe(expanded);
+    const params = new URL(page.url()).searchParams;
+    expect(params.get("page")).toBe("0");
+    expect(params.get("size")).toBe("50");
+    expect(params.getAll("sort")).toEqual(["author,asc", "eplId,asc"]);
+    for (const key of ["author", "status", "revision", "addedFrom"]) expect(params.has(key)).toBe(false);
+    if (expanded) await expect(page.getByLabel("Autor", { exact: true })).toHaveValue("");
+  }
+});

@@ -72,7 +72,8 @@
     "previous": "Anterior",
     "next": "Siguiente",
     "clearFilters": "Quitar filtros",
-    "openNew": "Abrir «{{title}}» en una nueva pestaña"
+    "openNew": "Abrir «{{title}}» en una nueva pestaña",
+    "filterByValue": "Filtrar por {{field}}: {{value}}"
   },
   "detail": {
     "back": "Volver al catálogo",
@@ -522,7 +523,8 @@
     "added": "Incorporado a EPL Sync",
     "from": "Desde",
     "to": "Hasta",
-    "equal": "Igualar fechas"
+    "equal": "Igualar fechas",
+    "clearApplied": "Limpiar filtros"
   },
   "columns": {
     "title": "Columnas",
