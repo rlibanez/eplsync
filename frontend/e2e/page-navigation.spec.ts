@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/ui/config", (r) =>
     r.fulfill({ json: { defaultLanguage: "es" } }),
@@ -114,7 +114,7 @@ test("all sidebar icon centers remain fixed including logo and settings", async 
   const icons = page.locator(
     ".brand-icon svg, #sidebar nav a svg, .settings-link svg, .sidebar-toggle svg",
   );
-  await expect(icons).toHaveCount(8);
+  await expect(icons).toHaveCount(9);
   const positions = () =>
     icons.evaluateAll((nodes) =>
       nodes.map((node) => {
@@ -155,7 +155,7 @@ test("book has direct ePubLibre link and favicon is served", async ({
   await expect(link).toHaveAttribute("rel", "noopener noreferrer");
   await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
     "href",
-    "/favicon.svg",
+    /^data:image\/svg\+xml/,
   );
   const favicon = await page.request.get("/favicon.svg");
   expect(favicon.ok()).toBe(true);

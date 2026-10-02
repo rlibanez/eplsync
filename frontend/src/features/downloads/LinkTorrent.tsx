@@ -14,7 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
-import { ActionFailure, post } from "./shared";
+import { post } from "./shared";
 
 export function inferTorrentIdentity(name: string) {
   const ids = [...name.matchAll(/\[(\d+)\]/g)];
@@ -58,6 +58,13 @@ export function LinkTorrent({
       ),
   });
   const link = useMutation({
+    meta: {
+      notice: {
+        title: "torrentLink.title",
+        success: "torrentLink.linked",
+        href: `/catalog/${eplId}`,
+      },
+    },
     mutationFn: () =>
       post("/torrent/downloads/link", {
         clientInstanceId,
@@ -182,7 +189,6 @@ export function LinkTorrent({
             </Stack>
           </Paper>
           <Text>{t("torrentLink.help")}</Text>
-          <ActionFailure error={link.error} />
           <ModalActions>
             <Button
               variant="default"

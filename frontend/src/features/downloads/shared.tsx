@@ -1,5 +1,5 @@
 import { PageJump } from "../../components/PageJump";
-import { Alert, Button, Select } from "@mantine/core";
+import { Button, Select } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { useLocale } from "../../locales/useLocale";
 export interface Page<T> {
@@ -17,6 +17,7 @@ export class ActionError extends Error {
   constructor(
     public status: number,
     public details: string,
+    public eventOperationId?: string | null,
   ) {
     super(details);
   }
@@ -40,23 +41,10 @@ export async function post<T>(path: string, body?: unknown): Promise<T> {
     throw new ActionError(
       response.status,
       typeof data?.details === "string" ? data.details : "",
+      response.headers.get("X-EPLSync-Operation-Id"),
     );
   if (data === null) throw new ActionError(0, "");
   return data;
-}
-export function ActionFailure({ error }: { error: Error | null }) {
-  const { t } = useTranslation();
-  if (!error) return null;
-  return (
-    <Alert color="red" role="alert" title={t("downloads.failed")}>
-      <p>
-        {error instanceof ActionError && error.status
-          ? t("downloads.httpError", { status: error.status })
-          : t("downloads.uncertain")}
-      </p>
-      {error instanceof ActionError && error.details && <p>{error.details}</p>}
-    </Alert>
-  );
 }
 export function Paging({
   meta,

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, emitEvent } from "./fixtures";
 const hash = "a".repeat(40);
 const magnet = `magnet:?xt=urn:btih:${hash}&dn=Dune&tr=udp%3A%2F%2Ftracker.example%3A80`;
 const book = {
@@ -61,7 +61,18 @@ test("detail submits directly without options and exposes the backend magnet", a
   await expect(send).toBeDisabled();
   await expect.poll(() => calls).toBe(1);
   release();
-  await expect(page.getByRole("alert")).toContainText("opciones del servidor");
+  await emitEvent(page, {
+    category: "TORRENT",
+    action: "SEND_BOOK",
+    outcome: "SUCCEEDED",
+    details: { eplId: 32, submissionStatus: "ACCEPTED" },
+  });
+  await expect(page.locator(".notification-toasts")).toContainText(
+    "ha aceptado el libro 32",
+  );
+  await expect(page.locator(".notification-toasts [role=status]")).toHaveCount(
+    1,
+  );
   await expect(page).toHaveURL(/\/catalog\/32$/);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.screenshot({
@@ -98,7 +109,13 @@ test("multiple hashes require a choice but inherit every other server option", a
     .click();
   await page.getByRole("option", { name: second, exact: true }).click();
   await send.click();
-  await expect(page.getByRole("alert")).toContainText("ya existe");
+  await emitEvent(page, {
+    category: "TORRENT",
+    action: "SEND_BOOK",
+    outcome: "SUCCEEDED",
+    details: { eplId: 32, submissionStatus: "ALREADY_EXISTS" },
+  });
+  await expect(page.locator(".notification-toasts")).toContainText("ya existe");
   await page.getByRole("button", { name: "Abrir magnet", exact: true }).click();
   await expect(page.getByRole("menuitem").first()).toHaveAttribute(
     "href",
@@ -117,12 +134,12 @@ test("failed direct send explains uncertainty without retrying", async ({
   await page
     .getByRole("button", { name: "Enviar a descargar", exact: true })
     .click();
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.locator(".notification-toasts")).toContainText(
     "podría haberse ejecutado",
   );
   expect(calls).toBe(1);
 });
-test("table arrow opens the full detail in a new tab and title stays in the current tab", async ({
+test("table title opens the book in the current tab", async ({
   page,
   context,
 }) => {
@@ -142,26 +159,41 @@ test("table arrow opens the full detail in a new tab and title stays in the curr
     }),
   );
   await page.goto("/catalog");
-  const arrow = page.getByRole("link", {
-    name: "Abrir «Dune» en una nueva pestaña",
-    exact: true,
-  });
-  await expect(arrow).toHaveAttribute("target", "_blank");
-  await expect(arrow).toHaveAttribute("rel", "noopener noreferrer");
-  const opened = context.waitForEvent("page");
-  await arrow.click();
-  const detail = await opened;
-  await expect(detail).toHaveURL(/\/catalog\/32$/);
   await expect(
-    detail.getByRole("heading", { name: "Dune", exact: true }),
-  ).toBeVisible();
-  await expect(detail.locator("#sidebar")).toBeVisible();
-  await expect(
-    detail.getByRole("link", { name: "Volver al catálogo" }),
-  ).toBeVisible();
-  expect(await detail.evaluate(() => window.opener === null)).toBe(true);
-  await expect(page).toHaveURL(/\/catalog$/);
-  await detail.close();
-  await page.getByRole("link", { name: "Dune EPL 32", exact: true }).click();
+    page.getByRole("link", { name: "Abrir «Dune» en una nueva pestaña" }),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: "Dune", exact: true }).click();
   await expect(page).toHaveURL(/\/catalog\/32$/);
+});
+
+test("backend submission failure produces only one notification", async ({
+  page,
+}) => {
+  await page.route("**/api/torrent/books/32", (r) =>
+    r.fulfill({
+      status: 502,
+      headers: { "X-EPLSync-Operation-Id": "single-failure" },
+      json: { details: "Torrent client unavailable" },
+    }),
+  );
+  await page.goto("/catalog/32");
+  await page
+    .getByRole("button", { name: "Enviar a descargar", exact: true })
+    .click();
+  await emitEvent(page, {
+    category: "TORRENT",
+    action: "SEND_BOOK",
+    outcome: "FAILED",
+    operationId: "single-failure",
+    details: { eplId: 32, reason: "TorrentOperationException" },
+  });
+  await expect(page.locator(".notification-toasts [role=alert]")).toHaveCount(
+    1,
+  );
+  await expect(page.locator(".notification-toasts")).toContainText("Fallido");
+  await expect(
+    page
+      .locator(".notification-toasts")
+      .getByRole("link", { name: "Ver detalles" }),
+  ).toHaveAttribute("href", "/catalog/32");
 });

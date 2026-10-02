@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/ui/config", (r) =>
     r.fulfill({ json: { defaultLanguage: "es" } }),
@@ -86,7 +86,9 @@ test("torrent connection is explicit and handles success, disabled and server fa
   ).toBeVisible();
   expect(calls).toBe(0);
   await page.getByRole("button", { name: "Comprobar conexión" }).click();
-  await expect(page.getByRole("alert")).toContainText("Conexión correcta");
+  await expect(page.locator(".notification-toasts")).toContainText(
+    "Conexión correcta",
+  );
   await expect(page.getByText("5.1.2", { exact: true })).toBeVisible();
   await page.screenshot({ path: "test-results/torrent-connected.png" });
   body = {
@@ -98,18 +100,22 @@ test("torrent connection is explicit and handles success, disabled and server fa
     apiVersion: null,
   };
   await page.getByRole("button", { name: "Comprobar conexión" }).click();
-  await expect(page.getByRole("alert")).toContainText("desactivada");
+  await expect(page.locator(".notification-toasts")).toContainText(
+    "desactivada",
+  );
   await expect(page.getByText("5.1.2", { exact: true })).toHaveCount(0);
   status = 502;
   body = { details: "El cliente torrent ha rechazado la autenticación" };
   await page.getByRole("button", { name: "Comprobar conexión" }).click();
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.locator(".notification-toasts")).toContainText(
     "rechazado la autenticación",
   );
   status = 504;
   body = {};
   await page.getByRole("button", { name: "Comprobar conexión" }).click();
-  await expect(page.getByRole("alert")).toContainText("tiempo de espera");
+  await expect(page.locator(".notification-toasts")).toContainText(
+    "tiempo de espera",
+  );
   expect(calls).toBe(4);
 });
 test("legacy database URL redirects and settings work on mobile", async ({

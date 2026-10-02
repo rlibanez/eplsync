@@ -1,6 +1,6 @@
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
-import { useEffect, useState } from "react";
-import { Alert, Button } from "@mantine/core";
+import { useState } from "react";
+import { Button } from "@mantine/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Wrench } from "lucide-react";
@@ -12,12 +12,6 @@ export function RepairCover({ book }: { book: Book }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
   const [decision, setDecision] = useState<CoverResult | null>(null);
-  const [repaired, setRepaired] = useState(false);
-  useEffect(() => {
-    if (!repaired) return;
-    const timer = window.setTimeout(() => setRepaired(false), 5000);
-    return () => window.clearTimeout(timer);
-  }, [repaired]);
   const update = (available: boolean) => {
     cache.setQueryData<Book>(["book", String(book.eplId)], (old) =>
       old ? { ...old, coverAvailable: available } : old,
@@ -26,6 +20,14 @@ export function RepairCover({ book }: { book: Book }) {
     void cache.invalidateQueries({ queryKey: ["catalog"] });
   };
   const check = useMutation({
+    mutationKey: ["cover-check"],
+    meta: {
+      notice: {
+        title: "covers.repair",
+        error: "covers.repairError",
+        href: `/catalog/${book.eplId}`,
+      },
+    },
     retry: false,
     mutationFn: () =>
       post<CoverReport>(
@@ -65,11 +67,18 @@ export function RepairCover({ book }: { book: Book }) {
         return;
       }
       if (result.available !== null) update(result.available);
-      if (result.available === false) setRepaired(true);
-      else setDecision(result);
+      if (result.available !== false) setDecision(result);
     },
   });
   const force = useMutation({
+    meta: {
+      notice: {
+        title: "covers.repair",
+        success: "covers.repaired",
+        error: "covers.forceError",
+        href: `/catalog/${book.eplId}`,
+      },
+    },
     retry: false,
     mutationFn: () =>
       post(`/catalog/covers/${book.eplId}/alternative`, {
@@ -78,7 +87,6 @@ export function RepairCover({ book }: { book: Book }) {
     onSuccess: () => {
       update(false);
       setDecision(null);
-      setRepaired(true);
     },
   });
   const pending = check.isPending || force.isPending;
@@ -95,7 +103,6 @@ export function RepairCover({ book }: { book: Book }) {
         loading={check.isPending}
         disabled={pending || !book.coverUrl}
         onClick={() => {
-          setRepaired(false);
           check.reset();
           force.reset();
           check.mutate();
@@ -107,23 +114,6 @@ export function RepairCover({ book }: { book: Book }) {
         <p className="muted cover-repair-feedback">
           {t("covers.alreadyAlternative")}
         </p>
-      )}
-      {repaired && (
-        <Alert
-          className="cover-repair-feedback"
-          color="green"
-          role="status"
-          withCloseButton
-          closeButtonLabel={t("covers.close")}
-          onClose={() => setRepaired(false)}
-        >
-          {t("covers.repaired")}
-        </Alert>
-      )}
-      {check.isError && !repaired && (
-        <Alert className="cover-repair-feedback" color="red" role="alert">
-          {t("covers.repairError")}
-        </Alert>
       )}
       <Modal
         icon={Wrench}
@@ -140,11 +130,6 @@ export function RepairCover({ book }: { book: Book }) {
         {!["CONCURRENT_CHANGE", "NO_COVER"].includes(
           decision?.reason || "",
         ) && <p>{t("covers.forceDescription")}</p>}
-        {force.isError && (
-          <Alert color="red" role="alert">
-            {t("covers.forceError")}
-          </Alert>
-        )}
         <ModalActions>
           <Button
             variant="default"

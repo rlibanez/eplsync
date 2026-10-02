@@ -26,6 +26,17 @@ import java.util.*;
 
 @Service
 public class BulkStore {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
+    private void event(BulkJob job, com.rlibanez.eplsync.events.EventJournal.Outcome outcome) {
+        if (events == null) return;
+        var summary = view(job);
+        var origin = job.getEventOrigin() == null ? com.rlibanez.eplsync.events.EventContext.Origin.MANUAL
+            : com.rlibanez.eplsync.events.EventContext.Origin.valueOf(job.getEventOrigin());
+        events.record(com.rlibanez.eplsync.events.EventJournal.Category.JOB, "DOWNLOAD", outcome, origin, job.getId(),
+            Map.of("selected", summary.selectedItems(), "processed", summary.processedItems(), "accepted", summary.accepted(),
+                "alreadyExists", summary.alreadyExists(), "failed", summary.failed(), "skipped", summary.skipped()));
+    }
+
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkStore.class);
 
     private final BulkJobRepository jobs;
@@ -144,6 +155,8 @@ public class BulkStore {
         job.setSelectedBooks(selectedBooks);
         if (items.countByJobIdAndState(job.getId(), BulkItem.State.PENDING) == 0) job.setState(BulkJob.State.COMPLETED);
         jobs.saveAndFlush(job);
+        event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED);
+        if (job.getState() == BulkJob.State.COMPLETED) event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
         return view(job.getId());
     }
 
@@ -166,6 +179,7 @@ public class BulkStore {
         if (concurrency < 1 || concurrency > 16) throw new IllegalArgumentException("concurrency debe estar entre 1 y 16");
         if (interval < 0 || interval > 60_000) throw new IllegalArgumentException("interval debe estar entre 0ms y 60s");
         var job = new BulkJob();
+        job.setEventOrigin(com.rlibanez.eplsync.events.EventContext.origin().name());
         job.setId(UUID.randomUUID().toString()); job.setState(BulkJob.State.QUEUED);
         job.setMultipleHashes(policy);
         job.setClient(properties.getClient()); job.setTargetFingerprint(fingerprint());
@@ -193,6 +207,8 @@ public class BulkStore {
         job.setSelectedBooks(books.size());
         if (commands.isEmpty()) job.setState(BulkJob.State.COMPLETED);
         jobs.saveAndFlush(job);
+        event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED);
+        if (job.getState() == BulkJob.State.COMPLETED) event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
         return view(job.getId());
     }
 
@@ -268,6 +284,7 @@ public class BulkStore {
         var job = job(id);
         if (job.getState() == BulkJob.State.COMPLETED || job.getState() == BulkJob.State.CANCELLED)
             throw new TorrentOperationException(HttpStatus.CONFLICT, "El trabajo ya ha finalizado");
+        var previousState = job.getState();
         switch (action) {
             case "pause" -> job.setState(BulkJob.State.PAUSED);
             case "resume" -> {
@@ -285,6 +302,11 @@ public class BulkStore {
             default -> throw new IllegalArgumentException("Acción desconocida");
         }
         job.setUpdatedAt(Instant.now()); jobs.saveAndFlush(job);
+        if (previousState != job.getState()) event(job, switch (action) {
+            case "pause" -> com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED;
+            case "resume" -> com.rlibanez.eplsync.events.EventJournal.Outcome.RESUMED;
+            default -> com.rlibanez.eplsync.events.EventJournal.Outcome.CANCELLED;
+        });
         return view(id);
     }
 
@@ -294,6 +316,7 @@ public class BulkStore {
         for (var state : List.of(BulkJob.State.RUNNING)) {
             for (var job : jobs.findByStateOrderByCreatedAtAsc(state, Pageable.unpaged())) {
                 job.setState(BulkJob.State.QUEUED); job.setMessage("Recuperado tras reinicio; se comprobarán hashes antes de enviar");
+                event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.RECOVERED);
             }
         }
         // Los elementos en vuelo de trabajos cancelados tampoco se vuelven a enviar.
@@ -305,13 +328,17 @@ public class BulkStore {
     public BulkJob next() {
         var now = Instant.now();
         for (var job : jobs.findByStateOrderByCreatedAtAsc(BulkJob.State.RETRY_WAIT, Pageable.unpaged()))
-            if (job.getRetryAt() != null && !job.getRetryAt().isAfter(now)) job.setState(BulkJob.State.QUEUED);
+            if (job.getRetryAt() != null && !job.getRetryAt().isAfter(now)) {
+                job.setState(BulkJob.State.QUEUED);
+                event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.RESUMED);
+            }
         var candidates = jobs.findByStateOrderByCreatedAtAsc(BulkJob.State.RUNNING, PageRequest.of(0, 1));
         if (candidates.isEmpty()) candidates = jobs.findByStateOrderByCreatedAtAsc(BulkJob.State.QUEUED, PageRequest.of(0, 1));
         if (candidates.isEmpty()) return null;
         var job = candidates.getFirst();
         if (!job.getTargetFingerprint().equals(fingerprint())) {
-            job.setState(BulkJob.State.PAUSED); job.setMessage("El destino configurado ha cambiado"); return null;
+            job.setState(BulkJob.State.PAUSED); job.setMessage("El destino configurado ha cambiado");
+            event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED); return null;
         }
         job.setState(BulkJob.State.RUNNING); return job;
     }
@@ -343,6 +370,9 @@ public class BulkStore {
                 job.setState(retry && item.getAttempts() <= 3 ? BulkJob.State.RETRY_WAIT : BulkJob.State.PAUSED);
                 job.setRetryAt(job.getState() == BulkJob.State.RETRY_WAIT ? Instant.now().plusSeconds(30L << (Math.min(item.getAttempts(), 3) - 1)) : null);
                 job.setMessage(message);
+                event(job, job.getState() == BulkJob.State.RETRY_WAIT
+                    ? com.rlibanez.eplsync.events.EventJournal.Outcome.RETRY_WAIT
+                    : com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED);
             }
         } else item.setState(result);
         item.setMessage(message); job.setUpdatedAt(Instant.now());
@@ -356,6 +386,8 @@ public class BulkStore {
         if (job.getState() == BulkJob.State.RUNNING && count(job.getId(), BulkItem.State.PENDING) == 0
                 && count(job.getId(), BulkItem.State.IN_FLIGHT) == 0) {
             job.setState(BulkJob.State.COMPLETED); job.setUpdatedAt(Instant.now()); job.setMessage(null); job.setRetryAt(null);
+            event(job, count(job.getId(), BulkItem.State.FAILED) > 0
+                ? com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL : com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
         }
     }
     public BulkJob job(String id) { return jobs.findById(id).orElseThrow(() -> new TorrentOperationException(HttpStatus.NOT_FOUND, "Trabajo torrent inexistente")); }

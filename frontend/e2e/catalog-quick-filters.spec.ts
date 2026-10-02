@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 test.use({ timezoneId: "Europe/Madrid" });
 
 const book = {
@@ -80,6 +80,11 @@ test("table values apply composable filters and exact local-day ranges", async (
       .click();
     expect(new URL(page.url()).searchParams.get(from)).toBe(value);
     expect(new URL(page.url()).searchParams.get(to)).toBe(value);
+    const range = page
+      .locator(".catalog-date-range")
+      .filter({ has: page.locator("legend", { hasText: label }) });
+    await expect(range.locator("input").first()).toHaveValue(value);
+    await expect(range.locator("input").last()).toHaveValue(value);
   }
   await expect
     .poll(() => queries.at(-1)?.get("insertDateFrom"))

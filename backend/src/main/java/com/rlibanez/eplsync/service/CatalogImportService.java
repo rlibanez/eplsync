@@ -23,6 +23,13 @@ import java.nio.file.Path;
  */
 @Service
 public class CatalogImportService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.rlibanez.eplsync.events.EventJournal events;
+    private java.util.Map<String, ?> eventSummary(ImportResult result) {
+        return java.util.Map.of("processed", result.recordsProcessed(), "created", result.recordsCreated(),
+            "updated", result.recordsUpdated(), "unchanged", result.recordsUnchanged(), "errors", result.errors());
+    }
+
 
     private static final Logger log = LoggerFactory.getLogger(CatalogImportService.class);
     private final String catalogZipUrl;
@@ -72,6 +79,12 @@ public class CatalogImportService {
     }
 
     private ImportResult importCatalog(String zipUrl, boolean truncateBeforeImport) {
+        if (events == null) return performImport(zipUrl, truncateBeforeImport);
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, truncateBeforeImport ? "REPLACE" : "UPDATE",
+            () -> performImport(zipUrl, truncateBeforeImport), this::eventSummary);
+    }
+
+    private ImportResult performImport(String zipUrl, boolean truncateBeforeImport) {
         long started = System.nanoTime();
         return withCatalogFile(zipUrl, csv -> {
             var metadata = new com.rlibanez.eplsync.model.CatalogMetadata();
@@ -99,8 +112,11 @@ public class CatalogImportService {
                     metadata.setImportedAt(java.time.Instant.now());
                     metadata.setDurationMs((System.nanoTime() - started) / 1_000_000);
                     metadataRepository.saveAndFlush(metadata);
-                    return new ImportResult(true, "Importación completada", stats.processed(), stats.errors(),
+                    var result = new ImportResult(true, "Importación completada", stats.processed(), stats.errors(),
                             stats.updated(), stats.created(), stats.unchanged(), metadata);
+                    if (events != null) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG,
+                            truncateBeforeImport ? "REPLACE" : "UPDATE", eventSummary(result));
+                    return result;
                 } catch (IOException e) {
                     throw new CatalogImportException("Error durante la importación", e);
                 }

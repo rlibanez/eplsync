@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 const custom = "https://covers.example/book.jpg";
 const fallback = "https://images.epublibre.org/libros/32.jpg";
@@ -86,14 +86,14 @@ for (const coverUrl of [custom, null]) {
     await expect(thumbnail).toHaveAttribute("src", expected);
     await expect(thumbnail).toHaveAttribute("loading", "lazy");
     await expect(page.locator(".mini-book")).toHaveCSS("width", "33px");
-    await page.getByRole("link", { name: "Dune EPL 32", exact: true }).click();
+    await page.getByRole("link", { name: "Dune", exact: true }).click();
     const cover = page.getByRole("link", {
       name: "Abrir portada de Dune en una nueva pestaña",
     });
     await expect(cover).toHaveAttribute("href", expected);
     await expect(cover).toHaveAttribute("target", "_blank");
-    await expect(cover).toHaveCSS("width", "130px");
-    await expect(cover).toHaveCSS("height", "175px");
+    await expect(cover.locator("img")).toHaveCSS("border-radius", "5px");
+    await expect(cover.locator("img")).toHaveCSS("height", "300px");
     await expect(cover.locator("img")).toHaveAttribute("src", expected);
     await expect
       .poll(() =>
@@ -103,8 +103,8 @@ for (const coverUrl of [custom, null]) {
       )
       .toBeGreaterThan(0);
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(cover).toHaveCSS("width", "75px");
-    await expect(cover).toHaveCSS("height", "105px");
+    await expect(cover.locator("img")).toHaveCSS("object-fit", "contain");
+    await expect(cover.locator("img")).toHaveCSS("height", "165px");
   });
 }
 

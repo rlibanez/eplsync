@@ -14,6 +14,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class DatabaseResetService {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     private final CatalogImportService catalog;
     private final BulkStore bulk;
     private final ObjectProvider<BulkWorker> workers;
@@ -33,6 +34,11 @@ public class DatabaseResetService {
     }
 
     public ResetResult reset() {
+        if (events == null) return performReset();
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "RESET",
+            this::performReset, result -> java.util.Map.of("imported", result.recordsImported()));
+    }
+    private ResetResult performReset() {
         // Worker dispatch and job creation use this same monitor. Do not hold a
         // database transaction while waiting for the worker or tracking locks.
         synchronized (bulk) {
@@ -54,6 +60,8 @@ public class DatabaseResetService {
                     var imported = catalog.importCatalog();
                     if (!imported.success() || imported.errors() > 0 || imported.recordsCreated() == 0)
                         throw new IllegalStateException("El catálogo está vacío o contiene errores; se conserva la base de datos anterior");
+                    if (events != null) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "RESET",
+                            java.util.Map.of("imported", imported.recordsCreated()));
                     return new ResetResult(true, books, downloads, jobs, items, plans, cleanup, imported.recordsCreated(), imported.metadata());
                 });
                 // Only discard the in-memory queue after the transaction commits.

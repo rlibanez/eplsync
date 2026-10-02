@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 test("preview and execution show local searchable detail without repeating sync", async ({
   page,
 }) => {

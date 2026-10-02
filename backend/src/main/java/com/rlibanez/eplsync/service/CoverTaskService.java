@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 /** One background task per process; results survive browser navigation, not server restarts. */
 @Service
 public class CoverTaskService {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     public record Options(long connectTimeoutMs, long requestTimeoutMs, long batchTimeoutMs, int concurrency) {
         public static Options from(CoverCheckProperties p) {
             return new Options(p.getConnectTimeout().toMillis(), p.getRequestTimeout().toMillis(),
@@ -31,6 +32,7 @@ public class CoverTaskService {
     public record Status(String id, String state, boolean dryRun, boolean onlyUnchecked, Options options, long checked, long total,
                          CoverCheckService.Report summary, String error) {}
     private static class Task {
+        final com.rlibanez.eplsync.events.EventContext.Origin origin = com.rlibanez.eplsync.events.EventContext.origin();
         final String id = UUID.randomUUID().toString();
         final boolean dryRun;
         final boolean onlyUnchecked;
@@ -62,17 +64,22 @@ public class CoverTaskService {
         if ((current != null && current.state.equals("RUNNING")) || checks.isBusy()) throw new CoverCheckService.BusyException();
         var task = new Task(dryRun, onlyUnchecked, effective);
         current = task;
-        executor.submit(() -> run(task, properties));
+        executor.submit(() -> com.rlibanez.eplsync.events.EventContext.withOrigin(task.origin, () -> { run(task, properties); return null; }));
         return task.status();
     }
 
     private void run(Task task, CoverCheckProperties properties) {
         if (!gate.enter(false)) {
-            task.error = "MAINTENANCE_BUSY"; task.state = "FAILED"; return;
+            task.error = "MAINTENANCE_BUSY"; task.state = "FAILED";
+            if (events != null) events.record(com.rlibanez.eplsync.events.EventJournal.Category.COVERS, "CHECK",
+                com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED, task.origin, task.id, java.util.Map.of("reason", "MAINTENANCE_BUSY"));
+            return;
         }
         CoverProbe probe = null;
+        boolean checking = false;
         try {
             probe = probes.create(properties);
+            checking = true;
             var report = checks.check(task.dryRun, 0, null, null, task.onlyUnchecked, properties, probe,
                     (done, total) -> { task.total = total; task.checked = done; });
             task.summary = new CoverCheckService.Report(report.dryRun(), report.checked(), report.available(), report.unavailable(),
@@ -81,6 +88,9 @@ public class CoverTaskService {
         } catch (CoverCheckService.BusyException ex) {
             task.error = "CHECK_BUSY"; task.state = "FAILED";
         } catch (Exception ex) {
+            if (!checking && events != null) events.record(com.rlibanez.eplsync.events.EventJournal.Category.COVERS, "CHECK",
+                com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED, task.origin, task.id,
+                java.util.Map.of("reason", ex.getClass().getSimpleName()));
             task.error = "CHECK_FAILED"; task.state = "FAILED";
         } finally {
             if (probe != null) probe.shutdown();

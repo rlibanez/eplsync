@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, emitEvent } from "./fixtures";
 const summary = {
   success: true,
   recordsProcessed: 4,
@@ -67,6 +67,7 @@ test("preview, confirmation and update survive navigation and refresh cached cat
     await gate;
     updated = true;
     await route.fulfill({ json: summary });
+    await emitEvent(page, {});
   });
   await page.goto("/catalog");
   await page
@@ -94,12 +95,21 @@ test("preview, confirmation and update survive navigation and refresh cached cat
     .getByRole("link", { name: "Settings" })
     .click();
   await page.getByRole("main").getByRole("link", { name: "Database" }).click();
-  await expect(page.getByRole("status")).toContainText(
+  await expect(page.getByRole("main").getByRole("status")).toContainText(
     "Downloading and updating",
   );
+  const remote = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Remote catalog", exact: true }),
+  });
+  await expect(remote.getByRole("status")).toContainText(
+    "Downloading and updating",
+  );
+  await remote.screenshot({ path: "test-results/remote-catalog-progress.png" });
   release();
   await expect(
-    page.getByText("Catalog updated. The new data is now available."),
+    page
+      .locator(".notification-toasts")
+      .getByText("Completed", { exact: true }),
   ).toBeVisible();
   expect(updates).toBe(1);
   await page
@@ -107,9 +117,7 @@ test("preview, confirmation and update survive navigation and refresh cached cat
     .getByRole("navigation")
     .getByRole("link", { name: "Catalog", exact: true })
     .click();
-  await expect(
-    page.getByRole("link", { name: "New book EPL 32" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "New book" })).toBeVisible();
 });
 test("update failure warns about uncertain completion without automatic retry", async ({
   page,
@@ -122,10 +130,10 @@ test("update failure warns about uncertain completion without automatic retry", 
   await page.goto("/maintenance/catalog");
   await page.getByRole("button", { name: "Download and update" }).click();
   await page.getByRole("button", { name: "Update now" }).click();
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.locator(".notification-toasts")).toContainText(
     "The connection to the server was lost.",
   );
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.locator(".notification-toasts")).toContainText(
     "It has not been retried automatically.",
   );
   await expect(
@@ -161,7 +169,9 @@ test("sidebar toggle and language preference survive reload", async ({
   await expect(
     page.getByRole("button", { name: "Usar idioma del despliegue" }),
   ).toHaveCount(0);
-  await expect(page.getByRole("switch")).toHaveCount(0);
+  await expect(
+    page.getByRole("switch", { name: /Plegar|Collapse/ }),
+  ).toHaveCount(0);
   await expect(
     page
       .locator("#sidebar")
@@ -222,6 +232,7 @@ test("full reset requires the red confirmation and clears cached catalog after s
     expect(route.request().method()).toBe("POST");
     expect(route.request().postDataJSON()).toEqual({ confirm: true });
     resets++;
+    void emitEvent(page, { action: "RESET" });
     return route.fulfill({
       json: {
         success: true,
@@ -236,9 +247,7 @@ test("full reset requires the red confirmation and clears cached catalog after s
     });
   });
   await page.goto("/catalog");
-  await expect(
-    page.getByRole("link", { name: "Old book EPL 32" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Old book" })).toBeVisible();
   await page
     .locator("#sidebar")
     .getByRole("link", { name: "Settings" })
@@ -264,7 +273,9 @@ test("full reset requires the red confirmation and clears cached catalog after s
     page.getByRole("heading", { name: "Reset result" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Database reset and catalog imported from scratch."),
+    page
+      .locator(".notification-toasts")
+      .getByText("Completed", { exact: true }),
   ).toBeVisible();
   expect(resets).toBe(1);
   await page
@@ -272,7 +283,7 @@ test("full reset requires the red confirmation and clears cached catalog after s
     .getByRole("link", { name: "Catalog", exact: true })
     .click();
   await expect(
-    page.getByRole("link", { name: "Reimported book EPL 32" }),
+    page.getByRole("link", { name: "Reimported book" }),
   ).toBeVisible();
 });
 
@@ -292,7 +303,7 @@ test("busy reset preserves the database and does not retry automatically", async
     .getByRole("dialog")
     .getByRole("button", { name: "Reset and import" })
     .click();
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.locator(".notification-toasts")).toContainText(
     "The database has not been reset.",
   );
   expect(resets).toBe(1);
@@ -302,24 +313,53 @@ test("busy reset preserves the database and does not retry automatically", async
   });
 });
 
-test("applied import has a single metadata summary and dismissible notice", async ({ page }) => {
+test("applied import has a single metadata summary and dismissible notice", async ({
+  page,
+}) => {
   const metadata = {
-    sourceModifiedAt: "2026-09-30T04:00:50", importedAt: "2026-10-01T06:33:18Z",
-    importMode: "UPDATE", durationMs: 4247, totalRows: 4, insertedRows: 1,
-    updatedRows: 1, unchangedRows: 2, errorRows: 0,
-    sourceFileName: "catalog.csv", sourceUrl: "https://example.test/catalog.zip", sourceSha256: "a".repeat(64),
+    sourceModifiedAt: "2026-09-30T04:00:50",
+    importedAt: "2026-10-01T06:33:18Z",
+    importMode: "UPDATE",
+    durationMs: 4247,
+    totalRows: 4,
+    insertedRows: 1,
+    updatedRows: 1,
+    unchangedRows: 2,
+    errorRows: 0,
+    sourceFileName: "catalog.csv",
+    sourceUrl: "https://example.test/catalog.zip",
+    sourceSha256: "a".repeat(64),
   };
-  await page.route("**/api/catalog/import/metadata", route => route.fulfill({ json: { metadata } }));
-  await page.route("**/api/catalog/import/update", route => route.fulfill({ json: { ...summary, metadata } }));
+  await page.route("**/api/catalog/import/metadata", (route) =>
+    route.fulfill({ json: { metadata } }),
+  );
+  await page.route("**/api/catalog/import/update", async (route) => {
+    await route.fulfill({ json: { ...summary, metadata } });
+    await emitEvent(page, {});
+  });
   await page.goto("/settings/database");
+  const current = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Current catalog", exact: true }),
+  });
+  await expect(current.getByRole("link")).toHaveCount(0);
   await page.getByRole("button", { name: "Download and update" }).click();
   await page.getByRole("button", { name: "Update now" }).click();
-  const notice = page.getByRole("status").filter({ hasText: "Catalog updated." });
+  const notice = page.getByRole("status").filter({ hasText: "Completed" });
   await expect(notice).toBeVisible();
-  await expect(page.getByText(metadata.sourceUrl, { exact: true })).toHaveCount(1);
-  await expect(page.getByText("2026-09-30 04:00:50", { exact: true })).toHaveCount(1);
-  await expect(page.getByRole("heading", { name: "Update result", exact: true })).toHaveCount(0);
-  await notice.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByText(metadata.sourceUrl, { exact: true })).toHaveCount(
+    1,
+  );
+  await expect(
+    page.getByText("2026-09-30 04:00:50", { exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("heading", { name: "Update result", exact: true }),
+  ).toHaveCount(0);
+  await notice
+    .getByRole("button", { name: "Dismiss notification", exact: true })
+    .click();
   await expect(notice).toBeHidden();
-  await expect(page.getByRole("heading", { name: "Current catalog" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Current catalog" }),
+  ).toBeVisible();
 });

@@ -29,6 +29,7 @@ import static org.mockito.Mockito.*;
     "spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false",
     "eplsync.torrent.enabled=false", "eplsync.torrent.bulk.worker-enabled=false"})
 class BulkTests {
+    @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired BulkStore store;
     @Autowired BulkJobRepository jobs;
     @Autowired BulkItemRepository items;
@@ -79,12 +80,22 @@ class BulkTests {
             starts.add(System.nanoTime());
             return TorrentDownloadResult.Status.ACCEPTED;
         });
-        var job = create(new BulkRequest(null, 2, 4, "100ms"));
+        long cursor = events.cursor();
+        var job = com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,
+            () -> create(new BulkRequest(null, 2, 4, "100ms")));
         worker = new BulkWorker(store, client, properties);
         worker.start();
         worker.start(); // El evento repetido no crea otro coordinador ni recupera envíos activos.
         awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
         assertThat(starts).hasSize(5);
+        var rows = events.after(cursor, 20);
+        assertThat(rows).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
+                    com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
+        assertThat(rows).allSatisfy(row -> assertThat(row.operationId()).isEqualTo(job.jobId()));
+        assertThat(rows.get(1).details()).containsEntry("accepted", 5);
+        assertThat(rows).allSatisfy(row -> assertThat(row.origin()).isEqualTo(
+            com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED));
         for (int i = 1; i < starts.size(); i++)
             assertThat(starts.get(i) - starts.get(i - 1)).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(90));
     }

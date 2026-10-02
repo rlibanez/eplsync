@@ -22,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {"spring.datasource.url=jdbc:sqlite::memory:", "spring.jpa.hibernate.ddl-auto=create-drop"})
 class CoverTaskTests {
+    @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired CoverTaskService tasks;
     @Autowired CatalogBookRepository repository;
     @Autowired CoverCheckProperties defaults;
@@ -51,6 +52,7 @@ class CoverTaskTests {
     }
 
     @Test void backgroundTaskChecksAllPreviouslyCheckedBooksWithIsolatedOptions() throws Exception {
+        long cursor = events.cursor();
         seed(61);
         mvc.perform(post("/api/catalog/covers/task").contentType("application/json").content("""
                 {"dryRun":false,"options":{"connectTimeoutMs":1000,"requestTimeoutMs":2000,"batchTimeoutMs":3000,"concurrency":2}}
@@ -58,6 +60,11 @@ class CoverTaskTests {
         var result = finished();
         assertThat(result.checked()).isEqualTo(61);
         assertThat(result.total()).isEqualTo(61);
+        var entries = events.after(cursor, 10);
+        assertThat(entries).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
+                    com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
+        assertThat(entries.getLast().details()).containsEntry("checked", 61);
         assertThat(result.summary().updated()).isEqualTo(61);
         assertThat(result.summary().items()).isEmpty();
         assertThat(repository.findAll()).allSatisfy(book -> assertThat(book.getCoverAvailable()).isFalse());

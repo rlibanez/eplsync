@@ -1,34 +1,72 @@
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { CurrentCatalog } from "./CatalogMetadata";
-import { useEffect, useState } from "react";
-import { Alert, Button, Loader } from "@mantine/core";
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { ActionIcon, Button, Loader, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { Download, Eye } from "lucide-react";
+import { Download, Eye, X } from "lucide-react";
 import { useImport } from "./ImportProvider";
 import { useLocale } from "../../locales/useLocale";
-import { ApiError, NetworkError } from "../../api/catalog";
 export function ImportCatalog() {
   const { t } = useTranslation();
   const { number } = useLocale();
-  const { operation, run } = useImport();
+  const { operation, run, dismissPreview } = useImport();
   const [confirm, setConfirm] = useState<"update" | "reset" | null>(null);
-  const [noticeVisible, setNoticeVisible] = useState(false);
-  useEffect(() => {
-    setNoticeVisible(true);
-    if (!operation?.result?.success && !operation?.resetResult?.success) return;
-    if (operation?.result?.errors) return;
-    const timer = window.setTimeout(() => setNoticeVisible(false), 5000);
-    return () => window.clearTimeout(timer);
-  }, [operation]);
   const pending = operation?.pending ?? false;
   return (
     <>
       <CurrentCatalog />
       <section className="panel settings-section">
         <h2>{t("import.source")}</h2>
+        {pending && operation?.mode !== "reset" && (
+          <div role="status" className="import-progress">
+            <Loader size="sm" />
+            <span>
+              {t(
+                operation?.mode === "preview"
+                  ? "import.previewPending"
+                  : "import.updatePending",
+              )}
+            </span>
+          </div>
+        )}
         <p>{t("import.sourceDescription")}</p>
-        <p className="muted">{t("import.behaviour")}</p>
+        <p className="muted">{t("import.previewNote")}</p>
+        {operation?.result && operation.mode === "preview" && (
+          <section
+            className="import-preview-result"
+            aria-live="polite"
+            aria-labelledby="import-preview-heading"
+          >
+            <div className="import-preview-heading">
+              <h3 id="import-preview-heading">{t("import.previewResult")}</h3>
+              <Tooltip label={t("import.closePreview")}>
+                <ActionIcon
+                  variant="subtle"
+                  aria-label={t("import.closePreview")}
+                  onClick={dismissPreview}
+                >
+                  <X size={18} />
+                </ActionIcon>
+              </Tooltip>
+            </div>
+            <dl className="import-summary">
+              {(
+                [
+                  "recordsProcessed",
+                  "recordsCreated",
+                  "recordsUpdated",
+                  "recordsUnchanged",
+                  "errors",
+                ] as const
+              ).map((key) => (
+                <div key={key}>
+                  <dt>{t(`import.${key}`)}</dt>
+                  <dd>{number(operation.result![key])}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
         <div className="action-row">
           <Button
             leftSection={<Eye size={17} />}
@@ -46,10 +84,15 @@ export function ImportCatalog() {
             {t("import.update")}
           </Button>
         </div>
-        <p className="muted import-note">{t("import.previewNote")}</p>
       </section>
       <section className="panel settings-section danger-panel">
         <h2>{t("reset.title")}</h2>
+        {pending && operation?.mode === "reset" && (
+          <div role="status" className="import-progress">
+            <Loader size="sm" />
+            <span>{t("reset.pending")}</span>
+          </div>
+        )}
         <p>{t("reset.description")}</p>
         <p className="muted">{t("reset.kept")}</p>
         <Button
@@ -61,143 +104,9 @@ export function ImportCatalog() {
           {t("reset.action")}
         </Button>
       </section>
-      {pending && operation && (
-        <Alert
-          title={t(
-            operation.mode === "preview"
-              ? "import.previewPending"
-              : operation.mode === "reset"
-                ? "reset.pending"
-                : "import.updatePending",
-          )}
-          icon={<Loader size="sm" />}
-          role="status"
-        >
-          {t("import.pendingDescription")}
-        </Alert>
-      )}
-      {operation?.error && (
-        <Alert color="red" title={t("import.failed")} role="alert">
-          <p>
-            {t(
-              operation.error instanceof ApiError &&
-                operation.error.status === 409
-                ? "reset.busy"
-                : operation.error instanceof NetworkError
-                  ? "import.networkError"
-                  : operation.error instanceof ApiError
-                    ? "import.httpError"
-                    : "import.unexpectedError",
-              {
-                status:
-                  operation.error instanceof ApiError
-                    ? operation.error.status
-                    : "",
-              },
-            )}
-          </p>
-          {operation.mode === "update" && <p>{t("import.uncertain")}</p>}
-          {operation.mode === "reset" &&
-            !(
-              operation.error instanceof ApiError &&
-              operation.error.status === 409
-            ) && <p>{t("reset.uncertain")}</p>}
-        </Alert>
-      )}
-      {operation?.result && operation.mode !== "preview" && noticeVisible && (
-        <Alert
-          withCloseButton
-          closeButtonLabel={t("covers.close")}
-          onClose={() => setNoticeVisible(false)}
-          color={
-            !operation.result.success
-              ? "red"
-              : operation.result.errors
-                ? "yellow"
-                : "teal"
-          }
-          role="status"
-        >
-          {t(
-            !operation.result.success
-              ? "import.unsuccessful"
-              : operation.result.errors
-                ? "import.partial"
-                : "import.updateDone",
-          )}
-        </Alert>
-      )}
-      {operation?.result && operation.mode === "preview" && (
-        <section className="panel settings-section" aria-live="polite">
-          <h2>
-            {t(
-              operation.mode === "preview"
-                ? "import.previewResult"
-                : "import.updateResult",
-            )}
-          </h2>
-          {noticeVisible && (
-            <Alert
-              withCloseButton
-              closeButtonLabel={t("covers.close")}
-              onClose={() => setNoticeVisible(false)}
-              color={
-                !operation.result.success
-                  ? "red"
-                  : operation.result.errors
-                    ? "yellow"
-                    : "teal"
-              }
-            >
-              {t(
-                !operation.result.success
-                  ? "import.unsuccessful"
-                  : operation.result.errors
-                    ? "import.partial"
-                    : operation.mode === "preview"
-                      ? "import.previewDone"
-                      : "import.updateDone",
-              )}
-            </Alert>
-          )}
-          <dl className="import-summary">
-            {(
-              [
-                "recordsProcessed",
-                "recordsCreated",
-                "recordsUpdated",
-                "recordsUnchanged",
-                "errors",
-              ] as const
-            ).map((key) => (
-              <div key={key}>
-                <dt>{t(`import.${key}`)}</dt>
-                <dd>{number(operation.result![key])}</dd>
-              </div>
-            ))}
-          </dl>
-          <Link className="back-link" to="/catalog">
-            {t("nav.explore")}
-          </Link>
-        </section>
-      )}
       {operation?.resetResult && (
         <section className="panel settings-section" aria-live="polite">
           <h2>{t("reset.result")}</h2>
-          {noticeVisible && (
-            <Alert
-              withCloseButton
-              closeButtonLabel={t("covers.close")}
-              onClose={() => setNoticeVisible(false)}
-              color={operation.resetResult.success ? "teal" : "red"}
-            >
-              {t(
-                operation.resetResult.success
-                  ? "reset.done"
-                  : "import.unsuccessful",
-              )}
-            </Alert>
-          )}
           <dl className="import-summary">
             {(
               [

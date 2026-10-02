@@ -9,6 +9,7 @@ import java.time.Instant;
 @Table(name = "torrent_bulk_jobs")
 @Getter @Setter
 public class BulkJob {
+    private String eventOrigin = "MANUAL";
     @Id private String id;
     @Enumerated(EnumType.STRING) private State state;
     public enum State { QUEUED, RUNNING, RETRY_WAIT, PAUSED, COMPLETED, CANCELLED }

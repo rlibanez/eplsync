@@ -1,3 +1,6 @@
+import { useUnreadEvents } from "../features/events/useUnreadEvents";
+import { EventConnection } from "../features/events/EventConnection";
+import { NotificationsProvider } from "../features/notifications/Notifications";
 import { CoverActivity } from "../features/catalog/CoverActivity";
 import { BackToTop } from "../components/BackToTop";
 import { TorrentActivity } from "../features/downloads/TorrentActivity";
@@ -23,17 +26,21 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  Bell,
 } from "lucide-react";
 export function Shell() {
   return (
     <PreferencesProvider>
-      <ImportProvider>
-        <ShellContent />
-      </ImportProvider>
+      <NotificationsProvider>
+        <ImportProvider>
+          <ShellContent />
+        </ImportProvider>
+      </NotificationsProvider>
     </PreferencesProvider>
   );
 }
 function ShellContent() {
+  const unread = useUnreadEvents();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const { collapsed, setCollapsed } = usePreferences();
@@ -128,6 +135,26 @@ function ShellContent() {
         <div className="sidebar-bottom">
           <NavLink
             className="settings-link"
+            to="/events"
+            title={t("events.title")}
+            aria-label={t("events.title")}
+            onClick={() => setOpen(false)}
+          >
+            <Bell size={19} />
+            <span className="nav-text">{t("events.title")}</span>
+            {unread > 0 && (
+              <span
+                className="event-unread-count"
+                role="status"
+                aria-label={t("events.unread", { count: unread })}
+                title={t("events.unread", { count: unread })}
+              >
+                {unread > 99 ? "99+" : unread}
+              </span>
+            )}
+          </NavLink>
+          <NavLink
+            className="settings-link"
             to="/settings"
             title={t("nav.settings")}
             aria-label={t("nav.settings")}
@@ -159,6 +186,7 @@ function ShellContent() {
         </div>
       </aside>
       <main id="main" tabIndex={-1}>
+        <EventConnection />
         <TorrentActivity />
         <CoverActivity />
         <Outlet />

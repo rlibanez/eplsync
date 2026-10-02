@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 test.use({ timezoneId: "Europe/Madrid" });
 test("advanced filters are collapsed and convert complete local days across DST", async ({
   page,

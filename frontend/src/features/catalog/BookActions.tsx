@@ -11,7 +11,7 @@ import { Alert, Button, Menu, Select } from "@mantine/core";
 import { Download, Magnet, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
-import { ActionFailure, post } from "../downloads/shared";
+import { post } from "../downloads/shared";
 interface Sent {
   eplId: number;
   hash: string;
@@ -46,7 +46,10 @@ export function BookActions({ book }: { book: Book }) {
   const pending = useIsMutating({ mutationKey: ["send-books"] }) > 0;
   const send = useMutation({
     mutationKey: ["send-books"],
-    meta: { feedbackPath: `/catalog/${eplId}` },
+    meta: {
+      backendEvents: true,
+      notice: { title: "send.fromBook", href: `/catalog/${eplId}` },
+    },
     retry: false,
     mutationFn: () =>
       post<Sent>(
@@ -144,18 +147,6 @@ export function BookActions({ book }: { book: Book }) {
       {magnets.isSuccess && !hashes.length && (
         <p className="muted">{t("send.noHash")}</p>
       )}
-      <div aria-live="polite">
-        <ActionFailure error={send.error} />
-        {send.data && (
-          <Alert color="green">
-            {t(
-              send.data.status === "ALREADY_EXISTS"
-                ? "detail.alreadySent"
-                : "detail.sent",
-            )}
-          </Alert>
-        )}
-      </div>
     </section>
   );
 }

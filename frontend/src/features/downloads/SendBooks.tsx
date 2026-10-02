@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { get, languages, type Book, type BookPage } from "../../api/catalog";
 import { useLocale } from "../../locales/useLocale";
 import { Loading, Failure } from "../../components/Feedback";
-import { Paging, ActionFailure, post, type Job } from "./shared";
+import { Paging, post, type Job } from "./shared";
 interface Sent {
   eplId: number;
   hash: string;
@@ -98,6 +98,14 @@ export function SendBooks() {
   const active = useIsMutating({ mutationKey: ["send-books"] }) > 0;
   const mutation = useMutation({
     mutationKey: ["send-books"],
+    meta: {
+      backendEvents: true,
+      notice: {
+        title: "nav.send",
+        success: "send.acceptedNote",
+        href: "/downloads",
+      },
+    },
     retry: false,
     mutationFn: ({ url, body }: { url: string; body: unknown }) =>
       post<Job | Sent>(url, body),
@@ -180,14 +188,6 @@ export function SendBooks() {
       <p className="muted">
         {t(bulk ? "send.multipleNote" : "send.individualNote")}
       </p>
-      <ActionFailure error={mutation.error} />
-      {mutation.data && !("jobId" in mutation.data) && (
-        <Alert color="green">
-          {status(mutation.data.status)} · EPL {mutation.data.eplId} ·{" "}
-          {mutation.data.client}
-          <p>{t("send.acceptedNote")}</p>
-        </Alert>
-      )}
       <section className="panel settings-section">
         <h2>{t("send.selection")}</h2>
         <form

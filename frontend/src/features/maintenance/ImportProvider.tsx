@@ -1,3 +1,5 @@
+import { useNotifications } from "../notifications/Notifications";
+import { useTranslation } from "react-i18next";
 import type { Metadata } from "./CatalogMetadata";
 import {
   createContext,
@@ -40,9 +42,12 @@ interface Operation {
 const Context = createContext<{
   operation: Operation | null;
   run: (mode: ImportMode) => Promise<void>;
+  dismissPreview: () => void;
 } | null>(null);
 export function ImportProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient();
+  const { notify } = useNotifications();
+  const { t } = useTranslation();
   const [operation, setOperation] = useState<Operation | null>(null);
   const running = useRef(false);
   useEffect(() => {
@@ -58,6 +63,21 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     if (running.current) return;
     running.current = true;
     setOperation({ mode, pending: true });
+    const title = t(
+      mode === "reset"
+        ? "reset.title"
+        : mode === "preview"
+          ? "import.preview"
+          : "import.update",
+    );
+    const href = "/settings/database";
+    if (mode === "preview")
+      notify({
+        title,
+        message: t("import.pendingDescription"),
+        tone: "info",
+        href,
+      });
     try {
       let response: Response;
       try {
@@ -81,15 +101,64 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       } catch {
         throw new NetworkError("Import response unavailable");
       }
-      if (!response.ok) throw new ApiError(response.status);
+      if (!response.ok)
+        throw new ApiError(
+          response.status,
+          response.headers.get("X-EPLSync-Operation-Id"),
+        );
       if (mode === "reset") {
         const resetResult: ResetResult = await response.json();
         setOperation({ mode, pending: false, resetResult });
       } else {
         const result: ImportResult = await response.json();
         setOperation({ mode, pending: false, result });
+        if (mode === "preview")
+          notify({
+            title,
+            message: t(
+              !result.success
+                ? "import.unsuccessful"
+                : result.errors
+                  ? "import.partial"
+                  : mode === "preview"
+                    ? "import.previewDone"
+                    : "import.updateDone",
+            ),
+            tone: !result.success
+              ? "error"
+              : result.errors
+                ? "warning"
+                : "success",
+            href,
+          });
       }
     } catch (error) {
+      const message = t(
+        error instanceof ApiError && error.status === 409
+          ? "reset.busy"
+          : error instanceof NetworkError
+            ? "import.networkError"
+            : error instanceof ApiError
+              ? "import.httpError"
+              : "import.unexpectedError",
+        { status: error instanceof ApiError ? error.status : "" },
+      );
+      if (
+        mode === "preview" ||
+        !(error instanceof ApiError && error.eventOperationId)
+      )
+        notify({
+          title,
+          message:
+            message +
+            (mode !== "preview" &&
+            !(error instanceof ApiError && error.status === 409)
+              ? "\n" +
+                t(mode === "reset" ? "reset.uncertain" : "import.uncertain")
+              : ""),
+          tone: "error",
+          href,
+        });
       setOperation({
         mode,
         pending: false,
@@ -127,7 +196,18 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     }
   }
   return (
-    <Context.Provider value={{ operation, run }}>{children}</Context.Provider>
+    <Context.Provider
+      value={{
+        operation,
+        run,
+        dismissPreview: () =>
+          setOperation((current) =>
+            current?.mode === "preview" && !current.pending ? null : current,
+          ),
+      }}
+    >
+      {children}
+    </Context.Provider>
   );
 }
 export function useImport() {

@@ -41,7 +41,10 @@ export interface BookPage {
   };
 }
 export class ApiError extends Error {
-  constructor(public status: number) {
+  constructor(
+    public status: number,
+    public eventOperationId?: string | null,
+  ) {
     super(`HTTP ${status}`);
   }
 }

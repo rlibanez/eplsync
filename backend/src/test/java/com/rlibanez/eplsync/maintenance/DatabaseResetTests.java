@@ -31,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false",
         "eplsync.torrent.enabled=false", "eplsync.torrent.bulk.worker-enabled=false"})
 class DatabaseResetTests {
+    @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired DatabaseResetService service;
     @Autowired CatalogImportService catalog;
     @MockitoBean FileDownloader downloader;
@@ -80,9 +81,13 @@ class DatabaseResetTests {
         });
     }
     @Test void resetsAllDataAndCanBeRepeated() {
+        long cursor = events.cursor();
         var result = service.reset();
         assertThat(result).isEqualTo(new DatabaseResetService.ResetResult(true, 1, 1, 1, 1, 1, 1, 1, result.metadata()));
         assertRebuilt();
+        var rows = events.after(cursor, 10);
+        assertThat(rows).hasSize(2).allSatisfy(row -> assertThat(row.action()).isEqualTo("RESET"));
+        assertThat(rows.getLast().outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
         var repeated = service.reset();
         assertThat(repeated).isEqualTo(new DatabaseResetService.ResetResult(true, 1, 0, 0, 0, 0, 0, 1, repeated.metadata()));
         assertRebuilt();

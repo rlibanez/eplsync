@@ -36,11 +36,13 @@ class DownloadTrackingTests {
             var client = mock(TorrentClient.class); when(client.type()).thenReturn("stub"); return client;
         }
     }
+    @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired DownloadRepository downloads;
     @Autowired CatalogBookRepository books;
     @Autowired DownloadTrackingService tracking;
     @Autowired TorrentClientService service;
     @Autowired TorrentDownloadService individual;
+    @Autowired com.rlibanez.eplsync.controller.TorrentDownloadController individualController;
     @Autowired TorrentClient stubClient;
     @Autowired TorrentProperties properties;
     @Autowired DownloadController controller;
@@ -60,7 +62,7 @@ class DownloadTrackingTests {
         when(stubClient.addTorrent(any(), any())).thenReturn(TorrentDownloadResult.Status.ACCEPTED);
         when(stubClient.withDefaults(any())).thenAnswer(inv -> inv.getArgument(0));
         when(stubClient.listTorrents()).thenReturn(List.of());
-        mvc = MockMvcBuilders.standaloneSetup(controller, catalog).setCustomArgumentResolvers(new org.springframework.data.web.PageableHandlerMethodArgumentResolver())
+        mvc = MockMvcBuilders.standaloneSetup(controller, catalog, individualController).setCustomArgumentResolvers(new org.springframework.data.web.PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
     @AfterEach void close() { properties.setEnabled(false); }
@@ -72,6 +74,60 @@ class DownloadTrackingTests {
         return new TorrentDownload(hash, "magnet:?xt=urn:btih:" + hash, true, null, null, null, book(revision, hash));
     }
     DownloadRecord only() { return downloads.findAll().getFirst(); }
+
+    @Test void singleSubmissionRecordsStartAndResultWithBookAndHeader() throws Exception {
+        book(1.0, HASH);
+        long cursor = events.cursor();
+        mvc.perform(post("/api/torrent/books/32")).andExpect(status().isAccepted())
+            .andExpect(header().exists("X-EPLSync-Operation-Id"));
+        var entries = events.after(cursor, 10);
+        assertThat(entries).hasSize(2).allSatisfy(e -> {
+            assertThat(e.action()).isEqualTo("SEND_BOOK");
+            assertThat(e.details().get("eplId")).isEqualTo(32);
+        });
+        assertThat(entries.getFirst().outcome().name()).isEqualTo("STARTED");
+        assertThat(entries.getLast().outcome().name()).isEqualTo("SUCCEEDED");
+        assertThat(entries.getLast().details()).containsEntry("submissionStatus", "ACCEPTED").containsEntry("hash", HASH);
+        assertThat(entries.getFirst().operationId()).isEqualTo(entries.getLast().operationId());
+        assertThat(events.unread(cursor).count()).isEqualTo(1);
+        cursor = events.cursor();
+        when(stubClient.addTorrent(any())).thenReturn(TorrentDownloadResult.Status.ALREADY_EXISTS);
+        mvc.perform(post("/api/torrent/books/32")).andExpect(status().isOk());
+        assertThat(events.after(cursor, 10).getLast().details()).containsEntry("submissionStatus", "ALREADY_EXISTS");
+    }
+    @Test void singleSubmissionFailureIsRecordedAndPropagated() throws Exception {
+        book(1.0, HASH);
+        long cursor = events.cursor();
+        when(stubClient.addTorrent(any())).thenThrow(new TorrentOperationException(org.springframework.http.HttpStatus.BAD_GATEWAY, "Unavailable"));
+        mvc.perform(post("/api/torrent/books/32")).andExpect(status().isBadGateway())
+            .andExpect(header().exists("X-EPLSync-Operation-Id"));
+        var entries = events.after(cursor, 10);
+        assertThat(entries).hasSize(2);
+        assertThat(entries.getLast().outcome().name()).isEqualTo("FAILED");
+        assertThat(entries.getLast().details()).containsEntry("eplId", 32);
+        verify(stubClient, times(1)).addTorrent(any());
+    }
+    @Test void appliedSyncPublishesOnePersistedResultAndFailureIsRecorded() throws Exception {
+        long cursor = events.cursor();
+        mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json")
+                .content("{\"dryRun\":true}"))
+                .andExpect(status().isOk()).andExpect(header().doesNotExist("X-EPLSync-Operation-Id"));
+        assertThat(events.after(cursor, 10)).isEmpty();
+        mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json").content("{\"dryRun\":false}"))
+                .andExpect(status().isOk()).andExpect(header().exists("X-EPLSync-Operation-Id"));
+        var rows = events.after(cursor, 10);
+        assertThat(rows).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
+                    com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
+        assertThat(rows.get(1).details()).containsEntry("checked", 0);
+        assertThat(rows.get(0).operationId()).isEqualTo(rows.get(1).operationId());
+        cursor = events.cursor();
+        properties.setEnabled(false);
+        assertThatThrownBy(() -> service.syncDownloads(false, false)).isInstanceOf(RuntimeException.class);
+        assertThat(events.after(cursor, 10)).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
+                    com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
+    }
 
     @Test void catalogFiltersByExactRevisionAndCombinesOtherFilters() throws Exception {
         book(1.1, HASH);

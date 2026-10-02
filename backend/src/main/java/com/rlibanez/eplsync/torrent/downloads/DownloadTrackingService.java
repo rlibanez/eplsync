@@ -18,6 +18,7 @@ import java.util.function.Supplier;
 
 @Service
 public class DownloadTrackingService {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DownloadTrackingService.class);
     private final DownloadRepository downloads;
     private final CatalogBookRepository books;
@@ -106,6 +107,13 @@ public class DownloadTrackingService {
     }
 
     public SyncResult sync(Supplier<List<RemoteTorrent>> remoteReader, boolean dryRun, boolean includeDetails) {
+        if (events == null || dryRun) return performSync(remoteReader, dryRun, includeDetails);
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT, "SYNC",
+            () -> performSync(remoteReader, dryRun, includeDetails),
+            result -> java.util.Map.of("checked", result.records().checked(), "created", result.records().created(),
+                "updated", result.records().updated(), "ignored", result.remote().ignored()));
+    }
+    private SyncResult performSync(Supplier<List<RemoteTorrent>> remoteReader, boolean dryRun, boolean includeDetails) {
         if (!coordination.writeLock().tryLock()) throw new TorrentOperationException(HttpStatus.CONFLICT,
                 "Hay envíos o una sincronización en curso; vuelve a intentarlo al terminar");
         try {
@@ -114,7 +122,13 @@ public class DownloadTrackingService {
             var remote = remoteReader.get();
             var now = Instant.now();
             synchronized (writes) {
-                var result = transactions.execute(tx -> reconcile(remote, now, dryRun, includeDetails));
+                var result = transactions.execute(tx -> {
+                    var summary = reconcile(remote, now, dryRun, includeDetails);
+                    if (events != null && !dryRun) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT, "SYNC",
+                        java.util.Map.of("checked", summary.records().checked(), "created", summary.records().created(),
+                            "updated", summary.records().updated(), "ignored", summary.remote().ignored()));
+                    return summary;
+                });
                 log.info("Sincronización finalizada: dryRun={}, remote={}, records={}, outcomes={}", dryRun, result.remote(), result.records(), result.outcomes());
                 return result;
             }

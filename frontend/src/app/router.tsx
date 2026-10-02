@@ -1,3 +1,4 @@
+import { Events } from "../features/events/Events";
 import { useTranslation } from "react-i18next";
 import { createBrowserRouter, Link, Navigate } from "react-router-dom";
 import { Shell } from "../layout/Shell";
@@ -7,6 +8,7 @@ export const router = createBrowserRouter([
   {
     element: <Shell />,
     children: [
+      { path: "/events", element: <Events /> },
       {
         path: "/maintenance/catalog",
         element: <Navigate to="/settings/database" replace />,
@@ -39,7 +41,9 @@ export const router = createBrowserRouter([
           },
           {
             path: "about",
-            lazy: async () => ({ Component: (await import("../features/settings/About")).About }),
+            lazy: async () => ({
+              Component: (await import("../features/settings/About")).About,
+            }),
           },
           {
             path: "torrent",

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 test("column visibility and order persist and can be restored", async ({ page }) => {
   await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
   await page.route("**/api/catalog/covers/task", r => r.fulfill({ json: { task: null } }));

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/ui/config", (r) =>
     r.fulfill({ json: { defaultLanguage: "es" } }),
@@ -71,7 +71,7 @@ test("back to top appears only after scrolling and is outside the table", async 
   );
   await page.goto("/catalog?size=50");
   await expect(
-    page.getByRole("link", { name: "Libro 50 EPL 50", exact: true }),
+    page.getByRole("link", { name: "Libro 50", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Subir", exact: true }),
@@ -134,12 +134,16 @@ test("manual jobs refresh uses primary color and reports loading success and fai
       .getByRole("status")
       .filter({ hasText: "Vista actualizada correctamente." }),
   ).toBeVisible();
+  await page
+    .locator(".notification-toasts")
+    .getByRole("button", { name: "Cerrar notificación" })
+    .click();
   fail = true;
   await refresh.click();
-  await expect(page.locator(".refresh-feedback")).toContainText(
+  await expect(page.locator(".notification-toasts")).toContainText(
     "No se pudo actualizar la vista",
   );
-  await expect(page.locator(".refresh-feedback")).not.toContainText(
+  await expect(page.locator(".notification-toasts")).not.toContainText(
     "correctamente",
   );
 });

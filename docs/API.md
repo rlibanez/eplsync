@@ -26,6 +26,8 @@ el despliegue pueden sobrescribir los predeterminados del repositorio.
 17. [Inventario de endpoints](#17-inventario-de-endpoints)
 18. [Novedades y envío combinado con filtros](#18-novedades-y-envío-combinado-con-filtros)
 
+19. [Eventos persistentes](#19-eventos-persistentes)
+
 ## 1. Convenciones generales
 
 - Los filtros y parámetros de selección van en la URL.
@@ -922,6 +924,11 @@ mediante la configuración de despliegue.
 
 | Método | Ruta |
 | --- | --- |
+| GET | `/api/events` |
+| GET | `/api/events/stream` |
+| GET | `/api/events/retention` |
+| GET | `/api/events/unread` |
+| POST | `/api/events/delete` |
 | POST | `/api/catalog/import/reset` |
 | POST | `/api/maintenance/reset` |
 | POST | `/api/catalog/import/update` |
@@ -1175,3 +1182,122 @@ una asociación incompatible, un cliente cambiado o un torrent ausente devuelve
 En el resultado de sincronización, el torrent queda marcado como «Vinculado».
 Los contadores conservan el resultado de aquella comprobación; en la siguiente
 sincronización el torrent ya se reconoce a través del historial de descargas.
+
+
+## 19. Eventos persistentes
+
+El registro es compartido por todas las interfaces y llamadas directas a la API.
+Registra catálogo, jobs, envíos individuales de libros, comprobaciones colectivas de portadas y sincronizaciones
+aplicadas. Los avisos exclusivos del navegador no se guardan aquí. Las simulaciones
+de portadas registran su ejecución, pero no modifican la disponibilidad de portadas.
+Las previsualizaciones de importación y sincronización no generan eventos persistentes.
+
+### Consultar el historial
+
+`GET /api/events?page=0&size=20`
+
+Filtros opcionales: `origin` (`MANUAL`, `SCHEDULED`, `SYSTEM`), `category` (`CATALOG`, `JOB`, `COVERS`, `TORRENT`), `outcome`
+(`STARTED`, `SUCCEEDED`, `PARTIAL`, `FAILED`, `PAUSED`, `RETRY_WAIT`, `RESUMED`, `CANCELLED`,
+`RECOVERED`), `from` y `before`. Las fechas son instantes ISO con zona: `from` es
+inclusivo y `before` exclusivo. Si se proporcionan ambos, `from < before`.
+`page >= 0`; este historial admite `size` de 1 a 200 (20 por defecto).
+
+```json
+{
+  "items": [{
+    "id": 42,
+    "createdAt": "2026-10-02T10:00:00Z",
+    "category": "CATALOG",
+    "action": "UPDATE",
+    "outcome": "SUCCEEDED",
+    "origin": "MANUAL",
+    "operationId": "identificador-de-la-ejecucion",
+    "details": {"processed": 73591, "created": 10, "updated": 4, "unchanged": 73577, "errors": 0}
+  }],
+  "total": 1, "page": 0, "size": 20, "cursor": 42
+}
+```
+
+Orden: más recientes primero. `operationId` relaciona inicio y resultado; en jobs
+es su identificador. `origin`: `MANUAL`, `SCHEDULED` o `SYSTEM`. Los valores de
+`action` actuales son `UPDATE`, `REPLACE`, `RESET`, `CHECK`, `DOWNLOAD`, `SEND_BOOK` y `SYNC`.
+`SEND_BOOK` registra inicio y resultado del envío individual: incluye `eplId` y,
+si tiene éxito, `hash`, `client` y `submissionStatus` (`ACCEPTED` o
+`ALREADY_EXISTS`). Un envío completado no significa que la descarga haya terminado.
+`details` contiene contadores/resumen, nunca la lista completa de elementos.
+Las operaciones síncronas registradas incluyen `X-EPLSync-Operation-Id` en su
+respuesta HTTP, también cuando fallan. Un rechazo previo puede no llevarla.
+
+### Consultar ejecuciones agrupadas
+
+`GET /api/events/operations?page=0&size=20`
+
+Devuelve una fila por `operationId`, sin modificar los eventos originales. Admite
+los mismos filtros y límites de paginación que el historial. `outcome` filtra el
+último estado de la ejecución; `STARTED` incluye las ejecuciones reanudadas o
+recuperadas aún sin finalizar. Las fechas filtran el inicio, no la finalización.
+
+Cada elemento contiene:
+
+- `latest`: último evento, con categoría, resultado, origen y detalles.
+- `startedAt`: fecha del inicio; `null` si ya no está en el historial.
+- `finishedAt`: fecha del último evento si es `SUCCEEDED`, `PARTIAL`, `FAILED`
+  o `CANCELLED`; `null` durante ejecución, pausa o espera de reintento.
+- `durationMs`: tiempo entre inicio y fin, incluidas pausas; `null` si falta alguno.
+- `firstRecordedAt`: fecha del primer evento conservado.
+- `events`: eventos conservados de esa ejecución en orden de registro.
+
+Orden descendente por inicio, con el primer ID como desempate. Cuando falta el
+inicio por retención/borrado, se usa la fecha del primer evento conservado para
+ordenar y filtrar, sin inventar un inicio ni una duración.
+
+La respuesta incluye `items`, `total` (ejecuciones), `page`, `size` y `cursor`.
+Para recorrer los mismos datos sin incorporar nuevas entradas, pasar ese cursor
+en `snapshot` en las siguientes consultas. Se excluyen los eventos posteriores,
+incluidas finalizaciones de ejecuciones ya mostradas. Omitirlo permite actualizar.
+Si supera el cursor de una base restaurada se usa el actual. Los borrados y la
+retención siguen aplicándose: no es una copia histórica que permita recuperarlos.
+
+### Eventos en tiempo real
+
+`GET /api/events/stream` responde `text/event-stream` (SSE).
+
+- Sin `Last-Event-ID`, envía `ready` con el cursor actual y solo eventos nuevos.
+- Con esa cabecera, recupera los eventos posteriores que aún estén conservados.
+- `event` incluye el registro y su `id`. `refresh` indica que se debe refrescar
+  el historial (incluido un borrado). `reset` reinicia el cursor si procede de
+  una base de datos anterior con un contador mayor.
+- Comentarios de conexión cada 15 segundos; reconexión automática de EventSource.
+- Hasta 32 conexiones por proceso; HTTP 503 cuando no hay plazas. Cada conexión
+  se renueva a los 30 minutos. Los proxies deben permitir streaming sin buffering.
+
+Los eventos borrados por retención o mantenimiento no se pueden recuperar.
+Las transacciones fallidas no emiten eventos de éxito. El canal transmite eventos
+ya confirmados; desconectar un navegador no cancela operaciones del backend.
+
+### Conservación y borrado
+
+`GET /api/events/retention` devuelve `{ "maxCount": 10000, "maxAgeDays": 365 }`
+por defecto. Se configuran con `EPLSYNC_EVENTS_RETENTION_MAX_COUNT` y
+`EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS`; ambos positivos. Limpieza por lotes cada
+minuto, aplicando ambos límites. El reinicio del catálogo conserva este historial.
+
+`POST /api/events/delete`, con todos los parámetros en el cuerpo:
+
+```json
+{"confirm": true, "from": "2026-10-01T00:00:00Z", "before": "2026-10-02T00:00:00Z"}
+```
+
+Devuelve `{ "deleted": 123 }`. Sin fechas elimina todos los eventos existentes al
+iniciar el borrado; con solo `before`, los anteriores a ese instante. Los nuevos
+creados durante la operación se conservan. Fechas inválidas, rangos invertidos o
+`confirm` distinto de `true` devuelven 400. No elimina libros, descargas ni jobs.
+
+
+`GET /api/events/unread?afterId=42` devuelve `{ "count": 3, "cursor": 48 }`:
+cuenta ejecuciones distintas (`operationId`) con eventos conservados posteriores al
+identificador indicado. Inicio y fin de la misma ejecución cuentan una sola vez.
+Si se leyó el inicio y después llega el fin, esa ejecución vuelve a tener novedades. `afterId`
+vale 0 por defecto y debe ser no negativo. Si supera el cursor actual, se cuenta
+desde cero para permitir recuperar el indicador tras restaurar una base anterior.
+El estado de lectura pertenece al navegador; no modifica el historial compartido.

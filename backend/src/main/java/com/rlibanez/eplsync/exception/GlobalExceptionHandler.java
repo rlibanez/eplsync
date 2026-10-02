@@ -148,6 +148,11 @@ public class GlobalExceptionHandler {
                 .body(buildError(ex.getStatus(), "Operación torrent fallida", ex.getMessage(), request));
     }
 
+    @ExceptionHandler(org.springframework.web.context.request.async.AsyncRequestNotUsableException.class)
+    public void handleDisconnectedStream(org.springframework.web.context.request.async.AsyncRequestNotUsableException ex) {
+        log.debug("Conexión asíncrona cerrada por el cliente: {}", ex.getMessage());
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(
             Exception ex,

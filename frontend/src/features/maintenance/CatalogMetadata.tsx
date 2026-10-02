@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -80,11 +79,6 @@ export function CurrentCatalog() {
         <MetadataDetails metadata={query.data.metadata} />
       ) : (
         <p className="muted">{t("metadata.empty")}</p>
-      )}
-      {query.data?.metadata && (
-        <Link className="back-link" to="/catalog">
-          {t("nav.explore")}
-        </Link>
       )}
     </section>
   );

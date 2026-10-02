@@ -54,6 +54,10 @@ logging:
     com.rlibanez.eplsync: DEBUG
 
 eplsync:
+  events:
+    retention:
+      max-count: ${EPLSYNC_EVENTS_RETENTION_MAX_COUNT:10000}
+      max-age-days: ${EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS:365}
   catalog:
     zip-url: "https://epublibre.org/rssweb/csv/epub.zip"
     cover-check:

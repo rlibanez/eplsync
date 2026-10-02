@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 const source = "https://covers.example/32.jpg";
 const fallback = "https://images.epublibre.org/libros/32.jpg";
@@ -152,7 +152,7 @@ test("404 activates alternative cover without reloading the document", async ({
     .click();
   await page
     .getByRole("status")
-    .getByRole("button", { name: "Cerrar", exact: true })
+    .getByRole("button", { name: "Cerrar notificación", exact: true })
     .click();
   await expect(
     page.getByText("Se ha activado la portada alternativa."),
@@ -246,9 +246,9 @@ test("failed manual override is visible and is not retried", async ({
     .getByRole("dialog")
     .getByRole("button", { name: "Usar portada alternativa" })
     .click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
-    "No se ha podido confirmar el cambio",
-  );
+  await expect(
+    page.locator(".notification-toasts").getByRole("alert"),
+  ).toContainText("No se ha podido confirmar el cambio");
   expect(attempts).toBe(1);
   await expect(page.locator(".detail-cover img")).toHaveAttribute(
     "src",

@@ -1,3 +1,5 @@
+import { NotificationSettings } from "../notifications/NotificationSettings";
+import { EventMaintenance } from "../events/EventMaintenance";
 import { useTranslation } from "react-i18next";
 import { palettes, useAppearance, type Palette } from "../../layout/Appearance";
 import { LanguagePicker } from "../../components/LanguagePicker";
@@ -50,6 +52,8 @@ export function Settings() {
           ))}
         </fieldset>
       </section>
+      <NotificationSettings />
+      <EventMaintenance />
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, emitEvent } from "./fixtures";
 const meta = (total = 1, page = 0, size = 20) => ({
   page,
   size,
@@ -167,7 +167,15 @@ test("single submission selects a hash and confirms before sending", async ({
     .getByRole("dialog")
     .getByRole("button", { name: "Enviar ahora" })
     .click();
-  await expect(page.getByRole("alert")).toContainText("Aceptado");
+  await emitEvent(page, {
+    category: "TORRENT",
+    action: "SEND_BOOK",
+    outcome: "SUCCEEDED",
+    details: { eplId: 32, submissionStatus: "ACCEPTED" },
+  });
+  await expect(page.locator(".notification-toasts")).toContainText(
+    "ha aceptado el libro 32",
+  );
   expect(sends).toBe(1);
 });
 test("bulk preview pagination does not restrict submission and leads to job controls", async ({
@@ -296,9 +304,9 @@ test("unfiltered bulk requires an explicit whole-catalog choice and network erro
     .getByRole("dialog")
     .getByRole("button", { name: "Enviar ahora" })
     .click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "No se pudo completar" }),
-  ).toContainText("podría haberse ejecutado");
+  await expect(page.locator(".notification-toasts")).toContainText(
+    "podría haberse ejecutado",
+  );
   expect(calls).toBe(1);
 });
 test("directory opens a filtered catalog, pagination includes 10 to 500", async ({

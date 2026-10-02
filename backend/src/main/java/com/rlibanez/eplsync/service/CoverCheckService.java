@@ -13,6 +13,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class CoverCheckService {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
+    private java.util.Map<String, ?> eventSummary(Report report) {
+        return java.util.Map.of("dryRun", report.dryRun(), "checked", report.checked(), "available", report.available(),
+                "unavailable", report.unavailable(), "inconclusive", report.inconclusive(), "updated", report.updated());
+    }
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CoverCheckService.class);
     public record Item(long eplId, String coverUrl, Boolean previousAvailable, Boolean available,
                        Integer httpStatus, String reason, boolean wouldChange, boolean updated) {}
@@ -47,6 +52,14 @@ public class CoverCheckService {
     public boolean isBusy() { return lock.isLocked(); }
 
     public Report check(boolean dryRun, long afterId, Long eplId, Integer size, boolean onlyUnchecked,
+            com.rlibanez.eplsync.config.CoverCheckProperties options, CoverProbe runProbe,
+            java.util.function.BiConsumer<Long, Long> listener) {
+        if (events == null || eplId != null)
+            return performCheck(dryRun, afterId, eplId, size, onlyUnchecked, options, runProbe, listener);
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.COVERS, "CHECK",
+            () -> performCheck(dryRun, afterId, eplId, size, onlyUnchecked, options, runProbe, listener), this::eventSummary);
+    }
+    private Report performCheck(boolean dryRun, long afterId, Long eplId, Integer size, boolean onlyUnchecked,
             com.rlibanez.eplsync.config.CoverCheckProperties options, CoverProbe runProbe,
             java.util.function.BiConsumer<Long, Long> listener) {
         if (afterId < 0 || (eplId != null && eplId < 1) || (size != null && size < 1)) {
@@ -108,6 +121,10 @@ public class CoverCheckService {
                             item.httpStatus(), item.wouldChange() && !updated ? "CONCURRENT_CHANGE" : item.reason(),
                             item.wouldChange(), updated));
                 }
+                if (events != null && eplId == null) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.COVERS, "CHECK",
+                    java.util.Map.of("dryRun", false, "checked", applied.size(), "available", count(applied, true),
+                        "unavailable", count(applied, false), "inconclusive", applied.stream().filter(i -> i.available() == null).count(),
+                        "updated", applied.stream().filter(Item::updated).count()));
                 return applied;
             });
             var report = new Report(dryRun, items.size(), count(items, true), count(items, false),

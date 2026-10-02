@@ -302,3 +302,101 @@ los filtros y el tamaño seleccionado. El selector de tamaño no muestra check
 y dispone de espacio para «1000 por página». La ficha incluye «Ver en ePubLibre»
 con `https://www.epublibre.org/libro/detalle/{eplId}`, en otra pestaña. El favicon
 SVG utiliza el mismo libro abierto del logo provisional.
+
+### Eventos persistentes y notificaciones
+
+**Eventos**, encima de Ajustes, consulta el registro compartido `app_events` en
+SQLite. Recoge actualizaciones/reemplazos/reinicios del catálogo, comprobaciones
+colectivas de portadas (incluidas simulaciones), sincronizaciones aplicadas y el
+ciclo de vida de los jobs. Funciona tanto desde la interfaz como desde la API;
+el historial se conserva al cerrar el navegador y al reiniciar la aplicación.
+El reinicio de datos del catálogo no elimina este registro: tiene mantenimiento
+independiente en Ajustes → General → Mantenimiento de eventos.
+
+Se guardan fecha UTC, categoría, acción, resultado, origen, identificador de
+operación y un resumen de contadores; no se duplican libros, respuestas completas,
+credenciales ni listas de URLs. `EventContext.withOrigin(SCHEDULED, ...)` permite
+que un futuro planificador identifique operaciones automáticas. Los jobs conservan
+ese origen aunque su ejecución continúe en otro hilo o después de un reinicio.
+Esto no añade todavía un planificador.
+
+`EventJournal` inserta los resultados dentro de la transacción de los datos y
+avisa al canal SSE después del commit. Los fallos se registran después del rollback.
+El envío a navegadores usa hilos virtuales separados, señales agrupadas y un máximo
+de 32 conexiones por proceso; un cliente lento no bloquea una importación.
+El frontend mantiene una conexión `EventSource` sin consultas periódicas al
+historial. La reconexión usa `Last-Event-ID` y reproduce los eventos aún conservados;
+al abrir la aplicación se carga el historial sin reproducir notificaciones antiguas.
+Los comentarios de mantenimiento de conexión no consultan la base de datos.
+
+Límites predeterminados, configurables en `application.yaml` o en el `.env` de Compose:
+
+```yaml
+eplsync:
+  events:
+    retention:
+      max-count: ${EPLSYNC_EVENTS_RETENTION_MAX_COUNT:10000}
+      max-age-days: ${EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS:365}
+```
+
+Ambos deben ser positivos. La limpieza se realiza cada minuto en transacciones de
+hasta 500 registros: elimina por antigüedad o por superar el número máximo. Puede
+haber un exceso temporal entre limpiezas. El mantenimiento manual permite eliminar
+todo, hasta una fecha incluida o un intervalo de días completos en la zona horaria
+del navegador, con confirmación. Los eventos nuevos creados durante ese borrado
+quedan fuera de su alcance.
+
+Los avisos flotantes duran 6 segundos por defecto, admiten cierre con X y
+pausan su temporizador al recibir foco o pasar el cursor. Se muestran hasta tres
+a la vez. Los avisos locales —conexión, validación o respuestas de acciones menores—
+son transitorios y no crean un segundo historial. Los eventos guardados se traducen
+al idioma actual de la interfaz. Los logs técnicos siguen en `eplsync.log`.
+
+Para nuevas operaciones relevantes, usar `EventJournal.run` y `completed` dentro
+de la transacción, o `record` para transiciones persistentes de jobs. No registrar
+cada fila ni cada tick de progreso. En frontend `meta.backendEvents` evita el
+aviso local de éxito de mutaciones cuyo resultado ya llega por SSE. La cabecera
+`X-EPLSync-Operation-Id` identifica las operaciones registradas y evita duplicar
+el error HTTP como aviso local; los rechazos anteriores a iniciar la operación
+(por ejemplo mantenimiento ocupado) siguen teniendo feedback local.
+
+Los resultados detallados, indicadores de progreso, validaciones y errores de
+carga con opción de reintentar permanecen en sus vistas.
+
+El menú Eventos muestra un contador de ejecuciones con novedades (hasta `99+`), también plegado.
+Inicio y finalización comparten una unidad; una finalización posterior a la lectura
+del inicio vuelve a marcar esa ejecución como pendiente.
+El último cursor leído se guarda por navegador en `eplsync.events.lastRead` y se
+comparte entre sus pestañas. Al abrir Eventos y cargar sus resultados se reconocen
+las novedades hasta ese cursor. El contador se consulta al conectar y se refresca
+por SSE, sin sondeo periódico; incluye eventos registrados con la web cerrada y
+excluye los borrados. Cerrar un aviso flotante no lo marca como leído.
+
+
+La vista Eventos consulta `/api/events/operations`: agrupa por ejecución, ordena
+por inicio descendente y muestra inicio, fin, duración y resultado. El resumen
+despliega la secuencia conservada con cifras formateadas y permite copiar detalles.
+Las fechas se presentan en la zona horaria del navegador; el backend usa UTC.
+
+Durante una visita se conserva el cursor de la primera consulta para paginar y
+filtrar sin incorporar nuevos eventos. El canal SSE actualiza el aviso de novedades
+y el contador, pero no recarga la tabla. «Actualizar tabla», salir y volver, o
+recargar la página incorporan los datos actuales. El botón de actualización aparece junto al contador de ejecuciones, dentro de la
+tabla y sin desplazar filas. La desconexión se comunica mediante un aviso flotante. Las novedades se reconocen al cargar los resultados, no
+al recibirlas mientras se consulta una tabla anterior.
+
+Filtros, página, resúmenes abiertos y desplazamiento se conservan en
+`sessionStorage` por pestaña (`eplsync.events.navigation`). No se conserva el
+cursor entre visitas: volver a Eventos siempre consulta los datos actuales.
+
+Ajustes > General > Notificaciones configura inicios (incluidas reanudaciones y
+recuperaciones), finales/cambios de estado, resultados correctos/con avisos/con
+errores, y duración de 1 a 60 segundos. Por defecto se muestran todos los resultados
+y no los inicios. Las preferencias se guardan por navegador en
+`eplsync.notificationPreferences`, se aplican también a avisos locales y no
+afectan al registro persistente ni al contador. Un aviso ya mostrado conserva su
+duración; los cambios se aplican a los siguientes.
+
+Los envíos individuales producen eventos `TORRENT / SEND_BOOK` desde el servicio,
+tanto desde la web como desde REST. El frontend usa el aviso SSE y evita duplicar
+éxitos y errores HTTP ya registrados; los fallos de transporte siguen siendo locales.

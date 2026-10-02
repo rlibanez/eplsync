@@ -1,3 +1,4 @@
+import { useNotifications } from "../notifications/Notifications";
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { CircleStop } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -10,7 +11,6 @@ import { useLocale } from "../../locales/useLocale";
 import { Loading, Failure } from "../../components/Feedback";
 import {
   Paging,
-  ActionFailure,
   post,
   jobStates,
   itemStates,
@@ -18,6 +18,7 @@ import {
   type Page,
 } from "./shared";
 export function Jobs() {
+  const { notify } = useNotifications();
   const { t } = useTranslation();
   const { date, status, number } = useLocale();
   const [page, setPage] = useState(0);
@@ -48,10 +49,27 @@ export function Jobs() {
     setRefresh("pending");
     try {
       const response = await result.refetch();
-      if (request === refreshRequest.current)
+      if (request === refreshRequest.current) {
         setRefresh(response.isError ? "error" : "success");
+        notify({
+          title: t("nav.jobs"),
+          message: t(
+            response.isError ? "downloads.refreshError" : "downloads.refreshed",
+          ),
+          tone: response.isError ? "error" : "success",
+          href: "/downloads/jobs",
+        });
+      }
     } catch {
-      if (request === refreshRequest.current) setRefresh("error");
+      if (request === refreshRequest.current) {
+        setRefresh("error");
+        notify({
+          title: t("nav.jobs"),
+          message: t("downloads.refreshError"),
+          tone: "error",
+          href: "/downloads/jobs",
+        });
+      }
     }
   }
   return (
@@ -70,21 +88,7 @@ export function Jobs() {
           )}
         </Button>
       </div>
-      <div aria-live="polite" aria-atomic="true">
-        {(refresh === "success" || refresh === "error") && (
-          <Alert
-            className="refresh-feedback"
-            color={refresh === "success" ? "green" : "red"}
-            role={refresh === "error" ? "alert" : "status"}
-          >
-            {t(
-              refresh === "success"
-                ? "downloads.refreshed"
-                : "downloads.refreshError",
-            )}
-          </Alert>
-        )}
-      </div>
+
       <p className="muted">{t("downloads.jobNote")}</p>
       <div className="filters">
         <Select
@@ -211,6 +215,7 @@ export function JobDetail() {
       : 3000,
   });
   const control = useMutation({
+    meta: { backendEvents: true, notice: { title: "downloads.job", href: `/downloads/jobs/${id}` } },
     mutationFn: (action: string) =>
       post<Job>(`/torrent/jobs/${encodeURIComponent(id!)}/${action}`),
     retry: false,
@@ -229,7 +234,6 @@ export function JobDetail() {
       <h1>{t("downloads.job")}</h1>
       <p className="hash-text">{id}</p>
       <p className="muted">{t("downloads.jobNote")}</p>
-      <ActionFailure error={control.error} />
       {job.isPending ? (
         <Loading />
       ) : job.isError ? (

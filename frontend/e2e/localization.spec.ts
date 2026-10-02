@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./fixtures";
 async function changeLanguage(page: Page, language: string) {
   const previous = page.url();
   await page.goto("/settings/general");
@@ -66,12 +66,13 @@ test("changes the entire interface without losing filters, localizes formats and
     page.getByRole("heading", { name: "Catalog", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("1 book found", { exact: true })).toBeVisible();
+  await page.locator(".catalog-search summary").click();
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue("arena");
   await expect(
     page.getByRole("textbox", { name: "Language", exact: true }),
   ).toHaveValue("Spanish");
   await expect(page).toHaveURL(/language=es/);
-  await page.getByRole("link", { name: "El libro de arena EPL 32" }).click();
+  await page.getByRole("link", { name: "El libro de arena", exact: true }).click();
   await expect(page.getByText(book.synopsis)).toBeVisible();
   await expect(
     page.getByText("Revision 1.2", { exact: true }).first(),

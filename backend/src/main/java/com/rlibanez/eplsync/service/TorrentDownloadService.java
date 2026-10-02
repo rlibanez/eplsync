@@ -16,17 +16,25 @@ public class TorrentDownloadService {
     private final MagnetLinkBuilder magnets;
     private final TorrentNameResolver names;
     private final TorrentClientService client;
+    private final com.rlibanez.eplsync.events.EventJournal events;
 
     public TorrentDownloadService(CatalogBookRepository repository, TorrentProperties properties,
-            MagnetLinkBuilder magnets, TorrentNameResolver names, TorrentClientService client) {
+            MagnetLinkBuilder magnets, TorrentNameResolver names, TorrentClientService client, com.rlibanez.eplsync.events.EventJournal events) {
         this.repository = repository;
         this.properties = properties;
         this.magnets = magnets;
         this.names = names;
         this.client = client;
+        this.events = events;
     }
 
     public TorrentDownloadResult download(Long eplId, TorrentDownloadRequest request) {
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT, "SEND_BOOK",
+            java.util.Map.of("eplId", eplId), () -> send(eplId, request),
+            result -> java.util.Map.of("hash", result.hash(), "client", result.client(), "submissionStatus", result.status().name()));
+    }
+
+    private TorrentDownloadResult send(Long eplId, TorrentDownloadRequest request) {
         client.requireEnabled();
         var book = repository.findById(eplId).orElseThrow(() ->
                 new TorrentOperationException(HttpStatus.NOT_FOUND, "El libro no existe en el catálogo"));

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/ui/config", (route) =>
     route.fulfill({ json: { defaultLanguage: "es" } }),
@@ -60,14 +60,21 @@ test("filters, pagination, detail and back preserve the catalog context", async 
     .getByRole("main")
     .getByRole("link", { name: "Explorar catálogo", exact: true })
     .click();
+  await page.locator(".catalog-search summary").click();
   await page.getByLabel("Título", { exact: true }).fill("Dune");
   await page.getByLabel("Autor", { exact: true }).fill("Herbert");
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(page).toHaveURL(/title=Dune/);
   await expect(page).toHaveURL(/author=Herbert/);
+  await expect(page.locator(".catalog-search summary")).toHaveClass(
+    /filters-active/,
+  );
   await page.getByRole("button", { name: "Siguiente" }).click();
   await expect(page).toHaveURL(/page=1/);
-  await page.getByRole("link", { name: "Dune EPL 32" }).click();
+  await expect(
+    page.getByRole("spinbutton", { name: "Página", exact: true }),
+  ).toHaveValue("2");
+  await page.getByRole("link", { name: "Dune", exact: true }).click();
   await expect(page).toHaveURL(/\/catalog\/32$/);
   await expect(
     page.getByRole("heading", { name: "Dune", exact: true }),
@@ -79,7 +86,9 @@ test("filters, pagination, detail and back preserve the catalog context", async 
   ).toBeVisible();
   await page.getByRole("link", { name: "Volver al catálogo" }).click();
   await expect(page).toHaveURL(/page=1/);
-  await expect(page.getByLabel("Título", { exact: true })).toHaveValue("Dune");
+  await expect(page.locator(".catalog-search input").first()).toHaveValue(
+    "Dune",
+  );
   await expect
     .poll(() => page.evaluate(() => window.scrollY))
     .toBeGreaterThan(0);

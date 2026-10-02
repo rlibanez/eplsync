@@ -13,13 +13,7 @@ import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
 import { useLocale } from "../../locales/useLocale";
 import { Loading, Failure } from "../../components/Feedback";
-import {
-  ActionFailure,
-  Paging,
-  post,
-  downloadStates,
-  type Page,
-} from "./shared";
+import { Paging, post, downloadStates, type Page } from "./shared";
 interface Download {
   id: string;
   eplId: number;
@@ -84,6 +78,13 @@ export function DownloadState() {
   });
   const sync = useMutation({
     mutationKey: ["torrent-sync"],
+    meta: {
+      notice: {
+        title: "downloads.sync",
+        success: "notifications.operationDone",
+        href: "/downloads",
+      },
+    },
     mutationFn: (dryRun: boolean) =>
       post<SyncResult>("/torrent/downloads/sync", {
         dryRun,
@@ -126,7 +127,6 @@ export function DownloadState() {
         </div>
       </div>
       <p className="muted">{t("downloads.localNote")}</p>
-      <ActionFailure error={sync.error} />
       {session.report && (
         <SyncReport report={session.report} onClose={session.close} />
       )}

@@ -32,6 +32,14 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
   const status = useCoverTask();
   const task = status.data?.task;
   const start = useMutation({
+    meta: { backendEvents: true,
+      notice: {
+        title: "covers.title",
+        success: "covers.running",
+        error: "covers.startError",
+        href: "/settings/covers",
+      },
+    },
     retry: false,
     mutationFn: () =>
       post<CoverTask>("/catalog/covers/task", {
@@ -141,11 +149,6 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
           </Button>
         </div>
       </form>
-      {start.isError && (
-        <Alert color="red" role="alert">
-          {t("covers.startError")}
-        </Alert>
-      )}
       {status.isError && (
         <Alert color="red" role="alert">
           <p>{t("covers.statusError")}</p>
@@ -184,11 +187,6 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
               )}
               <p className="muted">{t("covers.background")}</p>
             </>
-          )}
-          {task.state === "FAILED" && (
-            <Alert color="red" role="alert">
-              {t("covers.taskError")}
-            </Alert>
           )}
           {task.summary && (
             <dl className="cover-summary">
