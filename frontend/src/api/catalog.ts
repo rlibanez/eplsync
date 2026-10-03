@@ -81,11 +81,42 @@ export const sorts: Record<string, string> = {
   "title,asc": "titleAsc",
   "title,desc": "titleDesc",
   "author,asc": "authorAsc",
+  "author,desc": "authorDesc",
+  "publicationYear,asc": "yearAsc",
   "publicationYear,desc": "yearDesc",
+  "insertDate,asc": "addedAsc",
   "insertDate,desc": "addedDesc",
   "eplId,asc": "idAsc",
+  "eplId,desc": "idDesc",
+  "collection,asc": "collectionAsc",
+  "collection,desc": "collectionDesc",
+  "genres,asc": "genresAsc",
+  "genres,desc": "genresDesc",
+  "language,asc": "languageAsc",
+  "language,desc": "languageDesc",
+  "status,asc": "statusAsc",
+  "status,desc": "statusDesc",
+  "publicationStatus,asc": "publicationStatusAsc",
+  "publicationStatus,desc": "publicationStatusDesc",
+  "revision,asc": "revisionAsc",
+  "revision,desc": "revisionDesc",
+  "publicationDate,asc": "publishedAsc",
+  "publicationDate,desc": "publishedDesc",
 };
-export function catalogParams(input: URLSearchParams) {
+export function catalogSorts(input: URLSearchParams): string[] {
+  const seen = new Set<string>();
+  const values = input.getAll("sort").filter((value) => {
+    const field = value.split(",")[0];
+    if (!Object.hasOwn(sorts, value) || seen.has(field)) return false;
+    seen.add(field);
+    return true;
+  });
+  return values.length ? values : ["title,asc"];
+}
+export function catalogParams(
+  input: URLSearchParams,
+  includeTieBreaker = true,
+) {
   const params = new URLSearchParams();
   for (const [key, max] of [
     ["title", 512],
@@ -138,8 +169,12 @@ export function catalogParams(input: URLSearchParams) {
     "size",
     String([10, 20, 50, 100, 200, 500, 1000].includes(size) ? size : 20),
   );
-  const sort = input.get("sort") ?? "title,asc";
-  params.set("sort", Object.hasOwn(sorts, sort) ? sort : "title,asc");
-  if (params.get("sort") !== "eplId,asc") params.append("sort", "eplId,asc");
+  const ordering = catalogSorts(input);
+  ordering.forEach((value) => params.append("sort", value));
+  if (
+    includeTieBreaker &&
+    !ordering.some((value) => value.startsWith("eplId,"))
+  )
+    params.append("sort", "eplId,asc");
   return params;
 }

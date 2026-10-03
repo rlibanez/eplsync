@@ -195,7 +195,7 @@ function ShellContent() {
           location.pathname +
           (location.pathname === "/catalog"
             ? "?" +
-              catalogParams(new URLSearchParams(location.search)).toString()
+              catalogParams(new URLSearchParams(location.search), false).toString()
             : location.search)
         }
       />

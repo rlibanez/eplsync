@@ -1,4 +1,15 @@
 {
+  "sorting": {
+    "title": "Ordenar",
+    "help": "Mayús + clic en una cabecera añade un criterio.",
+    "field": "Criterio {{index}}",
+    "direction": "Sentido {{index}}",
+    "up": "Subir criterio {{index}}",
+    "down": "Bajar criterio {{index}}",
+    "remove": "Quitar criterio {{index}}",
+    "add": "Añadir criterio",
+    "reset": "Restablecer"
+  },
   "nav": {
     "skip": "Saltar al contenido",
     "open": "Abrir menú",
@@ -145,7 +156,25 @@
     "authorAsc": "Autor · A–Z",
     "yearDesc": "Año · más reciente",
     "addedDesc": "Incorporación · más reciente",
-    "idAsc": "Identificador · ascendente"
+    "idAsc": "Identificador · ascendente",
+    "authorDesc": "Autor · Z–A",
+    "yearAsc": "Año · más antiguo",
+    "addedAsc": "Incorporación · más antigua",
+    "idDesc": "Identificador · descendente",
+    "collectionAsc": "Colección · A–Z",
+    "collectionDesc": "Colección · Z–A",
+    "genresAsc": "Género · A–Z",
+    "genresDesc": "Género · Z–A",
+    "languageAsc": "Idioma · ascendente",
+    "languageDesc": "Idioma · descendente",
+    "statusAsc": "Estado · ascendente",
+    "statusDesc": "Estado · descendente",
+    "publicationStatusAsc": "Estado de publicación · ascendente",
+    "publicationStatusDesc": "Estado de publicación · descendente",
+    "revisionAsc": "Revisión · ascendente",
+    "revisionDesc": "Revisión · descendente",
+    "publishedAsc": "Publicado en EPL · más antiguo",
+    "publishedDesc": "Publicado en EPL · más reciente"
   },
   "statuses": {
     "DISPONIBLE": "Disponible",

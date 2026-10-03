@@ -1408,7 +1408,7 @@ summary {
 .table-toolbar { flex-wrap: wrap; gap: 12px; }
 
 .table-toolbar > .catalog-table-controls { width: auto; margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.catalog-table { width: max-content; }
+.catalog-table { width: max-content; min-width: 100%; }
 .catalog-table td:first-child { min-width: 0; width: auto; }
 .catalog-table td { max-width: 340px; overflow-wrap: anywhere; }
 .catalog-table th { position: relative; }
@@ -1686,4 +1686,32 @@ summary {
 @media (max-width: 650px) {
   .send-options-grid { grid-template-columns: minmax(0, 1fr); }
   .send-pattern-field { grid-column: auto; }
+}
+
+.catalog-sort-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 0 8px 0 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.catalog-sort-heading svg { flex-shrink: 0; }
+.catalog-sort-heading:hover, th[aria-sort] .catalog-sort-heading { color: var(--accent); }
+.catalog-sort-heading:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+
+.catalog-sorting-panel { width: min(580px, calc(100vw - 32px)); }
+.catalog-sorting-panel > p { margin: 0 0 12px; font-size: 13px; }
+.catalog-sorting-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1fr) repeat(3, 28px); align-items: center; gap: 6px; margin-bottom: 10px; }
+.catalog-sorting-actions { display: flex; gap: 8px; margin-top: 16px; }
+.catalog-sort-priority { font-size: 10px; letter-spacing: normal; }
+@media (max-width: 480px) {
+  .catalog-sorting-row { grid-template-columns: 18px minmax(0, 1fr) repeat(3, 28px); }
+  .catalog-sorting-row > .mantine-Select-root:nth-child(3) { grid-column: 2; grid-row: 2; }
 }

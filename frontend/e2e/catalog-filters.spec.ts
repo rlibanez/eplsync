@@ -135,7 +135,7 @@ test("clear applied filters from the heading preserves table preferences and dis
     const params = new URL(page.url()).searchParams;
     expect(params.get("page")).toBe("0");
     expect(params.get("size")).toBe("50");
-    expect(params.getAll("sort")).toEqual(["author,asc", "eplId,asc"]);
+    expect(params.getAll("sort")).toEqual(["author,asc"]);
     for (const key of ["author", "status", "revision", "addedFrom"])
       expect(params.has(key)).toBe(false);
     if (expanded)

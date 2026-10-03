@@ -1,4 +1,15 @@
 {
+  "sorting": {
+    "title": "Sort",
+    "help": "Shift + click a column header to add a criterion.",
+    "field": "Criterion {{index}}",
+    "direction": "Direction {{index}}",
+    "up": "Move criterion {{index}} up",
+    "down": "Move criterion {{index}} down",
+    "remove": "Remove criterion {{index}}",
+    "add": "Add criterion",
+    "reset": "Reset"
+  },
   "nav": {
     "skip": "Skip to content",
     "open": "Open menu",
@@ -145,7 +156,25 @@
     "authorAsc": "Author · A–Z",
     "yearDesc": "Year · newest first",
     "addedDesc": "Added · newest first",
-    "idAsc": "Identifier · ascending"
+    "idAsc": "Identifier · ascending",
+    "authorDesc": "Author · Z–A",
+    "yearAsc": "Year · oldest first",
+    "addedAsc": "Added · oldest first",
+    "idDesc": "Identifier · descending",
+    "collectionAsc": "Collection · A–Z",
+    "collectionDesc": "Collection · Z–A",
+    "genresAsc": "Genre · A–Z",
+    "genresDesc": "Genre · Z–A",
+    "languageAsc": "Language · ascending",
+    "languageDesc": "Language · descending",
+    "statusAsc": "Status · ascending",
+    "statusDesc": "Status · descending",
+    "publicationStatusAsc": "Publication status · ascending",
+    "publicationStatusDesc": "Publication status · descending",
+    "revisionAsc": "Revision · ascending",
+    "revisionDesc": "Revision · descending",
+    "publishedAsc": "Published in EPL · oldest first",
+    "publishedDesc": "Published in EPL · newest first"
   },
   "statuses": {
     "DISPONIBLE": "Available",

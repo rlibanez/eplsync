@@ -361,3 +361,41 @@ test("a failed submission is not retried automatically", async ({ page }) => {
   );
   expect(calls).toBe(1);
 });
+
+test("column sorting is server-side, resets pagination and preserves selection and filters", async ({ page }) => {
+  await page.goto("/catalog?author=Asimov&page=1");
+  await page.getByRole("checkbox", { name: "Seleccionar Book 3", exact: true }).check();
+  const author = page.locator('th[data-column="author"]');
+  const request = page.waitForRequest(r => r.url().includes("/api/catalog/books?") && new URL(r.url()).searchParams.get("sort") === "author,asc");
+  await author.getByRole("button", { name: "Autor", exact: true }).click();
+  await request;
+  await expect(page).toHaveURL(/page=0/);
+  expect(new URL(page.url()).searchParams.get("author")).toBe("Asimov");
+  await expect(page.getByText("1 libros seleccionados", { exact: true })).toBeVisible();
+  await expect(author).toHaveAttribute("aria-sort", "ascending");
+  await author.getByRole("button", { name: "Autor", exact: true }).click();
+  await expect(author).toHaveAttribute("aria-sort", "descending");
+  await page.getByRole("button", { name: "Ordenar", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Criterio 1", exact: true })).toHaveValue("Autor");
+});
+
+
+test("multiple sort priorities survive pagination and can be reordered or removed", async ({ page }) => {
+  await page.goto("/catalog?sort=language,asc");
+  await page.locator('th[data-column="title"] .catalog-sort-heading').click({ modifiers: ["Shift"] });
+  await expect(page.getByRole("button", { name: "Ordenar (2)", exact: true })).toBeVisible();
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["language,asc", "title,asc"]);
+  await page.getByRole("button", { name: "Siguiente", exact: true }).click();
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["language,asc", "title,asc"]);
+  await page.getByRole("button", { name: "Ordenar (2)", exact: true }).click();
+  await page.getByRole("button", { name: "Subir criterio 2" }).click();
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc", "language,asc"]);
+  expect(new URL(page.url()).searchParams.get("page")).toBe("0");
+  await expect(page.getByRole("textbox", { name: "Criterio 1", exact: true })).toHaveValue("Libro");
+  await page.getByRole("button", { name: "Quitar criterio 2" }).click();
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc"]);
+  await page.getByRole("button", { name: "Añadir criterio" }).click();
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc", "author,asc"]);
+  await page.getByRole("button", { name: "Restablecer", exact: true }).click();
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc"]);
+});

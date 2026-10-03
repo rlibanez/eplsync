@@ -2,7 +2,8 @@ import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { ImportWizard } from "./ImportWizard";
 import { MissingBooks } from "./MissingBooks";
 import { CurrentCatalog } from "./CatalogMetadata";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ActionIcon, Button, Loader, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { Download, X } from "lucide-react";
@@ -23,6 +24,15 @@ export function ImportCatalog() {
   } = useImport();
   const [confirm, setConfirm] = useState<"reset" | null>(null);
   const [wizard, setWizard] = useState(false);
+  const [search, setSearch] = useSearchParams();
+  useEffect(() => {
+    if (search.get("import") === "true") {
+      setWizard(true);
+      const next = new URLSearchParams(search);
+      next.delete("import");
+      setSearch(next, { replace: true });
+    }
+  }, [search, setSearch]);
   const pending = restoring || (operation?.pending ?? false);
   return (
     <>

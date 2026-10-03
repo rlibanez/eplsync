@@ -48,7 +48,6 @@ export function CatalogColumns({ settings, update }: Pick<ReturnType<typeof useC
   return <Popover position="bottom-end" width={340} trapFocus>
     <Popover.Target><Button fw={400} variant="default" leftSection={<Columns3 size={16} />}>{t("columns.title")}</Button></Popover.Target>
     <Popover.Dropdown className="column-picker">
-      <p className="muted">{t("columns.help")}</p>
       {settings.order.map((key, index) => <div className={`column-choice${target === key && dragged !== key ? " drop-target" : ""}`} key={key} data-column={key}
         onDragOver={event => { if (dragged) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setTarget(key); } }}
         onDrop={event => {

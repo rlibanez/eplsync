@@ -29,4 +29,23 @@ describe("catalog URL contract", () => {
     expect(p.getAll("sort")).toEqual(["eplId,asc"]);
     expect(p.get("page")).toBe("3");
   });
+  it("preserves priority, rejects duplicate fields and only adds an implicit tie-breaker for API queries", () => {
+    const input = new URLSearchParams(
+      "sort=language,asc&sort=title,desc&sort=title,asc&sort=bad,asc",
+    );
+    expect(catalogParams(input, false).getAll("sort")).toEqual([
+      "language,asc",
+      "title,desc",
+    ]);
+    expect(catalogParams(input).getAll("sort")).toEqual([
+      "language,asc",
+      "title,desc",
+      "eplId,asc",
+    ]);
+    expect(
+      catalogParams(
+        new URLSearchParams("sort=eplId,desc&sort=title,asc"),
+      ).getAll("sort"),
+    ).toEqual(["eplId,desc", "title,asc"]);
+  });
 });

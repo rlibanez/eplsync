@@ -450,3 +450,13 @@ si está disponible, con magnets.txt como nombre sugerido y sin imponer extensi�
 Se abre antes de solicitar la exportación; si se cancela no se consulta la API.
 En los demás navegadores se descarga magnets.txt usando la configuración de
 destino del navegador, sin mostrar un formulario intermedio.
+
+### Ordenación múltiple del catálogo
+
+El panel «Ordenar» permite añadir, quitar y mover criterios por prioridad.
+Un clic en una cabecera sustituye los criterios; Mayús + clic añade la columna
+o invierte su sentido conservando su prioridad. Las flechas y números reflejan
+el orden del panel. Las columnas ocultas también pueden seleccionarse en el panel.
+La URL conserva los criterios explícitos mediante parámetros sort repetidos.
+La petición al backend añade eplId ascendente como desempate si no se eligió EPL ID.
+Cambiar la ordenación vuelve a la primera página sin borrar filtros ni selección.

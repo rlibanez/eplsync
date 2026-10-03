@@ -3,6 +3,7 @@ import {
   selectionQuery,
   useCatalogSelection,
 } from "./CatalogSelection";
+import { CatalogSorting } from "./CatalogSorting";
 import { SendSelection } from "../downloads/SendSelection";
 import { CatalogValue, quickFilter } from "./CatalogValue";
 import {
@@ -22,8 +23,8 @@ import { useCatalogScroll } from "./useCatalogScroll";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Select, Checkbox } from "@mantine/core";
 import { Link, useSearchParams } from "react-router-dom";
-import { BookOpen, Download, Send } from "lucide-react";
-import { get, catalogParams, sorts, type BookPage } from "../../api/catalog";
+import { BookOpen, Download, Send, ArrowUp, ArrowDown } from "lucide-react";
+import { get, catalogParams, type BookPage } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 export function Catalog() {
   const { t } = useTranslation();
@@ -45,12 +46,16 @@ export function Catalog() {
   useEffect(() => {
     rememberCatalog(search.toString());
   }, [search]);
-  const params = catalogParams(search);
+  const params = catalogParams(search, false);
+  const ordering = params.getAll("sort");
   const query = params.toString();
   const result = useQuery({
     queryKey: ["catalog", query],
     queryFn: ({ signal }) =>
-      get<BookPage>(`/catalog/books?${filterRequest(params)}`, signal),
+      get<BookPage>(
+        `/catalog/books?${filterRequest(catalogParams(params))}`,
+        signal,
+      ),
   });
   const selection = useCatalogSelection(selectionQuery(params));
   const count = selection.count(result.data?.meta.totalItems ?? 0);
@@ -65,11 +70,24 @@ export function Catalog() {
   const rememberScroll = useCatalogScroll(query, result.isSuccess);
   function change(key: string, value: string) {
     const next = new URLSearchParams(params);
-    next.delete("sort");
-    next.set("sort", params.get("sort")!);
     next.set(key, value);
     if (key !== "page") next.set("page", "0");
     setSearch(next);
+  }
+  function changeSort(values: string[]) {
+    const next = new URLSearchParams(params);
+    next.delete("sort");
+    values.forEach((value) => next.append("sort", value));
+    next.set("page", "0");
+    setSearch(next);
+  }
+  function sortColumn(key: string, additive: boolean) {
+    const index = ordering.findIndex((value) => value.startsWith(key + ","));
+    const value =
+      key + (index >= 0 && ordering[index].endsWith(",asc") ? ",desc" : ",asc");
+    if (!additive) changeSort([value]);
+    else if (index < 0) changeSort([...ordering, value]);
+    else changeSort(ordering.map((old, i) => (i === index ? value : old)));
   }
   return (
     <>
@@ -102,41 +120,47 @@ export function Catalog() {
               : t("catalog.books")}
           </span>
           <div className="catalog-table-controls">
-            <Select
-              aria-label={t("catalog.sort")}
-              value={params.get("sort")}
-              onChange={(value) => value && change("sort", value)}
-              data={Object.entries(sorts).map(([value, label]) => ({
-                value,
-                label: t(`sorts.${label}`),
-              }))}
-            />
+            <CatalogSorting ordering={ordering} onChange={changeSort} />
             <CatalogColumns
               settings={columns.settings}
               update={columns.update}
             />
           </div>
         </div>
-        <div className={`catalog-selection-bar${count > 0 ? " has-selection" : ""}`}>
+        <div
+          className={`catalog-selection-bar${count > 0 ? " has-selection" : ""}`}
+        >
           <div className="catalog-selection-info">
             {count > 0 && (
               <span className="catalog-selection-count" aria-live="polite">
-                {t(selection.all ? "selection.allSelected" : "selection.selected", { count })}
+                {t(
+                  selection.all
+                    ? "selection.allSelected"
+                    : "selection.selected",
+                  { count },
+                )}
               </span>
             )}
             <div className="catalog-selection-controls">
-              {(!selection.all || count < (result.data?.meta.totalItems ?? 0)) && (
+              {(!selection.all ||
+                count < (result.data?.meta.totalItems ?? 0)) && (
                 <Button
                   variant="subtle"
                   size="compact-sm"
                   disabled={!result.data?.meta.totalItems || result.isFetching}
                   onClick={selection.selectAll}
                 >
-                  {t("selection.selectAll", { count: result.data?.meta.totalItems ?? 0 })}
+                  {t("selection.selectAll", {
+                    count: result.data?.meta.totalItems ?? 0,
+                  })}
                 </Button>
               )}
               {count > 0 && (
-                <Button variant="subtle" size="compact-sm" onClick={selection.clear}>
+                <Button
+                  variant="subtle"
+                  size="compact-sm"
+                  onClick={selection.clear}
+                >
                   {t("selection.clear")}
                 </Button>
               )}
@@ -184,16 +208,15 @@ export function Catalog() {
                 : t("catalog.emptyCatalog")}
             </p>
             {!filterKeys.some((key) => params.has(key)) &&
-              Number(params.get("page")) === 0 && (
-                <p>
-                  <Link className="back-link" to="/settings/database">
-                    {t("import.firstLoad")}
-                  </Link>
-                </p>
-              )}
-            <Button variant="light" onClick={() => setSearch({})}>
-              {t("catalog.reset")}{" "}
-            </Button>
+            Number(params.get("page")) === 0 ? (
+              <Button component={Link} to="/settings/database?import=true">
+                {t("import.wizardTitle")}
+              </Button>
+            ) : (
+              <Button variant="light" onClick={() => setSearch({})}>
+                {t("catalog.reset")}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="table-scroll">
@@ -221,7 +244,18 @@ export function Catalog() {
               <thead>
                 <tr>
                   {columns.visible.map((key) => (
-                    <th scope="col" key={key} data-column={key}>
+                    <th
+                      scope="col"
+                      key={key}
+                      data-column={key}
+                      aria-sort={
+                        ordering.includes(`${key},asc`)
+                          ? "ascending"
+                          : ordering.includes(`${key},desc`)
+                            ? "descending"
+                            : undefined
+                      }
+                    >
                       {key === "selection" ? (
                         <Checkbox
                           aria-label={t("selection.page")}
@@ -238,7 +272,29 @@ export function Catalog() {
                           }
                         />
                       ) : (
-                        t(columnLabels[key])
+                        <button
+                          type="button"
+                          className="catalog-sort-heading"
+                          onClick={(event) => sortColumn(key, event.shiftKey)}
+                        >
+                          {t(columnLabels[key])}
+                          {ordering.includes(`${key},asc`) && (
+                            <ArrowUp size={14} aria-hidden="true" />
+                          )}
+                          {ordering.includes(`${key},desc`) && (
+                            <ArrowDown size={14} aria-hidden="true" />
+                          )}
+                          {ordering.length > 1 &&
+                            ordering.some((value) =>
+                              value.startsWith(key + ","),
+                            ) && (
+                              <span className="catalog-sort-priority">
+                                {ordering.findIndex((value) =>
+                                  value.startsWith(key + ","),
+                                ) + 1}
+                              </span>
+                            )}
+                        </button>
                       )}
                       <button
                         className="column-resizer"
@@ -355,7 +411,7 @@ export function Catalog() {
                             onFilter={(column, value) =>
                               setSearch((current) =>
                                 quickFilter(
-                                  catalogParams(current),
+                                  catalogParams(current, false),
                                   column,
                                   value,
                                 ),
@@ -417,7 +473,6 @@ export function Catalog() {
           onClose={() => setAction(null)}
         />
       )}
-
     </>
   );
 }
