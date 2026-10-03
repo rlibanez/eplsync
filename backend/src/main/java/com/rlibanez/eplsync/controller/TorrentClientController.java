@@ -15,6 +15,11 @@ public class TorrentClientController {
 
     public TorrentClientController(TorrentClientService client) { this.client = client; }
 
+    @GetMapping("/categories")
+    public ResponseEntity<java.util.List<String>> categories() {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(client.listCategories());
+    }
+
     @GetMapping("/connection")
     public ResponseEntity<TorrentConnectionStatus> connection() {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(client.checkConnection());

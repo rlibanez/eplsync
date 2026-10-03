@@ -43,6 +43,18 @@ export function SendSelection({
     queryKey: ["send-defaults"],
     queryFn: ({ signal }) => get<SendDefaults>("/torrent/options", signal),
   });
+  const categories = useQuery({
+    queryKey: ["torrent-categories"],
+    queryFn: ({ signal }) => get<string[]>("/torrent/client/categories", signal),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const defaultCategory = categories.data?.includes(defaults.data?.category ?? "")
+    ? defaults.data?.category ?? ""
+    : "";
+  const ready = defaults.isSuccess && categories.isSuccess && !categories.isFetching;
   const initialized = useRef(false);
   function restoreDefaults(d: SendDefaults) {
     setStart(String(d.start));
@@ -50,7 +62,7 @@ export function SendSelection({
     setPath(d.savePath ?? "");
     setRename(String(d.rename.enabled));
     setPattern(d.rename.pattern ?? "");
-    setCategory(d.category ?? "");
+    setCategory(categories.data?.includes(d.category ?? "") ? d.category ?? "" : "");
     setTags(d.tags.join(", "));
     setConcurrency(String(d.concurrency));
     setBatchSize(String(d.batchSize));
@@ -58,11 +70,11 @@ export function SendSelection({
     setMultipleHashes(d.multipleHashes);
   }
   useEffect(() => {
-    if (defaults.data && !initialized.current) {
+    if (defaults.data && ready && !initialized.current) {
       restoreDefaults(defaults.data);
       initialized.current = true;
     }
-  }, [defaults.data]);
+  }, [defaults.data, categories.data, ready]);
   function label(key: string, help: string) {
     return <OptionLabel text={t(key)} help={t(`send.help.${help}`)} />;
   }
@@ -142,18 +154,19 @@ export function SendSelection({
     >
       <p>{t("selection.selected", { count })}</p>
       {allResults && <p className="muted">{t("send.liveSelection")}</p>}
-      {defaults.isPending && <Loading />}
+      {(defaults.isPending || categories.isFetching) && <Loading />}
+      {categories.isError && <Failure error={categories.error} retry={() => categories.refetch()} />}
       {defaults.isError && (
         <Failure error={defaults.error} retry={() => defaults.refetch()} />
       )}
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!active && defaults.isSuccess && initialized.current) send();
+          if (!active && ready && initialized.current) send();
         }}
       >
         <fieldset
-          disabled={!defaults.isSuccess || !initialized.current}
+          disabled={!ready || !initialized.current}
           style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
         >
           <fieldset className="send-options-group">
@@ -242,11 +255,17 @@ export function SendSelection({
               disabled={rename !== "true"}
               onChange={(e) => setPattern(e.currentTarget.value)}
             />
-            <TextInput
+            <Select
               label={label("send.category", "category")}
-              classNames={modified(category, defaults.data?.category)}
+              classNames={modified(category, defaultCategory)}
               value={category}
-              onChange={(e) => setCategory(e.currentTarget.value)}
+              searchable
+              allowDeselect={false}
+              data={[
+                { value: "", label: t("send.noCategory") },
+                ...(categories.data ?? []).map(name => ({ value: name, label: name })),
+              ]}
+              onChange={value => setCategory(value ?? "")}
             />
             <TextInput
               label={label("send.tags", "tags")}
@@ -272,7 +291,7 @@ export function SendSelection({
             type="submit"
             loading={active}
             disabled={
-              !defaults.isSuccess || !initialized.current || count === 0
+              !ready || !initialized.current || count === 0
             }
           >
             {t("selection.createJob")}

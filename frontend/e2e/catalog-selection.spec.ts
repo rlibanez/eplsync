@@ -35,6 +35,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/ui/config", (r) =>
     r.fulfill({ json: { defaultLanguage: "es" } }),
   );
+  await page.route("**/api/torrent/client/categories", r => r.fulfill({ json: ["Libros", "Other"] }));
   await page.route("**/api/torrent/options", (r) =>
     r.fulfill({ json: defaults }),
   );
@@ -151,7 +152,8 @@ test("explicit selected IDs create a job with editable defaults and keyboard hel
     "Libros",
   );
   await expect(dialog.locator(".send-option-modified")).toHaveCount(0);
-  await dialog.getByLabel("Categoría", { exact: true }).fill("Other");
+  await dialog.getByLabel("Categoría", { exact: true }).click();
+  await page.getByRole("option", { name: "Other", exact: true }).click();
   await expect(dialog.getByLabel("Categoría", { exact: true })).toHaveClass(/send-option-modified/);
   await dialog
     .getByRole("button", { name: "Restablecer valores predeterminados" })
@@ -174,7 +176,8 @@ test("explicit selected IDs create a job with editable defaults and keyboard hel
   await dialog
     .getByLabel("Ruta de descarga en el cliente", { exact: true })
     .fill("/downloads/books");
-  await dialog.getByLabel("Categoría", { exact: true }).fill("");
+  await dialog.getByLabel("Categoría", { exact: true }).click();
+  await page.getByRole("option", { name: "Sin categoría", exact: true }).click();
   await dialog.getByLabel("Etiquetas", { exact: true }).fill("");
   await page.screenshot({ path: "test-results/send-options-modified.png" });
   expect(calls).toBe(0);
@@ -398,4 +401,22 @@ test("multiple sort priorities survive pagination and can be reordered or remove
   expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc", "author,asc"]);
   await page.getByRole("button", { name: "Restablecer", exact: true }).click();
   expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc"]);
+});
+
+
+test("unknown configured category falls back to no category and query failures can be retried", async ({ page }) => {
+  let fail = true;
+  await page.route("**/api/torrent/client/categories", r => fail
+    ? r.fulfill({ status: 502, json: { message: "Unavailable" } })
+    : r.fulfill({ json: ["Other"] }));
+  await page.goto("/catalog");
+  await page.getByRole("checkbox", { name: "Seleccionar Book 1", exact: true }).check();
+  await page.getByRole("button", { name: "Enviar a descargar", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "Crear trabajo" })).toBeDisabled();
+  fail = false;
+  await dialog.getByRole("button", { name: "Reintentar" }).click();
+  await expect(dialog.getByLabel("Categoría", { exact: true })).toHaveValue("Sin categoría");
+  await expect(dialog.getByRole("button", { name: "Crear trabajo" })).toBeEnabled();
+  await expect(dialog.getByLabel("Categoría", { exact: true })).not.toHaveClass(/send-option-modified/);
 });

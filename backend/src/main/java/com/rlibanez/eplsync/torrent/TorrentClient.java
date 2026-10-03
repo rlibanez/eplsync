@@ -28,6 +28,11 @@ public interface TorrentClient {
                 "El cliente seleccionado no admite eliminar torrents");
     }
 
+    default java.util.List<String> listCategories() {
+        throw new TorrentOperationException(HttpStatus.UNPROCESSABLE_CONTENT,
+                "El cliente seleccionado no admite consultar categorías");
+    }
+
     String type();
     TorrentConnectionStatus checkConnection();
 

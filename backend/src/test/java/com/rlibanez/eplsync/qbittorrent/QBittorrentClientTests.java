@@ -649,4 +649,14 @@ class QBittorrentClientTests {
         assertThatThrownBy(qbit::checkConnection).isInstanceOfSatisfying(QBittorrentConnectionException.class,
                 ex -> assertThat(ex.getReason()).isEqualTo(reason));
     }
+    @Test
+    void listsCategoriesByNameWithoutExposingClientPaths() {
+        categories = "{\"zeta\":{\"savePath\":\"/private\"},\"Alpha\":{}}";
+        assertThat(client().listCategories()).containsExactly("Alpha", "zeta");
+        categories = "{}";
+        assertThat(client().listCategories()).isEmpty();
+        categories = "[]";
+        assertThatThrownBy(() -> client().listCategories()).isInstanceOf(QBittorrentConnectionException.class);
+    }
+
 }

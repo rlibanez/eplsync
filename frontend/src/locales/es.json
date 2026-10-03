@@ -424,6 +424,7 @@
     "refreshError": "No se pudo actualizar la vista. Revisa la conexión y vuelve a intentarlo."
   },
   "send": {
+    "noCategory": "Sin categoría",
     "individual": "Individual",
     "multiple": "Múltiple",
     "individualNote": "Busca un libro, selecciónalo y revisa las opciones antes de enviarlo al cliente torrent.",

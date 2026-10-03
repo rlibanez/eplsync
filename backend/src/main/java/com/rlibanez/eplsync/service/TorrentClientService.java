@@ -34,6 +34,11 @@ public class TorrentClientService {
         return selectedClient.checkConnection();
     }
 
+    public List<String> listCategories() {
+        requireEnabled();
+        return selectedClient.listCategories();
+    }
+
     public void requireEnabled() {
         if (!properties.isEnabled()) throw new TorrentOperationException(
                 HttpStatus.CONFLICT, "La conexión torrent está deshabilitada");

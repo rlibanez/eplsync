@@ -424,6 +424,7 @@
     "refreshError": "Could not refresh the view. Check your connection and try again."
   },
   "send": {
+    "noCategory": "No category",
     "individual": "Individual",
     "multiple": "Multiple",
     "individualNote": "Find a book, select it and review the options before submitting it to the torrent client.",

@@ -551,6 +551,25 @@ Devuelve `enabled`, `connected`, `client`, `authMode`, `version` y `apiVersion`.
 La URL y las credenciales del cliente proceden de la configuración de EPLsync,
 no de esta petición.
 
+### Categorías del cliente
+
+`GET /api/torrent/client/categories` consulta las categorías del cliente configurado.
+Devuelve un array de nombres ordenados, sin rutas ni credenciales:
+
+```json
+["Libros", "Revistas"]
+```
+
+No crea ni modifica categorías. Una lista vacía indica que no hay categorías;
+los fallos de conexión o autenticación se devuelven como errores, no como listas
+vacías. La respuesta no se almacena en caché. Con torrent deshabilitado devuelve
+409; un adaptador que no soporte categorías devuelve 422.
+
+El popup de envío consulta este endpoint al abrirse y selecciona
+`torrent.qbittorrent.download.category` si existe en la lista. En caso contrario
+selecciona «Sin categoría» y envía `category: ""`. La configuración global y el
+comportamiento de los envíos directos por API no cambian.
+
 ## 6. Envío individual
 
 ```http

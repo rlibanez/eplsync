@@ -301,15 +301,21 @@ public class QBittorrentClient implements TorrentClient {
         }
     }
 
-    private void validateCategory(String category, com.rlibanez.eplsync.torrent.TorrentSubmissionContext context) {
-        var categories = context.categories(() -> {
-            var response = readAuthenticatedJson("torrents/categories");
-            if (!response.isObject()) throw new QBittorrentConnectionException(UPSTREAM);
-            var names = new java.util.HashSet<String>();
-            response.properties().forEach(entry -> names.add(entry.getKey()));
-            log.debug("Categorías de qBittorrent consultadas para esta solicitud");
-            return names;
+    @Override
+    public java.util.List<String> listCategories() {
+        var response = readAuthenticatedJson("torrents/categories");
+        if (!response.isObject()) throw new QBittorrentConnectionException(UPSTREAM);
+        var names = new java.util.ArrayList<String>();
+        response.properties().forEach(entry -> {
+            if (!entry.getKey().isBlank()) names.add(entry.getKey());
         });
+        names.sort(String.CASE_INSENSITIVE_ORDER.thenComparing(java.util.Comparator.naturalOrder()));
+        log.debug("Categorías de qBittorrent consultadas para esta solicitud");
+        return java.util.List.copyOf(names);
+    }
+
+    private void validateCategory(String category, com.rlibanez.eplsync.torrent.TorrentSubmissionContext context) {
+        var categories = context.categories(() -> new java.util.HashSet<>(listCategories()));
         if (!categories.contains(category)) throw new TorrentOperationException(HttpStatus.CONFLICT,
                 "La categoría configurada no existe en qBittorrent");
     }
