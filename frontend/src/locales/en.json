@@ -350,11 +350,14 @@
     "serverDetail": "Server details"
   },
   "directory": {
+    "collections": "Collections",
+    "all": "All",
+    "initialFilter": "Filter by initial",
     "authors": "Authors",
     "languages": "Languages",
     "genres": "Genres",
     "years": "Years",
-    "note": "Browse catalog values. Grouped authors and genres are displayed as they appear in the source."
+    "note": "Browse available values and select one to view its books in the catalog."
   },
   "downloads": {
     "stateTitle": "Download status",

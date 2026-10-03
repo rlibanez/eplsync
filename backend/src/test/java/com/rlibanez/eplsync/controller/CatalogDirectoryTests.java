@@ -46,4 +46,35 @@ class CatalogDirectoryTests {
   assertThat(controller.list("authors", "%", 0, 20).items()).isEmpty();
  }
 
+ @Test void genresAreIndividualAndDeduplicated() {
+  em.createQuery("delete from CatalogBook").executeUpdate();
+  em.persist(CatalogBook.builder().eplId(1L).title("One").author("Author").revision(1.0)
+      .genres("Arqueología, Biología, Ciencias naturales").build());
+  em.persist(CatalogBook.builder().eplId(2L).title("Two").author("Author").revision(1.0)
+      .genres("Arqueología, Historia, Historia, , Viajes").build());
+  em.flush();
+  assertThat(controller.list("genres", "", 0, 20).items())
+      .extracting(CatalogDirectoryController.Entry::value)
+      .containsExactly("Arqueología", "Biología", "Ciencias naturales", "Historia", "Viajes");
+  assertThat(controller.list("genres", "hist", 0, 20).items())
+      .extracting(CatalogDirectoryController.Entry::value).containsExactly("Historia");
+ }
+
+ @Test void collectionsAndInitialsUseNormalizedLettersBeforePagination() {
+  em.createQuery("delete from CatalogBook").executeUpdate();
+  String[] names = {"Álvaro", "Alberto", "Ñandú", "Nora", "123 libros", "!Especial", "Émile"};
+  for (int i=0;i<names.length;i++) em.persist(CatalogBook.builder().eplId(100L+i).title("Book")
+      .author(names[i]).collection(names[i]).genres(names[i]).revision(1.0).build());
+  em.flush();
+  for (String kind : java.util.List.of("authors", "collections", "genres")) {
+   assertThat(controller.list(kind,"",0,20,"A").items()).extracting(CatalogDirectoryController.Entry::value).containsExactly("Alberto","Álvaro");
+   assertThat(controller.list(kind,"alv",0,20,"A").items()).extracting(CatalogDirectoryController.Entry::value).containsExactly("Álvaro");
+   assertThat(controller.list(kind,"",0,20,"N").items()).extracting(CatalogDirectoryController.Entry::value).containsExactly("Nora");
+   assertThat(controller.list(kind,"",0,20,"Ñ").items()).extracting(CatalogDirectoryController.Entry::value).containsExactly("Ñandú");
+   assertThat(controller.list(kind,"",0,20,"#").items()).hasSize(2);
+   assertThat(controller.list(kind,"",1,10,"A").items()).isEmpty();
+  }
+  assertThatThrownBy(() -> controller.list("authors","",0,20,"AB")).isInstanceOf(IllegalArgumentException.class);
+ }
+
 }

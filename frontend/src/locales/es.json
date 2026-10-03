@@ -350,11 +350,14 @@
     "serverDetail": "Detalle del servidor"
   },
   "directory": {
+    "collections": "Colecciones",
+    "all": "Todos",
+    "initialFilter": "Filtrar por inicial",
     "authors": "Autores",
     "languages": "Idiomas",
     "genres": "Géneros",
     "years": "Años",
-    "note": "Explora los valores del catálogo. Los autores y géneros agrupados se muestran tal como aparecen en la fuente."
+    "note": "Explora los valores disponibles y pulsa uno para ver sus libros en el catálogo."
   },
   "downloads": {
     "stateTitle": "Estado de las descargas",

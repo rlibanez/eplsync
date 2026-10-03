@@ -1329,14 +1329,23 @@ por defecto del backend es `auto`.
 ## Directorio del catálogo
 
 `GET /api/catalog/directory/{kind}` lista valores distintos de la base de datos.
-`kind` admite `authors`, `languages`, `genres` o `years`. No consulta el cliente torrent.
+`kind` admite `authors`, `collections`, `languages`, `genres` o `years`. No consulta el cliente torrent.
 Parámetros: `q` (búsqueda literal, máximo 512 caracteres), `page` (desde 0) y `size`
 (10, 20, 50, 100, 200, 500 o 1000; predeterminado 20). Devuelve la estructura paginada
-habitual con `items: [{"value":"..."}]` y `meta`. Los años se ordenan de mayor a
-menor; las otras categorías, por su valor almacenado ascendente. Los idiomas se
+habitual con `items` y `meta`. Autores, colecciones y géneros incluyen
+`{"value":"...","initial":"A"}` y admiten el parámetro opcional `initial`
+(`A`–`Z`, `Ñ` o `#`; enviar `%23` para `#`). Este filtro se combina con `q` antes
+de paginar. Las vocales acentuadas se agrupan bajo su letra, `Ñ` tiene grupo propio
+y `#` reúne las demás iniciales, incluidos números y símbolos. La búsqueda en estas
+tres categorías ignora mayúsculas y acentos, pero distingue `N` de `Ñ`.
+Se ordenan por inicial y alfabéticamente dentro de cada grupo.
+Los años se ordenan de mayor a menor; los idiomas, por su valor almacenado ascendente.
+Los idiomas se
 convierten a su código ISO en la respuesta; la búsqueda compara el valor almacenado.
-Autores y géneros compuestos se mantienen intactos, sin normalización. Los valores
-nulos o vacíos se excluyen. Un tipo, página o tamaño inválido devuelve `400`.
+Los autores se separan por `&` y los géneros por comas, eliminando espacios y
+duplicados; las colecciones se conservan completas. Los campos originales de los
+libros no se modifican. Los valores nulos o vacíos se excluyen. Un tipo, inicial,
+página o tamaño inválido devuelve `400`; idiomas y años no admiten `initial`.
 
 ### Rango de incorporación al catálogo
 

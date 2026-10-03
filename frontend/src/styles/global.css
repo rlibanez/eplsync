@@ -1719,3 +1719,9 @@ summary {
   .catalog-sorting-row { grid-template-columns: 18px minmax(0, 1fr) repeat(3, 28px); }
   .catalog-sorting-row > .mantine-Select-root:nth-child(3) { grid-column: 2; grid-row: 2; }
 }
+
+.directory-initials { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 20px; }
+.directory-initials button { min-width: 30px; }
+.directory-group > h2 { margin: 20px 24px 0; padding-bottom: 8px; border-bottom: 1px solid var(--line); color: var(--accent); font-size: 18px; }
+.directory-group > h2 + .directory-grid { padding-top: 14px; }
+.directory-empty { padding: 24px; }

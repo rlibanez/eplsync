@@ -9,26 +9,45 @@ import { Loading, Failure } from "../../components/Feedback";
 import { Paging, type Page } from "../downloads/shared";
 const fields = {
   authors: "author",
-  languages: "language",
+  collections: "collection",
   genres: "genres",
+  languages: "language",
   years: "publicationYear",
 } as const;
 export function Directory() {
-  const { t } = useTranslation();
-  const { language } = useLocale();
   const [search, setSearch] = useSearchParams();
   const value = search.get("section") ?? "authors";
   const kind = Object.hasOwn(fields, value)
     ? (value as keyof typeof fields)
     : "authors";
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(20);
-  const [q, setQ] = useState("");
+  return <DirectoryView key={`${kind}:${search.toString()}`} kind={kind} onSection={section => setSearch({ section })} />;
+}
+function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSection: (section: string) => void }) {
+  const { t } = useTranslation();
+  const { language } = useLocale();
+  const alphabetical = ["authors", "collections", "genres"].includes(kind);
+  const [search, setSearch] = useSearchParams();
+  const initialValue = search.get("initial") ?? "";
+  const initial = alphabetical && /^[A-ZÑ#]$/.test(initialValue) ? initialValue : "";
+  const q = search.get("q") ?? "";
+  const [draft, setDraft] = useState(q);
+  const requestedPage = Number(search.get("page") ?? 0);
+  const page = Number.isSafeInteger(requestedPage) && requestedPage >= 0 ? requestedPage : 0;
+  const requestedSize = Number(search.get("size") ?? 20);
+  const size = [10, 20, 50, 100, 200, 500, 1000].includes(requestedSize) ? requestedSize : 20;
+  const updateSearch = (values: Record<string, string | number>) => {
+    const next = new URLSearchParams(search);
+    for (const [key, value] of Object.entries(values)) {
+      if (value === "" || (key === "page" && value === 0)) next.delete(key);
+      else next.set(key, String(value));
+    }
+    setSearch(next);
+  };
   const result = useQuery({
-    queryKey: ["directory", kind, q, page, size],
+    queryKey: ["directory", kind, q, initial, page, size],
     queryFn: ({ signal }) =>
-      get<Page<{ value: string }>>(
-        `/catalog/directory/${kind}?${new URLSearchParams({ q, page: String(page), size: String(size) })}`,
+      get<Page<{ value: string; initial?: string }>>(
+        `/catalog/directory/${kind}?${new URLSearchParams({ q, initial, page: String(page), size: String(size) })}`,
         signal,
       ),
   });
@@ -40,11 +59,7 @@ export function Directory() {
           <button
             key={key}
             className={kind === key ? "active" : ""}
-            onClick={() => {
-              setSearch({ section: key });
-              setPage(0);
-              setQ("");
-            }}
+            onClick={() => onSection(key)}
           >
             {t(`directory.${key}`)}
           </button>
@@ -56,39 +71,59 @@ export function Directory() {
         key={kind}
         onSubmit={(e) => {
           e.preventDefault();
-          setQ(String(new FormData(e.currentTarget).get("q") ?? ""));
-          setPage(0);
+          updateSearch({ q: draft.trim(), page: 0 });
         }}
       >
-        <TextInput name="q" label={t("catalog.search")} maxLength={512} />
+        <TextInput name="q" label={t("catalog.search")} maxLength={512} value={draft} onChange={e => setDraft(e.currentTarget.value)} />
         <Button type="submit">{t("catalog.search")}</Button>
+        <Button variant="subtle" onClick={() => { setDraft(""); updateSearch({ q: "", initial: "", page: 0 }); }}>{t("catalog.clear")}</Button>
       </form>
+      {alphabetical && (
+        <nav className="directory-initials" aria-label={t("directory.initialFilter")}>
+          {["", ..."ABCDEFGHIJKLMNÑOPQRSTUVWXYZ", "#"].map(letter => (
+            <Button key={letter} size="compact-sm" variant={initial === letter ? "filled" : "subtle"}
+              aria-pressed={initial === letter}
+              onClick={() => { updateSearch({ initial: letter, page: 0 }); }}>
+              {letter || t("directory.all")}
+            </Button>
+          ))}
+        </nav>
+      )}
       <section className="panel">
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
           <Failure error={result.error} retry={() => result.refetch()} />
         ) : (
-          <div className="directory-grid">
-            {result.data.items.map((entry) => (
-              <Link
-                key={entry.value}
-                to={`/catalog?${new URLSearchParams({ [fields[kind]]: entry.value })}`}
-              >
-                {kind === "languages" ? language(entry.value) : entry.value}
-              </Link>
+          <div>
+            {!result.data.items.length && <p className="directory-empty">{t("downloads.empty")}</p>}
+            {Array.from(result.data.items.reduce((groups, entry) => {
+              const letter = alphabetical ? entry.initial ?? "#" : "";
+              const values = groups.get(letter) ?? [];
+              values.push(entry);
+              groups.set(letter, values);
+              return groups;
+            }, new Map<string, { value: string; initial?: string }[]>())).map(([letter, entries]) => (
+              <section className="directory-group" key={letter} aria-label={letter || undefined}>
+                {alphabetical && <h2>{letter}</h2>}
+                <div className="directory-grid">
+                  {entries.map(entry => (
+                    <Link key={entry.value} to={`/catalog?${new URLSearchParams({ [fields[kind]]: entry.value })}`}>
+                      {kind === "languages" ? language(entry.value) : entry.value}
+                    </Link>
+                  ))}
+                </div>
+              </section>
             ))}
-            {!result.data.items.length && <p>{t("downloads.empty")}</p>}
           </div>
         )}
         <Paging
           meta={result.data?.meta}
           page={page}
           size={size}
-          onPage={setPage}
+          onPage={(n) => updateSearch({ page: n })}
           onSize={(n) => {
-            setSize(n);
-            setPage(0);
+            updateSearch({ size: n, page: 0 });
           }}
         />
       </section>
