@@ -1,26 +1,45 @@
+import {
+  useMagnetExport,
+  selectionQuery,
+  useCatalogSelection,
+} from "./CatalogSelection";
+import { SendSelection } from "../downloads/SendSelection";
 import { CatalogValue, quickFilter } from "./CatalogValue";
-import { CatalogColumns, columnLabels, useCatalogColumns, type Column } from "./CatalogColumns";
+import {
+  CatalogColumns,
+  columnLabels,
+  useCatalogColumns,
+  type Column,
+} from "./CatalogColumns";
 import { CatalogFilters, filterKeys, filterRequest } from "./CatalogFilters";
 import { BookCover } from "./BookCover";
 import { PageJump } from "../../components/PageJump";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { rememberCatalog } from "./navigation";
 import { useLocale } from "../../locales/useLocale";
 import { useTranslation } from "react-i18next";
 import { useCatalogScroll } from "./useCatalogScroll";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Select } from "@mantine/core";
+import { Button, Select, Checkbox } from "@mantine/core";
 import { Link, useSearchParams } from "react-router-dom";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Download, Send } from "lucide-react";
 import { get, catalogParams, sorts, type BookPage } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 export function Catalog() {
   const { t } = useTranslation();
   const { number } = useLocale();
   const columns = useCatalogColumns();
+  const magnetExport = useMagnetExport();
   const filtersOpen = useRef(false);
-  const resize = useRef<{ key: Column; x: number; width: number; widths: Partial<Record<Column, number>> } | null>(null);
-  const columnWidth = (key: Column) => columns.settings.widths[key] ?? (key === "title" ? 320 : 180);
+  const resize = useRef<{
+    key: Column;
+    x: number;
+    width: number;
+    widths: Partial<Record<Column, number>>;
+  } | null>(null);
+  const columnWidth = (key: Column) =>
+    columns.settings.widths[key] ??
+    (key === "selection" ? 70 : key === "title" ? 320 : 180);
   const resized = Object.keys(columns.settings.widths).length > 0;
   const [search, setSearch] = useSearchParams();
   useEffect(() => {
@@ -33,6 +52,16 @@ export function Catalog() {
     queryFn: ({ signal }) =>
       get<BookPage>(`/catalog/books?${filterRequest(params)}`, signal),
   });
+  const selection = useCatalogSelection(selectionQuery(params));
+  const count = selection.count(result.data?.meta.totalItems ?? 0);
+  const pageIds = result.data?.items.map((book) => book.eplId) ?? [];
+  const selectedOnPage = pageIds.filter(selection.isSelected).length;
+  const [action, setAction] = useState<{
+    type: "send";
+    filters: Record<string, unknown>;
+    count: number;
+    all: boolean;
+  } | null>(null);
   const rememberScroll = useCatalogScroll(query, result.isSuccess);
   function change(key: string, value: string) {
     const next = new URLSearchParams(params);
@@ -55,7 +84,9 @@ export function Catalog() {
       </div>
       <CatalogFilters
         initiallyOpen={filtersOpen.current}
-        onToggle={(open) => { filtersOpen.current = open; }}
+        onToggle={(open) => {
+          filtersOpen.current = open;
+        }}
         key={search.toString()}
         params={params}
         onChange={setSearch}
@@ -71,17 +102,71 @@ export function Catalog() {
               : t("catalog.books")}
           </span>
           <div className="catalog-table-controls">
-          <Select
-            aria-label={t("catalog.sort")}
-            value={params.get("sort")}
-            onChange={(value) => value && change("sort", value)}
-            data={Object.entries(sorts).map(([value, label]) => ({
-              value,
-              label: t(`sorts.${label}`),
-            }))}
-          />
-          <CatalogColumns settings={columns.settings} update={columns.update} />
+            <Select
+              aria-label={t("catalog.sort")}
+              value={params.get("sort")}
+              onChange={(value) => value && change("sort", value)}
+              data={Object.entries(sorts).map(([value, label]) => ({
+                value,
+                label: t(`sorts.${label}`),
+              }))}
+            />
+            <CatalogColumns
+              settings={columns.settings}
+              update={columns.update}
+            />
           </div>
+        </div>
+        <div className={`catalog-selection-bar${count > 0 ? " has-selection" : ""}`}>
+          <div className="catalog-selection-info">
+            {count > 0 && (
+              <span className="catalog-selection-count" aria-live="polite">
+                {t(selection.all ? "selection.allSelected" : "selection.selected", { count })}
+              </span>
+            )}
+            <div className="catalog-selection-controls">
+              {(!selection.all || count < (result.data?.meta.totalItems ?? 0)) && (
+                <Button
+                  variant="subtle"
+                  size="compact-sm"
+                  disabled={!result.data?.meta.totalItems || result.isFetching}
+                  onClick={selection.selectAll}
+                >
+                  {t("selection.selectAll", { count: result.data?.meta.totalItems ?? 0 })}
+                </Button>
+              )}
+              {count > 0 && (
+                <Button variant="subtle" size="compact-sm" onClick={selection.clear}>
+                  {t("selection.clear")}
+                </Button>
+              )}
+            </div>
+          </div>
+          {count > 0 && (
+            <div className="catalog-selection-actions">
+              <Button
+                variant="light"
+                leftSection={<Download size={16} />}
+                loading={magnetExport.busy}
+                onClick={() => void magnetExport.save(selection.filters)}
+              >
+                {t("selection.export")}
+              </Button>
+              <Button
+                leftSection={<Send size={16} />}
+                onClick={() =>
+                  setAction({
+                    type: "send",
+                    filters: selection.filters,
+                    count,
+                    all: selection.all,
+                  })
+                }
+              >
+                {t("selection.send")}
+              </Button>
+            </div>
+          )}
         </div>
         {result.isPending ? (
           <Loading />
@@ -112,50 +197,174 @@ export function Catalog() {
           </div>
         ) : (
           <div className="table-scroll">
-            <table className={`catalog-table${resized ? " resized" : ""}`} style={resized ? { width: columns.visible.reduce((sum, key) => sum + columnWidth(key), 0) } : undefined}>
-              {resized && <colgroup>{columns.visible.map(key => <col key={key} style={{ width: columnWidth(key) }} />)}</colgroup>}
+            <table
+              className={`catalog-table${resized ? " resized" : ""}`}
+              style={
+                resized
+                  ? {
+                      width: columns.visible.reduce(
+                        (sum, key) => sum + columnWidth(key),
+                        0,
+                      ),
+                    }
+                  : undefined
+              }
+            >
+              {resized && (
+                <colgroup>
+                  {columns.visible.map((key) => (
+                    <col key={key} style={{ width: columnWidth(key) }} />
+                  ))}
+                </colgroup>
+              )}
               <caption className="sr-only">{t("catalog.caption")} </caption>
               <thead>
                 <tr>
-                  {columns.visible.map(key => <th scope="col" key={key} data-column={key}>{t(columnLabels[key])}
-                    <button className="column-resizer" type="button" aria-label={t("columns.resize", { column: t(columnLabels[key]) })}
-                      onPointerDown={event => {
-                        const header = event.currentTarget.closest("th")!;
-                        const widths = { ...columns.settings.widths };
-                        header.closest("table")!.querySelectorAll<HTMLElement>("th[data-column]").forEach(cell => { widths[cell.dataset.column as Column] = cell.getBoundingClientRect().width; });
-                        resize.current = { key, x: event.clientX, width: header.getBoundingClientRect().width, widths };
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                        event.preventDefault();
-                      }}
-                      onPointerMove={event => {
-                        if (!resize.current) return;
-                        const drag = resize.current;
-                        columns.update({ ...columns.settings, widths: { ...drag.widths, [drag.key]: Math.max(70, Math.min(1200, drag.width + event.clientX - drag.x)) } });
-                      }}
-                      onPointerUp={() => { resize.current = null; }}
-                      onPointerCancel={() => { resize.current = null; }}
-                      onLostPointerCapture={() => { resize.current = null; }}
-                      onKeyDown={event => {
-                        if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
-                        event.preventDefault();
-                        const width = event.currentTarget.closest("th")!.getBoundingClientRect().width;
-                        columns.update({ ...columns.settings, widths: { ...columns.settings.widths, [key]: Math.max(70, Math.min(1200, width + (event.key === "ArrowRight" ? 20 : -20))) } });
-                      }} />
-                  </th>)}
-
+                  {columns.visible.map((key) => (
+                    <th scope="col" key={key} data-column={key}>
+                      {key === "selection" ? (
+                        <Checkbox
+                          aria-label={t("selection.page")}
+                          checked={
+                            pageIds.length > 0 &&
+                            selectedOnPage === pageIds.length
+                          }
+                          indeterminate={
+                            selectedOnPage > 0 &&
+                            selectedOnPage < pageIds.length
+                          }
+                          onChange={(e) =>
+                            selection.toggle(pageIds, e.currentTarget.checked)
+                          }
+                        />
+                      ) : (
+                        t(columnLabels[key])
+                      )}
+                      <button
+                        className="column-resizer"
+                        type="button"
+                        aria-label={t("columns.resize", {
+                          column: t(columnLabels[key]),
+                        })}
+                        onPointerDown={(event) => {
+                          const header = event.currentTarget.closest("th")!;
+                          const widths = { ...columns.settings.widths };
+                          header
+                            .closest("table")!
+                            .querySelectorAll<HTMLElement>("th[data-column]")
+                            .forEach((cell) => {
+                              widths[cell.dataset.column as Column] =
+                                cell.getBoundingClientRect().width;
+                            });
+                          resize.current = {
+                            key,
+                            x: event.clientX,
+                            width: header.getBoundingClientRect().width,
+                            widths,
+                          };
+                          event.currentTarget.setPointerCapture(
+                            event.pointerId,
+                          );
+                          event.preventDefault();
+                        }}
+                        onPointerMove={(event) => {
+                          if (!resize.current) return;
+                          const drag = resize.current;
+                          columns.update({
+                            ...columns.settings,
+                            widths: {
+                              ...drag.widths,
+                              [drag.key]: Math.max(
+                                70,
+                                Math.min(
+                                  1200,
+                                  drag.width + event.clientX - drag.x,
+                                ),
+                              ),
+                            },
+                          });
+                        }}
+                        onPointerUp={() => {
+                          resize.current = null;
+                        }}
+                        onPointerCancel={() => {
+                          resize.current = null;
+                        }}
+                        onLostPointerCapture={() => {
+                          resize.current = null;
+                        }}
+                        onKeyDown={(event) => {
+                          if (!["ArrowLeft", "ArrowRight"].includes(event.key))
+                            return;
+                          event.preventDefault();
+                          const width = event.currentTarget
+                            .closest("th")!
+                            .getBoundingClientRect().width;
+                          columns.update({
+                            ...columns.settings,
+                            widths: {
+                              ...columns.settings.widths,
+                              [key]: Math.max(
+                                70,
+                                Math.min(
+                                  1200,
+                                  width +
+                                    (event.key === "ArrowRight" ? 20 : -20),
+                                ),
+                              ),
+                            },
+                          });
+                        }}
+                      />
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {result.data.items.map((book) => (
                   <tr key={book.eplId}>
-                    {columns.visible.map(key => <td key={key}>
-                      {key === "title" ? <Link className="book-title" onClick={rememberScroll}
-                        to={`/catalog/${book.eplId}`} state={{ catalogSearch: search.toString() }}>
-                        <BookCover book={book} /><span>{book.title}</span>
-                      </Link> : <CatalogValue book={book} column={key}
-                        onFilter={(column, value) => setSearch(current => quickFilter(catalogParams(current), column, value))} />}
-                    </td>)}
-
+                    {columns.visible.map((key) => (
+                      <td key={key}>
+                        {key === "selection" ? (
+                          <Checkbox
+                            aria-label={t("selection.book", {
+                              title: book.title,
+                            })}
+                            checked={selection.isSelected(book.eplId)}
+                            onChange={(e) =>
+                              selection.toggle(
+                                [book.eplId],
+                                e.currentTarget.checked,
+                              )
+                            }
+                          />
+                        ) : key === "title" ? (
+                          <Link
+                            className="book-title"
+                            onClick={rememberScroll}
+                            to={`/catalog/${book.eplId}`}
+                            state={{ catalogSearch: search.toString() }}
+                          >
+                            <BookCover book={book} />
+                            <span>{book.title}</span>
+                          </Link>
+                        ) : (
+                          <CatalogValue
+                            book={book}
+                            column={key}
+                            onFilter={(column, value) =>
+                              setSearch((current) =>
+                                quickFilter(
+                                  catalogParams(current),
+                                  column,
+                                  value,
+                                ),
+                              )
+                            }
+                          />
+                        )}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -200,6 +409,15 @@ export function Catalog() {
           </Button>
         </div>
       </section>
+      {action?.type === "send" && (
+        <SendSelection
+          filters={action.filters}
+          count={action.count}
+          allResults={action.all}
+          onClose={() => setAction(null)}
+        />
+      )}
+
     </>
   );
 }

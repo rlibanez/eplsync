@@ -106,7 +106,7 @@ solo ejecuta Java y sirve interfaz y API en el puerto 8088:
 - `/catalog/32`: ficha de un libro, también accesible directamente.
 - `/directory`: autores, idiomas, géneros y años del catálogo.
 - `/downloads`: estado local y sincronización manual.
-- `/downloads/send`: vista única de envío por filtros; siempre crea un trabajo.
+- El envío se inicia desde la selección de `/catalog`; no existe una pantalla independiente de envío.
 - `/downloads/jobs` y `/downloads/jobs/{id}`: seguimiento y control de trabajos.
 - `/settings/general`: idioma, paleta de colores y modo claro/oscuro.
 - `/settings/database`: previsualización, actualización y reinicio completo.
@@ -300,7 +300,7 @@ con `{"dryRun":false}` y sin navegación ni confirmación adicional. Si hay vari
 se elige uno y se envía en `options.hash`. Se heredan las demás opciones del servidor.
 «Abrir magnet» conserva el enlace al cliente asociado por el navegador.
 
-La vista Enviar muestra todos los campos de opciones juntos, con ayudas accesibles
+El popup de envío del Catálogo muestra todos los campos de opciones juntos, con ayudas accesibles
 por ratón y teclado. Carga `GET /api/torrent/options` y permite restaurar los valores
 predeterminados; editar no cambia la configuración del servidor. Ruta se deshabilita
 con gestión automática; patrón se deshabilita sin renombrado. Categoría y etiquetas
@@ -428,3 +428,25 @@ Cada criterio se elimina con su X, sin separar nombres por comas. Los desplegabl
 de idioma y estados admiten selección múltiple. Dentro del campo se aplica OR,
 entre campos AND. Los filtros rápidos añaden alternativas sin duplicados, la URL
 conserva todas al paginar/volver/recargar y las fechas mantienen sus rangos.
+
+### Selección del catálogo y acciones
+
+La columna Selección aparece por defecto al principio y se puede ocultar, mover y
+redimensionar. Las preferencias anteriores se conservan y reciben la nueva columna
+delante. El checkbox de cabecera actúa solo sobre la página visible; al paginar se
+conservan las selecciones, y cambiar filtros las limpia. Ocultar la columna no oculta
+la barra de acciones ni borra la selección.
+
+Seleccionar todos representa los filtros actuales y un conjunto de exclusiones:
+no descarga todos los libros al navegador. Enviar abre un popup con valores del
+servidor y crea un trabajo mediante POST /api/torrent/books. La selección explícita
+usa `filters.selectedIds`; la global conserva los filtros y `filters.excludedIds`.
+La selección global se evalúa al confirmar, por lo que un cambio concurrente del
+catálogo puede afectar al total.
+
+Exportar usa POST /api/catalog/magnets/export con esos mismos filtros: incluye todos
+los hashes y elimina duplicados. El botón abre directamente showSaveFilePicker,
+si está disponible, con magnets.txt como nombre sugerido y sin imponer extensión.
+Se abre antes de solicitar la exportación; si se cancela no se consulta la API.
+En los demás navegadores se descarga magnets.txt usando la configuración de
+destino del navegador, sin mostrar un formulario intermedio.

@@ -1,39 +1,97 @@
 import { test, expect } from "./fixtures";
-test("column visibility and order persist and can be restored", async ({ page }) => {
-  await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
-  await page.route("**/api/catalog/covers/task", r => r.fulfill({ json: { task: null } }));
-  await page.route("**/api/catalog/books?**", r => r.fulfill({ json: { items: [{ eplId: 32, title: "Libro", author: "Autor", collection: "Serie", genres: "Drama", language: "es", status: "DISPONIBLE", publicationStatus: "PUBLISHED", revision: 1, publicationYear: 2020, publicationDate: "2020-01-01", insertDate: "2026-01-01T00:00:00Z", coverAvailable: false }], meta: { page: 0, size: 20, totalItems: 1, totalPages: 1, hasNext: false, hasPrevious: false } } }));
-  await page.route("https://images.epublibre.org/**", r => r.abort());
+test("column visibility and order persist and can be restored", async ({
+  page,
+}) => {
+  await page.route("**/api/ui/config", (r) =>
+    r.fulfill({ json: { defaultLanguage: "es" } }),
+  );
+  await page.route("**/api/catalog/covers/task", (r) =>
+    r.fulfill({ json: { task: null } }),
+  );
+  await page.route("**/api/catalog/books?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            eplId: 32,
+            title: "Libro",
+            author: "Autor",
+            collection: "Serie",
+            genres: "Drama",
+            language: "es",
+            status: "DISPONIBLE",
+            publicationStatus: "PUBLISHED",
+            revision: 1,
+            publicationYear: 2020,
+            publicationDate: "2020-01-01",
+            insertDate: "2026-01-01T00:00:00Z",
+            coverAvailable: false,
+          },
+        ],
+        meta: {
+          page: 0,
+          size: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNext: false,
+          hasPrevious: false,
+        },
+      },
+    }),
+  );
+  await page.route("https://images.epublibre.org/**", (r) => r.abort());
   await page.goto("/catalog");
   const headings = page.locator("thead th");
-  await expect(headings).toHaveCount(12);
+  await expect(headings).toHaveCount(13);
   await page.getByRole("button", { name: "Columnas", exact: true }).click();
-  await page.getByRole("checkbox", { name: "Colección", exact: true }).uncheck();
-  await expect(page.getByRole("columnheader", { name: "Colección", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Mover Autor hacia arriba", exact: true }).click();
+  await page
+    .getByRole("checkbox", { name: "Colección", exact: true })
+    .uncheck();
+  await expect(
+    page.getByRole("columnheader", { name: "Colección", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Mover Autor hacia arriba", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Mover Autor hacia arriba", exact: true })
+    .click();
   await expect(headings.first()).toHaveText("Autor");
   await page.keyboard.press("Escape");
   const author = page.getByRole("columnheader", { name: /^Autor/ });
   const before = (await author.boundingBox())!.width;
-  const grip = page.getByRole("button", { name: "Ajustar ancho de Autor", exact: true });
+  const grip = page.getByRole("button", {
+    name: "Ajustar ancho de Autor",
+    exact: true,
+  });
   const box = (await grip.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2);
   await page.mouse.up();
-  await expect.poll(async () => (await author.boundingBox())!.width).toBeGreaterThan(before + 70);
+  await expect
+    .poll(async () => (await author.boundingBox())!.width)
+    .toBeGreaterThan(before + 70);
   const resizedWidth = (await author.boundingBox())!.width;
   await page.reload();
-  await expect.poll(async () => Math.abs((await author.boundingBox())!.width - resizedWidth)).toBeLessThan(2);
+  await expect
+    .poll(async () =>
+      Math.abs((await author.boundingBox())!.width - resizedWidth),
+    )
+    .toBeLessThan(2);
   await expect(headings.first()).toHaveText("Autor");
-  await expect(headings).toHaveCount(11);
+  await expect(headings).toHaveCount(12);
   await page.getByRole("button", { name: "Columnas", exact: true }).click();
-  await page.getByRole("button", { name: "Restaurar columnas", exact: true }).click();
-  await expect(headings.first()).toHaveText("Libro");
-  await page.locator('[data-column="eplId"] .column-drag').dragTo(page.locator('.column-choice[data-column="title"]'));
+  await page
+    .getByRole("button", { name: "Restaurar columnas", exact: true })
+    .click();
+  await expect(headings.first()).toHaveAttribute("data-column", "selection");
+  await page
+    .locator('[data-column="eplId"] .column-drag')
+    .dragTo(page.locator('.column-choice[data-column="selection"]'));
   await expect(headings.first()).toHaveText("EPL Id");
   await page.reload();
   await expect(headings.first()).toHaveText("EPL Id");
   await expect(page.locator(".row-link")).toHaveCount(0);
-  await expect(headings).toHaveCount(12);
+  await expect(headings).toHaveCount(13);
 });

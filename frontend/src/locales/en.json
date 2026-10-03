@@ -824,5 +824,22 @@
     "error": "The operation could not be completed. Deletion requires a valid, non-empty CSV without errors.",
     "sectionTitle": "Catalog cleanup",
     "sectionDescription": "Review and remove catalog books no longer present in the EPL CSV. Download and job history is preserved."
+  },
+  "selection": {
+    "column": "Selection",
+    "page": "Select this page",
+    "book": "Select {{title}}",
+    "selectAll": "Select all ({{count}})",
+    "selected": "{{count}} books selected",
+    "allSelected": "{{count}} results selected",
+    "clear": "Clear selection",
+    "export": "Export magnet links",
+    "send": "Send to download",
+    "createJob": "Create job",
+    "filename": "File name (optional extension)",
+    "browserSave": "The destination depends on your browser download settings. Enable “Ask where to save” to choose a folder.",
+    "save": "Save",
+    "exportError": "Could not export the links. Please try again.",
+    "noMagnets": "The selection contains no magnet links."
   }
 }

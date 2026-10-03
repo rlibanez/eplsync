@@ -48,6 +48,15 @@ public class CatalogMagnetController {
                 result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
     }
 
+    public record ExportSelection(@jakarta.validation.constraints.NotNull @Valid CatalogBookFilter filters) {}
+
+    /** Read-only export with a body, so large explicit selections do not exceed URL limits. */
+    @PostMapping(value = "/magnets/export", produces = "text/plain;charset=UTF-8")
+    public ResponseEntity<String> exportSelection(@Valid @RequestBody ExportSelection selection) {
+        var magnets = service.search(selection.filters(), Sort.by("eplId"));
+        return ResponseEntity.ok().body(magnets.isEmpty() ? "" : String.join("\n", magnets) + "\n");
+    }
+
     @GetMapping(value = "/magnets/export", produces = "text/plain;charset=UTF-8")
     public ResponseEntity<String> export(@Valid @ModelAttribute CatalogBookFilter filter, Sort sort) {
         var magnets = service.search(filter, sort);

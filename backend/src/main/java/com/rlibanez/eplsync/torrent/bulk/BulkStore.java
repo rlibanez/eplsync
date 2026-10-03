@@ -245,7 +245,8 @@ public class BulkStore {
         for (var descriptor : bean.getPropertyDescriptors()) {
             if (descriptor.getName().equals("class")) continue;
             var value = bean.getPropertyValue(descriptor.getName());
-            if (value != null && (!(value instanceof Collection<?> c) || !c.isEmpty())) return true;
+            if (value != null && (!(value instanceof Collection<?> c) || !c.isEmpty())
+                    && (!value.getClass().isArray() || java.lang.reflect.Array.getLength(value) > 0)) return true;
         }
         return false;
     }

@@ -354,6 +354,29 @@ seleccionan individualmente. Años y fechas se convierten en rangos de un solo d
 o año; la incorporación usa el día de la zona horaria del navegador. Los campos
 de texto conservan la búsqueda por coincidencia parcial del buscador avanzado.
 
+### Selecciones de filas del catálogo
+
+Además de los criterios de búsqueda, `selectedIds` admite una lista explícita de
+EPL ID y `excludedIds` excluye identificadores. Ambos se combinan mediante AND
+con los demás filtros. Una lista `selectedIds: []` no selecciona ningún libro;
+los identificadores deben ser positivos. No tienen el límite de 100 alternativas
+de los campos del buscador, para permitir selecciones de varias páginas.
+
+```json
+{"dryRun":false,"filters":{"selectedIds":[32,14936]},"options":{}}
+```
+
+El cuerpo anterior crea un trabajo con POST `/api/torrent/books`. Para todos los
+resultados salvo algunas filas, se envían los filtros y `excludedIds`, junto con
+`all:true`. No se utiliza la paginación visible como límite del trabajo.
+
+POST `/api/catalog/magnets/export` acepta `{"filters":{"selectedIds":[32,14936]}}`
+o filtros con exclusiones. Es una consulta de exportación de solo lectura con
+cuerpo JSON para evitar URLs demasiado largas; no admite ni necesita `dryRun`.
+Devuelve texto UTF-8 con un magnet por línea, todos los hashes de cada libro y
+sin duplicados por hash. La interfaz elige el nombre y no fuerza extensión.
+La variante GET de exportación por query sigue siendo una consulta de lectura.
+
 ### Filtros compartidos
 
 Estos filtros funcionan en:

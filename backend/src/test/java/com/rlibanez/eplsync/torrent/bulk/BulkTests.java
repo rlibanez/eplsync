@@ -86,6 +86,22 @@ class BulkTests {
         start(); until(() -> store.view(job.jobId()).processedItems() == 1);
         verify(client,times(1)).addTorrent(any(),any());
     }
+    @Test void explicitSelectionAndAllResultsWithExclusionsCreateOnlySelectedItems() {
+        var filter = new CatalogBookFilter(); filter.setSelectedIds(new Long[]{1L,3L});
+        var selected = store.create(filter,PageRequest.of(0,20),false,false,null);
+        assertThat(selected.selectedBooks()).isEqualTo(2);
+        var all = new CatalogBookFilter(); all.setAuthor("Author"); all.setExcludedIds(new Long[]{2L,4L});
+        var preview = store.preview(all,PageRequest.of(0,20),false,true,null,true);
+        assertThat(preview.items()).extracting(BulkStore.ItemView::eplId).containsExactly(1L,3L,5L);
+        var many = new CatalogBookFilter(); many.setSelectedIds(java.util.stream.LongStream.rangeClosed(1,1100).boxed().toArray(Long[]::new));
+        assertThat(store.preview(many,PageRequest.of(0,20),false,false,null,false).selectedBooks()).isEqualTo(5);
+    }
+    @Test void emptyExclusionsDoNotAuthorizeSendingWholeCatalog() {
+        var filter = new CatalogBookFilter(); filter.setExcludedIds(new Long[]{});
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> store.create(filter,PageRequest.of(0,20),false,false,null))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThat(jobs.count()).isZero();
+    }
     private BulkStore.View create(BulkRequest request) {
         return store.create(new CatalogBookFilter(), PageRequest.of(0, 20), false, true, request);
     }

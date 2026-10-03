@@ -52,6 +52,9 @@ public class MagnetLinkBuilder {
     }
 
     private String encode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+        // ':' and '/' are valid within URI query values; keep tracker URLs readable.
+        // Preserve escaping for separators (&, =), fragments (#), percent signs and spaces.
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+                .replace("%3A", ":").replace("%2F", "/");
     }
 }

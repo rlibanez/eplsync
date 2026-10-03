@@ -23,6 +23,10 @@ public final class CatalogBookSpecifications {
         }
 
         f.normalize();
+        if (f.getSelectedIds() != null) spec = spec.and((root,q,cb) -> f.getSelectedIds().length == 0
+            ? cb.disjunction() : root.get("eplId").in((Object[]) f.getSelectedIds()));
+        if (f.getExcludedIds() != null && f.getExcludedIds().length > 0)
+            spec = spec.and((root,q,cb) -> cb.not(root.get("eplId").in((Object[]) f.getExcludedIds())));
 
         if (f.getEplId() != null) {
             spec = spec.and((root, q, cb) -> root.get("eplId").in((Object[]) f.getEplId()));

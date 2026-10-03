@@ -26,9 +26,26 @@ class MagnetLinkBuilderTests {
         assertThat(builder.build("A".repeat(40), 3L, "Bóvedas & acero + #1"))
                 .isEqualTo("magnet:?xt=urn:btih:" + "A".repeat(40)
                         + "&dn=EPL_3_B%C3%B3vedas%20%26%20acero%20%2B%20%231"
-                        + "&tr=https%3A%2F%2Fexample.com%2Fannounce%3Fkey%3Da%26v%3D1"
-                        + "&tr=udp%3A%2F%2Fexample.org%3A1337%2Fannounce");
+                        + "&tr=https://example.com/announce%3Fkey%3Da%26v%3D1"
+                        + "&tr=udp://example.org:1337/announce");
         properties.setTrackers(List.of());
         assertThat(builder.build("A".repeat(40), 3L, "Título")).doesNotContain("&tr=");
     }
+    @Test
+    void readableUrlsPreserveTheOriginalParameterValues() {
+        var properties = new TorrentProperties();
+        String tracker = "https://example.org:443/announce?token=a%2Fb&name=x+y";
+        String title = "Título: uno/dos & tres = 100% + #fin";
+        properties.setTrackers(List.of(tracker));
+        String magnet = new MagnetLinkBuilder(properties).build("A".repeat(40), 3L, title);
+        var uri = java.net.URI.create(magnet);
+        String[] parameters = uri.getRawSchemeSpecificPart().substring(1).split("&");
+        assertThat(parameters).hasSize(3);
+        assertThat(java.net.URLDecoder.decode(parameters[1].substring(3),
+                java.nio.charset.StandardCharsets.UTF_8)).isEqualTo("EPL_3_" + title);
+        assertThat(java.net.URLDecoder.decode(parameters[2].substring(3),
+                java.nio.charset.StandardCharsets.UTF_8)).isEqualTo(tracker);
+        assertThat(uri.getRawFragment()).isNull();
+    }
+
 }

@@ -42,6 +42,18 @@ class CatalogMagnetControllerTests {
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
+    @Test void selectedExportIncludesAllHashesAndDeduplicatesWithoutRequiringAnExtension() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/catalog/magnets/export")
+            .contentType("application/json").content("{\"filters\":{\"selectedIds\":[1,2]}}"))
+            .andExpect(status().isOk()).andExpect(content().string(first + "\n" + second + "\n"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/catalog/magnets/export")
+            .contentType("application/json").content("{\"filters\":{\"selectedIds\":[]}}"))
+            .andExpect(status().isOk()).andExpect(content().string(""));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/catalog/magnets/export")
+            .contentType("application/json").content("{\"filters\":{\"author\":[\"Autor\"],\"excludedIds\":[1]}}"))
+            .andExpect(status().isOk()).andExpect(content().string(""));
+    }
+
     @Test
     void returnsBookMagnetsEmptyListAndNotFound() throws Exception {
         mvc.perform(get("/api/catalog/books/1/magnets")).andExpect(status().isOk())

@@ -824,5 +824,22 @@
     "error": "No se pudo completar la operación. La eliminación requiere un CSV válido, sin errores y con libros.",
     "sectionTitle": "Limpieza del catálogo",
     "sectionDescription": "Revisa y elimina los libros del catálogo que ya no aparecen en el CSV de EPL. Se conserva el historial de descargas y trabajos."
+  },
+  "selection": {
+    "column": "Selección",
+    "page": "Seleccionar esta página",
+    "book": "Seleccionar {{title}}",
+    "selectAll": "Seleccionar todo ({{count}})",
+    "selected": "{{count}} libros seleccionados",
+    "allSelected": "{{count}} resultados seleccionados",
+    "clear": "Quitar selección",
+    "export": "Exportar magnet links",
+    "send": "Enviar a descargar",
+    "createJob": "Crear trabajo",
+    "filename": "Nombre del archivo (extensión opcional)",
+    "browserSave": "El destino depende de la configuración de descargas del navegador. Activa «Preguntar dónde guardar» si quieres elegir la carpeta.",
+    "save": "Guardar",
+    "exportError": "No se han podido exportar los enlaces. Inténtalo de nuevo.",
+    "noMagnets": "La selección no contiene enlaces magnet."
   }
 }

@@ -19,7 +19,6 @@ import {
   Library,
   FolderOpen,
   Download,
-  Send,
   ListChecks,
   Menu,
   X,
@@ -116,7 +115,6 @@ function ShellContent() {
           </div>
           {[
             { to: "/downloads", label: "nav.downloadState", Icon: Download },
-            { to: "/downloads/send", label: "nav.send", Icon: Send },
             { to: "/downloads/jobs", label: "nav.jobs", Icon: ListChecks },
           ].map(({ to, label, Icon }) => (
             <NavLink

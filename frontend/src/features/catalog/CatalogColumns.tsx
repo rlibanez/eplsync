@@ -3,6 +3,7 @@ import { ActionIcon, Button, Checkbox, Popover } from "@mantine/core";
 import { ArrowUp, ArrowDown, Columns3, GripVertical } from "lucide-react";
 import { useTranslation } from "react-i18next";
 export const columnLabels = {
+  selection: "selection.column",
   title: "catalog.book", author: "catalog.author", collection: "filters.collection",
   genres: "filters.genres", language: "catalog.language", status: "filters.status",
   publicationStatus: "filters.publicationStatus", eplId: "filters.eplId", revision: "catalog.revision",
@@ -17,6 +18,7 @@ function read(): Settings {
     const data = JSON.parse(localStorage.getItem(storageKey) || "null");
     if (data && Array.isArray(data.order) && Array.isArray(data.hidden)) {
       const order = [...new Set<Column>(data.order.filter((key: Column) => defaults.includes(key)))];
+      if (!order.includes("selection")) order.unshift("selection");
       defaults.forEach(key => { if (!order.includes(key)) order.push(key); });
       const hidden = defaults.filter(key => data.hidden.includes(key));
       const widths: Partial<Record<Column, number>> = {};

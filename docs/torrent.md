@@ -198,7 +198,7 @@ el trabajo. Las opciones omitidas heredan los valores del servidor; `category:""
 `autoManagement:false` y pertenece al equipo/contenedor de qBittorrent.
 
 `GET /api/torrent/options` permite consultar los valores efectivos para rellenar la
-vista Enviar. No expone credenciales ni consulta preferencias remotas del cliente.
+ventana de envío del Catálogo. No expone credenciales ni consulta preferencias remotas del cliente.
 
 #### Placeholders en etiquetas
 

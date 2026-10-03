@@ -89,6 +89,10 @@ public class CatalogBookFilter {
      */
     private Set<BookStatus> status;
 
+    // Explicit catalog selections; an empty selectedIds array deliberately matches nothing.
+    private Long[] selectedIds;
+    private Long[] excludedIds;
+
     // --- Fechas ---
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate publicationDate;
@@ -108,6 +112,10 @@ public class CatalogBookFilter {
 
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
+        for (Long[] ids : new Long[][]{selectedIds, excludedIds})
+            if (ids != null && java.util.Arrays.stream(ids).anyMatch(id -> id == null || id < 1))
+                throw new IllegalArgumentException("Los identificadores seleccionados deben ser positivos");
+
         if (eplId != null && java.util.Arrays.stream(eplId).anyMatch(v -> v == null || v < 1))
             throw new IllegalArgumentException("eplId debe ser un entero mayor que cero");
         eplId = compact(eplId); revision = compact(revision);
