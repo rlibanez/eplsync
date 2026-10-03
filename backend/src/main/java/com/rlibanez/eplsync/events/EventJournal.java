@@ -175,12 +175,17 @@ public class EventJournal {
         return value == null ? 0 : value;
     }
     public record Unread(long count, long cursor) {}
-    public Unread unread(long afterId) {
+    public Unread unread(long afterId) { return unread(afterId, List.of()); }
+    public Unread unread(long afterId, List<Long> readIds) {
+        if (readIds == null || readIds.size() > 10000 || readIds.stream().anyMatch(id -> id == null || id <= 0))
+            throw new IllegalArgumentException("readIds debe contener hasta 10000 identificadores positivos");
         if (afterId < 0) throw new IllegalArgumentException("afterId debe ser >= 0");
         return transactions.execute(tx -> {
             long latest = cursor();
             long effective = afterId > latest ? 0 : afterId;
-            long count = jdbc.queryForObject("SELECT COUNT(DISTINCT operation_id) FROM app_events WHERE id > ?", Long.class, effective);
+            var read = new HashSet<>(readIds);
+            long count = jdbc.queryForList("SELECT MAX(id) FROM app_events WHERE id > ? GROUP BY operation_id", Long.class, effective)
+                    .stream().filter(id -> afterId > latest || !read.contains(id)).count();
             return new Unread(count, latest);
         });
     }

@@ -1,7 +1,7 @@
 import { EventSummary } from "./EventSummary";
 import { readEventNavigation, saveEventNavigation } from "./eventNavigation";
 import { useEventColumns } from "./EventColumns";
-import { markEventsRead } from "./useUnreadEvents";
+import { markEventsRead, markOperationRead } from "./useUnreadEvents";
 import { useEffect, useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -133,8 +133,12 @@ function EventsView({ operationId }: { operationId?: string }) {
   useEffect(() => {
     // Mark only when the displayed result/visibility changes. A server reset may
     // lower the read cursor while this table deliberately retains its snapshot.
-    if (!operationId && visible && result.data && !result.isFetching)
-      markEventsRead(result.data.cursor);
+    if (visible && result.data && !result.isFetching) {
+      if (operationId) {
+        const selected = result.data.items.find(item => item.latest.operationId === operationId);
+        if (selected) markOperationRead(selected.latest.id);
+      } else markEventsRead(result.data.cursor);
+    }
     if (result.data)
       setPage((current) =>
         Math.min(current, Math.max(0, Math.ceil(result.data.total / 20) - 1)),

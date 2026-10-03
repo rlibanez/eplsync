@@ -465,3 +465,8 @@ Las notificaciones de eventos enlazan a /events?operationId=<id>. Esta vista
 consulta la operación concreta y despliega su resumen, sin aplicar ni sobrescribir
 los filtros guardados del listado general. Si la retención o el mantenimiento
 han eliminado la operación, se indica que ya no está disponible.
+
+Abrir el detalle de una operación marca solo su última entrada visible como leída,
+sin adelantar el cursor global sobre otras operaciones pendientes. Estas marcas
+se conservan en localStorage; al visitar el listado general se compactan contra
+el cursor global. La consulta POST de no leídos evita URLs excesivamente largas.

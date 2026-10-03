@@ -727,6 +727,10 @@ dd {
   gap: 12px;
   margin-top: 24px;
 }
+.page-heading > .action-row {
+  margin-top: 0;
+  align-items: center;
+}
 .import-note {
   font-size: 12px;
   margin: 22px 0 0;

@@ -5,12 +5,12 @@ export type { Page } from "@playwright/test";
 export const test = base.extend<{ eventTransport: void }>({
   eventTransport: [
     async ({ page }, use) => {
-      await page.route("**/api/events/unread?**", (route) =>
+      await page.route("**/api/events/unread**", (route) =>
         route.fulfill({
           json: {
             count: 0,
             cursor: Number(
-              new URL(route.request().url()).searchParams.get("afterId"),
+              Math.max(route.request().postDataJSON()?.afterId ?? 0, ...(route.request().postDataJSON()?.readIds ?? [])),
             ),
           },
         }),

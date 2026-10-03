@@ -145,8 +145,8 @@ test("new-event badge survives reload and clears on visiting events, including c
   page,
 }) => {
   const entries = [historical];
-  await page.route("**/api/events/unread?**", (r) => {
-    const read = Number(new URL(r.request().url()).searchParams.get("afterId"));
+  await page.route("**/api/events/unread**", (r) => {
+    const read = Number(r.request().postDataJSON()?.afterId ?? 0);
     return r.fulfill({
       json: {
         count: new Set(
@@ -214,9 +214,9 @@ test("start and finish share one unread operation and a later finish becomes unr
   page,
 }) => {
   const entries: (typeof historical)[] = [];
-  await page.route("**/api/events/unread?**", (r) => {
+  await page.route("**/api/events/unread**", (r) => {
     const after = Number(
-      new URL(r.request().url()).searchParams.get("afterId"),
+      r.request().postDataJSON()?.afterId ?? 0,
     );
     return r.fulfill({
       json: {

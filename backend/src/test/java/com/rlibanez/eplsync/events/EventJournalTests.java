@@ -142,6 +142,15 @@ class EventJournalTests {
         jdbc.update("DELETE FROM app_events WHERE id=?", start.id());
         assertThat(journal.unread(before).count()).isEqualTo(2);
     }
+    @Test void individuallyReadOperationsDoNotHideOtherOperationsOrLaterUpdates() {
+        long before = journal.cursor();
+        var first = at("first", Outcome.STARTED, "16:11:00");
+        var second = at("second", Outcome.STARTED, "16:12:00");
+        assertThat(journal.unread(before, java.util.List.of(second.id())).count()).isEqualTo(1);
+        assertThat(journal.unread(before, java.util.List.of(first.id(), second.id())).count()).isZero();
+        at("second", Outcome.SUCCEEDED, "16:13:00");
+        assertThat(journal.unread(before, java.util.List.of(first.id(), second.id())).count()).isEqualTo(1);
+    }
     @Test void unreadCountsRowsRatherThanIdGapsAndHandlesRestoredDatabase() {
         var first = record();
         var second = record();

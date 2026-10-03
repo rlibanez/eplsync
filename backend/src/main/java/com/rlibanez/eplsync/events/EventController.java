@@ -32,6 +32,12 @@ public class EventController {
             @RequestParam(required=false) Instant from, @RequestParam(required=false) Instant before) {
         return journal.search(new EventJournal.Filter(category, outcome, origin, from, before), page, size);
     }
+    public record UnreadRequest(long afterId, java.util.List<Long> readIds) {}
+    /** Read-only query with browser-local read markers; no user state is stored on the server. */
+    @PostMapping("/unread")
+    public EventJournal.Unread unread(@RequestBody UnreadRequest input) {
+        return journal.unread(input.afterId(), input.readIds());
+    }
     @GetMapping("/unread")
     public EventJournal.Unread unread(@RequestParam(defaultValue="0") long afterId) { return journal.unread(afterId); }
     @GetMapping("/retention") public EventSettings.Retention retention() { return journal.retention(); }

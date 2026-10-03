@@ -1507,3 +1507,10 @@ El estado de lectura pertenece al navegador; no modifica el historial compartido
 El listado agrupado GET /api/events/operations admite operationId como filtro
 opcional de coincidencia exacta. Devuelve la operación con sus eventos retenidos;
 si no existe, devuelve items vacío y total=0.
+
+POST /api/events/unread permite consultar el contador con marcas de lectura
+individuales del navegador: cuerpo {"afterId":0,"readIds":[123,456]}.
+Es una consulta sin modificaciones en el servidor. readIds contiene los IDs de las
+últimas entradas vistas de cada operación (hasta 10000); una entrada posterior de
+esa operación vuelve a contar como no leída. GET /api/events/unread?afterId=...
+sigue disponible para consultas con un cursor global únicamente.
