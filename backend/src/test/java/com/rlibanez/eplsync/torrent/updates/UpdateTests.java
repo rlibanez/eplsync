@@ -358,7 +358,7 @@ class UpdateTests {
 
     @Test void invalidApiParametersCannotAccidentallySelectAllBooks() throws Exception {
         mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).field("eplid", "1")).andExpect(status().isBadRequest());
-        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).field("eplId", "1", "2")).andExpect(status().isBadRequest());
+        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).field("eplId", "1", "-2")).andExpect(status().isBadRequest());
         mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", true).field("page", "-1")).andExpect(status().isBadRequest());
         mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", true).field("multipleHashes", "invalid")).andExpect(status().isBadRequest());
         mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).contentType("application/json")

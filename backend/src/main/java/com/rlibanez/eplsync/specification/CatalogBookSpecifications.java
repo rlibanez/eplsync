@@ -25,14 +25,14 @@ public final class CatalogBookSpecifications {
         f.normalize();
 
         if (f.getEplId() != null) {
-            spec = spec.and((root, q, cb) -> cb.equal(root.get("eplId"), f.getEplId()));
+            spec = spec.and((root, q, cb) -> root.get("eplId").in((Object[]) f.getEplId()));
         }
 
         spec = andIfNotNull(spec, authorContains(f.getAuthor()));
         spec = andIfNotNull(spec, titleContains(f.getTitle()));
         spec = andIfNotNull(spec, genresContains(f.getGenres()));
         spec = andIfNotNull(spec, collectionContains(f.getCollection()));
-        if (f.getRevision() != null) spec = spec.and((root, q, cb) -> cb.equal(root.get("revision"), f.getRevision()));
+        if (f.getRevision() != null) spec = spec.and((root, q, cb) -> root.get("revision").in((Object[]) f.getRevision()));
         spec = andIfNotNull(spec, publicationYearEqualsOrBetween(f));
         spec = andIfNotNull(spec, languageEquals(f));
         spec = andIfNotNull(spec, publicationStatusEquals(f));
@@ -46,29 +46,17 @@ public final class CatalogBookSpecifications {
         return spec;
     }
 
-    private static Specification<CatalogBook> authorContains(String author) {
-        if (author == null)
-            return null;
-        return (root, q, cb) -> cb.like(cb.lower(root.get("author")), "%" + author.toLowerCase() + "%");
+    private static Specification<CatalogBook> containsAny(String field, String[] values) {
+        if (values == null) return null;
+        return (root, q, cb) -> cb.or(java.util.Arrays.stream(values)
+            .map(value -> cb.like(cb.lower(root.get(field)), "%" + value.toLowerCase(java.util.Locale.ROOT)
+                .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%", '\\'))
+            .toArray(jakarta.persistence.criteria.Predicate[]::new));
     }
-
-    private static Specification<CatalogBook> titleContains(String title) {
-        if (title == null)
-            return null;
-        return (root, q, cb) -> cb.like(cb.lower(root.get("title")), "%" + title.toLowerCase() + "%");
-    }
-
-    private static Specification<CatalogBook> genresContains(String genres) {
-        if (genres == null)
-            return null;
-        return (root, q, cb) -> cb.like(root.get("genres"), "%" + genres + "%");
-    }
-
-    private static Specification<CatalogBook> collectionContains(String collection) {
-        if (collection == null)
-            return null;
-        return (root, q, cb) -> cb.like(cb.lower(root.get("collection")), "%" + collection.toLowerCase() + "%");
-    }
+    private static Specification<CatalogBook> authorContains(String[] values) { return containsAny("author", values); }
+    private static Specification<CatalogBook> titleContains(String[] values) { return containsAny("title", values); }
+    private static Specification<CatalogBook> genresContains(String[] values) { return containsAny("genres", values); }
+    private static Specification<CatalogBook> collectionContains(String[] values) { return containsAny("collection", values); }
 
     private static Specification<CatalogBook> publicationYearEqualsOrBetween(CatalogBookFilter f) {
         Integer y = f.getPublicationYear();
@@ -94,13 +82,13 @@ public final class CatalogBookSpecifications {
     private static Specification<CatalogBook> languageEquals(CatalogBookFilter f) {
         if (f.getLanguage() == null)
             return null;
-        return (root, q, cb) -> cb.equal(root.get("language"), f.getLanguage());
+        return (root, q, cb) -> root.get("language").in((Object[]) f.getLanguage());
     }
 
     private static Specification<CatalogBook> publicationStatusEquals(CatalogBookFilter f) {
         if (f.getPublicationStatus() == null)
             return null;
-        return (root, q, cb) -> cb.equal(root.get("publicationStatus"), f.getPublicationStatus());
+        return (root, q, cb) -> root.get("publicationStatus").in((Object[]) f.getPublicationStatus());
     }
 
     private static Specification<CatalogBook> publicationDateEqualsOrBetween(CatalogBookFilter f) {

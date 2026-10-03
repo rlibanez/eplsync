@@ -583,7 +583,9 @@
     "from": "Desde",
     "to": "Hasta",
     "equal": "Igualar fechas",
-    "clearApplied": "Limpiar filtros"
+    "clearApplied": "Limpiar filtros",
+    "invalidValue": "Introduce un valor válido.",
+    "removeValue": "Quitar {{value}}"
   },
   "columns": {
     "title": "Columnas",

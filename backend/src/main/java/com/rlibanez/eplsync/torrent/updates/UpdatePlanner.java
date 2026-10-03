@@ -47,14 +47,14 @@ public class UpdatePlanner {
     @Transactional(readOnly = true)
     public List<Candidate> preview(Long eplId, boolean includeNotFound, MultipleHashes multipleHashes) {
         var filter = new CatalogBookFilter();
-        filter.setEplId(eplId);
+        if (eplId != null) filter.setEplId(eplId);
         return preview(filter, includeNotFound, multipleHashes, Selection.UPDATES);
     }
 
     @Transactional(readOnly = true)
     public List<Candidate> preview(CatalogBookFilter filter, boolean includeNotFound,
             MultipleHashes multipleHashes, Selection selection) {
-        if (filter.getEplId() != null && filter.getEplId() <= 0)
+        if (filter.getEplId() != null && java.util.Arrays.stream(filter.getEplId()).anyMatch(id -> id == null || id <= 0))
             throw new IllegalArgumentException("eplId debe ser positivo");
         var policy = multipleHashes == null ? properties.getBulk().getMultipleHashes() : multipleHashes;
         String instance = tracking.instanceId();
@@ -98,7 +98,7 @@ public class UpdatePlanner {
     @Transactional
     public BulkStore.View create(Long eplId, boolean includeNotFound, UpdateRequest request) {
         var filter = new CatalogBookFilter();
-        filter.setEplId(eplId);
+        if (eplId != null) filter.setEplId(eplId);
         return create(filter, includeNotFound, request, Selection.UPDATES);
     }
 

@@ -21,7 +21,7 @@ export function quickFilter(
     next.set("addedFrom", day);
     next.set("addedTo", day);
   } else {
-    next.set(column, value);
+    if (!next.getAll(column).includes(value)) next.append(column, value);
   }
   next.set("page", "0");
   return next;
@@ -61,7 +61,7 @@ export function CatalogValue({
                 : column === "eplId" || column === "publicationYear"
                   ? number(Number(raw), { useGrouping: false })
                   : column === "revision"
-                    ? number(Number(raw))
+                    ? String(Number(raw))
                     : raw;
         const help = t("catalog.filterByValue", {
           field: t(columnLabels[column]),

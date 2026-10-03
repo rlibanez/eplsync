@@ -86,9 +86,11 @@ test("filters, pagination, detail and back preserve the catalog context", async 
   ).toBeVisible();
   await page.getByRole("link", { name: "Volver al catálogo" }).click();
   await expect(page).toHaveURL(/page=1/);
-  await expect(page.locator(".catalog-search input").first()).toHaveValue(
-    "Dune",
-  );
+  await expect(
+    page
+      .locator(".catalog-search .mantine-Pill-label")
+      .filter({ hasText: "Dune" }),
+  ).toHaveCount(1);
   await expect
     .poll(() => page.evaluate(() => window.scrollY))
     .toBeGreaterThan(0);

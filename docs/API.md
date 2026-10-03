@@ -334,8 +334,8 @@ curl -s \
 
 En `GET /api/catalog/books`, los nombres de los parámetros distinguen mayúsculas y
 minúsculas, con una excepción: `eplid` se acepta como alias de `eplId` (nombre oficial).
-Si aparecen ambos, deben indicar el mismo entero positivo; valores distintos,
-vacíos o inválidos devuelven `400`. Los parámetros desconocidos también devuelven
+Se pueden repetir ambos nombres: sus identificadores se combinan sin duplicados.
+Los valores vacíos o inválidos devuelven `400`. Los parámetros desconocidos también devuelven
 `400` para evitar listar todo el catálogo por un filtro mal escrito.
 La consulta por filtro devuelve una lista; la ruta `/api/catalog/books/32` devuelve un objeto.
 
@@ -383,8 +383,15 @@ Estos filtros funcionan en:
 | `publicationDateFrom` | Fecha mínima, incluida. |
 | `publicationDateTo` | Fecha máxima, incluida. |
 
-Los filtros se combinan mediante **AND**. Los valores de `status` se combinan
-mediante **OR**. `language` también admite nombres del enum como `ESPANOL`, sin
+Los campos se combinan mediante **AND** y los valores de un mismo campo mediante **OR**.
+`title`, `author`, `collection`, `genres`, `eplId`, `revision`, `language`,
+`publicationStatus` y `status` admiten varios valores. En GET se repite el parámetro
+(`author=Asimov&author=Sanderson&language=es&language=en`); en los filtros JSON de
+POST se usan arrays (`"author":["Asimov","Sanderson"]`). También se admite un
+valor escalar en JSON. Las comas en textos no separan criterios. Cada uno de los
+nuevos campos múltiples admite hasta 100 valores; las longitudes de texto de la
+tabla se aplican a cada valor. Los rangos de fechas y años siguen siendo únicos.
+ `language` también admite nombres del enum como `ESPANOL`, sin
 distinguir mayúsculas y minúsculas.
 
 ```bash

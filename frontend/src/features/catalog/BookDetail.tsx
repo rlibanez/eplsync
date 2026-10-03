@@ -38,7 +38,10 @@ export function BookDetail() {
                 <div className="tags">
                   <span className="badge">{language(book.language)}</span>
                   <span className="badge">
-                    {t("detail.revision", { revision: number(book.revision) })}
+                    {t("detail.revision", {
+                      revision:
+                        book.revision == null ? "—" : String(book.revision),
+                    })}
                   </span>
                   {book.genres && <span className="muted">{book.genres}</span>}
                 </div>
@@ -87,7 +90,8 @@ export function BookDetail() {
                     <li key={item.id}>
                       <span>
                         {t("detail.revision", {
-                          revision: number(item.revision),
+                          revision:
+                            item.revision == null ? "—" : String(item.revision),
                         })}
                       </span>
                       <span className="badge">{status(item.status)}</span>

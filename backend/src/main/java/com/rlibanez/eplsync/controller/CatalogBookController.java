@@ -65,7 +65,7 @@ public class CatalogBookController {
             }
         }
         // Validate both spellings, including repeated values, before applying the alias.
-        Long requestedId = null;
+        var requestedIds = new java.util.LinkedHashSet<Long>();
         for (String name : java.util.List.of("eplId", "eplid")) {
             String[] values = request.getParameterValues(name);
             if (values == null) continue;
@@ -77,12 +77,10 @@ public class CatalogBookController {
                     throw new IllegalArgumentException(name + " debe ser un entero mayor que cero");
                 }
                 if (id < 1) throw new IllegalArgumentException(name + " debe ser un entero mayor que cero");
-                if (requestedId != null && requestedId.longValue() != id)
-                    throw new IllegalArgumentException("eplId y eplid deben indicar el mismo identificador");
-                requestedId = id;
+                requestedIds.add(id);
             }
         }
-        if (requestedId != null) filter.setEplId(requestedId);
+        if (!requestedIds.isEmpty()) filter.setEplId(requestedIds.toArray(Long[]::new));
 
         if ((page != null && page < 0) || (size != null && size < 1))
             throw new IllegalArgumentException("page >= 0 y size > 0");

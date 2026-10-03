@@ -43,7 +43,7 @@ test("table values apply composable filters and exact local-day ranges", async (
     ["status", "Estado", "Disponible"],
     ["publicationStatus", "Estado de publicación", "Actualizado"],
     ["eplId", "EPL Id", "17347"],
-    ["revision", "Revisión", "1,1"],
+    ["revision", "Revisión", "1.1"],
   ]) {
     await table
       .getByRole("button", {
@@ -93,10 +93,16 @@ test("table values apply composable filters and exact local-day ranges", async (
     "2026-10-01T22:00:00.000Z",
   );
   await page.locator(".catalog-search summary").click();
-  await expect(page.getByLabel("Autor", { exact: true })).toHaveValue(
-    book.author,
-  );
-  await expect(page.getByLabel("Revisión", { exact: true })).toHaveValue("1.1");
+  await expect(
+    page
+      .locator(".catalog-search .mantine-Pill-label")
+      .filter({ hasText: book.author }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".catalog-search .mantine-Pill-label")
+      .filter({ hasText: "1.1" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Igualar fechas", pressed: true }),
   ).toHaveCount(3);

@@ -418,3 +418,13 @@ duración; los cambios se aplican a los siguientes.
 Los envíos individuales y por filtros producen eventos `JOB / DOWNLOAD` mediante
 su trabajo. El frontend recibe inicio y resultado mediante SSE; los fallos de
 transporte siguen siendo avisos locales.
+
+Los filtros del catálogo admiten varios valores por campo: Intro añade un criterio
+sin salir del campo; Tabulador también lo añade sin avanzar, y con el campo vacío
+avanza al siguiente. Intro con el campo vacío ejecuta Buscar. Retroceso o Suprimir
+con el campo vacío eliminan el último criterio. Buscar incorpora los textos
+pendientes. Los valores inválidos se conservan para corregirlos y bloquean Buscar.
+Cada criterio se elimina con su X, sin separar nombres por comas. Los desplegables
+de idioma y estados admiten selección múltiple. Dentro del campo se aplica OR,
+entre campos AND. Los filtros rápidos añaden alternativas sin duplicados, la URL
+conserva todas al paginar/volver/recargar y las fechas mantienen sus rangos.

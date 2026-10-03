@@ -55,7 +55,7 @@ class LanguageApiTests {
         }
         var captor = org.mockito.ArgumentCaptor.forClass(CatalogBookFilter.class);
         verify(service, times(2)).searchAll(captor.capture());
-        assertThat(captor.getAllValues()).allSatisfy(filter -> assertThat(filter.getLanguage()).isEqualTo(Language.ESPANOL));
+        assertThat(captor.getAllValues()).allSatisfy(filter -> assertThat(filter.getLanguage()).containsExactly(Language.ESPANOL));
         when(service.search(any(), any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(book)));
         mvc.perform(get("/api/catalog/books").param("page", "0").param("size", "20"))
                 .andExpect(status().isOk())

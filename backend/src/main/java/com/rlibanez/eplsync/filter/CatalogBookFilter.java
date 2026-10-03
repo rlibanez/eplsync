@@ -29,24 +29,36 @@ import java.util.Set;
 public class CatalogBookFilter {
 
     // Identificador exacto; combinable con el resto de filtros.
-    @Min(1)
-    private Long eplId;
+    @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private Long[] eplId;
 
-    @jakarta.validation.constraints.DecimalMin("0.0")
-    private Double revision;
+    public void setEplId(Long... values) { this.eplId = values; }
+
+    @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private Double[] revision;
+
+    public void setRevision(Double... values) { this.revision = values; }
 
     // --- Texto (contains, case-insensitive donde aplique) ---
-    @Size(max = 255)
-    private String author;
+    @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private String[] author;
 
-    @Size(max = 512)
-    private String title;
+    public void setAuthor(String... values) { this.author = values; }
 
-    @Size(max = 512)
-    private String genres;
+    @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private String[] title;
 
-    @Size(max = 255)
-    private String collection;
+    public void setTitle(String... values) { this.title = values; }
+
+    @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private String[] genres;
+
+    public void setGenres(String... values) { this.genres = values; }
+
+    @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private String[] collection;
+
+    public void setCollection(String... values) { this.collection = values; }
 
     // --- Rangos numéricos ---
     @Min(0)
@@ -62,8 +74,14 @@ public class CatalogBookFilter {
     private Integer publicationYearTo;
 
     // --- Enums / exact match ---
-    private Language language;
-    private PublicationStatus publicationStatus;
+    @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private Language[] language;
+
+    public void setLanguage(Language... values) { this.language = values; }
+    @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private PublicationStatus[] publicationStatus;
+
+    public void setPublicationStatus(PublicationStatus... values) { this.publicationStatus = values; }
 
     /**
      * Permite filtrar por uno o varios estados:
@@ -90,7 +108,12 @@ public class CatalogBookFilter {
 
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
-        if (revision != null && (!Double.isFinite(revision) || revision < 0))
+        if (eplId != null && java.util.Arrays.stream(eplId).anyMatch(v -> v == null || v < 1))
+            throw new IllegalArgumentException("eplId debe ser un entero mayor que cero");
+        eplId = compact(eplId); revision = compact(revision);
+        language = compact(language); publicationStatus = compact(publicationStatus);
+
+        if (revision != null && java.util.Arrays.stream(revision).anyMatch(v -> v == null || !Double.isFinite(v) || v < 0))
             throw new IllegalArgumentException("revision debe ser un número finito mayor o igual a cero");
         if (publicationYearFrom != null && publicationYearTo != null && publicationYearFrom > publicationYearTo)
             throw new IllegalArgumentException("publicationYearFrom debe ser <= publicationYearTo");
@@ -98,16 +121,25 @@ public class CatalogBookFilter {
             throw new IllegalArgumentException("publicationDateFrom debe ser <= publicationDateTo");
         if (insertDateFrom != null && insertDateBefore != null && !insertDateFrom.isBefore(insertDateBefore))
             throw new IllegalArgumentException("insertDateFrom debe ser anterior a insertDateBefore");
-        author = norm(author);
-        title = norm(title);
-        genres = norm(genres);
-        collection = norm(collection);
+        author = norm(author, 255);
+        title = norm(title, 512);
+        genres = norm(genres, 512);
+        collection = norm(collection, 255);
     }
 
-    private String norm(String s) {
-        if (s == null)
-            return null;
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
+    private static <T> T[] compact(T[] values) {
+        if (values == null || values.length == 0) return null;
+        if (values.length > 100) throw new IllegalArgumentException("Máximo de 100 valores por campo");
+        if (java.util.Arrays.stream(values).anyMatch(java.util.Objects::isNull))
+            throw new IllegalArgumentException("Los filtros no admiten valores null");
+        return values;
+    }
+    private String[] norm(String[] values, int limit) {
+        values = compact(values);
+        if (values == null) return null;
+        var result = java.util.Arrays.stream(values).map(String::trim).filter(v -> !v.isEmpty()).distinct().toArray(String[]::new);
+        if (java.util.Arrays.stream(result).anyMatch(v -> v.length() > limit))
+            throw new IllegalArgumentException("Texto de filtro demasiado largo");
+        return result.length == 0 ? null : result;
     }
 }

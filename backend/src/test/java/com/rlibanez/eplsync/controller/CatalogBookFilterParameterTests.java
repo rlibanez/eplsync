@@ -25,9 +25,9 @@ class CatalogBookFilterParameterTests {
         verifyNoInteractions(service, downloads);
         mvc.perform(get("/api/catalog/books").param("eplId", "32"))
                 .andExpect(status().isOk());
-        verify(service).searchAll(argThat(filter -> Long.valueOf(32).equals(filter.getEplId())));
+        verify(service).searchAll(argThat(filter -> java.util.Arrays.equals(new Long[]{32L}, filter.getEplId())));
     }
-    @Test void acceptsAliasAndMatchingIdsButRejectsInvalidOrConflictingValues() throws Exception {
+    @Test void acceptsAliasAndMultipleIdsButRejectsInvalidValues() throws Exception {
         var service = mock(CatalogBookService.class);
         var downloads = mock(CatalogDownloadViewService.class);
         var mvc = MockMvcBuilders.standaloneSetup(new CatalogBookController(service, downloads))
@@ -36,12 +36,13 @@ class CatalogBookFilterParameterTests {
         mvc.perform(get("/api/catalog/books").param("eplid", "32")).andExpect(status().isOk());
         mvc.perform(get("/api/catalog/books").param("eplId", "32").param("eplid", "32"))
                 .andExpect(status().isOk());
-        verify(service, times(2)).searchAll(argThat(filter -> Long.valueOf(32).equals(filter.getEplId())));
+        verify(service, times(2)).searchAll(argThat(filter -> java.util.Arrays.equals(new Long[]{32L}, filter.getEplId())));
         clearInvocations(service, downloads);
         mvc.perform(get("/api/catalog/books").param("eplId", "32").param("eplid", "45"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk());
         mvc.perform(get("/api/catalog/books").param("eplid", "32", "45"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk());
+        clearInvocations(service, downloads);
         for (String invalid : new String[]{"", " ", "0", "-1", "abc", "1.5", "9223372036854775808"})
             mvc.perform(get("/api/catalog/books").param("eplid", invalid))
                     .andExpect(status().isBadRequest());

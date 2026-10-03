@@ -9,7 +9,7 @@ class FrontendControllerTests {
     @Test
     void forwardsOnlyKnownFrontendRoutes() throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(new FrontendController()).build();
-        for (var path : new String[]{"/", "/events", "/catalog", "/catalog/32", "/maintenance/catalog", "/settings", "/settings/general", "/settings/database", "/settings/torrent", "/settings/covers", "/settings/about", "/directory", "/downloads", "/downloads/send", "/downloads/send/multiple", "/downloads/jobs", "/downloads/jobs/abc-123"}) {
+        for (var path : new String[]{"/", "/events", "/catalog", "/catalog/32", "/maintenance/catalog", "/settings", "/settings/general", "/settings/database", "/settings/torrent", "/settings/covers", "/settings/about", "/directory", "/downloads", "/downloads/send", "/downloads/jobs", "/downloads/jobs/abc-123"}) {
             mvc.perform(get(path)).andExpect(status().isOk())
                     .andExpect(forwardedUrl("/index.html"));
         }
