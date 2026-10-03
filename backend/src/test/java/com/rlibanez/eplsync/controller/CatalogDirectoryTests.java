@@ -26,4 +26,24 @@ class CatalogDirectoryTests {
   assertThatThrownBy(()->controller.list("links","",0,20)).isInstanceOf(IllegalArgumentException.class);
   assertThatThrownBy(()->controller.list("authors","",Integer.MAX_VALUE,500)).isInstanceOf(IllegalArgumentException.class);
  }
+ @Test void splitsAuthorsBeforeSearchDeduplicationAndPagination() {
+  em.createQuery("delete from CatalogBook").executeUpdate();
+  em.persist(CatalogBook.builder().eplId(1L).title("Anthology").author(" AA. VV. & Arthur C. Clarke & Luis Vigil (tr) & Arthur C. Clarke && ")
+      .revision(1.0).build());
+  em.persist(CatalogBook.builder().eplId(2L).title("Other").author("Arthur C. Clarke & Doe, Jane").revision(1.0).build());
+  for (int i=0;i<12;i++) em.persist(CatalogBook.builder().eplId(10L+i).title("Book")
+      .author(String.format("Writer %02d", i)).revision(1.0).build());
+  em.flush();
+  var all = controller.list("authors", "", 0, 20);
+  assertThat(all.items()).extracting(CatalogDirectoryController.Entry::value)
+      .contains("AA. VV.", "Arthur C. Clarke", "Luis Vigil (tr)", "Doe, Jane")
+      .doesNotContain("", "Doe", "Jane");
+  assertThat(all.items()).hasSize(16);
+  assertThat(controller.list("authors", "clarke", 0, 20).items())
+      .extracting(CatalogDirectoryController.Entry::value).containsExactly("Arthur C. Clarke");
+  assertThat(controller.list("authors", "", 0, 10).items()).hasSize(10);
+  assertThat(controller.list("authors", "", 1, 10).items()).hasSize(6);
+  assertThat(controller.list("authors", "%", 0, 20).items()).isEmpty();
+ }
+
 }

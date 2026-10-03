@@ -1514,3 +1514,9 @@ Es una consulta sin modificaciones en el servidor. readIds contiene los IDs de l
 últimas entradas vistas de cada operación (hasta 10000); una entrada posterior de
 esa operación vuelve a contar como no leída. GET /api/events/unread?afterId=...
 sigue disponible para consultas con un cursor global únicamente.
+
+En GET /api/catalog/directory/authors, los coautores se separan por & y se recortan
+los espacios de cada nombre. Se eliminan valores vacíos y duplicados antes de
+aplicar búsqueda y paginación. Las comas y anotaciones como (tr) pertenecen al
+nombre. CatalogBook.author conserva el texto original del CSV; filtrar por author
+sigue buscando coincidencias parciales e incluye libros escritos en colaboración.

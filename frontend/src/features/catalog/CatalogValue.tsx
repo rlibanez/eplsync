@@ -42,11 +42,11 @@ export function CatalogValue({
   if (value === null || value === undefined || String(value).trim() === "")
     return <>—</>;
   const values =
-    column === "genres"
-      ? String(value)
-          .split(",")
+    (column === "genres" || column === "author")
+      ? [...new Set(String(value)
+          .split(column === "author" ? "&" : ",")
           .map((v) => v.trim())
-          .filter(Boolean)
+          .filter(Boolean))]
       : [String(value)];
   return (
     <>
@@ -69,7 +69,7 @@ export function CatalogValue({
         });
         return (
           <Fragment key={raw}>
-            {index > 0 && ", "}
+            {index > 0 && (column === "author" ? " & " : ", ")}
             <Tooltip label={help} multiline w={280}>
               <button
                 type="button"

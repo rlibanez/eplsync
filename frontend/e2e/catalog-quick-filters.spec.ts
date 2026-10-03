@@ -109,3 +109,16 @@ test("table values apply composable filters and exact local-day ranges", async (
   await table.getByRole("link", { name: book.title }).click();
   await expect(page).toHaveURL(/\/catalog\/17347$/);
 });
+
+test("coauthors are independently clickable and preserve commas within names", async ({ page }) => {
+  await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
+  await page.route("**/api/catalog/books?**", r => r.fulfill({ json: {
+    items: [{ ...book, author: "Arthur C. Clarke & Doe, Jane & Arthur C. Clarke" }],
+    meta: { page: 0, size: 20, totalItems: 1, totalPages: 1 },
+  } }));
+  await page.goto("/catalog");
+  const cell = page.locator('.catalog-table tbody td').filter({ has: page.getByRole("button", { name: "Filtrar por Autor: Doe, Jane", exact: true }) });
+  await expect(cell.getByRole("button")).toHaveCount(2);
+  await cell.getByRole("button", { name: "Filtrar por Autor: Doe, Jane", exact: true }).click();
+  expect(new URL(page.url()).searchParams.getAll("author")).toEqual(["Doe, Jane"]);
+});
