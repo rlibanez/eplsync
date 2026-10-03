@@ -380,7 +380,7 @@ export function Catalog() {
                 {result.data.items.map((book) => (
                   <tr key={book.eplId}>
                     {columns.visible.map((key) => (
-                      <td key={key}>
+                      <td key={key} className={key === "title" ? "catalog-title-cell" : undefined}>
                         {key === "selection" ? (
                           <Checkbox
                             aria-label={t("selection.book", {

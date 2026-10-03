@@ -87,6 +87,7 @@
     "filterByValue": "Filter by {{field}}: {{value}}"
   },
   "detail": {
+    "spoiler": "Show content",
     "navigation": "Browse books",
     "previous": "Previous",
     "next": "Next",

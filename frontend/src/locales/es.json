@@ -87,6 +87,7 @@
     "filterByValue": "Filtrar por {{field}}: {{value}}"
   },
   "detail": {
+    "spoiler": "Mostrar contenido",
     "navigation": "Navegar entre libros",
     "previous": "Anterior",
     "next": "Siguiente",

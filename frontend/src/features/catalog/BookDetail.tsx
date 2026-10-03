@@ -1,3 +1,4 @@
+import { Synopsis } from "./Synopsis";
 import { BookNavigation } from "./BookNavigation";
 import { CatalogValue, quickFilter } from "./CatalogValue";
 import type { Column } from "./CatalogColumns";
@@ -56,9 +57,7 @@ export function BookDetail() {
             <div className="detail-grid">
               <section className="panel detail-section">
                 <h2>{t("detail.synopsis")} </h2>
-                <p className="synopsis">
-                  {book.synopsis || t("detail.noSynopsis")}
-                </p>
+                <Synopsis text={book.synopsis || t("detail.noSynopsis")} />
               </section>
               <section className="panel detail-section">
                 <h2>{t("detail.info")} </h2>

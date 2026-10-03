@@ -1735,3 +1735,27 @@ summary {
 .detail-navigation-row .back-link, .detail-navigation-row .book-navigation { margin: 0; }
 .detail-navigation-row .book-navigation { gap: 24px; }
 .detail-navigation-row [aria-disabled="true"] { opacity: .45; cursor: default; }
+
+.catalog-table .catalog-title-cell { padding-top: 7px; padding-bottom: 7px; }
+.catalog-table .mini-book {
+  width: 44px;
+  height: 59px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+}
+.catalog-table .mini-book.has-image { background: transparent; }
+.catalog-table .mini-book img {
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.synopsis details { margin: 12px 0; }
+.synopsis summary { cursor: pointer; color: var(--accent); }
+.synopsis details > div { margin-top: 8px; }
+.synopsis ul, .synopsis ol { padding-left: 24px; margin: 12px 0; }
+.synopsis li + li { margin-top: 4px; }
+.synopsis a { color: var(--accent); text-decoration: underline; }
