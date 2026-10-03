@@ -176,9 +176,6 @@ function EventsView({ operationId }: { operationId?: string }) {
     <>
       <div className="page-heading">
         <h1>{t("events.title")}</h1>
-        <Button component={Link} to="/settings/general#events" variant="subtle">
-          {t("events.maintenance")}
-        </Button>
       </div>
       <p className="muted">{t("events.description")}</p>
       {operationId ? (
