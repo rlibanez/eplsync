@@ -87,6 +87,13 @@
     "filterByValue": "Filtrar por {{field}}: {{value}}"
   },
   "detail": {
+    "navigation": "Navegar entre libros",
+    "previous": "Anterior",
+    "next": "Siguiente",
+
+    "language": "Idioma",
+    "genres": "Géneros",
+
     "back": "Volver al catálogo",
     "heading": "FICHA DEL LIBRO · EPL {{id}}",
     "unknownLanguage": "Idioma sin indicar",

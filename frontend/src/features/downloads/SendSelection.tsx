@@ -16,10 +16,12 @@ import { post, type Job } from "./shared";
 import { OptionLabel, type SendDefaults } from "./SendOptions";
 export function SendSelection({
   filters,
+  single,
   count,
   allResults,
   onClose,
 }: {
+  single?: { eplId: number; hash: string };
   filters: Record<string, unknown>;
   count: number;
   allResults: boolean;
@@ -125,17 +127,14 @@ export function SendSelection({
   }
   function send() {
     mutation.mutate({
-      url: "/torrent/books",
+      url: single ? `/torrent/books/${single.eplId}` : "/torrent/books",
       body: {
         dryRun: false,
-        filters,
-        all: allResults,
-        sort: ["title,asc", "eplId,asc"],
-        options: options(),
+        ...(!single ? { filters, all: allResults, sort: ["title,asc", "eplId,asc"], multipleHashes } : {}),
+        options: { ...options(), ...(single ? { hash: single.hash } : {}) },
         concurrency: Number(concurrency),
         batchSize: Number(batchSize),
         interval,
-        multipleHashes,
       },
     });
   }
@@ -199,7 +198,7 @@ export function SendSelection({
               value={interval}
               onChange={(e) => setInterval(e.currentTarget.value)}
             />
-            <Select
+            {!single && <Select
               label={label("send.multipleHashes", "multipleHashes")}
               classNames={modified(multipleHashes, defaults.data?.multipleHashes)}
               value={multipleHashes}
@@ -209,7 +208,7 @@ export function SendSelection({
                 value,
                 label: t(`send.${value}`),
               }))}
-            />
+            />}
           </div>
           </fieldset>
           <fieldset className="send-options-group">

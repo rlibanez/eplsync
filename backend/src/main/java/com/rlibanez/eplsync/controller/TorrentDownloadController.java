@@ -15,7 +15,7 @@ public class TorrentDownloadController {
     public TorrentDownloadController(TorrentDownloadService service, BulkStore jobs, com.rlibanez.eplsync.events.EventJournal events) {
         this.service = service; this.jobs = jobs; this.events = events;
     }
-    public record Request(boolean dryRun, TorrentDownloadRequest options) {}
+    public record Request(boolean dryRun, TorrentDownloadRequest options, Integer batchSize, Integer concurrency, String interval) {}
     @PostMapping("/{eplId}")
     public ResponseEntity<?> downloadByEplId(@PathVariable Long eplId,
             @RequestBody java.util.Map<String,Object> body, jakarta.servlet.http.HttpServletRequest request) {
@@ -31,7 +31,7 @@ public class TorrentDownloadController {
         }
         if (input.dryRun()) return ResponseEntity.ok(new BulkStore.Preview(true,false,1,1,0,java.util.List.of()));
         // Preparation resolves the selected hash and freezes the server defaults for this job.
-        var options = new BulkRequest(null,null,null,null);
+        var options = new BulkRequest(null,input.batchSize(),input.concurrency(),input.interval());
         synchronized (jobs) {
             var job = jobs.createPrepared(java.util.List.of(command), options);
             return ResponseEntity.accepted().location(java.net.URI.create("/api/torrent/jobs/" + job.jobId())).body(job);

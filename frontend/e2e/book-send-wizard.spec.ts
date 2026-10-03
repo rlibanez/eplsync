@@ -1,0 +1,22 @@
+import { test, expect } from './fixtures';
+test('book selects a magnet then sends that hash with wizard options', async ({ page }) => {
+  const a = 'a'.repeat(40), b = 'b'.repeat(40);
+  await page.route('**/api/ui/config', r => r.fulfill({ json: { defaultLanguage: 'es' } }));
+  await page.route('**/api/catalog/books/32', r => r.fulfill({ json: { eplId: 32, title: 'Dune', author: 'Frank Herbert', revision: 1, download: { items: [] } } }));
+  await page.route('**/api/catalog/books/32/magnets', r => r.fulfill({ json: [a,b].map(h => `magnet:?xt=urn:btih:${h}`) }));
+  await page.route('**/api/torrent/options', r => r.fulfill({ json: { start: true, autoManagement: false, savePath: '', rename: { enabled: true, pattern: '{title}' }, category: '', tags: [], concurrency: 2, batchSize: 20, interval: '0ms', multipleHashes: 'all' } }));
+  await page.route('**/api/torrent/client/categories', r => r.fulfill({ json: [] }));
+  let body: any;
+  await page.route('**/api/torrent/books/32', r => { body = r.request().postDataJSON(); return r.fulfill({ json: { jobId: 'test-job' } }); });
+  await page.goto('/catalog/32');
+  await expect(page.locator('.book-hash-picker')).toHaveCount(0);
+  await expect(page.locator('.tags button')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Enviar a descargar', exact: true }).click();
+  await page.getByRole('menuitem').filter({ hasText: b }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: /Crear trabajo/ }).click();
+  await expect.poll(() => body?.options.hash).toBe(b);
+  expect(body.concurrency).toBe(2);
+  expect(body.batchSize).toBe(20);
+  expect(body.options.rename.pattern).toBe('{title}');
+});

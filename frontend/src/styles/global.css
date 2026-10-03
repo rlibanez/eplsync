@@ -1725,3 +1725,13 @@ summary {
 .directory-group > h2 { margin: 20px 24px 0; padding-bottom: 8px; border-bottom: 1px solid var(--line); color: var(--accent); font-size: 18px; }
 .directory-group > h2 + .directory-grid { padding-top: 14px; }
 .directory-empty { padding: 24px; }
+
+.detail-section dl > div { font-size: 15px; }
+.detail-filter-badge { cursor: pointer; font: inherit; }
+.detail-filter-badge:hover { text-decoration: underline; }
+.book-navigation { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 16px; }
+.detail-section dd .badge { font-size: inherit; }
+.detail-navigation-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+.detail-navigation-row .back-link, .detail-navigation-row .book-navigation { margin: 0; }
+.detail-navigation-row .book-navigation { gap: 24px; }
+.detail-navigation-row [aria-disabled="true"] { opacity: .45; cursor: default; }

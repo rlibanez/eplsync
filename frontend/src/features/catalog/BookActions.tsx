@@ -1,21 +1,15 @@
 import type { Book } from "../../api/catalog";
 import { RepairCover } from "./RepairCover";
 import { useState } from "react";
-import {
-  useIsMutating,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { Alert, Button, Menu, Select } from "@mantine/core";
+import { useIsMutating, useQuery } from "@tanstack/react-query";
+import { SendSelection } from "../downloads/SendSelection";
+import { Alert, Button, Menu } from "@mantine/core";
 import { Download, Magnet, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
-import { post, type Job } from "../downloads/shared";
 export function BookActions({ book }: { book: Book }) {
   const { eplId } = book;
   const { t } = useTranslation();
-  const cache = useQueryClient();
   const [hash, setHash] = useState<string | null>(null);
   const magnets = useQuery({
     queryKey: ["magnets", eplId],
@@ -38,56 +32,14 @@ export function BookActions({ book }: { book: Book }) {
     ),
   ];
   const pending = useIsMutating({ mutationKey: ["send-books"] }) > 0;
-  const send = useMutation({
-    mutationKey: ["send-books"],
-    meta: {
-      backendEvents: true,
-      notice: { title: "send.fromBook", href: `/catalog/${eplId}` },
-    },
-    retry: false,
-    mutationFn: () =>
-      post<Job>(`/torrent/books/${eplId}`, {
-        dryRun: false,
-        options: hashes.length > 1 ? { hash } : {},
-      }),
-    onSuccess: () => {
-      for (const key of [
-        "book",
-        "catalog",
-        "downloads",
-        "download-summary",
-        "jobs",
-      ])
-        void cache.invalidateQueries({ queryKey: [key] });
-    },
-  });
   return (
     <section className="book-actions" aria-label={t("detail.actions")}>
-      {hashes.length > 1 && (
-        <Select
-          className="book-hash-picker"
-          label={t("detail.chooseTorrent")}
-          description={t("detail.multipleTorrents")}
-          data={hashes}
-          value={hash}
-          onChange={setHash}
-          allowDeselect={false}
-        />
-      )}
+      {hash && <SendSelection single={{ eplId, hash }} filters={{ eplId: [eplId] }} count={1} allResults={false} onClose={() => setHash(null)} />}
       <div className="action-row">
-        <Button
-          leftSection={<Download size={17} />}
-          loading={send.isPending}
-          disabled={
-            pending ||
-            magnets.isPending ||
-            (magnets.isSuccess && !hashes.length) ||
-            (hashes.length > 1 && (!hash || !hashes.includes(hash)))
-          }
-          onClick={() => send.mutate()}
-        >
-          {t("send.fromBook")}
-        </Button>
+        {hashes.length > 1 ? <Menu>
+          <Menu.Target><Button disabled={pending} leftSection={<Download size={17} />}>{t("send.fromBook")}</Button></Menu.Target>
+          <Menu.Dropdown>{hashes.map((value, index) => <Menu.Item key={value} onClick={() => setHash(value)}>{t("detail.magnetNumber", { number: index + 1 })} · {value}</Menu.Item>)}</Menu.Dropdown>
+        </Menu> : <Button leftSection={<Download size={17} />} disabled={pending || magnets.isPending || !hashes.length} onClick={() => setHash(hashes[0])}>{t("send.fromBook")}</Button>}
         {links.length === 1 ? (
           <Button
             component="a"

@@ -87,6 +87,13 @@
     "filterByValue": "Filter by {{field}}: {{value}}"
   },
   "detail": {
+    "navigation": "Browse books",
+    "previous": "Previous",
+    "next": "Next",
+
+    "language": "Language",
+    "genres": "Genres",
+
     "back": "Back to catalog",
     "heading": "BOOK DETAILS · EPL {{id}}",
     "unknownLanguage": "Language not specified",

@@ -31,7 +31,9 @@ export function CatalogValue({
   book,
   column,
   onFilter,
+  separator,
 }: {
+  separator?: string;
   book: Book;
   column: Exclude<Column, "title" | "selection">;
   onFilter: (column: Column, value: string) => void;
@@ -69,7 +71,7 @@ export function CatalogValue({
         });
         return (
           <Fragment key={raw}>
-            {index > 0 && (column === "author" ? " & " : ", ")}
+            {index > 0 && (separator ?? (column === "author" ? " & " : ", "))}
             <Tooltip label={help} multiline w={280}>
               <button
                 type="button"

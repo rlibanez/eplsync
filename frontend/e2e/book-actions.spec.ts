@@ -193,3 +193,37 @@ test("backend submission failure produces only one notification", async ({
       .getByRole("link", { name: "Ver detalles" }),
   ).toHaveAttribute("href", "/catalog/32");
 });
+
+test("detail has a compact heading and filters by each author and publication year", async ({ page }) => {
+  await page.route("**/api/catalog/books/32", r => r.fulfill({ json: { ...book, author: "Frank Herbert & Brian Herbert" } }));
+  await page.goto("/catalog/32");
+  await expect(page.locator(".detail-heading .eyebrow")).toHaveCount(0);
+  await expect(page.locator(".detail-heading .tags")).toHaveText("EPL 32Revisión 1");
+  await expect(page.locator(".author")).toHaveText("Frank Herbert · Brian Herbert");
+  await page.locator(".author button").last().click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("author")).toBe("Brian Herbert");
+  await page.goBack();
+  await page.locator("dd button").filter({ hasText: "1965" }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("publicationYearFrom")).toBe("1965");
+  await expect.poll(() => new URL(page.url()).searchParams.get("publicationYearTo")).toBe("1965");
+});
+
+test("detail navigates across filtered catalog pages and returns with filters", async ({ page }) => {
+  await page.route("**/api/catalog/books?*", r => {
+    const url = new URL(r.request().url());
+    expect(url.searchParams.get("author")).toBe("Frank Herbert");
+    const p = Number(url.searchParams.get("page") ?? 0);
+    return r.fulfill({ json: { items: [{ ...book, eplId: p === 0 ? 32 : 33 }], meta: { page: p, size: 1, totalItems: 2, totalPages: 2 } } });
+  });
+  await page.route("**/api/catalog/books/33", r => r.fulfill({ json: { ...book, eplId: 33 } }));
+  await page.goto("/catalog/32");
+  await page.evaluate(() => history.replaceState({ ...history.state, usr: { catalogSearch: "author=Frank+Herbert&size=1&page=0&sort=title,asc" } }, ""));
+  await page.reload();
+  await expect(page.locator('.book-navigation [aria-disabled="true"]').filter({ hasText: "Anterior" })).toBeVisible();
+  await page.getByRole("link", { name: "Siguiente", exact: true }).click();
+  await expect(page).toHaveURL(/\/catalog\/33$/);
+  await page.getByRole("link", { name: "Anterior", exact: true }).click();
+  await expect(page).toHaveURL(/\/catalog\/32$/);
+  await page.getByRole("link", { name: "Volver al catálogo", exact: true }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("author")).toBe("Frank Herbert");
+});

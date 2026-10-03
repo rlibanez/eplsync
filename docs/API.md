@@ -1529,3 +1529,9 @@ los espacios de cada nombre. Se eliminan valores vacíos y duplicados antes de
 aplicar búsqueda y paginación. Las comas y anotaciones como (tr) pertenecen al
 nombre. CatalogBook.author conserva el texto original del CSV; filtrar por author
 sigue buscando coincidencias parciales e incluye libros escritos en colaboración.
+
+El envío individual `POST /api/torrent/books/{eplId}` también admite `batchSize`,
+`concurrency` e `interval` en el cuerpo, con los mismos límites y valores
+predeterminados de los trabajos múltiples. `options.hash` selecciona el torrent
+concreto cuando el libro tiene varios enlaces. La ficha permite elegirlo antes
+ de abrir el formulario compartido de opciones de envío.
