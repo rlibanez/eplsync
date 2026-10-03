@@ -733,6 +733,8 @@
     "durationHint": "You can dismiss notifications earlier with the X."
   },
   "events": {
+    "showAll": "View all events",
+    "missingOperation": "This event is no longer available. It may have been deleted by maintenance or retention.",
     "title": "Events",
     "description": "Shared EPL Sync operation log, including direct API calls and scheduled tasks.",
     "maintenance": "Event maintenance",
@@ -788,6 +790,7 @@
       "RESET": "Database reset",
       "CHECK": "Cover check",
       "DOWNLOAD": "Download job",
+      "SYNC_PREVIEW": "Synchronization preview",
       "SYNC": "Torrent synchronization",
       "SEND_BOOK": "Single book submission",
       "DELETE_MISSING": "Absent book deletion",

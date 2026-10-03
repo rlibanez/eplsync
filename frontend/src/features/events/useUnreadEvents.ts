@@ -52,7 +52,7 @@ export function useUnreadEvents() {
   });
   useEffect(() => {
     // A replaced/restored database can have a lower sequence than this browser.
-    if (result.data && result.data.cursor < read) save(0);
-  }, [result.data, read]);
+    if (!result.isFetching && result.data && result.data.cursor < read) save(0);
+  }, [result.data, result.isFetching, read]);
   return result.data?.count ?? 0;
 }

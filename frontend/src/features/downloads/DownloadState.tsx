@@ -79,6 +79,7 @@ export function DownloadState() {
   const sync = useMutation({
     mutationKey: ["torrent-sync"],
     meta: {
+      backendEvents: true,
       notice: {
         title: "downloads.sync",
         success: "notifications.operationDone",

@@ -37,6 +37,55 @@ class EventApiTests {
     }
     @BeforeEach void clear() { journal.delete(new EventJournal.Filter(null, null, null, null)); }
     @AfterEach void close() { http.close(); }
+    @Test void disabledTorrentOperationsRecordReadableFailures() throws Exception {
+        for (String path : List.of("/api/torrent/books/32", "/api/torrent/downloads/sync")) {
+            var response = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"dryRun\":false}")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode()).isEqualTo(409);
+            assertThat(response.headers().firstValue("X-EPLSync-Operation-Id")).isPresent();
+            assertThat(json.readTree(response.body()).path("details").asText()).isEqualTo("La conexión torrent está deshabilitada");
+        }
+        var failures = journal.search(new EventJournal.Filter(null, EventJournal.Outcome.FAILED, null, null), 0, 20).items();
+        assertThat(failures).hasSize(2);
+        assertThat(failures).extracting(EventJournal.Entry::action).containsExactlyInAnyOrder("SEND_BOOK", "SYNC");
+        assertThat(failures).allSatisfy(event ->
+                assertThat(event.details().get("reason")).isEqualTo("La conexión torrent está deshabilitada"));
+        var grouped = json.readTree(request("/operations?outcome=FAILED", null).body());
+        assertThat(grouped.path("total").asInt()).isEqualTo(2);
+        for (var operation : grouped.path("items")) {
+            assertThat(operation.path("startedAt").isNull()).isFalse();
+            assertThat(operation.path("finishedAt").isNull()).isFalse();
+            assertThat(operation.path("durationMs").asLong()).isGreaterThanOrEqualTo(0);
+            assertThat(operation.path("events").size()).isEqualTo(2);
+        }
+    }
+
+    @Test void disabledSyncPreviewHasItsOwnPersistedOperation() throws Exception {
+        var response = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/torrent/downloads/sync"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"dryRun\":true}")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(409);
+        var operationId = response.headers().firstValue("X-EPLSync-Operation-Id").orElseThrow();
+        var operation = json.readTree(request("/operations?operationId=" + operationId, null).body()).path("items").get(0);
+        assertThat(operation.path("latest").path("action").asText()).isEqualTo("SYNC_PREVIEW");
+        assertThat(operation.path("latest").path("outcome").asText()).isEqualTo("FAILED");
+        assertThat(operation.path("latest").path("details").path("reason").asText()).isEqualTo("La conexión torrent está deshabilitada");
+        assertThat(operation.path("events").size()).isEqualTo(2);
+    }
+
+    @Test void operationLinkFindsTheExactOperationAndHandlesDeletion() throws Exception {
+        var event = record();
+        journal.record(EventJournal.Category.CATALOG, "UPDATE", EventJournal.Outcome.STARTED,
+                EventContext.Origin.MANUAL, "another-operation", Map.of());
+        var response = json.readTree(request("/operations?operationId=" + event.operationId(), null).body());
+        assertThat(response.path("total").asInt()).isEqualTo(1);
+        assertThat(response.path("items").get(0).path("latest").path("operationId").asText()).isEqualTo(event.operationId());
+        assertThat(json.readTree(request("/operations?operationId=missing", null).body()).path("total").asInt()).isZero();
+    }
+
     @Test void endpointsValidateAndReturnPersistedHistoryAndRetention() throws Exception {
         record();
         var result = request("?category=TORRENT&outcome=SUCCEEDED&page=0&size=20", null);

@@ -21,9 +21,9 @@ export function Failure({
 }) {
   const { t } = useTranslation();
   return (
-    <Alert color="red" title={t("feedback.title")} role="alert">
+    <Alert color="red" title={error instanceof ApiError && error.details ? undefined : t("feedback.title")} role="alert">
       <p>
-        {error instanceof ApiError
+        {error instanceof ApiError && error.details ? error.details : error instanceof ApiError
           ? t(error.status === 404 ? notFoundKey : "errors.http", {
               status: error.status,
             })

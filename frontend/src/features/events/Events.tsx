@@ -1,7 +1,7 @@
 import { EventSummary } from "./EventSummary";
 import { readEventNavigation, saveEventNavigation } from "./eventNavigation";
 import { useEventColumns } from "./EventColumns";
-import { markEventsRead, useEventReadCursor } from "./useUnreadEvents";
+import { markEventsRead } from "./useUnreadEvents";
 import { useEffect, useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -13,7 +13,7 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
 import { Failure, Loading } from "../../components/Feedback";
@@ -26,13 +26,21 @@ import {
 } from "./eventTypes";
 
 export function Events() {
-  const [saved] = useState(readEventNavigation);
+  const [search] = useSearchParams();
+  const operationId = search.get("operationId") || undefined;
+  return <EventsView key={operationId ?? "all"} operationId={operationId} />;
+}
+
+function EventsView({ operationId }: { operationId?: string }) {
+  const [saved] = useState(() => operationId ? {
+    category: null, outcome: null, origin: null, from: "", to: "", page: 0,
+    expanded: [operationId], scroll: 0,
+  } : readEventNavigation());
   const [visit] = useState(() => Math.random());
   const snapshot = useRef<number | undefined>(undefined);
   const restored = useRef(false);
   const cache = useQueryClient();
   const columns = useEventColumns();
-  const read = useEventReadCursor();
   const [visible, setVisible] = useState(
     document.visibilityState === "visible",
   );
@@ -61,13 +69,13 @@ export function Events() {
     scroll: navigation.current.scroll,
   };
   useEffect(() => {
-    saveEventNavigation(navigation.current);
-  }, [category, outcome, origin, from, to, page, expanded]);
+    if (!operationId) saveEventNavigation(navigation.current);
+  }, [category, outcome, origin, from, to, page, expanded, operationId]);
   useEffect(() => {
     const storeScroll = () => {
       if (!restored.current) return;
       navigation.current.scroll = window.scrollY;
-      saveEventNavigation(navigation.current);
+      if (!operationId) saveEventNavigation(navigation.current);
     };
     window.addEventListener("scroll", storeScroll, { passive: true });
     return () => window.removeEventListener("scroll", storeScroll);
@@ -78,6 +86,7 @@ export function Events() {
     initialData: { cursor: 0, revision: 0 },
   });
   const params = new URLSearchParams({ page: String(page), size: "20" });
+  if (operationId) params.set("operationId", operationId);
   if (category) params.set("category", category);
   if (outcome) params.set("outcome", outcome);
   if (origin) params.set("origin", origin);
@@ -122,13 +131,15 @@ export function Events() {
     return () => cancelAnimationFrame(frame);
   }, [result.data, result.isFetching, saved.scroll]);
   useEffect(() => {
-    if (visible && result.data && !result.isFetching)
+    // Mark only when the displayed result/visibility changes. A server reset may
+    // lower the read cursor while this table deliberately retains its snapshot.
+    if (!operationId && visible && result.data && !result.isFetching)
       markEventsRead(result.data.cursor);
     if (result.data)
       setPage((current) =>
         Math.min(current, Math.max(0, Math.ceil(result.data.total / 20) - 1)),
       );
-  }, [result.data, result.isFetching, read, visible]);
+  }, [result.data, result.isFetching, visible, operationId]);
   const filterValue = (
     field: "category" | "outcome" | "origin",
     value: string,
@@ -166,7 +177,11 @@ export function Events() {
         </Button>
       </div>
       <p className="muted">{t("events.description")}</p>
-      <div className="filters">
+      {operationId ? (
+        <Button component={Link} to="/events" variant="subtle" mb="md">
+          {t("events.showAll")}
+        </Button>
+      ) : <div className="filters">
         <Select
           label={t("events.category")}
           clearable
@@ -250,7 +265,7 @@ export function Events() {
         >
           {t("catalog.clear")}
         </Button>
-      </div>
+      </div>}
       {result.isPending ? (
         <Loading />
       ) : result.isError ? (
@@ -279,7 +294,7 @@ export function Events() {
             </span>
           </Group>
           {!result.data.items.length ? (
-            <p>{t("events.empty")}</p>
+            <p>{t(operationId ? "events.missingOperation" : "events.empty")}</p>
           ) : (
             <div className="table-scroll">
               <table className="events-table" style={{ width: columns.width }}>
@@ -379,13 +394,13 @@ export function Events() {
               </table>
             </div>
           )}
-          <Group mt="md">
+          {!operationId && <Group mt="md">
             <Pagination
               value={page + 1}
               total={Math.max(1, Math.ceil(result.data.total / 20))}
               onChange={(value) => setPage(value - 1)}
             />
-          </Group>
+          </Group>}
         </section>
       )}
     </>

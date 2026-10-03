@@ -883,8 +883,10 @@ booleano y por defecto `false`. No se admiten opciones en la URL, campos descono
 valores nulos ni cadenas en lugar de booleanos (`400`). GET no está soportado (`405`).
 Para aplicar, enviar el mismo cuerpo con `"dryRun":false`.
 
-Ambos modos consultan el estado actual del cliente. La simulación no escribe ningún
-registro ni fecha. La ejecución guarda los cambios en una transacción. No añade,
+Ambos modos consultan el estado actual del cliente y registran inicio y resultado
+en Eventos (SYNC_PREVIEW para simular, SYNC para ejecutar), incluidos los fallos.
+La simulación no modifica registros ni fechas de descargas. La ejecución guarda
+los cambios en una transacción. No añade,
 renombra ni elimina torrents. Una ejecución posterior recalcula el resultado: no
 aplica una instantánea de una simulación anterior. Conflictos con otra sincronización
 o envíos en curso devuelven `409`.
@@ -1501,3 +1503,7 @@ Si se leyó el inicio y después llega el fin, esa ejecución vuelve a tener nov
 vale 0 por defecto y debe ser no negativo. Si supera el cursor actual, se cuenta
 desde cero para permitir recuperar el indicador tras restaurar una base anterior.
 El estado de lectura pertenece al navegador; no modifica el historial compartido.
+
+El listado agrupado GET /api/events/operations admite operationId como filtro
+opcional de coincidencia exacta. Devuelve la operación con sus eventos retenidos;
+si no existe, devuelve items vacío y total=0.

@@ -11,15 +11,24 @@ import org.springframework.web.bind.annotation.*;
 public class TorrentDownloadController {
     private final TorrentDownloadService service;
     private final BulkStore jobs;
-    public TorrentDownloadController(TorrentDownloadService service, BulkStore jobs) {
-        this.service = service; this.jobs = jobs;
+    private final com.rlibanez.eplsync.events.EventJournal events;
+    public TorrentDownloadController(TorrentDownloadService service, BulkStore jobs, com.rlibanez.eplsync.events.EventJournal events) {
+        this.service = service; this.jobs = jobs; this.events = events;
     }
     public record Request(boolean dryRun, TorrentDownloadRequest options) {}
     @PostMapping("/{eplId}")
     public ResponseEntity<?> downloadByEplId(@PathVariable Long eplId,
             @RequestBody java.util.Map<String,Object> body, jakarta.servlet.http.HttpServletRequest request) {
         var input = com.rlibanez.eplsync.api.OperationBody.read(body, Request.class, request);
-        var command = service.prepareById(eplId, input.options());
+        var startedAt = java.time.Instant.now();
+        com.rlibanez.eplsync.torrent.TorrentDownload command;
+        try {
+            command = service.prepareById(eplId, input.options());
+        } catch (RuntimeException ex) {
+            if (!input.dryRun()) events.rejected(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,
+                    "SEND_BOOK", java.util.Map.of("eplId", eplId), startedAt, ex);
+            throw ex;
+        }
         if (input.dryRun()) return ResponseEntity.ok(new BulkStore.Preview(true,false,1,1,0,java.util.List.of()));
         // Preparation resolves the selected hash and freezes the server defaults for this job.
         var options = new BulkRequest(null,null,null,null);

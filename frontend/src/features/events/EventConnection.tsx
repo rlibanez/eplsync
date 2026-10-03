@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNotifications } from "../notifications/Notifications";
-import { type AppEvent, eventHref, eventTone } from "./eventTypes";
+import { type AppEvent, eventTone } from "./eventTypes";
 
 export function EventConnection() {
   const { notify } = useNotifications();
@@ -64,7 +64,9 @@ export function EventConnection() {
         id: `server-event:${epoch}:${event.id}`,
         title: translate.current("events.actions." + event.action),
         message:
-          event.action === "SEND_BOOK" && event.outcome === "SUCCEEDED"
+          event.outcome === "FAILED" && typeof event.details.reason === "string"
+            ? event.details.reason
+            : event.action === "SEND_BOOK" && event.outcome === "SUCCEEDED"
             ? translate.current(
                 event.details.submissionStatus === "ALREADY_EXISTS"
                   ? "detail.alreadySent"
@@ -92,7 +94,7 @@ export function EventConnection() {
         phase: ["STARTED", "RESUMED", "RECOVERED"].includes(event.outcome)
           ? "start"
           : "result",
-        href: eventHref(event),
+        href: "/events?operationId=" + encodeURIComponent(event.operationId),
       });
       refresh();
       if (event.outcome !== "STARTED") {

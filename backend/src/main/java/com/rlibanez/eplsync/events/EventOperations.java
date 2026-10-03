@@ -20,6 +20,9 @@ public class EventOperations {
         this.journal = journal; this.jdbc = jdbc; this.transactions = new TransactionTemplate(manager);
     }
     public Page search(EventJournal.Filter filter, int page, int size, Long snapshot) {
+        return search(filter, page, size, snapshot, null);
+    }
+    public Page search(EventJournal.Filter filter, int page, int size, Long snapshot, String operationId) {
         if (page < 0 || size < 1 || size > 200 || (snapshot != null && snapshot < 0))
             throw new IllegalArgumentException("page >= 0, size entre 1 y 200 y snapshot >= 0");
         return transactions.execute(tx -> {
@@ -36,6 +39,7 @@ public class EventOperations {
                 """;
             var args = new ArrayList<Object>(); args.add(cursor);
             String where = " WHERE 1=1";
+            if (operationId != null) { where += " AND operation_id=?"; args.add(operationId); }
             if (filter.category() != null) { where += " AND category=?"; args.add(filter.category().name()); }
             if (filter.origin() != null) { where += " AND origin=?"; args.add(filter.origin().name()); }
             if (filter.outcome() == EventJournal.Outcome.STARTED)

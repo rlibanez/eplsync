@@ -175,7 +175,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
                       : "torrent.network",
               { status: error?.status },
             );
-          if (error?.details) message += "\n" + error.details;
+          if (error?.details) message = error.details;
         } else {
           const kind = mutation.options.mutationKey?.[0];
           if (kind === "cover-check") {

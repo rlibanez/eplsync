@@ -44,6 +44,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     public eventOperationId?: string | null,
+    public details?: string,
   ) {
     super(`HTTP ${status}`);
   }
@@ -60,7 +61,11 @@ export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
     if (signal?.aborted) throw error;
     throw new NetworkError("Network request failed");
   }
-  if (!response.ok) throw new ApiError(response.status);
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(response.status, response.headers.get("X-EPLSync-Operation-Id"),
+      typeof body?.details === "string" ? body.details : undefined);
+  }
   return response.json();
 }
 export const languages = [

@@ -98,8 +98,11 @@ class DownloadTrackingTests {
         long cursor = events.cursor();
         mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json")
                 .content("{\"dryRun\":true}"))
-                .andExpect(status().isOk()).andExpect(header().doesNotExist("X-EPLSync-Operation-Id"));
-        assertThat(events.after(cursor, 10)).isEmpty();
+                .andExpect(status().isOk()).andExpect(header().exists("X-EPLSync-Operation-Id"));
+        assertThat(events.after(cursor, 10)).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::action)
+                .containsExactly("SYNC_PREVIEW", "SYNC_PREVIEW");
+        assertThat(downloads.count()).isZero();
+        cursor = events.cursor();
         mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json").content("{\"dryRun\":false}"))
                 .andExpect(status().isOk()).andExpect(header().exists("X-EPLSync-Operation-Id"));
         var rows = events.after(cursor, 10);

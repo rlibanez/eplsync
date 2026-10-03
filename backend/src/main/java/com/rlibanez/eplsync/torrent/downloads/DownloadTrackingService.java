@@ -107,9 +107,9 @@ public class DownloadTrackingService {
     }
 
     public SyncResult sync(Supplier<List<RemoteTorrent>> remoteReader, boolean dryRun, boolean includeDetails) {
-        if (events == null || dryRun) return performSync(remoteReader, dryRun, includeDetails);
-        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT, "SYNC",
-            () -> performSync(remoteReader, dryRun, includeDetails),
+        if (events == null) return performSync(remoteReader, dryRun, includeDetails);
+        return events.run(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT, dryRun ? "SYNC_PREVIEW" : "SYNC",
+            java.util.Map.of("dryRun", dryRun), () -> performSync(remoteReader, dryRun, includeDetails),
             result -> java.util.Map.of("checked", result.records().checked(), "created", result.records().created(),
                 "updated", result.records().updated(), "ignored", result.remote().ignored()));
     }

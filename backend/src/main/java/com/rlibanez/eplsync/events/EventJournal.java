@@ -83,8 +83,13 @@ public class EventJournal {
 
     public Entry record(Category category, String action, Outcome outcome, EventContext.Origin origin,
                         String operationId, Map<String, ?> details) {
+        return recordAt(category, action, outcome, origin, operationId, details, Instant.now());
+    }
+
+    private Entry recordAt(Category category, String action, Outcome outcome, EventContext.Origin origin,
+                           String operationId, Map<String, ?> details, Instant timestamp) {
         return transactions.execute(tx -> {
-            long now = System.currentTimeMillis();
+            long now = timestamp.toEpochMilli();
             var json = mapper.writeValueAsString(details);
             if (json.length() > 16384) throw new IllegalArgumentException("Resumen del evento demasiado grande");
             long id = jdbc.queryForObject("""
@@ -96,6 +101,26 @@ public class EventJournal {
             });
             return new Entry(id, Instant.ofEpochMilli(now), category, action, outcome, origin, operationId, new LinkedHashMap<>(details));
         });
+    }
+
+    private String failureReason(RuntimeException ex) {
+        // Only expose messages from exceptions explicitly designed for API consumers.
+        return ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException
+                ? ex.getMessage() : ex.getClass().getSimpleName();
+    }
+
+    public void rejected(Category category, String action, Map<String, ?> context, Instant startedAt, RuntimeException ex) {
+        String operationId = UUID.randomUUID().toString();
+        var details = new LinkedHashMap<String, Object>(context);
+        details.put("reason", failureReason(ex));
+        // Persist both timestamps atomically; successful submissions are recorded by their job.
+        transactions.executeWithoutResult(tx -> {
+            recordAt(category, action, Outcome.STARTED, EventContext.origin(), operationId, context, startedAt);
+            record(category, action, Outcome.FAILED, EventContext.origin(), operationId, details);
+        });
+        if (org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()
+                instanceof org.springframework.web.context.request.ServletRequestAttributes request && request.getResponse() != null)
+            request.getResponse().setHeader("X-EPLSync-Operation-Id", operationId);
     }
 
     /** Wrap high-level operations, suppressing nested imports during a full reset. */
@@ -120,7 +145,7 @@ public class EventJournal {
         } catch (RuntimeException ex) {
             try {
                 var failure = new LinkedHashMap<String, Object>(context);
-                failure.put("reason", ex.getClass().getSimpleName());
+                failure.put("reason", failureReason(ex));
                 record(category, action, Outcome.FAILED, EventContext.origin(), operationId, failure);
             }
             catch (RuntimeException recording) { log.error("No se pudo registrar el fallo de {}", operationId, recording); }

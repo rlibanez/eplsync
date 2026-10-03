@@ -407,13 +407,15 @@ test("multiple sort priorities survive pagination and can be reordered or remove
 test("unknown configured category falls back to no category and query failures can be retried", async ({ page }) => {
   let fail = true;
   await page.route("**/api/torrent/client/categories", r => fail
-    ? r.fulfill({ status: 502, json: { message: "Unavailable" } })
+    ? r.fulfill({ status: 409, json: { details: "La conexión torrent está deshabilitada" } })
     : r.fulfill({ json: ["Other"] }));
   await page.goto("/catalog");
   await page.getByRole("checkbox", { name: "Seleccionar Book 1", exact: true }).check();
   await page.getByRole("button", { name: "Enviar a descargar", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Crear trabajo" })).toBeDisabled();
+  await expect(dialog.getByText("La conexión torrent está deshabilitada", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("No se pudo cargar la información", { exact: true })).toHaveCount(0);
   fail = false;
   await dialog.getByRole("button", { name: "Reintentar" }).click();
   await expect(dialog.getByLabel("Categoría", { exact: true })).toHaveValue("Sin categoría");

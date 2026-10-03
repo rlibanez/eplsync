@@ -460,3 +460,8 @@ el orden del panel. Las columnas ocultas también pueden seleccionarse en el pan
 La URL conserva los criterios explícitos mediante parámetros sort repetidos.
 La petición al backend añade eplId ascendente como desempate si no se eligió EPL ID.
 Cambiar la ordenación vuelve a la primera página sin borrar filtros ni selección.
+
+Las notificaciones de eventos enlazan a /events?operationId=<id>. Esta vista
+consulta la operación concreta y despliega su resumen, sin aplicar ni sobrescribir
+los filtros guardados del listado general. Si la retención o el mantenimiento
+han eliminado la operación, se indica que ya no está disponible.

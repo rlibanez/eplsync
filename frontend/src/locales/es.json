@@ -733,6 +733,8 @@
     "durationHint": "Puedes cerrar los avisos antes con la X."
   },
   "events": {
+    "showAll": "Ver todos los eventos",
+    "missingOperation": "Este evento ya no está disponible. Puede haberse eliminado por mantenimiento o antigüedad.",
     "title": "Eventos",
     "description": "Registro compartido de las operaciones de EPL Sync, incluidas las ejecutadas desde la API y las tareas programadas.",
     "maintenance": "Mantenimiento de eventos",
@@ -788,6 +790,7 @@
       "RESET": "Reinicio de la base de datos",
       "CHECK": "Comprobación de portadas",
       "DOWNLOAD": "Trabajo de descargas",
+      "SYNC_PREVIEW": "Previsualización de sincronización",
       "SYNC": "Sincronización torrent",
       "SEND_BOOK": "Envío individual de libro",
       "DELETE_MISSING": "Eliminación de libros ausentes",
