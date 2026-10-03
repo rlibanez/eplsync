@@ -70,6 +70,22 @@ class BulkTests {
         assertThat(applied.selectedItems()).isEqualTo(preview.selectedItems());
         assertThat(applied.skipped()).isEqualTo(preview.skipped());
     }
+    @Test void emptySelectionDoesNotLeaveJobItemsOrEvents() {
+        var filter = new CatalogBookFilter(); filter.setEplId(999L);
+        var cursor = events.cursor();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> store.create(filter,PageRequest.of(0,20),false,false,null))
+            .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("No hay libros");
+        assertThat(jobs.count()).isZero(); assertThat(items.count()).isZero();
+        assertThat(events.cursor()).isEqualTo(cursor);
+        assertThat(store.preview(filter,PageRequest.of(0,20),false,false,null,true).selectedBooks()).isZero();
+    }
+    @Test void oneMatchingBookCreatesAnExecutableJob() throws Exception {
+        var filter = new CatalogBookFilter(); filter.setEplId(1L);
+        var job = store.create(filter,PageRequest.of(0,20),false,false,null);
+        assertThat(job.selectedBooks()).isEqualTo(1);
+        start(); until(() -> store.view(job.jobId()).processedItems() == 1);
+        verify(client,times(1)).addTorrent(any(),any());
+    }
     private BulkStore.View create(BulkRequest request) {
         return store.create(new CatalogBookFilter(), PageRequest.of(0, 20), false, true, request);
     }

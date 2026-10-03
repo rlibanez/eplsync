@@ -76,13 +76,6 @@ export const router = createBrowserRouter([
         }),
       },
       {
-        path: "/downloads/send/multiple",
-        lazy: async () => ({
-          Component: (await import("../features/downloads/SendBooks"))
-            .SendBooks,
-        }),
-      },
-      {
         path: "/downloads/jobs",
         lazy: async () => ({
           Component: (await import("../features/downloads/Jobs")).Jobs,

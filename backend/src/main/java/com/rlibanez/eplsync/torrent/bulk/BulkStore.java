@@ -100,6 +100,7 @@ public class BulkStore {
         long totalBooks = paginated
             ? Math.max(0, Math.min(matchingBooks - offset, pageable.getPageSize()))
             : matchingBooks;
+        if (!dryRun && totalBooks == 0) throw new IllegalArgumentException("No hay libros que coincidan con los filtros");
         long position = 0;
         long selectedBooks = 0;
         int lastProgressCheckpoint = 0;

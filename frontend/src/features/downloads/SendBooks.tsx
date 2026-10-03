@@ -8,31 +8,18 @@ import {
   useIsMutating,
 } from "@tanstack/react-query";
 import { Button, TextInput, Select, Checkbox, Alert } from "@mantine/core";
-import {
-  Link,
-  NavLink,
-  useLocation,
-  useNavigate,
-  useSearchParams,
-} from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { get, languages, type Book, type BookPage } from "../../api/catalog";
+import { get, languages, type BookPage } from "../../api/catalog";
 import { useLocale } from "../../locales/useLocale";
 import { Loading, Failure } from "../../components/Feedback";
 import { Paging, post, type Job } from "./shared";
-interface Sent {
-  eplId: number;
-  hash: string;
-  client: string;
-  status: string;
-}
+import { OptionLabel, type SendDefaults } from "./SendOptions";
 export function SendBooks() {
   const { t } = useTranslation();
   const { language, status } = useLocale();
   const navigate = useNavigate();
-  const location = useLocation();
   const [search] = useSearchParams();
-  const bulk = location.pathname.endsWith("multiple");
   const cache = useQueryClient();
   const [filters, setFilters] = useState<URLSearchParams | null>(() =>
     search.get("eplId")
@@ -43,8 +30,6 @@ export function SendBooks() {
   const [selectionDirty, setSelectionDirty] = useState(false);
   const [previewPage, setPreviewPage] = useState(0);
   const [previewSize, setPreviewSize] = useState(20);
-  const [selected, setSelected] = useState<Book | null>(null);
-  const [hash, setHash] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [all, setAll] = useState(false);
   const [start, setStart] = useState("inherit");
@@ -53,9 +38,7 @@ export function SendBooks() {
   const [path, setPath] = useState("");
   const [pattern, setPattern] = useState("");
   const [category, setCategory] = useState("");
-  const [overrideCategory, setOverrideCategory] = useState(false);
   const [tags, setTags] = useState("");
-  const [overrideTags, setOverrideTags] = useState(false);
   const [concurrency, setConcurrency] = useState("");
   const [batchSize, setBatchSize] = useState("");
   const [interval, setInterval] = useState("");
@@ -70,31 +53,33 @@ export function SendBooks() {
     queryFn: ({ signal }) => get<BookPage>(`/catalog/books?${preview}`, signal),
     enabled: filters !== null,
   });
-  useEffect(() => {
-    if (
-      !bulk &&
-      search.get("eplId") &&
-      books.data?.items.length === 1 &&
-      !selected
-    )
-      setSelected(books.data.items[0]);
-  }, [bulk, search, books.data, selected]);
-  const magnets = useQuery({
-    queryKey: ["magnets", selected?.eplId],
-    queryFn: ({ signal }) =>
-      get<string[]>(`/catalog/books/${selected!.eplId}/magnets`, signal),
-    enabled: !!selected && !bulk,
+  const defaults = useQuery({
+    queryKey: ["send-defaults"],
+    queryFn: ({ signal }) => get<SendDefaults>("/torrent/options", signal),
   });
-  const hashes = [
-    ...new Set(
-      (magnets.data ?? []).flatMap((m) =>
-        new URLSearchParams(m.slice(m.indexOf("?") + 1))
-          .getAll("xt")
-          .filter((x) => x.startsWith("urn:btih:"))
-          .map((x) => x.slice(9)),
-      ),
-    ),
-  ];
+  const initialized = useRef(false);
+  function restoreDefaults(d: SendDefaults) {
+    setStart(String(d.start));
+    setAuto(String(d.autoManagement));
+    setPath(d.savePath ?? "");
+    setRename(String(d.rename.enabled));
+    setPattern(d.rename.pattern ?? "");
+    setCategory(d.category ?? "");
+    setTags(d.tags.join(", "));
+    setConcurrency(String(d.concurrency));
+    setBatchSize(String(d.batchSize));
+    setInterval(d.interval);
+    setMultipleHashes(d.multipleHashes);
+  }
+  useEffect(() => {
+    if (defaults.data && !initialized.current) {
+      restoreDefaults(defaults.data);
+      initialized.current = true;
+    }
+  }, [defaults.data]);
+  function label(key: string, help: string) {
+    return <OptionLabel text={t(key)} help={t(`send.help.${help}`)} />;
+  }
   const active = useIsMutating({ mutationKey: ["send-books"] }) > 0;
   const mutation = useMutation({
     mutationKey: ["send-books"],
@@ -108,7 +93,7 @@ export function SendBooks() {
     },
     retry: false,
     mutationFn: ({ url, body }: { url: string; body: unknown }) =>
-      post<Job | Sent>(url, body),
+      post<Job>(url, body),
     onSuccess: (data) => {
       void cache.invalidateQueries({ queryKey: ["downloads"] });
       void cache.invalidateQueries({ queryKey: ["download-summary"] });
@@ -118,83 +103,63 @@ export function SendBooks() {
     },
   });
   function options() {
-    const value: Record<string, unknown> = {};
-    if (start !== "inherit") value.start = start === "true";
-    if (path.trim()) value.savePath = path.trim();
-    const qb: Record<string, unknown> = {};
-    if (auto !== "inherit") qb.autoManagement = auto === "true";
-    if (overrideCategory) qb.category = category;
-    if (overrideTags)
-      qb.tags = tags
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-    if (Object.keys(qb).length) value.qbittorrent = qb;
-    if (rename !== "inherit" || pattern.trim())
-      value.rename = {
-        ...(rename !== "inherit" ? { enabled: rename === "true" } : {}),
-        ...(pattern.trim() ? { pattern: pattern.trim() } : {}),
-      };
-    return value;
+    return {
+      start: start === "true",
+      savePath: auto === "true" ? "" : path.trim(),
+      rename: { enabled: rename === "true", pattern: pattern.trim() },
+      qbittorrent: {
+        autoManagement: auto === "true",
+        category: category.trim(),
+        tags: tags
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      },
+    };
   }
   function send() {
     setConfirmed(false);
-    const payload = options();
-    if (!bulk) {
-      const chosen = hash ?? hashes[0];
-      if (chosen) payload.hash = chosen;
-      mutation.mutate({
-        url: `/torrent/books/${selected!.eplId}`,
-        body: payload,
-      });
-    } else {
-      const selectedFilters: Record<string, unknown> = Object.fromEntries(
-        filters!,
-      );
-      if (selectedFilters.eplId)
-        selectedFilters.eplId = Number(selectedFilters.eplId);
-      if (filters!.has("status"))
-        selectedFilters.status = filters!.getAll("status");
-      mutation.mutate({
-        url: "/torrent/books",
-        body: {
-          dryRun: false,
-          filters: selectedFilters,
-          sort: ["title,asc", "eplId,asc"],
-          all: !filters!.size,
-          options: payload,
-          ...(concurrency ? { concurrency: Number(concurrency) } : {}),
-          ...(batchSize ? { batchSize: Number(batchSize) } : {}),
-          ...(interval.trim() ? { interval: interval.trim() } : {}),
-          ...(multipleHashes !== "inherit" ? { multipleHashes } : {}),
-        },
-      });
-    }
+    const selectedFilters: Record<string, unknown> = Object.fromEntries(
+      filters!,
+    );
+    for (const key of [
+      "eplId",
+      "publicationYear",
+      "publicationYearFrom",
+      "publicationYearTo",
+    ])
+      if (selectedFilters[key])
+        selectedFilters[key] = Number(selectedFilters[key]);
+    if (filters!.has("status"))
+      selectedFilters.status = filters!.getAll("status");
+    mutation.mutate({
+      url: "/torrent/books",
+      body: {
+        dryRun: false,
+        filters: selectedFilters,
+        sort: ["title,asc", "eplId,asc"],
+        all: !filters!.size,
+        options: options(),
+        concurrency: Number(concurrency),
+        batchSize: Number(batchSize),
+        interval,
+        multipleHashes,
+      },
+    });
   }
-  const invalidPath = !!path.trim() && auto !== "false";
-  const canSend = bulk
-    ? !!books.data?.meta.totalItems && (!filters?.size ? all : true)
-    : !!selected &&
-      magnets.isSuccess &&
-      hashes.length > 0 &&
-      (hashes.length === 1 || !!hash);
+  const canSend =
+    initialized.current &&
+    defaults.isSuccess &&
+    !!books.data?.meta.totalItems &&
+    (!filters?.size ? all : true);
   const choices = [
-    { value: "inherit", label: t("send.inherit") },
     { value: "true", label: t("downloads.yes") },
     { value: "false", label: t("downloads.no") },
   ];
   return (
     <>
       <h1>{t("nav.send")}</h1>
-      <nav className="section-tabs" aria-label={t("nav.send")}>
-        <NavLink to="/downloads/send" end>
-          {t("send.individual")}
-        </NavLink>
-        <NavLink to="/downloads/send/multiple">{t("send.multiple")}</NavLink>
-      </nav>
-      <p className="muted">
-        {t(bulk ? "send.multipleNote" : "send.individualNote")}
-      </p>
+      <p className="muted">{t("send.multipleNote")}</p>
       <section className="panel settings-section">
         <h2>{t("send.selection")}</h2>
         <form
@@ -210,8 +175,6 @@ export function SendBooks() {
             setFilters(next);
             setSelectionDirty(false);
             setPreviewPage(0);
-            setSelected(null);
-            setHash(null);
             setAll(false);
             mutation.reset();
           }}
@@ -302,7 +265,6 @@ export function SendBooks() {
                       <th>{t("downloads.book")}</th>
                       <th>{t("catalog.author")}</th>
                       <th>{t("catalog.language")}</th>
-                      {!bulk && <th>{t("send.select")}</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -316,25 +278,6 @@ export function SendBooks() {
                         </td>
                         <td>{book.author}</td>
                         <td>{language(book.language)}</td>
-                        {!bulk && (
-                          <td>
-                            <Button
-                              variant={
-                                selected?.eplId === book.eplId
-                                  ? "filled"
-                                  : "default"
-                              }
-                              aria-pressed={selected?.eplId === book.eplId}
-                              onClick={() => {
-                                setSelected(book);
-                                setHash(null);
-                                mutation.reset();
-                              }}
-                            >
-                              {t("send.select")}
-                            </Button>
-                          </td>
-                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -350,8 +293,8 @@ export function SendBooks() {
                   setPreviewPage(0);
                 }}
               />
-              {bulk && <Alert>{t("send.allMatchesNote")}</Alert>}
-              {bulk && !filters.size && (
+              {<Alert>{t("send.allMatchesNote")}</Alert>}
+              {!filters.size && (
                 <Checkbox
                   mt="md"
                   label={t("send.allCatalog")}
@@ -361,28 +304,6 @@ export function SendBooks() {
               )}
             </>
           ))}
-        {!bulk && selected && (
-          <div className="selection-total">
-            <strong>
-              {selected.title} · EPL {selected.eplId}
-            </strong>
-            {magnets.isPending ? (
-              <Loading />
-            ) : magnets.isError ? (
-              <Failure error={magnets.error} retry={() => magnets.refetch()} />
-            ) : hashes.length ? (
-              <Select
-                label={t("send.hash")}
-                value={hash ?? (hashes.length === 1 ? hashes[0] : null)}
-                data={hashes}
-                onChange={setHash}
-                allowDeselect={false}
-              />
-            ) : (
-              <Alert color="yellow">{t("send.noHash")}</Alert>
-            )}
-          </div>
-        )}
       </section>
       {selectionDirty && <Alert color="yellow">{t("send.dirty")}</Alert>}
       <form
@@ -401,114 +322,111 @@ export function SendBooks() {
         <section className="panel settings-section">
           <h2>{t("send.options")}</h2>
           <p className="muted">{t("send.defaults")}</p>
-          <div className="form-grid">
-            <Select
-              label={t("send.start")}
-              value={start}
-              data={choices}
-              onChange={(v) => setStart(v ?? "inherit")}
-            />
-            <Select
-              label={t("send.auto")}
-              value={auto}
-              data={choices}
-              onChange={(v) => setAuto(v ?? "inherit")}
-            />
-            <TextInput
-              label={t("send.path")}
-              value={path}
-              onChange={(e) => setPath(e.currentTarget.value)}
-              error={invalidPath ? t("send.pathError") : undefined}
-            />
-          </div>
-          <details>
-            <summary>{t("send.advanced")}</summary>
-            <div className="form-grid">
-              <Select
-                label={t("send.rename")}
-                value={rename}
-                data={choices}
-                onChange={(v) => setRename(v ?? "inherit")}
-              />
-              <TextInput
-                label={t("send.pattern")}
-                value={pattern}
-                onChange={(e) => setPattern(e.currentTarget.value)}
-              />
-              <div>
-                <Checkbox
-                  label={t("send.overrideCategory")}
-                  checked={overrideCategory}
-                  onChange={(e) => setOverrideCategory(e.currentTarget.checked)}
-                />
-                <TextInput
-                  label={t("send.category")}
-                  disabled={!overrideCategory}
-                  value={category}
-                  onChange={(e) => setCategory(e.currentTarget.value)}
-                />
-              </div>
-              <div>
-                <Checkbox
-                  label={t("send.overrideTags")}
-                  checked={overrideTags}
-                  onChange={(e) => setOverrideTags(e.currentTarget.checked)}
-                />
-                <TextInput
-                  label={t("send.tags")}
-                  disabled={!overrideTags}
-                  value={tags}
-                  onChange={(e) => setTags(e.currentTarget.value)}
-                />
-              </div>
-            </div>
-            <p className="muted">{t("send.emptyOverrides")}</p>
-          </details>
-          {bulk && (
+          {defaults.isPending && <Loading />}
+          {defaults.isError && (
+            <Failure error={defaults.error} retry={() => defaults.refetch()} />
+          )}
+          <fieldset
+            disabled={!defaults.isSuccess || !initialized.current}
+            style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+          >
+            <h3>{t("send.jobOptions")}</h3>
             <div className="form-grid">
               <TextInput
-                label={t("downloads.concurrency")}
+                label={label("downloads.concurrency", "concurrency")}
                 type="number"
                 min={1}
                 max={16}
+                required
                 value={concurrency}
                 onChange={(e) => setConcurrency(e.currentTarget.value)}
               />
               <TextInput
-                label={t("downloads.batchSize")}
+                label={label("downloads.batchSize", "batchSize")}
                 type="number"
                 min={1}
                 max={1000}
+                required
                 value={batchSize}
                 onChange={(e) => setBatchSize(e.currentTarget.value)}
               />
               <TextInput
-                label={t("send.interval")}
-                placeholder="500ms"
+                label={label("send.interval", "interval")}
+                required
                 value={interval}
                 onChange={(e) => setInterval(e.currentTarget.value)}
               />
               <Select
-                label={t("send.multipleHashes")}
+                label={label("send.multipleHashes", "multipleHashes")}
                 value={multipleHashes}
-                onChange={(v) => setMultipleHashes(v ?? "inherit")}
-                data={[
-                  { value: "inherit", label: t("send.inherit") },
-                  ...["all", "first", "skip"].map((value) => ({
-                    value,
-                    label: t(`send.${value}`),
-                  })),
-                ]}
+                allowDeselect={false}
+                onChange={(v) => setMultipleHashes(v!)}
+                data={["all", "first", "skip"].map((value) => ({
+                  value,
+                  label: t(`send.${value}`),
+                }))}
               />
             </div>
-          )}
+            <h3 style={{ marginTop: "1.5rem" }}>{t("send.clientOptions")}</h3>
+            <div className="form-grid">
+              <Select
+                label={label("send.start", "start")}
+                value={start}
+                data={choices}
+                allowDeselect={false}
+                onChange={(v) => setStart(v!)}
+              />
+              <Select
+                label={label("send.auto", "auto")}
+                value={auto}
+                data={choices}
+                allowDeselect={false}
+                onChange={(v) => setAuto(v!)}
+              />
+              <TextInput
+                label={label("send.path", "path")}
+                value={path}
+                disabled={auto === "true"}
+                onChange={(e) => setPath(e.currentTarget.value)}
+              />
+              <Select
+                label={label("send.rename", "rename")}
+                value={rename}
+                data={choices}
+                allowDeselect={false}
+                onChange={(v) => setRename(v!)}
+              />
+              <TextInput
+                label={label("send.pattern", "pattern")}
+                value={pattern}
+                required={rename === "true"}
+                disabled={rename !== "true"}
+                onChange={(e) => setPattern(e.currentTarget.value)}
+              />
+              <TextInput
+                label={label("send.category", "category")}
+                value={category}
+                onChange={(e) => setCategory(e.currentTarget.value)}
+              />
+              <TextInput
+                label={label("send.tags", "tags")}
+                value={tags}
+                onChange={(e) => setTags(e.currentTarget.value)}
+              />
+            </div>
+            <Button
+              variant="subtle"
+              mt="md"
+              onClick={() => defaults.data && restoreDefaults(defaults.data)}
+            >
+              {t("send.restoreDefaults")}
+            </Button>
+          </fieldset>
         </section>
         <Button
           type="submit"
           loading={active}
-          disabled={
-            !canSend || invalidPath || books.isFetching || selectionDirty
-          }
+          disabled={!canSend || books.isFetching || selectionDirty}
         >
           {t("send.review")}
         </Button>
@@ -521,14 +439,12 @@ export function SendBooks() {
         centered
       >
         <p>
-          {bulk
-            ? t("send.confirmMultiple", {
-                count: books.data?.meta.totalItems ?? 0,
-              })
-            : t("send.confirmIndividual", { title: selected?.title ?? "" })}
+          {t("send.confirmMultiple", {
+            count: books.data?.meta.totalItems ?? 0,
+          })}
         </p>
         <p className="muted">{t("send.liveSelection")}</p>
-        {bulk && (
+        {
           <dl className="import-summary">
             {Array.from(filters?.entries() ?? []).map(([key, value]) => (
               <div key={key}>
@@ -558,7 +474,7 @@ export function SendBooks() {
               </div>
             ))}
           </dl>
-        )}
+        }
         <dl className="import-summary">
           <div>
             <dt>{t("send.start")}</dt>
@@ -584,13 +500,13 @@ export function SendBooks() {
               )}
             </dd>
           </div>
-          {path && (
+          {path && auto === "false" && (
             <div>
               <dt>{t("send.path")}</dt>
               <dd>{path}</dd>
             </div>
           )}
-          {bulk && (
+          {
             <>
               <div>
                 <dt>{t("downloads.concurrency")}</dt>
@@ -601,7 +517,7 @@ export function SendBooks() {
                 <dd>{t(`send.${multipleHashes}`)}</dd>
               </div>
             </>
-          )}
+          }
         </dl>
         <p>{t("send.defaults")}</p>
         <ModalActions>

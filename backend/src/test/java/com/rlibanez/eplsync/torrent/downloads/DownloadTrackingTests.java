@@ -75,37 +75,24 @@ class DownloadTrackingTests {
     }
     DownloadRecord only() { return downloads.findAll().getFirst(); }
 
-    @Test void singleSubmissionRecordsStartAndResultWithBookAndHeader() throws Exception {
+    @Test void singleSubmissionCreatesJobWithoutSendingAndDryRunDoesNotPersist() throws Exception {
         book(1.0, HASH);
         long cursor = events.cursor();
-        mvc.perform(post("/api/torrent/books/32")).andExpect(status().isAccepted())
-            .andExpect(header().exists("X-EPLSync-Operation-Id"));
-        var entries = events.after(cursor, 10);
-        assertThat(entries).hasSize(2).allSatisfy(e -> {
-            assertThat(e.action()).isEqualTo("SEND_BOOK");
-            assertThat(e.details().get("eplId")).isEqualTo(32);
-        });
-        assertThat(entries.getFirst().outcome().name()).isEqualTo("STARTED");
-        assertThat(entries.getLast().outcome().name()).isEqualTo("SUCCEEDED");
-        assertThat(entries.getLast().details()).containsEntry("submissionStatus", "ACCEPTED").containsEntry("hash", HASH);
-        assertThat(entries.getFirst().operationId()).isEqualTo(entries.getLast().operationId());
-        assertThat(events.unread(cursor).count()).isEqualTo(1);
-        cursor = events.cursor();
-        when(stubClient.addTorrent(any())).thenReturn(TorrentDownloadResult.Status.ALREADY_EXISTS);
-        mvc.perform(post("/api/torrent/books/32")).andExpect(status().isOk());
-        assertThat(events.after(cursor, 10).getLast().details()).containsEntry("submissionStatus", "ALREADY_EXISTS");
+        mvc.perform(post("/api/torrent/books/32").contentType("application/json").content("{\"dryRun\":true}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.selectedBooks").value(1));
+        assertThat(bulkJobs.count()).isZero(); assertThat(events.after(cursor, 10)).isEmpty();
+        mvc.perform(post("/api/torrent/books/32").contentType("application/json").content("{\"dryRun\":false}"))
+            .andExpect(status().isAccepted()).andExpect(header().exists("Location"))
+            .andExpect(jsonPath("$.selectedBooks").value(1));
+        assertThat(bulkJobs.count()).isEqualTo(1); assertThat(bulkItems.count()).isEqualTo(1);
+        assertThat(events.after(cursor, 10)).hasSize(1);
+        verify(stubClient, never()).addTorrent(any()); verify(stubClient, never()).addTorrent(any(),any());
+        assertThat(downloads.count()).isZero();
     }
-    @Test void singleSubmissionFailureIsRecordedAndPropagated() throws Exception {
-        book(1.0, HASH);
-        long cursor = events.cursor();
-        when(stubClient.addTorrent(any())).thenThrow(new TorrentOperationException(org.springframework.http.HttpStatus.BAD_GATEWAY, "Unavailable"));
-        mvc.perform(post("/api/torrent/books/32")).andExpect(status().isBadGateway())
-            .andExpect(header().exists("X-EPLSync-Operation-Id"));
-        var entries = events.after(cursor, 10);
-        assertThat(entries).hasSize(2);
-        assertThat(entries.getLast().outcome().name()).isEqualTo("FAILED");
-        assertThat(entries.getLast().details()).containsEntry("eplId", 32);
-        verify(stubClient, times(1)).addTorrent(any());
+    @Test void singleSubmissionRequiresExplicitDryRun() throws Exception {
+        mvc.perform(post("/api/torrent/books/32").contentType("application/json").content("{}"))
+            .andExpect(status().isBadRequest());
+        assertThat(bulkJobs.count()).isZero();
     }
     @Test void appliedSyncPublishesOnePersistedResultAndFailureIsRecorded() throws Exception {
         long cursor = events.cursor();

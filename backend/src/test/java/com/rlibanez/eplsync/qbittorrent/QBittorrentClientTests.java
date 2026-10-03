@@ -156,7 +156,7 @@ class QBittorrentClientTests {
         }
     }
 
-    private org.springframework.test.web.servlet.MockMvc downloadMvc(String links) {
+    private com.rlibanez.eplsync.service.TorrentDownloadService downloadService(String links) {
         var repository = org.mockito.Mockito.mock(com.rlibanez.eplsync.repository.CatalogBookRepository.class);
         var book = new com.rlibanez.eplsync.model.CatalogBook();
         book.setEplId(2663L);
@@ -175,8 +175,7 @@ class QBittorrentClientTests {
                 new com.rlibanez.eplsync.torrent.MagnetLinkBuilder(properties),
                 new com.rlibanez.eplsync.torrent.TorrentNameResolver(),
                 new TorrentClientService(properties, List.of(client()), tracking()), events);
-        return MockMvcBuilders.standaloneSetup(new com.rlibanez.eplsync.controller.TorrentDownloadController(service))
-                .setControllerAdvice(new GlobalExceptionHandler()).build();
+        return service;
     }
 
     private java.util.Map<String, String> addedFields() {
@@ -186,125 +185,78 @@ class QBittorrentClientTests {
                         java.net.URLDecoder.decode(pair[1], StandardCharsets.UTF_8)));
     }
 
-    @Test
-    void downloadUsesDefaultsAndSendsOnlyOneMagnet() throws Exception {
+    private com.rlibanez.eplsync.dto.TorrentDownloadRequest options(String json) {
+        return tools.jackson.databind.json.JsonMapper.builder().build().readValue(json, com.rlibanez.eplsync.dto.TorrentDownloadRequest.class);
+    }
+    @Test void downloadUsesDefaultsAndSendsOnlyOneMagnet() {
         properties.getRename().setPattern("{author} - {title} [{eplId}] (r{revision})");
-        downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663"))
-                .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("ACCEPTED"));
+        downloadService("A".repeat(40)).download(2663L, null);
         assertThat(addedFields()).containsEntry("category", "Libros").containsEntry("tags", "EPLSync,es")
-                .containsEntry("stopped", "false").containsEntry("autoTMM", "true")
-                .containsEntry("rename", "Bronte, Charlotte - Jane Eyre & más [2663] (r1.2)")
-                .doesNotContainKey("savepath");
-        assertThat(addedFields().get("urls")).startsWith("magnet:?xt=urn:btih:" + "A".repeat(40));
+            .containsEntry("stopped", "false").containsEntry("autoTMM", "true")
+            .containsEntry("rename", "Bronte, Charlotte - Jane Eyre & más [2663] (r1.2)").doesNotContainKey("savepath");
         assertThat(calls.stream().filter(c -> c.method().equals("POST")).count()).isEqualTo(1);
     }
-
-    @Test
-    void downloadOverridesDefaultsAndSupportsSessionFallback() throws Exception {
+    @Test void downloadOverridesDefaultsAndSupportsSessionFallback() {
         keyStatus = 403;
-        downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663").contentType("application/json").content("""
-                {"start":false,"savePath":"/downloads/libros","rename":{"enabled":false},
-                 "qbittorrent":{"category":"Personal","tags":[],"autoManagement":false}}
-                """)) .andExpect(status().isAccepted());
+        downloadService("A".repeat(40)).download(2663L, options("""
+            {"start":false,"savePath":"/downloads/libros","rename":{"enabled":false},
+            "qbittorrent":{"category":"Personal","tags":[],"autoManagement":false}}
+            """));
         assertThat(addedFields()).containsEntry("category", "Personal").containsEntry("tags", "")
-                .containsEntry("savepath", "/downloads/libros").containsEntry("stopped", "true")
-                .containsEntry("autoTMM", "false").doesNotContainKey("rename");
+            .containsEntry("savepath", "/downloads/libros").containsEntry("stopped", "true")
+            .containsEntry("autoTMM", "false").doesNotContainKey("rename");
         assertThat(calls.getLast().cookie()).contains("session1");
         assertThat(calls.getLast().authorization()).isNull();
     }
-
-    @Test
-    void existingTorrentDoesNotWriteOrChangeOptions() throws Exception {
+    @Test void existingTorrentDoesNotWriteOrChangeOptions() {
         torrentInfo = "[{\"hash\":\"" + "a".repeat(40) + "\"}]";
-        downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ALREADY_EXISTS"));
+        assertThat(downloadService("A".repeat(40)).download(2663L,null).status().name()).isEqualTo("ALREADY_EXISTS");
         assertThat(calls).noneMatch(c -> c.method().equals("POST"));
     }
-
-    @Test
-    void multipleHashesRequireSelectionAndRejectUnrelatedHash() throws Exception {
-        var mvc = downloadMvc("A".repeat(40) + "," + "B".repeat(40));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663")).andExpect(status().isConflict());
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663").contentType("application/json")
-                .content("{\"hash\":\"" + "C".repeat(40) + "\"}")).andExpect(status().isBadRequest());
+    @Test void multipleHashesRequireSelectionAndRejectUnrelatedHash() {
+        var service = downloadService("A".repeat(40) + "," + "B".repeat(40));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(2663L,null)).hasMessageContaining("varios torrents");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(2663L,options("{\"hash\":\""+"C".repeat(40)+"\"}"))).isInstanceOf(IllegalArgumentException.class);
         assertThat(calls).isEmpty();
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663").contentType("application/json")
-                .content("{\"hash\":\"" + "b".repeat(40) + "\"}")).andExpect(status().isAccepted());
-        assertThat(addedFields().get("urls")).contains("urn:btih:" + "B".repeat(40));
+        service.download(2663L,options("{\"hash\":\""+"b".repeat(40)+"\"}"));
+        assertThat(addedFields().get("urls")).contains("urn:btih:"+"B".repeat(40));
     }
-
-    @Test
-    void rejectsConflictingDestinationAndMissingCategoryBeforeWriting() throws Exception {
-        var mvc = downloadMvc("A".repeat(40));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663").contentType("application/json")
-                .content("{\"savePath\":\"/downloads\"}")).andExpect(status().isBadRequest());
-        assertThat(calls).isEmpty();
-        categories = "{}";
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663")).andExpect(status().isConflict());
+    @Test void rejectsConflictingDestinationAndMissingCategoryBeforeWriting() {
+        var service = downloadService("A".repeat(40));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(2663L,options("{\"savePath\":\"/downloads\"}"))).isInstanceOf(IllegalArgumentException.class);
+        assertThat(calls).isEmpty(); categories = "{}";
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(2663L,null)).isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
         assertThat(calls).noneMatch(c -> c.method().equals("POST"));
     }
-
-    @Test
-    void remoteAddFailureIsNotRetried() throws Exception {
-        addStatus = 500;
-        var mvc = downloadMvc("A".repeat(40));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663")).andExpect(status().isBadGateway());
+    @Test void remoteAddFailureIsNotRetried() {
+        addStatus=500;
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> downloadService("A".repeat(40)).download(2663L,null)).isInstanceOf(com.rlibanez.eplsync.exception.TorrentConnectionException.class);
         assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
     }
-
-    @Test
-    void downloadValidatesMissingBookEmptyLinksAndDisabledIntegration() throws Exception {
-        var mvc = downloadMvc("");
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/999")).andExpect(status().isNotFound());
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663")).andExpect(status().isUnprocessableContent());
+    @Test void downloadValidatesMissingBookEmptyLinksAndDisabledIntegration() {
+        var service = downloadService("");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(999L,null)).hasMessageContaining("no existe");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(2663L,null)).hasMessageContaining("hashes torrent");
         properties.setEnabled(false);
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663")).andExpect(status().isConflict());
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(2663L,null)).hasMessageContaining("deshabilitada");
         assertThat(calls).isEmpty();
     }
-
-    @Test
-    void downloadRejectsInvalidRenameAndTagsWithoutNetwork() throws Exception {
-        var mvc = downloadMvc("A".repeat(40));
-        for (String body : List.of("{\"rename\":{\"pattern\":\"{notAField}\"}}",
-                "{\"qbittorrent\":{\"tags\":[\"one,two\"]}}")) {
-            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                    .post("/api/torrent/books/2663").contentType("application/json").content(body))
-                    .andExpect(status().isBadRequest());
-        }
+    @Test void downloadRejectsInvalidRenameAndTagsWithoutNetwork() {
+        var service = downloadService("A".repeat(40));
+        for(String json : List.of("{\"rename\":{\"pattern\":\"{notAField}\"}}", "{\"qbittorrent\":{\"tags\":[\"one,two\"]}}"))
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(2663L,options(json))).isInstanceOf(IllegalArgumentException.class);
         assertThat(calls).isEmpty();
     }
-
-    @Test
-    void requestTagPlaceholdersReplaceDefaultsAndResolveBeforeSending() throws Exception {
-        downloadMvc("A".repeat(40)).perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663").contentType("application/json").content("""
-                {"qbittorrent":{"tags":["idioma:{language}","{collection}","idioma:es","{revision}"]}}
-                """)) .andExpect(status().isAccepted());
+    @Test void requestTagPlaceholdersReplaceDefaultsAndResolveBeforeSending() {
+        downloadService("A".repeat(40)).download(2663L,options("""
+            {"qbittorrent":{"tags":["idioma:{language}","{collection}","idioma:es","{revision}"]}}
+            """));
         assertThat(addedFields()).containsEntry("tags", "idioma:es,1.2");
     }
-
-    @Test
-    void invalidConfiguredOrRequestTagPlaceholdersFailBeforeNetwork() throws Exception {
-        var mvc = downloadMvc("A".repeat(40));
-        qbittorrent.getDownload().setTags(List.of("{missing}"));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663")).andExpect(status().isBadRequest());
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                .post("/api/torrent/books/2663").contentType("application/json")
-                .content("{\"qbittorrent\":{\"tags\":[\"{author}\"]}}"))
-                .andExpect(status().isBadRequest());
+    @Test void invalidConfiguredOrRequestTagPlaceholdersFailBeforeNetwork() {
+        var service = downloadService("A".repeat(40)); qbittorrent.getDownload().setTags(List.of("{missing}"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(2663L,null)).isInstanceOf(IllegalArgumentException.class);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.download(2663L,options("{\"qbittorrent\":{\"tags\":[\"{author}\"]}}"))).isInstanceOf(IllegalArgumentException.class);
         assertThat(calls).isEmpty();
     }
 

@@ -40,7 +40,22 @@ const job = {
   retryAt: null,
   message: null,
 };
+const defaults = {
+  start: true,
+  autoManagement: true,
+  savePath: null,
+  rename: { enabled: true, pattern: "{author} - {title}" },
+  category: "Libros",
+  tags: ["EPLSync", "{language}"],
+  concurrency: 1,
+  batchSize: 100,
+  interval: "500ms",
+  multipleHashes: "skip",
+};
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/torrent/options", (r) =>
+    r.fulfill({ json: defaults }),
+  );
   await page.route("**/api/ui/config", (r) =>
     r.fulfill({ json: { defaultLanguage: "es" } }),
   );
@@ -119,64 +134,87 @@ test("state reads local records and sync is explicit", async ({ page }) => {
     fullPage: true,
   });
 });
-test("single submission selects a hash and confirms before sending", async ({
+test("one matching book creates a job with editable server defaults", async ({
   page,
 }) => {
-  let sends = 0;
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({ json: { items: [book], meta: meta() } }),
   );
-  await page.route("**/api/catalog/books/32/magnets", (r) =>
-    r.fulfill({
-      json: [
-        `magnet:?xt=urn:btih:${"a".repeat(40)}`,
-        `magnet:?xt=urn:btih:${"b".repeat(40)}`,
-      ],
-    }),
-  );
-  await page.route("**/api/torrent/books/32", (r) => {
+  let sends = 0;
+  await page.route("**/api/torrent/books", (r) => {
     sends++;
-    expect(r.request().postDataJSON()).toEqual({ hash: "b".repeat(40) });
-    return r.fulfill({
-      status: 202,
-      json: {
-        eplId: 32,
-        hash: "b".repeat(40),
-        client: "qbittorrent",
-        status: "ACCEPTED",
+    expect(r.request().postDataJSON()).toMatchObject({
+      dryRun: false,
+      filters: { eplId: 32 },
+      options: {
+        start: true,
+        savePath: "/downloads/eplsync",
+        rename: { enabled: true, pattern: defaults.rename.pattern },
+        qbittorrent: { autoManagement: false, category: "", tags: [] },
       },
     });
+    return r.fulfill({ status: 202, json: { ...job, selectedBooks: 1 } });
   });
+  await page.route("**/api/torrent/jobs/test-job", (r) =>
+    r.fulfill({ json: job }),
+  );
+  await page.route("**/api/torrent/jobs/test-job/items?**", (r) =>
+    r.fulfill({ json: { items: [], meta: meta(0) } }),
+  );
   await page.goto("/downloads/send?eplId=32");
   await expect(
-    page.getByRole("button", { name: "Revisar envío" }),
+    page.getByRole("link", { name: "Envío individual", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Categoría", { exact: true })).toHaveValue(
+    "Libros",
+  );
+  await expect(
+    page.getByLabel("Ruta de descarga en el cliente", { exact: true }),
   ).toBeDisabled();
   await page
-    .getByRole("textbox", { name: "Hash del torrent", exact: true })
+    .getByRole("textbox", { name: "Gestión automática", exact: true })
     .click();
-  await page.getByRole("option", { name: "b".repeat(40), exact: true }).click();
-  await page.getByRole("button", { name: "Revisar envío" }).click();
-  expect(sends).toBe(0);
+  await page.getByRole("option", { name: "No", exact: true }).click();
   await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Cancelar", exact: true })
-    .click();
-  expect(sends).toBe(0);
+    .getByLabel("Ruta de descarga en el cliente", { exact: true })
+    .fill("/downloads/eplsync");
+  await page.getByLabel("Categoría", { exact: true }).fill("");
+  await page
+    .getByLabel("Etiquetas", { exact: true })
+    .fill("");
   await page.getByRole("button", { name: "Revisar envío" }).click();
+  expect(sends).toBe(0);
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Enviar ahora" })
     .click();
-  await emitEvent(page, {
-    category: "TORRENT",
-    action: "SEND_BOOK",
-    outcome: "SUCCEEDED",
-    details: { eplId: 32, submissionStatus: "ACCEPTED" },
-  });
-  await expect(page.locator(".notification-toasts")).toContainText(
-    "ha aceptado el libro 32",
-  );
+  await expect(page).toHaveURL(/downloads\/jobs\/test-job$/);
   expect(sends).toBe(1);
+});
+test("defaults can be restored and every option has keyboard help", async ({
+  page,
+}) => {
+  await page.goto("/downloads/send");
+  await expect(page.getByLabel("Categoría", { exact: true })).toHaveValue(
+    "Libros",
+  );
+  await page.getByLabel("Categoría", { exact: true }).fill("Other");
+  await page
+    .getByRole("button", { name: "Restablecer valores predeterminados" })
+    .click();
+  await expect(page.getByLabel("Categoría", { exact: true })).toHaveValue(
+    "Libros",
+  );
+  const help = page.locator('[tabindex="0"][aria-description]');
+  await expect(help).toHaveCount(11);
+  await help.filter({ hasText: "Patrón de nombre" }).focus();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "{author} - {title} [{eplId}] (r{revision})",
+  );
+  await page.screenshot({
+    path: "test-results/send-options.png",
+    fullPage: true,
+  });
 });
 test("bulk preview pagination does not restrict submission and leads to job controls", async ({
   page,
@@ -201,7 +239,20 @@ test("bulk preview pagination does not restrict submission and leads to job cont
       filters: { author: "Herbert" },
       all: false,
       sort: ["title,asc", "eplId,asc"],
-      options: {},
+      options: {
+        start: true,
+        savePath: "",
+        rename: defaults.rename,
+        qbittorrent: {
+          autoManagement: true,
+          category: "Libros",
+          tags: defaults.tags,
+        },
+      },
+      concurrency: 1,
+      batchSize: 100,
+      interval: "500ms",
+      multipleHashes: "skip",
     });
     return r.fulfill({ status: 202, json: current });
   });
@@ -238,7 +289,7 @@ test("bulk preview pagination does not restrict submission and leads to job cont
     current = { ...current, status: "CANCELLED" };
     return r.fulfill({ json: current });
   });
-  await page.goto("/downloads/send/multiple");
+  await page.goto("/downloads/send");
   await page.getByLabel("Autor", { exact: true }).fill("Herbert");
   await page.getByRole("button", { name: "Previsualizar selección" }).click();
   await expect(
@@ -288,7 +339,7 @@ test("unfiltered bulk requires an explicit whole-catalog choice and network erro
     expect(r.request().postDataJSON().all).toBe(true);
     return r.abort();
   });
-  await page.goto("/downloads/send/multiple");
+  await page.goto("/downloads/send");
   await page.getByRole("button", { name: "Previsualizar selección" }).click();
   await expect(
     page.getByText("1 libro coincide", { exact: true }),
@@ -390,7 +441,7 @@ test("changing filters invalidates a bulk preview and manual path requires autom
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({ json: { items: [book], meta: meta() } }),
   );
-  await page.goto("/downloads/send/multiple");
+  await page.goto("/downloads/send");
   await page.getByLabel("Autor", { exact: true }).fill("Herbert");
   await page.getByRole("button", { name: "Previsualizar selección" }).click();
   await expect(
@@ -404,11 +455,8 @@ test("changing filters invalidates a bulk preview and manual path requires autom
   await expect(
     page.getByRole("button", { name: "Revisar envío" }),
   ).toBeEnabled();
-  await page
-    .getByLabel("Ruta de descarga en el cliente", { exact: true })
-    .fill("/books");
   await expect(
-    page.getByRole("button", { name: "Revisar envío" }),
+    page.getByLabel("Ruta de descarga en el cliente", { exact: true }),
   ).toBeDisabled();
   await page
     .getByRole("textbox", { name: "Gestión automática", exact: true })

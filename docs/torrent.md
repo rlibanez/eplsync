@@ -179,91 +179,26 @@ al cliente por esta operación.
 
 ## Enviar un libro a qBittorrent
 
-`POST /api/torrent/books/{eplId}` envía un único torrent del libro.
-No descarga el EPUB a EPLSync: qBittorrent recibe el magnet y gestiona la descarga.
-El envío está diseñado para qBittorrent 5.2.3. El envío por búsqueda se describe en la sección bulk; el envío por lista explícita de IDs queda pendiente.
-
-Sin cuerpo se usan los valores predeterminados de `application.yaml` (sobrescribibles en el perfil local):
-
-```yaml
-eplsync:
-  torrent:
-    download:
-      start: true
-      save-path: null
-    rename:
-      enabled: true
-      pattern: "{author} - {title} [{eplId}] (r{revision})"
-    qbittorrent:
-      download:
-        category: "Libros"
-        tags: ["EPLSync", "{language}"]
-        auto-management: true
-```
-
-La integración debe estar habilitada y autenticada. La categoría `Libros` debe existir en qBit;
-EPLSync no crea categorías. Ejemplo con valores predeterminados:
-
-```sh
-curl -X POST http://localhost:8088/api/torrent/books/2663
-```
-
-Ejemplo con opciones personalizadas:
+`POST /api/torrent/books/{eplId}` crea un trabajo de un libro, igual que el envío
+por filtros crea un trabajo para uno o varios libros. La API exige `dryRun` y admite
+`options` con las opciones del torrent; sin `options` conserva los valores del servidor.
 
 ```sh
 curl -X POST http://localhost:8088/api/torrent/books/2663 \
   -H 'Content-Type: application/json' \
-  -d '{
-    "start": false,
-    "savePath": "/downloads/libros",
-    "rename": {
-      "enabled": true,
-      "pattern": "EPL_{eplId}_{title}"
-    },
-    "qbittorrent": {
-      "category": "Libros",
-      "tags": ["EPLSync", "Pendientes"],
-      "autoManagement": false
-    }
-  }'
+  -d '{"dryRun":false,"options":{"start":false,"savePath":"/downloads/libros","qbittorrent":{"autoManagement":false,"category":"Libros","tags":[]}}}'
 ```
 
-- Cada campo omitido o `null` hereda su valor configurado, también dentro de los objetos.
-- `tags: []` elimina las etiquetas predeterminadas; las listas personalizadas las sustituyen.
-- `category: ""` añade sin categoría. Las etiquetas no admiten comas ni caracteres de control.
-- `start: false` envía `stopped=true` a qBit; `true` permite iniciar respetando su cola.
-- `autoManagement: true` usa gestión automática y no admite una ruta explícita.
-- `autoManagement: false` permite `savePath`; sin ruta se utiliza la predeterminada de qBit.
-  `savePath: ""` borra una ruta heredada. La ruta pertenece al equipo/contenedor de qBit.
-- `rename.enabled: false` omite el nombre personalizado. Si está activo, se usan campos
-  de `CatalogBook`; no se renombran archivos ni carpetas.
-- Si existen varios hashes válidos en `links`, es obligatorio incluir `hash` en el JSON.
-  Se admite hexadecimal o Base32 y debe pertenecer al libro. Solo se envía ese hash.
+Devuelve `202 Accepted`, `jobId` y `Location`; el trabajo registra progreso y resultado.
+Si hay varios hashes, indica `options.hash` para elegir uno. `dryRun:true` prepara el
+libro sin guardar ni enviar y devuelve un resumen. No comprueba el estado remoto.
+Los errores remotos (categoría inexistente, autenticación, etc.) se reflejan al ejecutar
+el trabajo. Las opciones omitidas heredan los valores del servidor; `category:""`,
+`tags:[]` y `savePath:""` permiten vaciar cada opción. Una ruta personalizada requiere
+`autoManagement:false` y pertenece al equipo/contenedor de qBittorrent.
 
-Respuesta `202 Accepted`:
-
-```json
-{
-  "eplId": 2663,
-  "hash": "0123456789ABCDEF0123456789ABCDEF01234567",
-  "client": "qbittorrent",
-  "status": "ACCEPTED"
-}
-```
-
-`ACCEPTED` indica que qBit aceptó el envío, no que haya obtenido los metadatos o terminado
-la descarga. No se crea un trabajo en segundo plano en EPLSync en esta primera versión.
-Si el hash ya existe, devuelve `200` y `ALREADY_EXISTS`, conservando nombre, categoría,
-etiquetas y estado existentes. La comprobación y el alta no son atómicas frente a otros clientes.
-
-Errores: `400` para opciones/hash inválidos, `404` para libro inexistente, `422` para libro
-sin hashes válidos, `409` para integración deshabilitada, selección de hash necesaria,
-categoría inexistente o rechazo de qBit; `502`/`503`/`504` para comunicación/autenticación.
-Solo se realiza un POST de alta: ante un timeout el resultado puede ser incierto y no se
-reenvía automáticamente. Comprueba qBit antes de repetir la petición.
-
-Las propiedades específicas quedan en el adaptador qBittorrent; el contrato común permite
-incorporar otros clientes sin añadir dependencias de protocolo a los controladores.
+`GET /api/torrent/options` permite consultar los valores efectivos para rellenar la
+vista Enviar. No expone credenciales ni consulta preferencias remotas del cliente.
 
 #### Placeholders en etiquetas
 

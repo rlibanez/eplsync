@@ -527,50 +527,53 @@ no de esta petición.
 POST /api/torrent/books/{eplId}
 ```
 
-Sin cuerpo utiliza la configuración:
+Este endpoint crea un trabajo de un libro; no envía directamente al cliente.
+`dryRun` es obligatorio. Las opciones de envío van en `options`; si se omiten,
+se resuelven y guardan los valores efectivos del servidor para ese trabajo.
 
 ```bash
-curl -s -X POST \
-  'http://192.168.2.2:8088/api/torrent/books/32' | jq
+curl -s -X POST 'http://localhost:8088/api/torrent/books/32' \
+  -H 'Content-Type: application/json' \
+  -d '{"dryRun":false}' | jq
 ```
 
-### Todas las opciones del cuerpo JSON
+Ejemplo con opciones personalizadas:
 
 ```json
 {
-  "hash": "HASH_DEL_LIBRO",
-  "start": true,
-  "savePath": "/downloads/epublibre",
-  "rename": {
-    "enabled": true,
-    "pattern": "{author} - {title} [{eplId}] (r{revision})"
-  },
-  "qbittorrent": {
-    "category": "Epublibre",
-    "tags": ["EPLsync", "{language}"],
-    "autoManagement": false
+  "dryRun": false,
+  "options": {
+    "hash": "HASH_DEL_LIBRO",
+    "start": true,
+    "savePath": "/downloads/epublibre",
+    "rename": {"enabled": true, "pattern": "{author} - {title} [{eplId}] (r{revision})"},
+    "qbittorrent": {"category": "Epublibre", "tags": ["EPLsync", "{language}"], "autoManagement": false}
   }
 }
 ```
 
-| Campo | Descripción |
+| Campo de `options` | Descripción |
 | --- | --- |
-| `hash` | Hash perteneciente al libro. Necesario si tiene varios; admite hexadecimal de 40 caracteres o Base32 de 32. |
-| `start` | `true`: iniciar; `false`: añadir detenido. |
-| `savePath` | Ruta en el cliente remoto. Una ruta explícita no vacía requiere `autoManagement=false`. |
-| `rename.enabled` | Activa/desactiva el nombre personalizado del torrent. |
-| `rename.pattern` | Patrón del nombre mostrado; no renombra el archivo. |
-| `qbittorrent.category` | Debe existir previamente. `""` permite añadir sin categoría. |
-| `qbittorrent.tags` | Lista de etiquetas; `[]` permite añadir sin etiquetas. |
-| `qbittorrent.autoManagement` | Activa/desactiva la gestión automática del destino. |
+| `hash` | Hash del libro. Obligatorio si hay varios; hexadecimal de 40 caracteres o Base32 de 32. |
+| `start` | Inicia la descarga al añadir, o la deja detenida. |
+| `savePath` | Ruta dentro del cliente. No vacía requiere gestión automática desactivada; `""` usa el destino del cliente. |
+| `rename.enabled`, `rename.pattern` | Renombrado del torrent; no renombra archivos. |
+| `qbittorrent.category` | Categoría existente; `""` envía sin categoría. |
+| `qbittorrent.tags` | Etiquetas y patrones; `[]` envía sin etiquetas. |
+| `qbittorrent.autoManagement` | El cliente determina el destino según su configuración/categoría. |
 
-Los campos omitidos o `null` heredan los valores configurados.
+`dryRun:true` valida la preparación y devuelve un resumen (`selectedBooks`,
+`selectedItems`, `skipped`) sin crear trabajo ni contactar con el cliente. No predice
+si el cliente aceptará el torrent. `dryRun:false` devuelve `202`, una vista de trabajo
+con `jobId` y cabecera `Location`. El resultado del envío se consulta en ese trabajo.
 
-```bash
-curl -s -X POST 'http://192.168.2.2:8088/api/torrent/books/32' \
-  -H 'Content-Type: application/json' \
-  -d '{"start":false,"rename":{"enabled":false},"qbittorrent":{"category":"Epublibre","tags":["EPLsync","{language}"],"autoManagement":true}}' | jq
-```
+### Valores predeterminados de envío
+
+`GET /api/torrent/options` devuelve `start`, `savePath`, `autoManagement`,
+`rename`, `category`, `tags`, `concurrency`, `batchSize`, `interval` y `multipleHashes`.
+Son los valores efectivos de EPL Sync, incluidas las variables de entorno; no las
+preferencias consultadas a qBittorrent. No expone URL de conexión ni credenciales.
+La respuesta usa `Cache-Control: no-store`.
 
 ### Placeholders en nombres y etiquetas
 
@@ -585,11 +588,8 @@ No se admiten expresiones ni navegación por objetos.
 - Las etiquetas resueltas no pueden contener comas ni caracteres de control.
 - `category` no utiliza placeholders.
 
-La respuesta incluye `eplId`, `hash`, `client` y `status`. Devuelve `202` para
-`ACCEPTED` y `200` para `ALREADY_EXISTS`.
-
-> Aceptar un envío no significa que el archivo esté descargado. Si el torrent ya
-> existe, el envío no se utiliza para cambiar sus opciones.
+Aceptar el trabajo no significa que el torrent ya esté enviado o descargado. Si ya
+existe en el cliente, su elemento terminará como `ALREADY_EXISTS` sin cambiarlo.
 
 ## 7. Envío múltiple o bulk
 
@@ -1372,7 +1372,7 @@ inclusivo y `before` exclusivo. Si se proporcionan ambos, `from < before`.
 Orden: más recientes primero. `operationId` relaciona inicio y resultado; en jobs
 es su identificador. `origin`: `MANUAL`, `SCHEDULED` o `SYSTEM`. Los valores de
 `action` actuales son `UPDATE`, `REPLACE`, `RESET`, `CHECK`, `DOWNLOAD`, `SEND_BOOK` y `SYNC`.
-`SEND_BOOK` registra inicio y resultado del envío individual: incluye `eplId` y,
+`SEND_BOOK` puede aparecer en eventos históricos. Los nuevos envíos individuales generan trabajos `JOB / DOWNLOAD`. Históricamente incluía `eplId` y,
 si tiene éxito, `hash`, `client` y `submissionStatus` (`ACCEPTED` o
 `ALREADY_EXISTS`). Un envío completado no significa que la descarga haya terminado.
 `details` contiene contadores/resumen, nunca la lista completa de elementos.

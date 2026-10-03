@@ -41,11 +41,11 @@ test("detail submits directly without options and exposes the backend magnet", a
   await page.route("**/api/torrent/books/32", async (r) => {
     calls++;
     expect(r.request().method()).toBe("POST");
-    expect(r.request().postData()).toBe(null);
+    expect(r.request().postDataJSON()).toEqual({ dryRun: false, options: {} });
     await new Promise<void>((resolve) => (release = resolve));
     return r.fulfill({
       status: 202,
-      json: { eplId: 32, hash, client: "qbittorrent", status: "ACCEPTED" },
+      json: { jobId: "single-job", status: "QUEUED", selectedBooks: 1 },
     });
   });
   await page.goto("/catalog/32");
@@ -62,14 +62,12 @@ test("detail submits directly without options and exposes the backend magnet", a
   await expect.poll(() => calls).toBe(1);
   release();
   await emitEvent(page, {
-    category: "TORRENT",
-    action: "SEND_BOOK",
-    outcome: "SUCCEEDED",
+    category: "JOB",
+    action: "DOWNLOAD",
+    outcome: "STARTED",
     details: { eplId: 32, submissionStatus: "ACCEPTED" },
   });
-  await expect(page.locator(".notification-toasts")).toContainText(
-    "ha aceptado el libro 32",
-  );
+  await expect(page.locator(".notification-toasts")).toContainText("Iniciado");
   await expect(page.locator(".notification-toasts [role=status]")).toHaveCount(
     1,
   );
@@ -88,14 +86,12 @@ test("multiple hashes require a choice but inherit every other server option", a
     r.fulfill({ json: [magnet, `magnet:?xt=urn:btih:${second}`] }),
   );
   await page.route("**/api/torrent/books/32", (r) => {
-    expect(r.request().postDataJSON()).toEqual({ hash: second });
+    expect(r.request().postDataJSON()).toEqual({
+      dryRun: false,
+      options: { hash: second },
+    });
     return r.fulfill({
-      json: {
-        eplId: 32,
-        hash: second,
-        client: "qbittorrent",
-        status: "ALREADY_EXISTS",
-      },
+      json: { jobId: "single-job", status: "QUEUED", selectedBooks: 1 },
     });
   });
   await page.goto("/catalog/32");
@@ -110,12 +106,12 @@ test("multiple hashes require a choice but inherit every other server option", a
   await page.getByRole("option", { name: second, exact: true }).click();
   await send.click();
   await emitEvent(page, {
-    category: "TORRENT",
-    action: "SEND_BOOK",
-    outcome: "SUCCEEDED",
+    category: "JOB",
+    action: "DOWNLOAD",
+    outcome: "STARTED",
     details: { eplId: 32, submissionStatus: "ALREADY_EXISTS" },
   });
-  await expect(page.locator(".notification-toasts")).toContainText("ya existe");
+  await expect(page.locator(".notification-toasts")).toContainText("Iniciado");
   await page.getByRole("button", { name: "Abrir magnet", exact: true }).click();
   await expect(page.getByRole("menuitem").first()).toHaveAttribute(
     "href",

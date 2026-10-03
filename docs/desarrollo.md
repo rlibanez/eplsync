@@ -106,7 +106,7 @@ solo ejecuta Java y sirve interfaz y API en el puerto 8088:
 - `/catalog/32`: ficha de un libro, también accesible directamente.
 - `/directory`: autores, idiomas, géneros y años del catálogo.
 - `/downloads`: estado local y sincronización manual.
-- `/downloads/send`: envío individual; `/downloads/send/multiple`: envío múltiple.
+- `/downloads/send`: vista única de envío por filtros; siempre crea un trabajo.
 - `/downloads/jobs` y `/downloads/jobs/{id}`: seguimiento y control de trabajos.
 - `/settings/general`: idioma, paleta de colores y modo claro/oscuro.
 - `/settings/database`: previsualización, actualización y reinicio completo.
@@ -295,13 +295,17 @@ la carga, éxito o error de la actualización manual. El refresco periódico no
 genera avisos de éxito.
 
 
-En la ficha, «Enviar a descargar» ejecuta directamente `POST /api/torrent/books/{id}`
-sin cuerpo ni confirmación adicional, heredando las opciones del servidor. Si hay
-varios hashes válidos, se exige elegir uno en la misma ficha y se envía únicamente
-`hash` en el cuerpo. El botón se bloquea durante el envío y muestra éxito, torrent
-ya existente o error, sin reintentos automáticos. «Abrir magnet» usa los enlaces
-del backend y abre el cliente asociado por el navegador; con varios enlaces
-muestra un menú. No se abre ningún protocolo magnet automáticamente.
+En la ficha, «Enviar a descargar» crea un trabajo mediante `POST /api/torrent/books/{id}`
+con `{"dryRun":false}` y sin navegación ni confirmación adicional. Si hay varios hashes,
+se elige uno y se envía en `options.hash`. Se heredan las demás opciones del servidor.
+«Abrir magnet» conserva el enlace al cliente asociado por el navegador.
+
+La vista Enviar muestra todos los campos de opciones juntos, con ayudas accesibles
+por ratón y teclado. Carga `GET /api/torrent/options` y permite restaurar los valores
+predeterminados; editar no cambia la configuración del servidor. Ruta se deshabilita
+con gestión automática; patrón se deshabilita sin renombrado. Categoría y etiquetas
+vacías se envían explícitamente vacías. La previsualización de selección no crea trabajos;
+una selección vacía no permite enviar. El backend rechaza crear un trabajo sin coincidencias.
 
 El título de una fila del catálogo navega dentro de la pestaña actual. Su flecha
 abre la ficha completa en un nuevo contexto (`target="_blank"`,
@@ -411,6 +415,6 @@ y los inicios. Las preferencias se guardan por navegador en
 afectan al registro persistente ni al contador. Un aviso ya mostrado conserva su
 duración; los cambios se aplican a los siguientes.
 
-Los envíos individuales producen eventos `TORRENT / SEND_BOOK` desde el servicio,
-tanto desde la web como desde REST. El frontend usa el aviso SSE y evita duplicar
-éxitos y errores HTTP ya registrados; los fallos de transporte siguen siendo locales.
+Los envíos individuales y por filtros producen eventos `JOB / DOWNLOAD` mediante
+su trabajo. El frontend recibe inicio y resultado mediante SSE; los fallos de
+transporte siguen siendo avisos locales.

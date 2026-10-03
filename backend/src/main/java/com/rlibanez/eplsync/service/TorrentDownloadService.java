@@ -35,12 +35,16 @@ public class TorrentDownloadService {
     }
 
     private TorrentDownloadResult send(Long eplId, TorrentDownloadRequest request) {
+        var command = prepareById(eplId, request);
+        var status = client.addTorrent(command);
+        return new TorrentDownloadResult(eplId, command.hash(), properties.getClient(), status);
+    }
+
+    public TorrentDownload prepareById(Long eplId, TorrentDownloadRequest request) {
         client.requireEnabled();
         var book = repository.findById(eplId).orElseThrow(() ->
                 new TorrentOperationException(HttpStatus.NOT_FOUND, "El libro no existe en el catálogo"));
-        var command = prepare(book, request);
-        var status = client.addTorrent(command);
-        return new TorrentDownloadResult(eplId, command.hash(), properties.getClient(), status);
+        return prepare(book, request);
     }
 
     public TorrentDownload prepare(com.rlibanez.eplsync.model.CatalogBook book, TorrentDownloadRequest request) {

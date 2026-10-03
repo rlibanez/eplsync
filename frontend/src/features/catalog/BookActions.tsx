@@ -11,13 +11,7 @@ import { Alert, Button, Menu, Select } from "@mantine/core";
 import { Download, Magnet, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
-import { post } from "../downloads/shared";
-interface Sent {
-  eplId: number;
-  hash: string;
-  client: string;
-  status: "ACCEPTED" | "ALREADY_EXISTS";
-}
+import { post, type Job } from "../downloads/shared";
 export function BookActions({ book }: { book: Book }) {
   const { eplId } = book;
   const { t } = useTranslation();
@@ -52,12 +46,18 @@ export function BookActions({ book }: { book: Book }) {
     },
     retry: false,
     mutationFn: () =>
-      post<Sent>(
-        `/torrent/books/${eplId}`,
-        hashes.length > 1 ? { hash } : undefined,
-      ),
+      post<Job>(`/torrent/books/${eplId}`, {
+        dryRun: false,
+        options: hashes.length > 1 ? { hash } : {},
+      }),
     onSuccess: () => {
-      for (const key of ["book", "catalog", "downloads", "download-summary"])
+      for (const key of [
+        "book",
+        "catalog",
+        "downloads",
+        "download-summary",
+        "jobs",
+      ])
         void cache.invalidateQueries({ queryKey: [key] });
     },
   });
