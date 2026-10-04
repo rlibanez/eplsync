@@ -53,6 +53,11 @@
   },
   "catalog": {
     "description": "Explore your collection. Find your next read.",
+    "viewSelector": "Catalog view",
+    "viewTable": "Table",
+    "viewGrid": "Grid",
+    "viewMosaic": "Mosaic",
+    "cardPages": "{{formattedCount}} pages",
     "table": "Table view",
     "title": "Title",
     "titlePlaceholder": "Search by title…",
@@ -873,8 +878,9 @@
   "selection": {
     "column": "Selection",
     "page": "Select this page",
+    "selectPage": "Select page",
     "book": "Select {{title}}",
-    "selectAll": "Select all ({{count}})",
+    "selectAll": "Select all ({{formattedCount}})",
     "selected": "{{count}} books selected",
     "allSelected": "{{count}} results selected",
     "clear": "Clear selection",

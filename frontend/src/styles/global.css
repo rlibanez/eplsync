@@ -1776,3 +1776,34 @@ summary {
 .settings-list-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .settings-list-row > .mantine-TextInput-root { flex: 1; min-width: 0; }
 .settings-list-row > button { flex-shrink: 0; }
+
+.catalog-view-option { display: inline-flex; align-items: center; gap: 6px; }
+.catalog-cards { display: grid; gap: 20px; padding: 20px; }
+.catalog-cards-grid { grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr)); }
+.catalog-cards-mosaic { grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); }
+.catalog-card { position: relative; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 10px; }
+.catalog-card.is-selected { border-color: var(--accent); }
+.catalog-card-selection { position: absolute; top: 10px; left: 10px; z-index: 1; padding: 4px; border-radius: 6px; background: var(--surface); }
+.catalog-card-cover { display: flex; justify-content: center; align-items: center; height: 240px; }
+.catalog-card-cover .mini-book { width: 100%; height: 100%; margin: 0; background: transparent; border-radius: 5px; }
+.catalog-card-cover .book-cover img { width: 100%; height: 100%; object-fit: contain; }
+.catalog-card-info { min-width: 0; overflow-wrap: anywhere; }
+.catalog-card-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-weight: 600; line-height: 1.5; margin: 12px 0 6px; }
+.catalog-card-author { color: var(--muted); font-size: 0.9rem; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.catalog-cards-mosaic .catalog-card { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 18px; align-items: start; }
+.catalog-cards-mosaic .catalog-card .catalog-card-selection { position: absolute; top: 20px; left: 20px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.catalog-cards-mosaic .catalog-card-cover { align-self: start; height: auto; }
+.catalog-cards-mosaic .catalog-card-cover .mini-book { height: auto; min-height: 210px; }
+.catalog-cards-mosaic .catalog-card-cover img { height: auto; max-height: 240px; object-position: top; }
+.catalog-cards-mosaic .catalog-card-title { margin-top: 0; -webkit-line-clamp: 3; }
+.catalog-card-collection, .catalog-card-facts, .catalog-card-genres, .catalog-card-downloads { margin-top: 12px; font-size: 0.85rem; }
+.catalog-card-facts, .catalog-card-downloads { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.catalog-card-genres, .catalog-card-collection { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--muted); }
+@media (max-width: 480px) {
+  .catalog-cards { padding: 12px; gap: 12px; }
+  .catalog-cards-mosaic .catalog-card { grid-template-columns: 100px minmax(0, 1fr); gap: 12px; }
+  .catalog-cards-mosaic .catalog-card-cover img { max-height: 200px; }
+  .catalog-cards-mosaic .catalog-card-cover .mini-book { min-height: 150px; }
+}
+.table-toolbar > .catalog-toolbar-selection { width: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.catalog-toolbar-selection .mantine-Checkbox-label { font-size: 13px; }

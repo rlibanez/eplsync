@@ -1,3 +1,6 @@
+import { CatalogCards } from "./CatalogCards";
+import { ImportWizard } from "../maintenance/ImportWizard";
+import { useImport } from "../maintenance/ImportProvider";
 import {
   useMagnetExport,
   selectionQuery,
@@ -21,15 +24,46 @@ import { useLocale } from "../../locales/useLocale";
 import { useTranslation } from "react-i18next";
 import { useCatalogScroll } from "./useCatalogScroll";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Select, Checkbox } from "@mantine/core";
-import { Link, useSearchParams } from "react-router-dom";
-import { BookOpen, Download, Send, ArrowUp, ArrowDown } from "lucide-react";
+import { Button, Select, Checkbox, Menu } from "@mantine/core";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import {
+  BookOpen,
+  Download,
+  Send,
+  ArrowUp,
+  ArrowDown,
+  Table2,
+  LayoutGrid,
+  PanelsTopLeft,
+  ChevronDown,
+  Check,
+} from "lucide-react";
 import { get, catalogParams, type BookPage } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 export function Catalog() {
   const { t } = useTranslation();
   const { number } = useLocale();
   const columns = useCatalogColumns();
+  const navigate = useNavigate();
+  const importer = useImport();
+  const [wizard, setWizard] = useState(false);
+  const [view, setView] = useState<"table" | "grid" | "mosaic">(() => {
+    try {
+      const stored = localStorage.getItem("eplsync.catalog.view");
+      return stored === "grid" || stored === "mosaic" ? stored : "table";
+    } catch {
+      return "table";
+    }
+  });
+  const changeView = (value: string) => {
+    if (value !== "table" && value !== "grid" && value !== "mosaic") return;
+    setView(value);
+    try {
+      localStorage.setItem("eplsync.catalog.view", value);
+    } catch {
+      /* Storage may be unavailable. */
+    }
+  };
   const magnetExport = useMagnetExport();
   const filtersOpen = useRef(false);
   const resize = useRef<{
@@ -95,10 +129,13 @@ export function Catalog() {
         <div>
           <h1>{t("nav.catalog")} </h1>
         </div>
-        <span className="view-label">
-          <BookOpen size={17} />
-          {t("catalog.table")}{" "}
-        </span>
+        <Button
+          leftSection={<Download size={16} />}
+          onClick={() => setWizard(true)}
+          disabled={importer.restoring || !!importer.operation?.pending}
+        >
+          {t("import.wizardTitle")}
+        </Button>
       </div>
       <CatalogFilters
         initiallyOpen={filtersOpen.current}
@@ -111,87 +148,155 @@ export function Catalog() {
       />
       <section className="panel">
         <div className="table-toolbar">
-          <span aria-live="polite">
-            {result.data
-              ? t("catalog.results", {
-                  count: result.data.meta.totalItems,
-                  formattedCount: number(result.data.meta.totalItems),
-                })
-              : t("catalog.books")}
-          </span>
-          <div className="catalog-table-controls">
-            <CatalogSorting ordering={ordering} onChange={changeSort} />
-            <CatalogColumns
-              settings={columns.settings}
-              update={columns.update}
+          <div className="catalog-toolbar-selection">
+            <Checkbox
+              label={t("selection.selectPage")}
+              checked={pageIds.length > 0 && selectedOnPage === pageIds.length}
+              indeterminate={
+                selectedOnPage > 0 && selectedOnPage < pageIds.length
+              }
+              disabled={!pageIds.length || result.isFetching}
+              onChange={(e) =>
+                selection.toggle(pageIds, e.currentTarget.checked)
+              }
             />
+            <Button
+              variant="subtle"
+              size="compact-sm"
+              fw={400}
+              disabled={!result.data?.meta.totalItems || result.isFetching}
+              onClick={selection.selectAll}
+            >
+              {t("selection.selectAll", {
+                count: result.data?.meta.totalItems ?? 0,
+                formattedCount: number(result.data?.meta.totalItems ?? 0),
+              })}
+            </Button>
           </div>
-        </div>
-        <div
-          className={`catalog-selection-bar${count > 0 ? " has-selection" : ""}`}
-        >
-          <div className="catalog-selection-info">
-            {count > 0 && (
-              <span className="catalog-selection-count" aria-live="polite">
-                {t(
-                  selection.all
-                    ? "selection.allSelected"
-                    : "selection.selected",
-                  { count },
-                )}
-              </span>
+          <div className="catalog-table-controls">
+            <Menu position="bottom-end" shadow="md">
+              <Menu.Target>
+                <Button
+                  variant="default"
+                  fw={400}
+                  leftSection={
+                    view === "table" ? (
+                      <Table2 size={16} />
+                    ) : view === "grid" ? (
+                      <LayoutGrid size={16} />
+                    ) : (
+                      <PanelsTopLeft size={16} />
+                    )
+                  }
+                  rightSection={<ChevronDown size={14} />}
+                  aria-label={t("catalog.viewSelector")}
+                >
+                  {t(
+                    view === "table"
+                      ? "catalog.viewTable"
+                      : view === "grid"
+                        ? "catalog.viewGrid"
+                        : "catalog.viewMosaic",
+                  )}
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                {(
+                  [
+                    {
+                      value: "table",
+                      label: "catalog.viewTable",
+                      icon: Table2,
+                    },
+                    {
+                      value: "grid",
+                      label: "catalog.viewGrid",
+                      icon: LayoutGrid,
+                    },
+                    {
+                      value: "mosaic",
+                      label: "catalog.viewMosaic",
+                      icon: PanelsTopLeft,
+                    },
+                  ] as const
+                ).map((option) => (
+                  <Menu.Item
+                    key={option.value}
+                    leftSection={<option.icon size={16} />}
+                    rightSection={
+                      view === option.value ? (
+                        <Check size={16} aria-hidden="true" />
+                      ) : null
+                    }
+                    aria-current={view === option.value ? "true" : undefined}
+                    onClick={() => changeView(option.value)}
+                  >
+                    {t(option.label)}
+                  </Menu.Item>
+                ))}
+              </Menu.Dropdown>
+            </Menu>
+            <CatalogSorting ordering={ordering} onChange={changeSort} />
+            {view === "table" && (
+              <CatalogColumns
+                settings={columns.settings}
+                update={columns.update}
+              />
             )}
-            <div className="catalog-selection-controls">
-              {(!selection.all ||
-                count < (result.data?.meta.totalItems ?? 0)) && (
-                <Button
-                  variant="subtle"
-                  size="compact-sm"
-                  disabled={!result.data?.meta.totalItems || result.isFetching}
-                  onClick={selection.selectAll}
-                >
-                  {t("selection.selectAll", {
-                    count: result.data?.meta.totalItems ?? 0,
-                  })}
-                </Button>
-              )}
-              {count > 0 && (
-                <Button
-                  variant="subtle"
-                  size="compact-sm"
-                  onClick={selection.clear}
-                >
-                  {t("selection.clear")}
-                </Button>
-              )}
-            </div>
           </div>
-          {count > 0 && (
-            <div className="catalog-selection-actions">
-              <Button
-                variant="light"
-                leftSection={<Download size={16} />}
-                loading={magnetExport.busy}
-                onClick={() => void magnetExport.save(selection.filters)}
-              >
-                {t("selection.export")}
-              </Button>
-              <Button
-                leftSection={<Send size={16} />}
-                onClick={() =>
-                  setAction({
-                    type: "send",
-                    filters: selection.filters,
-                    count,
-                    all: selection.all,
-                  })
-                }
-              >
-                {t("selection.send")}
-              </Button>
-            </div>
-          )}
         </div>
+        {count > 0 && (
+          <div className="catalog-selection-bar has-selection">
+            <div className="catalog-selection-info">
+              {count > 0 && (
+                <span className="catalog-selection-count" aria-live="polite">
+                  {t(
+                    selection.all
+                      ? "selection.allSelected"
+                      : "selection.selected",
+                    { count },
+                  )}
+                </span>
+              )}
+              <div className="catalog-selection-controls">
+                {count > 0 && (
+                  <Button
+                    variant="subtle"
+                    size="compact-sm"
+                    onClick={selection.clear}
+                  >
+                    {t("selection.clear")}
+                  </Button>
+                )}
+              </div>
+            </div>
+            {count > 0 && (
+              <div className="catalog-selection-actions">
+                <Button
+                  variant="light"
+                  leftSection={<Download size={16} />}
+                  loading={magnetExport.busy}
+                  onClick={() => void magnetExport.save(selection.filters)}
+                >
+                  {t("selection.export")}
+                </Button>
+                <Button
+                  leftSection={<Send size={16} />}
+                  onClick={() =>
+                    setAction({
+                      type: "send",
+                      filters: selection.filters,
+                      count,
+                      all: selection.all,
+                    })
+                  }
+                >
+                  {t("selection.send")}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
@@ -207,17 +312,27 @@ export function Catalog() {
                 ? t("catalog.emptyFiltered")
                 : t("catalog.emptyCatalog")}
             </p>
-            {!filterKeys.some((key) => params.has(key)) &&
-            Number(params.get("page")) === 0 ? (
-              <Button component={Link} to="/settings/database?import=true">
-                {t("import.wizardTitle")}
-              </Button>
-            ) : (
+            {(filterKeys.some((key) => params.has(key)) ||
+              Number(params.get("page")) > 0) && (
               <Button variant="light" onClick={() => setSearch({})}>
                 {t("catalog.reset")}
               </Button>
             )}
           </div>
+        ) : view !== "table" ? (
+          <CatalogCards
+            books={result.data.items}
+            view={view}
+            search={search.toString()}
+            isSelected={selection.isSelected}
+            toggle={selection.toggle}
+            rememberScroll={rememberScroll}
+            onFilter={(column, value) =>
+              setSearch((current) =>
+                quickFilter(catalogParams(current, false), column, value),
+              )
+            }
+          />
         ) : (
           <div className="table-scroll">
             <table
@@ -380,7 +495,12 @@ export function Catalog() {
                 {result.data.items.map((book) => (
                   <tr key={book.eplId}>
                     {columns.visible.map((key) => (
-                      <td key={key} className={key === "title" ? "catalog-title-cell" : undefined}>
+                      <td
+                        key={key}
+                        className={
+                          key === "title" ? "catalog-title-cell" : undefined
+                        }
+                      >
                         {key === "selection" ? (
                           <Checkbox
                             aria-label={t("selection.book", {
@@ -465,6 +585,14 @@ export function Catalog() {
           </Button>
         </div>
       </section>
+      <ImportWizard
+        opened={wizard}
+        onClose={() => setWizard(false)}
+        onStart={(mode, source) => {
+          void importer.run(mode, source);
+          navigate("/settings/database");
+        }}
+      />
       {action?.type === "send" && (
         <SendSelection
           filters={action.filters}

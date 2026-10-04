@@ -53,6 +53,11 @@
   },
   "catalog": {
     "description": "Explora tu colección. Encuentra tu próxima lectura.",
+    "viewSelector": "Vista del catálogo",
+    "viewTable": "Tabla",
+    "viewGrid": "Rejilla",
+    "viewMosaic": "Mosaico",
+    "cardPages": "{{formattedCount}} páginas",
     "table": "Vista de tabla",
     "title": "Título",
     "titlePlaceholder": "Buscar por título…",
@@ -873,8 +878,9 @@
   "selection": {
     "column": "Selección",
     "page": "Seleccionar esta página",
+    "selectPage": "Seleccionar página",
     "book": "Seleccionar {{title}}",
-    "selectAll": "Seleccionar todo ({{count}})",
+    "selectAll": "Seleccionar todo ({{formattedCount}})",
     "selected": "{{count}} libros seleccionados",
     "allSelected": "{{count}} resultados seleccionados",
     "clear": "Quitar selección",
