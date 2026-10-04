@@ -63,12 +63,12 @@ export function BookDetail() {
                 <h2>{t("detail.info")} </h2>
                 <dl>
                   {Object.entries({
-                    language: <CatalogValue book={book} column="language" onFilter={onFilter} />,
-                    genres: <CatalogValue book={book} column="genres" onFilter={onFilter} />,
-                    publicationYear: <CatalogValue book={book} column="publicationYear" onFilter={onFilter} />,
-                    pages: number(book.pages),
                     collection: <CatalogValue book={book} column="collection" onFilter={onFilter} />,
                     volume: number(book.volume),
+                    genres: <CatalogValue book={book} column="genres" onFilter={onFilter} />,
+                    pages: <CatalogValue book={book} column="pages" onFilter={onFilter} />,
+                    publicationYear: <CatalogValue book={book} column="publicationYear" onFilter={onFilter} />,
+                    language: <CatalogValue book={book} column="language" onFilter={onFilter} />,
                     status: <CatalogValue book={book} column="status" onFilter={onFilter} />,
                     publicationStatus: <CatalogValue book={book} column="publicationStatus" onFilter={onFilter} />,
                     rating: number(book.rating),
@@ -87,7 +87,6 @@ export function BookDetail() {
             </div>
             <section className="panel detail-section">
               <h2>{t("detail.history")} </h2>
-              <p className="muted">{t("detail.historyDescription")} </p>
               {book.download.items.length ? (
                 <ul className="download-list">
                   {book.download.items.map((item) => (

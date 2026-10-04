@@ -56,3 +56,10 @@ it("preserves page sorting in both directions and alongside other criteria", () 
     expect(params.getAll("sort")).toEqual(["language,asc", "pages," + direction, "eplId,asc"]);
   }
 });
+
+it("preserves negative publication years without truncating their sign or digits", () => {
+  const params = catalogParams(new URLSearchParams("publicationYear=-2500&publicationYearFrom=-2100&publicationYearTo=-468"));
+  expect(params.get("publicationYear")).toBe("-2500");
+  expect(params.get("publicationYearFrom")).toBe("-2100");
+  expect(params.get("publicationYearTo")).toBe("-468");
+});

@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import { Button, TextInput, Select, MultiSelect } from "@mantine/core";
+import { Button, TextInput, MultiSelect } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { FilterTokens, normalizeFilterValue } from "./FilterTokens";
 import { languages } from "../../api/catalog";
@@ -142,9 +142,6 @@ export function CatalogFilters({
   const set = (key: string, value: string | null) =>
     setValues((v) => ({ ...v, [key]: value || "" }));
   const today = localDay();
-  const years = Array.from({ length: new Date().getFullYear() + 1 }, (_, i) =>
-    String(new Date().getFullYear() - i),
-  );
   const ranges = [
     ["pagesFrom", "pagesTo", "pages"],
     ["publicationYearFrom", "publicationYearTo", "years"],
@@ -339,19 +336,14 @@ export function CatalogFilters({
                     }
                   />
                 ) : label === "years" ? (
-                  <Select
+                  <TextInput
+                    type="number"
                     label={t(index ? "filters.to" : "filters.from")}
-                    searchable
-                    clearable
-                    value={values[key] || null}
-                    onChange={(v) => setRange(from, to, key, v)}
-                    data={years.filter(
-                      (y) =>
-                        equal[from] ||
-                        (index
-                          ? !values[from] || +y >= +values[from]
-                          : !values[to] || +y <= +values[to]),
-                    )}
+                    value={values[key]}
+                    step={1}
+                    min={!equal[from] && index && values[from] ? Number(values[from]) : -2147483648}
+                    max={!equal[from] && !index && values[to] ? Number(values[to]) : 3000}
+                    onChange={(e) => setRange(from, to, key, e.currentTarget.value)}
                   />
                 ) : (
                   <TextInput

@@ -68,15 +68,12 @@ public class CatalogBookFilter {
     @Min(0)
     private Integer pagesTo;
 
-    @Min(0)
     @Max(3000)
     private Integer publicationYear;
 
-    @Min(0)
     @Max(3000)
     private Integer publicationYearFrom;
 
-    @Min(0)
     @Max(3000)
     private Integer publicationYearTo;
 

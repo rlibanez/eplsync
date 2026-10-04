@@ -119,7 +119,6 @@
     "insertDate": "Añadido a EPL Sync",
     "lastModifiedDate": "Última modificación",
     "history": "Historial asociado",
-    "historyDescription": "Información guardada en EPL Sync. Esta consulta no sincroniza con qBittorrent; una descarga completada no garantiza que el archivo siga en disco.",
     "completed": "Finalización registrada",
     "noDownloads": "No hay descargas registradas para este libro.",
     "actions": "Acciones del libro",
@@ -366,6 +365,9 @@
     "serverDetail": "Detalle del servidor"
   },
   "directory": {
+    "centuryFilter": "Filtrar por siglo",
+    "nonPositiveYears": "Años anteriores a nuestra era y año 0",
+    "centuryRange": "Siglo {{century}}: años {{from}}–{{to}}",
     "collections": "Colecciones",
     "all": "Todos",
     "initialFilter": "Filtrar por inicial",

@@ -32,4 +32,20 @@ class CatalogDateRangeTests {
    var f=new CatalogBookFilter(); f.setPublicationDateFrom(LocalDate.of(2026,2,2)); f.setPublicationDateTo(LocalDate.of(2026,2,1));
    assertThatThrownBy(()->CatalogBookSpecifications.fromFilter(f)).isInstanceOf(IllegalArgumentException.class);
  }
+ @Test void acceptsNegativeYearsAndInclusiveRanges() {
+   repository.deleteAllInBatch();
+   int[] years = {-2500, -2100, -468, 2000};
+   for (int i=0; i<years.length; i++)
+     repository.saveAndFlush(CatalogBook.builder().eplId((long)i+1).title("Book").author("Author").revision(1.0).publicationYear(years[i]).build());
+   var filter = new CatalogBookFilter();
+   filter.setPublicationYear(-2500);
+   assertThat(repository.findAll(CatalogBookSpecifications.fromFilter(filter))).extracting(CatalogBook::getEplId).containsExactly(1L);
+   filter.setPublicationYear(null); filter.setPublicationYearFrom(-2100); filter.setPublicationYearTo(-468);
+   assertThat(repository.findAll(CatalogBookSpecifications.fromFilter(filter))).extracting(CatalogBook::getEplId).containsExactlyInAnyOrder(2L,3L);
+   try (var validator = jakarta.validation.Validation.buildDefaultValidatorFactory()) {
+     filter.setPublicationYear(-2500);
+     assertThat(validator.getValidator().validate(filter)).isEmpty();
+   }
+ }
+
 }

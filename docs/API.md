@@ -396,11 +396,11 @@ Estos filtros funcionan en:
 | `title` | El título contiene el texto indicado; hasta 512 caracteres. |
 | `genres` | Los géneros contienen el texto indicado; hasta 512 caracteres. |
 | `collection` | La colección contiene el texto indicado; hasta 255 caracteres. |
-| `publicationYear` | Año exacto, entre `0` y `3000`. |
+| `publicationYear` | Año exacto, entero menor o igual a `3000`; admite años negativos (anteriores a nuestra era). |
 | `pagesFrom` | Número mínimo de páginas, incluido; entero mayor o igual a cero. |
 | `pagesTo` | Número máximo de páginas, incluido; entero mayor o igual a cero. Debe ser >= `pagesFrom` si se indican ambos. Límites iguales buscan coincidencias exactas; con un solo límite el otro queda abierto. Los libros sin número de páginas no coinciden con un rango. |
-| `publicationYearFrom` | Año mínimo, incluido; entre `0` y `3000`. |
-| `publicationYearTo` | Año máximo, incluido; entre `0` y `3000`. |
+| `publicationYearFrom` | Año mínimo, incluido; entero menor o igual a `3000`; admite años negativos (anteriores a nuestra era). |
+| `publicationYearTo` | Año máximo, incluido; entero menor o igual a `3000`; admite años negativos (anteriores a nuestra era). |
 | `language` | `es`, `en`, `ca`, `gl`, `eu`, `fr`, `it`, `pt`, `de`, `eo`, `sv`, `other`. |
 | `publicationStatus` | `PUBLISHED`, `UPDATED`, `UNKNOWN`. |
 | `status` | `DISPONIBLE`, `VERIFICADO`, `DESCONOCIDO`. Puede repetirse para seleccionar varios. |
@@ -1341,7 +1341,8 @@ de paginar. Las vocales acentuadas se agrupan bajo su letra, `Ñ` tiene grupo pr
 y `#` reúne las demás iniciales, incluidos números y símbolos. La búsqueda en estas
 tres categorías ignora mayúsculas y acentos, pero distingue `N` de `Ñ`.
 Se ordenan por inicial y alfabéticamente dentro de cada grupo.
-Los años se ordenan de mayor a menor; los idiomas, por su valor almacenado ascendente.
+Los años se ordenan de menor a mayor; los idiomas, por su valor almacenado ascendente.
+En `GET /api/catalog/directory/years`, el parámetro opcional `century` prefiltra antes de paginar: `0` incluye años ≤ 0; `1`–`21` seleccionan siglos (I: 1–100; XXI: 2001–2100). Se combina con `q`; omitirlo muestra todos los años. Solo se admite en el directorio de años.
 Los idiomas se
 convierten a su código ISO en la respuesta; la búsqueda compara el valor almacenado.
 Los autores se separan por `&` y los géneros por comas, eliminando espacios y

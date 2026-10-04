@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Button, TextInput } from "@mantine/core";
+import { Button, TextInput, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
 import { useLocale } from "../../locales/useLocale";
@@ -29,6 +29,9 @@ function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSecti
   const [search, setSearch] = useSearchParams();
   const initialValue = search.get("initial") ?? "";
   const initial = alphabetical && /^[A-ZÑ#]$/.test(initialValue) ? initialValue : "";
+  const requestedCentury = search.get("century") ?? "";
+  const century = kind === "years" && /^(0|[1-9]|1[0-9]|2[01])$/.test(requestedCentury) ? requestedCentury : "";
+  const centuries = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI"];
   const q = search.get("q") ?? "";
   const [draft, setDraft] = useState(q);
   const requestedPage = Number(search.get("page") ?? 0);
@@ -44,10 +47,10 @@ function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSecti
     setSearch(next);
   };
   const result = useQuery({
-    queryKey: ["directory", kind, q, initial, page, size],
+    queryKey: ["directory", kind, q, initial, century, page, size],
     queryFn: ({ signal }) =>
       get<Page<{ value: string; initial?: string }>>(
-        `/catalog/directory/${kind}?${new URLSearchParams({ q, initial, page: String(page), size: String(size) })}`,
+        `/catalog/directory/${kind}?${new URLSearchParams({ q, initial, ...(century !== "" ? { century } : {}), page: String(page), size: String(size) })}`,
         signal,
       ),
   });
@@ -76,7 +79,7 @@ function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSecti
       >
         <TextInput name="q" label={t("catalog.search")} maxLength={512} value={draft} onChange={e => setDraft(e.currentTarget.value)} />
         <Button type="submit">{t("catalog.search")}</Button>
-        <Button variant="subtle" onClick={() => { setDraft(""); updateSearch({ q: "", initial: "", page: 0 }); }}>{t("catalog.clear")}</Button>
+        <Button variant="subtle" onClick={() => { setDraft(""); updateSearch({ q: "", initial: "", century: "", page: 0 }); }}>{t("catalog.clear")}</Button>
       </form>
       {alphabetical && (
         <nav className="directory-initials" aria-label={t("directory.initialFilter")}>
@@ -86,6 +89,21 @@ function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSecti
               onClick={() => { updateSearch({ initial: letter, page: 0 }); }}>
               {letter || t("directory.all")}
             </Button>
+          ))}
+        </nav>
+      )}
+      {kind === "years" && (
+        <nav className="directory-initials" aria-label={t("directory.centuryFilter")}>
+          {["", "0", ...centuries.map((_, index) => String(index + 1))].map(value => (
+            <Tooltip key={value} label={value === "" ? t("directory.all")
+              : value === "0" ? t("directory.nonPositiveYears")
+              : t("directory.centuryRange", { century: centuries[Number(value) - 1], from: (Number(value) - 1) * 100 + 1, to: Number(value) * 100 })}>
+              <Button size="compact-sm" variant={century === value ? "filled" : "subtle"}
+                aria-pressed={century === value}
+                onClick={() => updateSearch({ century: value, page: 0 })}>
+                {value === "" ? t("directory.all") : value === "0" ? "≤0" : centuries[Number(value) - 1]}
+              </Button>
+            </Tooltip>
           ))}
         </nav>
       )}

@@ -23,10 +23,15 @@ public class CatalogDirectoryController {
     public PageResponse<Entry> list(String kind, String q, int page, int size) {
         return list(kind, q, page, size, "");
     }
+    public PageResponse<Entry> list(String kind, String q, int page, int size, String initial) {
+        return list(kind, q, page, size, initial, null);
+    }
     @GetMapping("/{kind}")
     @Transactional(readOnly = true)
     public PageResponse<Entry> list(@PathVariable String kind, @RequestParam(defaultValue="") String q,
-            @RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size, @RequestParam(defaultValue="") String initial) {
+            @RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size, @RequestParam(defaultValue="") String initial, @RequestParam(required=false) Integer century) {
+        if (century != null && (!kind.equals("years") || century < 0 || century > 21))
+            throw new IllegalArgumentException("Siglo inválido: usa 0 para años <= 0 o un siglo entre 1 y 21");
         String field = FIELDS.get(kind);
         if (field == null || page < 0 || !List.of(10,20,50,100,200,500,1000).contains(size)
                 || (long)page * size > Integer.MAX_VALUE || q.length() > 512)
@@ -39,9 +44,16 @@ public class CatalogDirectoryController {
         String expr = "b." + field;
         String where = " from CatalogBook b where " + expr + " is not null and trim(cast(" + expr + " as String)) <> ''";
         if (!q.isBlank()) where += " and locate(:q, lower(cast(" + expr + " as String))) > 0";
+        if (century != null) where += century == 0 ? " and b.publicationYear <= 0"
+            : " and b.publicationYear between :yearFrom and :yearTo";
         var count = em.createQuery("select count(distinct " + expr + ")" + where, Long.class);
-        var rows = em.createQuery("select distinct " + expr + where + " order by " + expr + (kind.equals("years") ? " desc" : " asc"), Object.class);
+        var rows = em.createQuery("select distinct " + expr + where + " order by " + expr + " asc", Object.class);
         if (!q.isBlank()) { count.setParameter("q", q.strip().toLowerCase(Locale.ROOT)); rows.setParameter("q", q.strip().toLowerCase(Locale.ROOT)); }
+        if (century != null && century > 0) {
+            int from = (century - 1) * 100 + 1, to = century * 100;
+            count.setParameter("yearFrom", from).setParameter("yearTo", to);
+            rows.setParameter("yearFrom", from).setParameter("yearTo", to);
+        }
         long total = count.getSingleResult();
         var items = rows.setFirstResult(page * size).setMaxResults(size).getResultList().stream()
                 .map(value -> new Entry(value instanceof Language language ? language.getIsoCode() : value.toString())).toList();
