@@ -12,7 +12,7 @@ export function quickFilter(
   value: string,
 ) {
   const next = new URLSearchParams(params);
-  if (column === "publicationYear" || column === "publicationDate") {
+  if (column === "publicationYear" || column === "publicationDate" || column === "pages") {
     next.delete(column);
     next.set(column + "From", value);
     next.set(column + "To", value);

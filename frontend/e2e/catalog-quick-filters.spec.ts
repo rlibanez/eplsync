@@ -42,7 +42,7 @@ test("table values apply composable filters and exact local-day ranges", async (
     ["language", "Idioma", "Español"],
     ["status", "Estado", "Disponible"],
     ["publicationStatus", "Estado de publicación", "Actualizado"],
-    ["eplId", "EPL Id", "17347"],
+    ["eplId", "EPL id", "17347"],
     ["revision", "Revisión", "1.1"],
   ]) {
     await table
@@ -73,7 +73,7 @@ test("table values apply composable filters and exact local-day ranges", async (
       "publicationDateTo",
       "2014-07-29",
     ],
-    ["Incorporado a EPL Sync", "addedFrom", "addedTo", "2026-10-01"],
+    ["Añadido a EPL Sync", "addedFrom", "addedTo", "2026-10-01"],
   ]) {
     await table
       .getByRole("button", { name: new RegExp(`^Filtrar por ${label}:`) })

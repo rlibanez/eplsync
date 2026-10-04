@@ -17,6 +17,8 @@ export function selectionFilters(
     const numeric = [
       "eplId",
       "revision",
+      "pagesFrom",
+      "pagesTo",
       "publicationYear",
       "publicationYearFrom",
       "publicationYearTo",

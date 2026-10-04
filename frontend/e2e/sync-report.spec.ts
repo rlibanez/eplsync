@@ -249,7 +249,7 @@ test("ignored torrent can be linked with inferred editable identity", async ({
   ).toBeVisible();
   await report.getByRole("button", { name: "Vincular", exact: true }).click();
   const modal = page.getByRole("dialog");
-  await expect(modal.getByLabel("EPL ID")).toHaveValue("30193");
+  await expect(modal.getByLabel("EPL id")).toHaveValue("30193");
   await expect(modal.getByLabel("Revisión en el cliente torrent")).toHaveValue(
     "1.7",
   );

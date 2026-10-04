@@ -1,7 +1,7 @@
 import { ActionIcon, Button, Popover, Select } from "@mantine/core";
 import { ArrowDown, ArrowUp, ArrowUpDown, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { columnLabels, type Column } from "./CatalogColumns";
+import { columnLabels } from "./CatalogColumns";
 import { sorts } from "../../api/catalog";
 
 export function CatalogSorting({
@@ -12,7 +12,8 @@ export function CatalogSorting({
   onChange: (values: string[]) => void;
 }) {
   const { t } = useTranslation();
-  const fields = Object.keys(columnLabels).filter((key) => key !== "selection");
+  const labels = columnLabels;
+  const fields = Object.keys(labels).filter((key) => key !== "selection");
   function move(index: number, offset: number) {
     const next = [...ordering];
     [next[index], next[index + offset]] = [next[index + offset], next[index]];
@@ -46,7 +47,7 @@ export function CatalogSorting({
                 allowDeselect={false}
                 data={[field, ...available].map((key) => ({
                   value: key,
-                  label: t(columnLabels[key as Column]),
+                  label: t(labels[key as keyof typeof labels]),
                 }))}
                 onChange={(next) =>
                   next &&

@@ -422,3 +422,22 @@ test("unknown configured category falls back to no category and query failures c
   await expect(dialog.getByRole("button", { name: "Crear trabajo" })).toBeEnabled();
   await expect(dialog.getByLabel("Categoría", { exact: true })).not.toHaveClass(/send-option-modified/);
 });
+
+test("page count column can be hidden, restored and used for exact filtering", async ({ page }) => {
+  await page.route("**/api/catalog/books?**", r => r.fulfill({ json: {
+    items: [{ eplId: 1, title: "Book", author: "Author", pages: 250, download: { items: [] } }],
+    meta: { page: 0, size: 20, totalItems: 1, totalPages: 1, hasNext: false, hasPrevious: false },
+  } }));
+  await page.goto("/catalog");
+  const heading = page.locator('th[data-column="pages"]');
+  await expect(heading).toHaveText("Páginas");
+  await page.getByRole("button", { name: "Columnas", exact: true }).click();
+  const toggle = page.getByRole("checkbox", { name: "Páginas", exact: true });
+  await toggle.uncheck();
+  await expect(heading).toHaveCount(0);
+  await toggle.check();
+  await expect(heading).toBeVisible();
+  await page.getByRole("button", { name: "Columnas", exact: true }).click();
+  await page.locator("tbody").getByRole("button", { name: /250/ }).click();
+  await expect(page).toHaveURL(/pagesFrom=250&pagesTo=250/);
+});

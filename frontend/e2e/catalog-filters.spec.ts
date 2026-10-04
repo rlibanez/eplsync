@@ -61,7 +61,7 @@ test("advanced filters are collapsed and convert complete local days across DST"
   await page.getByLabel("Colección", { exact: true }).fill("Discworld");
   const added = page
     .locator("fieldset")
-    .filter({ has: page.locator("legend", { hasText: "Incorporado" }) });
+    .filter({ has: page.locator("legend", { hasText: "Añadido a EPL Sync" }) });
   await added.getByLabel("Desde").fill("2026-03-29");
   await expect(added.getByLabel("Hasta")).toHaveAttribute("min", "2026-03-29");
   await added.getByLabel("Hasta").fill("2026-03-29");
@@ -197,6 +197,7 @@ test("multiple text values commit with Enter, Tab and Search and survive reload"
   await expect
     .poll(() => new URL(page.url()).searchParams.getAll("author"))
     .toEqual(["Asimov", "García Márquez, Gabriel"]);
+  await page.locator(".catalog-search summary").click();
   await revision.fill("abc");
   await revision.press("Enter");
   await expect(revision).toHaveValue("abc");

@@ -12,3 +12,18 @@ it("uses today for open starts and leaves end-only ranges open to the past", () 
   expect(end.get("insertDateBefore")).toBe(new Date(2026,0,2).toISOString());
   expect(localDay()).toBe("2026-10-01");
 });
+
+it("preserves open page bounds and serializes selection bounds as numbers", async () => {
+  const { catalogParams } = await import("../../api/catalog");
+  const { selectionQuery, selectionFilters } = await import("./CatalogSelection");
+  for (const query of ["pagesFrom=100", "pagesTo=200", "pagesFrom=100&pagesTo=200", "pagesFrom=100&pagesTo=100"]) {
+    const params = catalogParams(new URLSearchParams(query));
+    const request = filterRequest(params);
+    const selected = selectionFilters(selectionQuery(params));
+    for (const key of ["pagesFrom", "pagesTo"]) {
+      const expected = new URLSearchParams(query).get(key);
+      expect(request.get(key)).toBe(expected);
+      expect(selected[key]).toBe(expected === null ? undefined : Number(expected));
+    }
+  }
+});

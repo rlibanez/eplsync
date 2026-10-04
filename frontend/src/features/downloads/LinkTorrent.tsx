@@ -147,7 +147,7 @@ export function LinkTorrent({
                 </Text>
               </Group>
               <TextInput
-                label="EPL ID"
+                label={t("filters.eplId")}
                 required
                 value={eplId}
                 disabled={link.isPending}

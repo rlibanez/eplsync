@@ -397,6 +397,8 @@ Estos filtros funcionan en:
 | `genres` | Los géneros contienen el texto indicado; hasta 512 caracteres. |
 | `collection` | La colección contiene el texto indicado; hasta 255 caracteres. |
 | `publicationYear` | Año exacto, entre `0` y `3000`. |
+| `pagesFrom` | Número mínimo de páginas, incluido; entero mayor o igual a cero. |
+| `pagesTo` | Número máximo de páginas, incluido; entero mayor o igual a cero. Debe ser >= `pagesFrom` si se indican ambos. Límites iguales buscan coincidencias exactas; con un solo límite el otro queda abierto. Los libros sin número de páginas no coinciden con un rango. |
 | `publicationYearFrom` | Año mínimo, incluido; entre `0` y `3000`. |
 | `publicationYearTo` | Año máximo, incluido; entre `0` y `3000`. |
 | `language` | `es`, `en`, `ca`, `gl`, `eu`, `fr`, `it`, `pt`, `de`, `eo`, `sv`, `other`. |

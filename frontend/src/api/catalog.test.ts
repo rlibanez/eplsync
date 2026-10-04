@@ -49,3 +49,10 @@ describe("catalog URL contract", () => {
     ).toEqual(["eplId,desc", "title,asc"]);
   });
 });
+
+it("preserves page sorting in both directions and alongside other criteria", () => {
+  for (const direction of ["asc", "desc"]) {
+    const params = catalogParams(new URLSearchParams("sort=language,asc&sort=pages," + direction));
+    expect(params.getAll("sort")).toEqual(["language,asc", "pages," + direction, "eplId,asc"]);
+  }
+});

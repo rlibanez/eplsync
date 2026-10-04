@@ -26,6 +26,8 @@ export const filterKeys = [
   "collection",
   "status",
   "publicationStatus",
+  "pagesFrom",
+  "pagesTo",
   "publicationYear",
   "publicationYearFrom",
   "publicationYearTo",
@@ -144,6 +146,7 @@ export function CatalogFilters({
     String(new Date().getFullYear() - i),
   );
   const ranges = [
+    ["pagesFrom", "pagesTo", "pages"],
     ["publicationYearFrom", "publicationYearTo", "years"],
     ["publicationDateFrom", "publicationDateTo", "published"],
     ["addedFrom", "addedTo", "added"],
@@ -236,6 +239,12 @@ export function CatalogFilters({
           next.delete("publicationYear");
           next.delete("publicationDate");
           next.set("page", "0");
+          const details = event.currentTarget.closest("details");
+          if (details) {
+            details.open = false;
+            details.querySelector("summary")?.focus();
+          }
+          onToggle?.(false);
           onChange(next);
         }}
       >
@@ -284,8 +293,16 @@ export function CatalogFilters({
                     type="button"
                     className="date-equal"
                     variant={equal[from] ? "filled" : "default"}
-                    aria-label={t("filters.equal")}
-                    title={t("filters.equal")}
+                    aria-label={t(
+                      label === "pages"
+                        ? "filters.equalPages"
+                        : "filters.equal",
+                    )}
+                    title={t(
+                      label === "pages"
+                        ? "filters.equalPages"
+                        : "filters.equal",
+                    )}
                     aria-pressed={Boolean(equal[from])}
                     onClick={() => {
                       const checked = !equal[from];
@@ -301,7 +318,27 @@ export function CatalogFilters({
                     =
                   </Button>
                 )}
-                {label === "years" ? (
+                {label === "pages" ? (
+                  <TextInput
+                    type="number"
+                    label={t(index ? "filters.maximum" : "filters.minimum")}
+                    value={values[key]}
+                    step={1}
+                    min={
+                      !equal[from] && index && values[from]
+                        ? Number(values[from])
+                        : 0
+                    }
+                    max={
+                      !equal[from] && !index && values[to]
+                        ? Number(values[to])
+                        : 2147483647
+                    }
+                    onChange={(e) =>
+                      setRange(from, to, key, e.currentTarget.value)
+                    }
+                  />
+                ) : label === "years" ? (
                   <Select
                     label={t(index ? "filters.to" : "filters.from")}
                     searchable

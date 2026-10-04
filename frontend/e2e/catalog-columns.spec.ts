@@ -89,9 +89,9 @@ test("column visibility and order persist and can be restored", async ({
   await page
     .locator('[data-column="eplId"] .column-drag')
     .dragTo(page.locator('.column-choice[data-column="selection"]'));
-  await expect(headings.first()).toHaveText("EPL Id");
+  await expect(headings.first()).toHaveText("EPL id");
   await page.reload();
-  await expect(headings.first()).toHaveText("EPL Id");
+  await expect(headings.first()).toHaveText("EPL id");
   await expect(page.locator(".row-link")).toHaveCount(0);
   await expect(headings).toHaveCount(13);
 });

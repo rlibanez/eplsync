@@ -63,6 +63,12 @@ public class CatalogBookFilter {
 
     // --- Rangos numéricos ---
     @Min(0)
+    private Integer pagesFrom;
+
+    @Min(0)
+    private Integer pagesTo;
+
+    @Min(0)
     @Max(3000)
     private Integer publicationYear;
 
@@ -124,6 +130,10 @@ public class CatalogBookFilter {
 
         if (revision != null && java.util.Arrays.stream(revision).anyMatch(v -> v == null || !Double.isFinite(v) || v < 0))
             throw new IllegalArgumentException("revision debe ser un número finito mayor o igual a cero");
+        if ((pagesFrom != null && pagesFrom < 0) || (pagesTo != null && pagesTo < 0))
+            throw new IllegalArgumentException("Los límites de páginas deben ser >= 0");
+        if (pagesFrom != null && pagesTo != null && pagesFrom > pagesTo)
+            throw new IllegalArgumentException("pagesFrom debe ser <= pagesTo");
         if (publicationYearFrom != null && publicationYearTo != null && publicationYearFrom > publicationYearTo)
             throw new IllegalArgumentException("publicationYearFrom debe ser <= publicationYearTo");
         if (publicationDateFrom != null && publicationDateTo != null && publicationDateFrom.isAfter(publicationDateTo))

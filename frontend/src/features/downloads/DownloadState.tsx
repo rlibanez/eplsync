@@ -134,7 +134,7 @@ export function DownloadState() {
       <form className="filters" onSubmit={(e) => e.preventDefault()}>
         <TextInput
           name="eplId"
-          label="EPL ID"
+          label={t("filters.eplId")}
           type="number"
           min={1}
           value={draftEplId}
@@ -213,7 +213,7 @@ export function DownloadState() {
                 value: "lastCheckedAt,desc",
                 label: t("downloads.lastChecked"),
               },
-              { value: "eplId,asc", label: "EPL ID" },
+              { value: "eplId,asc", label: t("filters.eplId") },
             ]}
             onChange={(v) => filter("sort", v ?? "createdAt,desc")}
           />

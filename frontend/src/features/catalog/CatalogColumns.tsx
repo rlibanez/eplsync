@@ -4,10 +4,19 @@ import { ArrowUp, ArrowDown, Columns3, GripVertical } from "lucide-react";
 import { useTranslation } from "react-i18next";
 export const columnLabels = {
   selection: "selection.column",
-  title: "catalog.book", author: "catalog.author", collection: "filters.collection",
-  genres: "filters.genres", language: "catalog.language", status: "filters.status",
-  publicationStatus: "filters.publicationStatus", eplId: "filters.eplId", revision: "catalog.revision",
-  publicationYear: "filters.years", publicationDate: "filters.published", insertDate: "filters.added",
+  title: "catalog.book",
+  author: "catalog.author",
+  collection: "filters.collection",
+  genres: "filters.genres",
+  pages: "filters.pages",
+  publicationYear: "filters.years",
+  language: "catalog.language",
+  eplId: "filters.eplId",
+  revision: "catalog.revision",
+  status: "filters.status",
+  publicationStatus: "filters.publicationStatus",
+  publicationDate: "filters.published",
+  insertDate: "filters.added",
 } as const;
 export type Column = keyof typeof columnLabels;
 const defaults = Object.keys(columnLabels) as Column[];

@@ -103,7 +103,7 @@ export function MissingBooks({ disabled }: { disabled: boolean }) {
               <table>
                 <thead>
                   <tr>
-                    <th>EPL ID</th>
+                    <th>{t("filters.eplId")}</th>
                     <th>{t("missing.bookTitle")}</th>
                     <th>{t("missing.revision")}</th>
                   </tr>

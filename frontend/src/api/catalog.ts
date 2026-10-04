@@ -83,6 +83,8 @@ export const languages = [
   "other",
 ];
 export const sorts: Record<string, string> = {
+  "pages,asc": "pagesAsc",
+  "pages,desc": "pagesDesc",
   "title,asc": "titleAsc",
   "title,desc": "titleDesc",
   "author,asc": "authorAsc",
@@ -128,6 +130,8 @@ export function catalogParams(
     ["author", 255],
     ["genres", 512],
     ["collection", 255],
+    ["pagesFrom", 10],
+    ["pagesTo", 10],
     ["publicationYearFrom", 4],
     ["publicationYearTo", 4],
     ["publicationDate", 10],
