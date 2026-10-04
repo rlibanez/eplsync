@@ -20,7 +20,6 @@ import { BookCover } from "./BookCover";
 import { PageJump } from "../../components/PageJump";
 import { useEffect, useRef, useState } from "react";
 import { rememberCatalog } from "./navigation";
-import { useLocale } from "../../locales/useLocale";
 import { useTranslation } from "react-i18next";
 import { useCatalogScroll } from "./useCatalogScroll";
 import { useQuery } from "@tanstack/react-query";
@@ -42,7 +41,6 @@ import { get, catalogParams, type BookPage } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 export function Catalog() {
   const { t } = useTranslation();
-  const { number } = useLocale();
   const columns = useCatalogColumns();
   const navigate = useNavigate();
   const importer = useImport();
@@ -149,17 +147,21 @@ export function Catalog() {
       <section className="panel">
         <div className="table-toolbar">
           <div className="catalog-toolbar-selection">
-            <Checkbox
-              label={t("selection.selectPage")}
-              checked={pageIds.length > 0 && selectedOnPage === pageIds.length}
-              indeterminate={
-                selectedOnPage > 0 && selectedOnPage < pageIds.length
-              }
+            <Button
+              variant="subtle"
+              size="compact-sm"
+              fw={400}
               disabled={!pageIds.length || result.isFetching}
-              onChange={(e) =>
-                selection.toggle(pageIds, e.currentTarget.checked)
+              onClick={() =>
+                selection.toggle(pageIds, selectedOnPage !== pageIds.length)
               }
-            />
+            >
+              {t(
+                pageIds.length > 0 && selectedOnPage === pageIds.length
+                  ? "selection.clearPage"
+                  : "selection.selectPage",
+              )}
+            </Button>
             <Button
               variant="subtle"
               size="compact-sm"
@@ -169,7 +171,7 @@ export function Catalog() {
             >
               {t("selection.selectAll", {
                 count: result.data?.meta.totalItems ?? 0,
-                formattedCount: number(result.data?.meta.totalItems ?? 0),
+                formattedCount: String(result.data?.meta.totalItems ?? 0),
               })}
             </Button>
           </div>

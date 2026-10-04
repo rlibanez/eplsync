@@ -878,6 +878,7 @@
   "selection": {
     "column": "Selección",
     "page": "Seleccionar esta página",
+    "clearPage": "Quitar selección de página",
     "selectPage": "Seleccionar página",
     "book": "Seleccionar {{title}}",
     "selectAll": "Seleccionar todo ({{formattedCount}})",

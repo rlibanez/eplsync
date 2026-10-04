@@ -1806,4 +1806,3 @@ summary {
   .catalog-cards-mosaic .catalog-card-cover .mini-book { min-height: 150px; }
 }
 .table-toolbar > .catalog-toolbar-selection { width: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
-.catalog-toolbar-selection .mantine-Checkbox-label { font-size: 13px; }

@@ -878,6 +878,7 @@
   "selection": {
     "column": "Selection",
     "page": "Select this page",
+    "clearPage": "Deselect page",
     "selectPage": "Select page",
     "book": "Select {{title}}",
     "selectAll": "Select all ({{formattedCount}})",

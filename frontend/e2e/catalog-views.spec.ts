@@ -13,7 +13,7 @@ test("catalog views preserve filters and selection, persist layout and open impo
   await page.goto("/catalog?language=es&sort=author,desc");
   await expect(page.locator(".catalog-table")).toBeVisible();
   await expect(page.locator(".catalog-selection-bar")).toHaveCount(0);
-  await expect(page.locator(".table-toolbar").getByRole("checkbox", { name: "Seleccionar página" })).toBeVisible();
+  await expect(page.locator(".table-toolbar").getByRole("button", { name: "Seleccionar página", exact: true })).toBeVisible();
   await expect(page.locator(".table-toolbar").getByRole("button", { name: "Seleccionar todo (2)", exact: true })).toBeVisible();
   await page.getByRole("checkbox", { name: "Seleccionar Libro 1", exact: true }).check();
   await page.getByRole("button", { name: "Vista del catálogo" }).click();
