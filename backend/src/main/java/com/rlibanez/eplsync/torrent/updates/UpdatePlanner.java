@@ -87,7 +87,7 @@ public class UpdatePlanner {
                     .filter(row -> row.getRevision() < book.getRevision()).map(row -> new Existing(row.getId(),
                             row.getRevision(), row.getHash(), row.getStatus())).toList(), targets));
         }
-        result.sort(Comparator.comparing(Candidate::eplId));
+        result.sort(Comparator.comparing(value -> Objects.requireNonNull(value).eplId()));
         return result;
     }
 
@@ -113,7 +113,7 @@ public class UpdatePlanner {
         for (int offset = 0; offset < candidates.size(); offset += 500) {
             var chunk = candidates.subList(offset, Math.min(candidates.size(), offset + 500));
             var selected = new HashMap<Long, com.rlibanez.eplsync.model.CatalogBook>();
-            books.findAllById(chunk.stream().map(Candidate::eplId).toList()).forEach(book -> selected.put(book.getEplId(), book));
+            books.findAllById(chunk.stream().map(value -> Objects.requireNonNull(value).eplId()).toList()).forEach(book -> selected.put(book.getEplId(), book));
             for (var candidate : chunk) for (var hash : candidate.targetHashes()) {
                 var options = input.options();
                 commands.add(preparation.prepare(selected.get(candidate.eplId()), options == null

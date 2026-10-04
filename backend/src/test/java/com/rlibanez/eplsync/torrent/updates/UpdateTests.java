@@ -2,7 +2,6 @@ package com.rlibanez.eplsync.torrent.updates;
 
 import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.dto.TorrentDownloadResult;
-import com.rlibanez.eplsync.exception.GlobalExceptionHandler;
 import com.rlibanez.eplsync.model.CatalogBook;
 import com.rlibanez.eplsync.repository.CatalogBookRepository;
 import com.rlibanez.eplsync.service.TorrentClientService;
@@ -129,7 +128,7 @@ class UpdateTests {
                 .andExpect(jsonPath("$.batchSize").value(17)).andExpect(jsonPath("$.concurrency").value(3))
                 .andExpect(jsonPath("$.interval").value("250ms"));
         assertThat(jobs.count()).isEqualTo(1);
-        assertThat(items.findAll()).extracting(BulkItem::getEplId).containsExactlyInAnyOrder(1L, 2L);
+        assertThat(items.findAll()).extracting(value -> Objects.requireNonNull(value).getEplId()).containsExactlyInAnyOrder(1L, 2L);
         assertThat(items.findAll()).allMatch(i -> i.getCommandJson().contains("\"start\":false"));
         var jobId = plans.findAll().getFirst().getJobId();
         assertThat(cleaner.view(jobId).updates()).hasSize(2);
@@ -141,7 +140,7 @@ class UpdateTests {
         var newRevision = remote(NEW, DownloadStatus.DOWNLOADED, "/books/new.epub");
         var newBook = remote(OTHER, DownloadStatus.DOWNLOADING, "/books/other.epub");
         when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD, DownloadStatus.DOWNLOADED, "/books/old.epub"),
-                newRevision, newBook), List.of(newRevision, newBook));
+                newRevision, newBook)).thenReturn(List.of(newRevision, newBook));
         cleaner.clean(jobId);
         verify(stubClient).deleteTorrent(OLD, true);
         verify(stubClient, never()).deleteTorrent(eq(OTHER), anyBoolean());
@@ -152,10 +151,10 @@ class UpdateTests {
         mixedCatalogue();
         mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/updates", false).field("language", "es"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1));
-        assertThat(items.findAll()).extracting(BulkItem::getEplId).containsExactly(1L);
+        assertThat(items.findAll()).extracting(value -> Objects.requireNonNull(value).getEplId()).containsExactly(1L);
         mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("selection", "new").field("language", "es"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1));
-        assertThat(items.findAll()).extracting(BulkItem::getEplId).containsExactlyInAnyOrder(1L, 2L);
+        assertThat(items.findAll()).extracting(value -> Objects.requireNonNull(value).getEplId()).containsExactlyInAnyOrder(1L, 2L);
         mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/refresh", false).field("language", "es"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(0));
         assertThat(plans.findAll()).allMatch(p -> p.getPreviousVersions() == PreviousVersions.KEEP);
@@ -232,7 +231,7 @@ class UpdateTests {
         var b = remote(NEW, DownloadStatus.DOWNLOADED, "/books/b.epub");
         var c = remote(OTHER, DownloadStatus.DOWNLOADED, "/books/c.epub");
         var d = remote("D".repeat(40), DownloadStatus.DOWNLOADED, "/books/d.epub");
-        when(stubClient.listTorrents()).thenReturn(List.of(a, b, c, d), List.of(b, d));
+        when(stubClient.listTorrents()).thenReturn(List.of(a, b, c, d)).thenReturn(List.of(b, d));
         mvc.perform(post("/api/torrent/updates/cleanup"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.selectedJobs").value(2))
                 .andExpect(jsonPath("$.checked").value(2)).andExpect(jsonPath("$.removed").value(2))
@@ -280,7 +279,7 @@ class UpdateTests {
         var b = remote(NEW, DownloadStatus.DOWNLOADED, null);
         var d = remote("D".repeat(40), DownloadStatus.DOWNLOADED, null);
         var a = remote(OLD, DownloadStatus.DOWNLOADED, null);
-        when(stubClient.listTorrents()).thenReturn(List.of(a, b, remote(OTHER, DownloadStatus.DOWNLOADED, null), d), List.of(a, b, d));
+        when(stubClient.listTorrents()).thenReturn(List.of(a, b, remote(OTHER, DownloadStatus.DOWNLOADED, null), d)).thenReturn(List.of(a, b, d));
         doThrow(new IllegalStateException("secret remote body")).when(stubClient).deleteTorrent(OLD, false);
         var result = cleaner.cleanAll(false);
         assertThat(result.selectedJobs()).isEqualTo(3); assertThat(result.failedJobs()).isEqualTo(2);
@@ -300,13 +299,13 @@ class UpdateTests {
         var a = remote(OLD, DownloadStatus.DOWNLOADED, null);
         var b = remote(NEW, DownloadStatus.DOWNLOADED, null);
         var c = remote(OTHER, DownloadStatus.DOWNLOADED, null);
-        when(stubClient.listTorrents()).thenReturn(List.of(a, b, c), List.of(b, c));
+        when(stubClient.listTorrents()).thenReturn(List.of(a, b, c)).thenReturn(List.of(b, c));
         var result = cleaner.cleanAll(false);
         assertThat(result.removed()).isEqualTo(2); assertThat(result.blocked()).isEqualTo(1);
         verify(stubClient, times(1)).deleteTorrent(OLD, false);
         verify(stubClient, never()).deleteTorrent(NEW, false);
         // El job anterior ya no participa: ahora la revisión intermedia puede limpiarse.
-        when(stubClient.listTorrents()).thenReturn(List.of(b, c), List.of(c));
+        when(stubClient.listTorrents()).thenReturn(List.of(b, c)).thenReturn(List.of(c));
         result = cleaner.cleanAll(false);
         assertThat(result.selectedJobs()).isEqualTo(1); assertThat(result.removed()).isEqualTo(1);
         assertThat(cleaner.view(second.jobId()).items()).allMatch(row -> row.getState() == UpdateCleanup.State.REMOVED);
@@ -386,7 +385,7 @@ class UpdateTests {
         var old = remote(OLD, DownloadStatus.DOWNLOADED, null);
         var target = remote(NEW, DownloadStatus.DOWNLOADED, null);
         var newer = remote(OTHER, DownloadStatus.DOWNLOADED, null);
-        when(stubClient.listTorrents()).thenReturn(List.of(old, target, newer), List.of(target, newer));
+        when(stubClient.listTorrents()).thenReturn(List.of(old, target, newer)).thenReturn(List.of(target, newer));
         cleaner.clean(job.jobId());
         verify(stubClient).deleteTorrent(OLD, false);
         verify(stubClient, never()).deleteTorrent(eq(OTHER), anyBoolean());
@@ -482,7 +481,7 @@ class UpdateTests {
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
         verify(stubClient, never()).deleteTorrent(any(), anyBoolean());
         target = remote(NEW, DownloadStatus.DOWNLOADED, "/books/new.epub");
-        when(stubClient.listTorrents()).thenReturn(List.of(old, target), List.of(target));
+        when(stubClient.listTorrents()).thenReturn(List.of(old, target)).thenReturn(List.of(target));
         cleaner.clean(job.jobId());
         verify(stubClient).deleteTorrent(OLD, false);
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
@@ -502,7 +501,7 @@ class UpdateTests {
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.BLOCKED);
         verify(stubClient, never()).deleteTorrent(any(), anyBoolean());
         target = remote(NEW, DownloadStatus.DOWNLOADED, "/books/new.epub");
-        when(stubClient.listTorrents()).thenReturn(List.of(old, target), List.of(target));
+        when(stubClient.listTorrents()).thenReturn(List.of(old, target)).thenReturn(List.of(target));
         cleaner.clean(job.jobId());
         verify(stubClient).deleteTorrent("D".repeat(40), true);
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);

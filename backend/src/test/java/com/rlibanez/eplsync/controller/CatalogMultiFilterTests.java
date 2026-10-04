@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.controller;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.filter.CatalogBookFilter;
 import com.rlibanez.eplsync.model.CatalogBook;
 import com.rlibanez.eplsync.model.enums.*;
@@ -48,7 +50,7 @@ class CatalogMultiFilterTests {
   var filter=mapper.readValue("""
    {"author":["Asimov","Sanderson"],"eplId":[1,2,4],"revision":[1.4,2.0],"collection":"Series","genres":["Drama","Fantasy"]}
    """,CatalogBookFilter.class);
-  assertThat(books.findAll(CatalogBookSpecifications.fromFilter(filter))).extracting(CatalogBook::getEplId).containsExactlyInAnyOrder(1L,2L);
+  assertThat(books.findAll(CatalogBookSpecifications.fromFilter(filter))).extracting(value -> Objects.requireNonNull(value).getEplId()).containsExactlyInAnyOrder(1L,2L);
  }
  @Test void invalidValuesAreRejectedRatherThanIgnored() throws Exception {
   mvc.perform(get("/api/catalog/books").param("eplId","1","-2")).andExpect(status().isBadRequest());

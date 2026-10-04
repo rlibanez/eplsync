@@ -99,14 +99,14 @@ class DownloadTrackingTests {
         mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json")
                 .content("{\"dryRun\":true}"))
                 .andExpect(status().isOk()).andExpect(header().exists("X-EPLSync-Operation-Id"));
-        assertThat(events.after(cursor, 10)).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::action)
+        assertThat(events.after(cursor, 10)).extracting(value -> Objects.requireNonNull(value).action())
                 .containsExactly("SYNC_PREVIEW", "SYNC_PREVIEW");
         assertThat(downloads.count()).isZero();
         cursor = events.cursor();
         mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json").content("{\"dryRun\":false}"))
                 .andExpect(status().isOk()).andExpect(header().exists("X-EPLSync-Operation-Id"));
         var rows = events.after(cursor, 10);
-        assertThat(rows).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+        assertThat(rows).extracting(value -> Objects.requireNonNull(value).outcome())
                 .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
                     com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
         assertThat(rows.get(1).details()).containsEntry("checked", 0);
@@ -114,7 +114,7 @@ class DownloadTrackingTests {
         cursor = events.cursor();
         properties.effective().setEnabled(false);
         assertThatThrownBy(() -> service.syncDownloads(false, false)).isInstanceOf(RuntimeException.class);
-        assertThat(events.after(cursor, 10)).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+        assertThat(events.after(cursor, 10)).extracting(value -> Objects.requireNonNull(value).outcome())
                 .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
                     com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
     }
@@ -280,7 +280,7 @@ class DownloadTrackingTests {
         assertThat(only().getSubmittedAt()).isNotNull();
         service.addTorrent(command(1.1, OTHER), new TorrentSubmissionContext());
         service.addTorrent(command(1.1, OTHER), new TorrentSubmissionContext());
-        assertThat(downloads.findAll()).extracting(DownloadRecord::getRevision).containsExactlyInAnyOrder(1.0, 1.1);
+        assertThat(downloads.findAll()).extracting(value -> Objects.requireNonNull(value).getRevision()).containsExactlyInAnyOrder(1.0, 1.1);
         assertThat(downloads.findAll()).allMatch(row -> row.getOrigin() == DownloadRecord.Origin.EPLSYNC);
     }
 

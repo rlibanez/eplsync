@@ -80,15 +80,15 @@ public class UpdateCleanupService {
             work.get(plan.getJobId()).forEach(entry -> ids.add(entry.getId()));
             var states = new EnumMap<UpdateCleanup.State, Long>(UpdateCleanup.State.class);
             for (var entry : entries.findByJobIdOrderByEplIdAsc(plan.getJobId()))
-                if (ids.contains(entry.getId())) states.merge(entry.getState(), 1L, Long::sum);
+                if (ids.contains(entry.getId())) states.merge(entry.getState(), 1L, (left, right) -> Long.sum(Objects.requireNonNull(left), Objects.requireNonNull(right)));
             results.add(new JobResult(plan.getJobId(), ids.size(), states.getOrDefault(UpdateCleanup.State.REMOVED, 0L),
                     states.getOrDefault(UpdateCleanup.State.WAITING, 0L), states.getOrDefault(UpdateCleanup.State.BLOCKED, 0L),
                     states.getOrDefault(UpdateCleanup.State.REQUESTED, 0L), errors.get(plan.getJobId())));
         }
         var result = new GlobalResult(results.size(), results.stream().filter(job -> job.error() != null).count(),
-                results.stream().mapToLong(JobResult::checked).sum(), results.stream().mapToLong(JobResult::removed).sum(),
-                results.stream().mapToLong(JobResult::waiting).sum(), results.stream().mapToLong(JobResult::blocked).sum(),
-                results.stream().mapToLong(JobResult::requested).sum(), List.copyOf(results));
+                results.stream().mapToLong(value -> Objects.requireNonNull(value).checked()).sum(), results.stream().mapToLong(value -> Objects.requireNonNull(value).removed()).sum(),
+                results.stream().mapToLong(value -> Objects.requireNonNull(value).waiting()).sum(), results.stream().mapToLong(value -> Objects.requireNonNull(value).blocked()).sum(),
+                results.stream().mapToLong(value -> Objects.requireNonNull(value).requested()).sum(), List.copyOf(results));
         log.info("Limpieza global finalizada: jobs={}, errores={}, registros={}, eliminados={}, pendientes={}, bloqueados={}, sinConfirmar={}",
                 result.selectedJobs(), result.failedJobs(), result.checked(), result.removed(), result.waiting(), result.blocked(), result.requested());
         return result;
@@ -220,7 +220,7 @@ public class UpdateCleanupService {
         for (var torrent : remote) {
             var path = normalizedPath(torrent.contentPath());
             if (path == null) complete = false;
-            else counts.merge(path, 1, Integer::sum);
+            else counts.merge(path, 1, (left, right) -> Integer.sum(Objects.requireNonNull(left), Objects.requireNonNull(right)));
         }
         return new Paths(counts, complete);
     }

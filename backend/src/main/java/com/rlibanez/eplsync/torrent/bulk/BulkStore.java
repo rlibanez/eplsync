@@ -368,7 +368,7 @@ public class BulkStore {
     @Transactional(readOnly = true)
     public List<String> pending(String id, int limit) {
         return items.findByJobIdAndStateOrderByPosition(id, BulkItem.State.PENDING, PageRequest.of(0, limit))
-                .stream().map(BulkItem::getId).toList();
+                .stream().map(value -> Objects.requireNonNull(value).getId()).toList();
     }
 
     @Transactional

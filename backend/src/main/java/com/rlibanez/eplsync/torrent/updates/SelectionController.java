@@ -1,11 +1,7 @@
 package com.rlibanez.eplsync.torrent.updates;
 
-import com.rlibanez.eplsync.dto.PageResponse;
-import com.rlibanez.eplsync.filter.CatalogBookFilter;
 import com.rlibanez.eplsync.torrent.bulk.*;
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 

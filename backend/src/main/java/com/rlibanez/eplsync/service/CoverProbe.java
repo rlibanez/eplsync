@@ -34,7 +34,8 @@ public class CoverProbe {
                 long remaining = deadline - System.nanoTime();
                 if (remaining <= 0) return new Result(null, null, "TIMEOUT");
                 var response = request(uri, Duration.ofNanos(remaining));
-                try (InputStream body = response.body()) {
+                var body = response.body();
+                try (body) {
                     int status = response.statusCode();
                     if (status == 404 || status == 410) return new Result(false, status, "NOT_FOUND");
                     if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {

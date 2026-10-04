@@ -1,12 +1,9 @@
 package com.rlibanez.eplsync.torrent.updates;
 
-import com.rlibanez.eplsync.dto.PageResponse;
 import com.rlibanez.eplsync.torrent.bulk.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.net.URI;
-import com.rlibanez.eplsync.filter.CatalogBookFilter;
-import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/torrent/updates")

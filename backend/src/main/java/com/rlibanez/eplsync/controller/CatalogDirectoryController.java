@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.controller;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.dto.PageResponse;
 import com.rlibanez.eplsync.model.enums.Language;
 import jakarta.persistence.EntityManager;
@@ -79,11 +81,11 @@ public class CatalogDirectoryController {
         List<String> names = query.getResultList();
         var collator = java.text.Collator.getInstance(Locale.forLanguageTag("es"));
         String search = normalize(q.strip());
-        var entries = names.stream().map(String::strip).filter(value -> !value.isEmpty()).distinct()
+        var entries = names.stream().map(value -> Objects.requireNonNull(value).strip()).filter(value -> !value.isEmpty()).distinct()
                 .map(value -> new Entry(value, initial(value)))
                 .filter(entry -> (initial.isEmpty() || initial.equals(entry.initial())) && normalize(entry.value()).contains(search))
                 .sorted(java.util.Comparator.comparingInt((Entry entry) -> LETTERS.indexOf(entry.initial()))
-                    .thenComparing(Entry::value, collator).thenComparing(Entry::value))
+                    .thenComparing(value -> Objects.requireNonNull(value).value(), collator).thenComparing(value -> Objects.requireNonNull(value).value()))
                 .toList();
         long total = entries.size();
         int pages = (int) ((total + size - 1) / size);

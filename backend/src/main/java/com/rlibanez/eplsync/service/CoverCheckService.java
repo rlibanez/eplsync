@@ -100,7 +100,7 @@ public class CoverCheckService {
                 for (var book : books) {
                     if (results.containsKey(book.getCoverUrl())) progress.advance();
                 }
-                probeUrls(books.stream().map(CatalogBookRepository.CoverIdentity::getCoverUrl)
+                probeUrls(books.stream().map(value -> Objects.requireNonNull(value).getCoverUrl())
                         .distinct().filter(url -> !results.containsKey(url)).toList(), results, url -> {
                             for (var book : books) {
                                 if (book.getCoverUrl().equals(url)) progress.advance();
@@ -129,12 +129,12 @@ public class CoverCheckService {
                 if (events != null && eplId == null) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.COVERS, "CHECK",
                     java.util.Map.of("dryRun", false, "checked", applied.size(), "available", count(applied, true),
                         "unavailable", count(applied, false), "inconclusive", applied.stream().filter(i -> i.available() == null).count(),
-                        "updated", applied.stream().filter(Item::updated).count()));
+                        "updated", applied.stream().filter(value -> Objects.requireNonNull(value).updated()).count()));
                 return applied;
             });
             var report = new Report(dryRun, items.size(), count(items, true), count(items, false),
                     (int) items.stream().filter(i -> i.available() == null).count(),
-                    (int) items.stream().filter(Item::wouldChange).count(), (int) items.stream().filter(Item::updated).count(),
+                    (int) items.stream().filter(value -> Objects.requireNonNull(value).wouldChange()).count(), (int) items.stream().filter(value -> Objects.requireNonNull(value).updated()).count(),
                     more ? cursor : null, more, List.copyOf(items));
             log.info("Fin comprobación de portadas: dryRun={}, comprobados={}, disponibles={}, noEncontrados={}, "
                             + "inconcluyentes={}, cambiosPropuestos={}, actualizados={}, urlsConsultadas={}, duraciónMs={}",

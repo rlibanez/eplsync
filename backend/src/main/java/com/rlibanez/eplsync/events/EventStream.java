@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.events;
 
+import java.util.Objects;
+
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -65,5 +67,5 @@ public class EventStream {
     }
     @org.springframework.context.event.EventListener(org.springframework.context.event.ContextClosedEvent.class)
     public void onContextClosed() { close(); }
-    @jakarta.annotation.PreDestroy void close() { connections.forEach(SseEmitter::complete); writers.shutdownNow(); }
+    @jakarta.annotation.PreDestroy void close() { connections.forEach(value -> Objects.requireNonNull(value).complete()); writers.shutdownNow(); }
 }

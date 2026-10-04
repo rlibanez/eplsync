@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.service;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.dto.ImportResult;
 import com.rlibanez.eplsync.dto.ImportPreviewResult;
 import com.rlibanez.eplsync.exception.CatalogImportException;
@@ -173,7 +175,7 @@ public class CatalogImportService {
         } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
 
-    public ImportResult retainedPreview(String token) { return previews.usePreview(token, CatalogImportStore.Snapshot::summary); }
+    public ImportResult retainedPreview(String token) { return previews.usePreview(token, value -> Objects.requireNonNull(value).summary()); }
     public ImportResult refreshPreview(String token) {
         return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "PREVIEW",
                 java.util.Map.of("dryRun", true),

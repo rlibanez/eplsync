@@ -221,7 +221,7 @@ public class DownloadTrackingService {
             if (newlyCompleted) completed++;
             if (row.getStatus() == DownloadStatus.NOT_FOUND) missing++;
             if (newlyNotFound) newlyMissing++;
-            if (includeDetails) items.add(new SyncItem(row.getId(), row.getEplId(), titles.get(row.getEplId()), row.getHash(),
+            if (items != null) items.add(new SyncItem(row.getId(), row.getEplId(), titles.get(row.getEplId()), row.getHash(),
                     changed.isEmpty() ? "UNCHANGED" : "UPDATE", original.getStatus(), row.getStatus(), observed != null,
                     List.copyOf(changed), newlyCompleted, newlyNotFound, original.getCompletedAt(), row.getCompletedAt(),
                     original.getLastError(), row.getLastError()));
@@ -239,7 +239,7 @@ public class DownloadTrackingService {
                 created++;
                 boolean newlyCompleted = row.getCompletedAt() != null;
                 if (newlyCompleted) completed++;
-                if (includeDetails) items.add(new SyncItem(dryRun ? null : row.getId(), row.getEplId(), book.getTitle(), hash,
+                if (items != null) items.add(new SyncItem(dryRun ? null : row.getId(), row.getEplId(), book.getTitle(), hash,
                         "CREATE", null, row.getStatus(), true, List.of(), newlyCompleted, false,
                         null, row.getCompletedAt(), null, row.getLastError()));
             }

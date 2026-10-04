@@ -5,7 +5,6 @@ import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -45,11 +44,11 @@ class EventApiTests {
                     HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).isEqualTo(409);
             assertThat(response.headers().firstValue("X-EPLSync-Operation-Id")).isPresent();
-            assertThat(json.readTree(response.body()).path("details").asText()).isEqualTo("La conexión torrent está deshabilitada");
+            assertThat(json.readTree(response.body()).path("details").asString()).isEqualTo("La conexión torrent está deshabilitada");
         }
         var failures = journal.search(new EventJournal.Filter(null, EventJournal.Outcome.FAILED, null, null), 0, 20).items();
         assertThat(failures).hasSize(2);
-        assertThat(failures).extracting(EventJournal.Entry::action).containsExactlyInAnyOrder("SEND_BOOK", "SYNC");
+        assertThat(failures).extracting(value -> Objects.requireNonNull(value).action()).containsExactlyInAnyOrder("SEND_BOOK", "SYNC");
         assertThat(failures).allSatisfy(event ->
                 assertThat(event.details().get("reason")).isEqualTo("La conexión torrent está deshabilitada"));
         var grouped = json.readTree(request("/operations?outcome=FAILED", null).body());
@@ -70,9 +69,9 @@ class EventApiTests {
         assertThat(response.statusCode()).isEqualTo(409);
         var operationId = response.headers().firstValue("X-EPLSync-Operation-Id").orElseThrow();
         var operation = json.readTree(request("/operations?operationId=" + operationId, null).body()).path("items").get(0);
-        assertThat(operation.path("latest").path("action").asText()).isEqualTo("SYNC_PREVIEW");
-        assertThat(operation.path("latest").path("outcome").asText()).isEqualTo("FAILED");
-        assertThat(operation.path("latest").path("details").path("reason").asText()).isEqualTo("La conexión torrent está deshabilitada");
+        assertThat(operation.path("latest").path("action").asString()).isEqualTo("SYNC_PREVIEW");
+        assertThat(operation.path("latest").path("outcome").asString()).isEqualTo("FAILED");
+        assertThat(operation.path("latest").path("details").path("reason").asString()).isEqualTo("La conexión torrent está deshabilitada");
         assertThat(operation.path("events").size()).isEqualTo(2);
     }
 
@@ -82,7 +81,7 @@ class EventApiTests {
                 EventContext.Origin.MANUAL, "another-operation", Map.of());
         var response = json.readTree(request("/operations?operationId=" + event.operationId(), null).body());
         assertThat(response.path("total").asInt()).isEqualTo(1);
-        assertThat(response.path("items").get(0).path("latest").path("operationId").asText()).isEqualTo(event.operationId());
+        assertThat(response.path("items").get(0).path("latest").path("operationId").asString()).isEqualTo(event.operationId());
         assertThat(json.readTree(request("/operations?operationId=missing", null).body()).path("total").asInt()).isZero();
     }
 
@@ -108,12 +107,12 @@ class EventApiTests {
             EventContext.Origin.MANUAL, "failed", Map.of());
         var result = json.readTree(request("?origin=MANUAL&category=TORRENT&outcome=SUCCEEDED", null).body());
         assertThat(result.path("total").asInt()).isEqualTo(1);
-        assertThat(result.path("items").get(0).path("operationId").asText()).isEqualTo("api-operation");
+        assertThat(result.path("items").get(0).path("operationId").asString()).isEqualTo("api-operation");
         assertThat(json.readTree(request("?origin=SYSTEM", null).body()).path("total").asInt()).isZero();
         assertThat(request("?origin=INVALID", null).statusCode()).isEqualTo(400);
         var grouped = request("/operations?origin=MANUAL&category=TORRENT&outcome=SUCCEEDED", null);
         assertThat(grouped.statusCode()).isEqualTo(200);
-        assertThat(json.readTree(grouped.body()).path("items").get(0).path("latest").path("operationId").asText()).isEqualTo("api-operation");
+        assertThat(json.readTree(grouped.body()).path("items").get(0).path("latest").path("operationId").asString()).isEqualTo("api-operation");
         assertThat(request("/operations?snapshot=-1", null).statusCode()).isEqualTo(400);
         assertThat(request("/operations?origin=INVALID", null).statusCode()).isEqualTo(400);
     }

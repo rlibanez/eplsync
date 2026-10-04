@@ -41,7 +41,8 @@ class ServerSettingsTests {
 
     @Test void appliesAtomicallyPinsRunningOperationsAndRestores() throws Exception {
         int before = torrent.getBulk().getConcurrency();
-        try (var ignored = settings.pin()) {
+        var pin = settings.pin();
+        try (pin) {
             settings.save("torrent", Map.of("torrent.bulk.concurrency", 3));
             assertThat(torrent.getBulk().getConcurrency()).isEqualTo(before);
         }

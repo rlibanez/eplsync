@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.torrent.bulk;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.dto.TorrentDownloadRequest;
 import com.rlibanez.eplsync.dto.TorrentDownloadResult;
@@ -10,7 +12,6 @@ import com.rlibanez.eplsync.model.CatalogBook;
 import com.rlibanez.eplsync.model.enums.Language;
 import com.rlibanez.eplsync.repository.CatalogBookRepository;
 import com.rlibanez.eplsync.service.TorrentClientService;
-import com.rlibanez.eplsync.torrent.TorrentDownload;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -92,7 +93,7 @@ class BulkTests {
         assertThat(selected.selectedBooks()).isEqualTo(2);
         var all = new CatalogBookFilter(); all.setAuthor("Author"); all.setExcludedIds(new Long[]{2L,4L});
         var preview = store.preview(all,PageRequest.of(0,20),false,true,null,true);
-        assertThat(preview.items()).extracting(BulkStore.ItemView::eplId).containsExactly(1L,3L,5L);
+        assertThat(preview.items()).extracting(value -> Objects.requireNonNull(value).eplId()).containsExactly(1L,3L,5L);
         var many = new CatalogBookFilter(); many.setSelectedIds(java.util.stream.LongStream.rangeClosed(1,1100).boxed().toArray(Long[]::new));
         assertThat(store.preview(many,PageRequest.of(0,20),false,false,null,false).selectedBooks()).isEqualTo(5);
     }
@@ -136,7 +137,7 @@ class BulkTests {
         awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
         assertThat(starts).hasSize(5);
         var rows = events.after(cursor, 20);
-        assertThat(rows).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+        assertThat(rows).extracting(value -> Objects.requireNonNull(value).outcome())
                 .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
                     com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
         assertThat(rows).allSatisfy(row -> assertThat(row.operationId()).isEqualTo(job.jobId()));
@@ -228,7 +229,7 @@ class BulkTests {
                 new BulkRequest(null, null, 2, null));
         assertThat(job.selectedBooks()).isEqualTo(2); assertThat(job.batchSize()).isEqualTo(2);
         assertThat(job.interval()).isEqualTo("0ms");
-        assertThat(store.details(job.jobId(), 0, 50).items()).extracting(BulkStore.ItemView::eplId).containsExactly(3L, 4L);
+        assertThat(store.details(job.jobId(), 0, 50).items()).extracting(value -> Objects.requireNonNull(value).eplId()).containsExactly(3L, 4L);
     }
 
     @Test void rejectsUnsafeSelectionAndInvalidExecutionParameters() {
@@ -328,10 +329,10 @@ class BulkTests {
         assertThat(first.meta().hasNext()).isTrue();
         assertThat(first.items().getFirst()).isEqualTo(store.view(newestId));
         var second = store.list(1, 2, null);
-        assertThat(second.items()).extracting(BulkStore.View::jobId)
-                .doesNotContainAnyElementsOf(first.items().stream().map(BulkStore.View::jobId).toList());
+        assertThat(second.items()).extracting(value -> Objects.requireNonNull(value).jobId())
+                .doesNotContainAnyElementsOf(first.items().stream().map(value -> Objects.requireNonNull(value).jobId()).toList());
         assertThat(store.list(0, 20, List.of(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT)).items())
-                .extracting(BulkStore.View::status).containsExactlyInAnyOrder(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT);
+                .extracting(value -> Objects.requireNonNull(value).status()).containsExactlyInAnyOrder(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT);
         assertThat(store.list(100, 20, null).items()).isEmpty();
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
@@ -481,7 +482,7 @@ class BulkTests {
         assertThat(job.selectedBooks()).isEqualTo(5); assertThat(job.selectedTorrents()).isEqualTo(6);
         assertThat(job.selectedItems()).isEqualTo(6); assertThat(job.pending()).isEqualTo(6);
         var details = store.details(job.jobId(), 0, 20).items();
-        assertThat(details).extracting(BulkStore.ItemView::eplId).containsExactly(1L, 1L, 2L, 3L, 4L, 5L);
+        assertThat(details).extracting(value -> Objects.requireNonNull(value).eplId()).containsExactly(1L, 1L, 2L, 3L, 4L, 5L);
         assertThat(details.getFirst().hash()).isEqualTo(String.format("%040X", 99));
         store.next();
         var first = store.claim(job.jobId(), details.get(0).id());

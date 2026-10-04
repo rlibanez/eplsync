@@ -1,7 +1,6 @@
 package com.rlibanez.eplsync.api;
 
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.http.HttpMethod;
 import java.util.*;
 import tools.jackson.databind.json.JsonMapper;
 

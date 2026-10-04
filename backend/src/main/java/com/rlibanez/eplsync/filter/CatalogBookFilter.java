@@ -1,11 +1,12 @@
 package com.rlibanez.eplsync.filter;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.model.enums.BookStatus;
 import com.rlibanez.eplsync.model.enums.Language;
 import com.rlibanez.eplsync.model.enums.PublicationStatus;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
@@ -145,7 +146,7 @@ public class CatalogBookFilter {
     private String[] norm(String[] values, int limit) {
         values = compact(values);
         if (values == null) return null;
-        var result = java.util.Arrays.stream(values).map(String::trim).filter(v -> !v.isEmpty()).distinct().toArray(String[]::new);
+        var result = java.util.Arrays.stream(values).map(value -> Objects.requireNonNull(value).trim()).filter(v -> !v.isEmpty()).distinct().toArray(String[]::new);
         if (java.util.Arrays.stream(result).anyMatch(v -> v.length() > limit))
             throw new IllegalArgumentException("Texto de filtro demasiado largo");
         return result.length == 0 ? null : result;

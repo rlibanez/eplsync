@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.qbittorrent;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.service.TorrentClientService;
 import java.util.List;
@@ -314,10 +316,10 @@ class QBittorrentClientTests {
         assertThat(calls).hasSize(5);
         calls.clear();
         qbit.addTorrent(command("B".repeat(40)), context);
-        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/torrents/add");
+        assertThat(calls).extracting(value -> Objects.requireNonNull(value).path()).containsExactly("/qbit/api/v2/torrents/add");
         calls.clear();
         qbit.checkConnection();
-        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/app/version", "/qbit/api/v2/app/webapiVersion");
+        assertThat(calls).extracting(value -> Objects.requireNonNull(value).path()).containsExactly("/qbit/api/v2/app/version", "/qbit/api/v2/app/webapiVersion");
     }
 
     @Test
@@ -349,7 +351,7 @@ class QBittorrentClientTests {
         torrentInfo = "[{\"hash\":\"" + "B".repeat(40) + "\",\"infohash_v1\":\"" + "C".repeat(40) + "\"}]";
         calls.clear();
         assertThat(qbit.addTorrent(command("C".repeat(40)), context).name()).isEqualTo("ALREADY_EXISTS");
-        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/torrents/info");
+        assertThat(calls).extracting(value -> Objects.requireNonNull(value).path()).containsExactly("/qbit/api/v2/torrents/info");
     }
 
     @Test
@@ -421,7 +423,7 @@ class QBittorrentClientTests {
         assertThat(calls.getLast().authorization()).isNull();
         calls.clear();
         qbit.addTorrent(command("C".repeat(40)));
-        assertThat(calls).extracting(Call::path).containsExactly("/qbit/api/v2/torrents/info", "/qbit/api/v2/torrents/categories", "/qbit/api/v2/torrents/add");
+        assertThat(calls).extracting(value -> Objects.requireNonNull(value).path()).containsExactly("/qbit/api/v2/torrents/info", "/qbit/api/v2/torrents/categories", "/qbit/api/v2/torrents/add");
         assertThat(calls).allMatch(c -> c.authorization() == null && c.cookie().contains("session1"));
     }
 

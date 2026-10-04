@@ -84,7 +84,7 @@ public class CatalogMissingService {
                                 b.getEplId(), b.getTitle(), b.getRevision(), b.getInsertDate(), b.getLastModifiedDate())));
                         for (var book : snapshot.books()) if (!book.equals(current.get(book.eplId())))
                             throw conflict("Los libros han cambiado; repite la previsualización");
-                        var ids = snapshot.books().stream().map(MissingBook::eplId).toList();
+                        var ids = snapshot.books().stream().map(value -> Objects.requireNonNull(value).eplId()).toList();
                         for (int start = 0; start < ids.size(); start += 500) {
                             var batch = ids.subList(start, Math.min(start + 500, ids.size()));
                             if (em.createQuery("select count(i) from BulkItem i where i.eplId in :ids and i.state in :states", Long.class)

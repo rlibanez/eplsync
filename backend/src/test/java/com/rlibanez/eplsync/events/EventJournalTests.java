@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.events;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.model.CatalogBook;
 import jakarta.persistence.EntityManager;
 import java.time.Instant;
@@ -63,8 +65,8 @@ class EventJournalTests {
             .extracting(op -> op.latest().operationId()).containsExactly("covers", "catalog1");
         var current = operations.search(all, 0, 20, null);
         assertThat(current.items()).extracting(op -> op.latest().operationId()).containsExactly("catalog2", "sync", "covers", "catalog1");
-        assertThat(current.items()).extracting(EventOperations.Operation::durationMs).containsExactly(120000L, 960000L, 1140000L, 75000L);
-        assertThat(current.items().get(0).events()).extracting(Entry::outcome).containsExactly(Outcome.STARTED, Outcome.SUCCEEDED);
+        assertThat(current.items()).extracting(value -> Objects.requireNonNull(value).durationMs()).containsExactly(120000L, 960000L, 1140000L, 75000L);
+        assertThat(current.items().get(0).events()).extracting(value -> Objects.requireNonNull(value).outcome()).containsExactly(Outcome.STARTED, Outcome.SUCCEEDED);
         assertThat(operations.search(new Filter(null, Outcome.STARTED, null, null), 0, 20, null).total()).isZero();
         assertThat(operations.search(new Filter(null, Outcome.PARTIAL, null, null), 0, 20, null).total()).isEqualTo(1);
         assertThat(operations.search(new Filter(null, null, Instant.parse("2026-10-02T16:15:00Z"), Instant.parse("2026-10-02T16:16:00Z")), 0, 20, null).total()).isEqualTo(1);
@@ -87,7 +89,8 @@ class EventJournalTests {
     }
     @Test void jdbcEventsJoinJpaTransactionAndSignalOnlyAfterCommit() throws Exception {
         var signals = new AtomicInteger();
-        try (var subscription = journal.listen(signals::incrementAndGet)) {
+        var subscription = journal.listen(signals::incrementAndGet);
+        try (subscription) {
             new TransactionTemplate(manager).executeWithoutResult(tx -> {
                 em.persist(CatalogBook.builder().eplId(991L).title("Atomic").revision(1.0).build());
                 record();
@@ -112,7 +115,7 @@ class EventJournalTests {
             return 1;
         }, result -> Map.of())).isInstanceOf(IllegalStateException.class);
         var rows = journal.search(all, 0, 20).items();
-        assertThat(rows).extracting(Entry::outcome).containsExactly(Outcome.FAILED, Outcome.STARTED);
+        assertThat(rows).extracting(value -> Objects.requireNonNull(value).outcome()).containsExactly(Outcome.FAILED, Outcome.STARTED);
         assertThat(rows.get(0).operationId()).isEqualTo(rows.get(1).operationId());
     }
     @Test void nestedResetAndImportProduceOneOperationWithNoDuplicatedCompletion() {
@@ -172,7 +175,7 @@ class EventJournalTests {
         record();
         var page = journal.search(new Filter(Category.CATALOG, Outcome.SUCCEEDED, null, null), 1, 1);
         assertThat(page.total()).isEqualTo(2);
-        assertThat(page.items()).extracting(Entry::id).containsExactly(second.id());
+        assertThat(page.items()).extracting(value -> Objects.requireNonNull(value).id()).containsExactly(second.id());
         assertThat(journal.after(first.id(), 10)).hasSize(2);
         assertThatThrownBy(() -> journal.search(all, 0, 10001)).isInstanceOf(IllegalArgumentException.class);
     }
@@ -181,11 +184,11 @@ class EventJournalTests {
         jdbc.update("UPDATE app_events SET created_at=? WHERE id=?", Instant.now().minusSeconds(366L * 86400).toEpochMilli(), old.id());
         settings.getRetention().setMaxCount(2);
         journal.prune();
-        assertThat(journal.after(0, 10)).extracting(Entry::id).containsExactly(middle.id(), recent.id());
+        assertThat(journal.after(0, 10)).extracting(value -> Objects.requireNonNull(value).id()).containsExactly(middle.id(), recent.id());
         jdbc.update("UPDATE app_events SET created_at=? WHERE id=?", 1000, middle.id());
         jdbc.update("UPDATE app_events SET created_at=? WHERE id=?", 2000, recent.id());
         assertThat(journal.delete(new Filter(null, null, Instant.ofEpochMilli(1000), Instant.ofEpochMilli(2000)))).isEqualTo(1);
-        assertThat(journal.after(0, 10)).extracting(Entry::id).containsExactly(recent.id());
+        assertThat(journal.after(0, 10)).extracting(value -> Objects.requireNonNull(value).id()).containsExactly(recent.id());
         journal.prune();
         assertThat(journal.search(all, 0, 20).total()).isZero();
     }

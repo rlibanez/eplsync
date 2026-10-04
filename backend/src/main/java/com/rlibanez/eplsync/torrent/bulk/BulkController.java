@@ -1,12 +1,9 @@
 package com.rlibanez.eplsync.torrent.bulk;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.dto.PageResponse;
-import com.rlibanez.eplsync.filter.CatalogBookFilter;
-import jakarta.validation.Valid;
-import org.springframework.data.domain.Pageable;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.net.URI;
 
 @RestController
 @RequestMapping("/api/torrent")
@@ -28,7 +25,7 @@ public class BulkController {
         if (status != null) {
             try {
                 states = java.util.Arrays.stream(status.split(",", -1))
-                        .map(String::trim).map(BulkJob.State::valueOf).distinct().toList();
+                        .map(value -> Objects.requireNonNull(value).trim()).map(BulkJob.State::valueOf).distinct().toList();
             } catch (IllegalArgumentException ex) {
                 throw new IllegalArgumentException("status debe contener estados de job válidos separados por comas");
             }
@@ -52,7 +49,7 @@ public class BulkController {
         java.util.List<BulkItem.State> states = null;
         if (status != null) {
             try {
-                states = java.util.Arrays.stream(status.split(",", -1)).map(String::trim)
+                states = java.util.Arrays.stream(status.split(",", -1)).map(value -> Objects.requireNonNull(value).trim())
                         .map(BulkItem.State::valueOf).distinct().toList();
             } catch (IllegalArgumentException ex) {
                 throw new IllegalArgumentException("status debe contener estados de elemento válidos separados por comas");

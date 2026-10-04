@@ -1,7 +1,6 @@
 package com.rlibanez.eplsync.torrent.updates;
 
 import com.rlibanez.eplsync.dto.PageResponse;
-import com.rlibanez.eplsync.filter.CatalogBookFilter;
 import java.util.*;
 
 /** Strict query validation prevents misspelled filters from widening a submission. */

@@ -1,4 +1,6 @@
 package com.rlibanez.eplsync.controller;
+
+import java.util.Objects;
 import com.rlibanez.eplsync.filter.CatalogBookFilter;
 import com.rlibanez.eplsync.model.CatalogBook;
 import com.rlibanez.eplsync.repository.CatalogBookRepository;
@@ -24,7 +26,7 @@ class CatalogDateRangeTests {
    em.clear();
    var filter=new CatalogBookFilter();
    filter.setInsertDateFrom(Instant.parse(times[1])); filter.setInsertDateBefore(Instant.parse(times[3]));
-   assertThat(repository.findAll(CatalogBookSpecifications.fromFilter(filter))).extracting(CatalogBook::getEplId).containsExactlyInAnyOrder(2L,3L);
+   assertThat(repository.findAll(CatalogBookSpecifications.fromFilter(filter))).extracting(value -> Objects.requireNonNull(value).getEplId()).containsExactlyInAnyOrder(2L,3L);
  }
  @Test void rejectsInvertedRanges() {
    var f=new CatalogBookFilter(); f.setPublicationDateFrom(LocalDate.of(2026,2,2)); f.setPublicationDateTo(LocalDate.of(2026,2,1));

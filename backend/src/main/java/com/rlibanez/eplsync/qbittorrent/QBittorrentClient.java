@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.qbittorrent;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.torrent.TorrentClient;
 import com.rlibanez.eplsync.torrent.downloads.DownloadStatus;
@@ -81,7 +83,7 @@ public class QBittorrentClient implements TorrentClient {
 
     /** Serializa la renovación de sesión y solo realiza lecturas y login remoto. */
     public synchronized TorrentConnectionStatus checkConnection() {
-        if (dynamic()) return configured(QBittorrentClient::checkConnection);
+        if (dynamic()) return configured(value -> Objects.requireNonNull(value).checkConnection());
         if (!properties.isEnabled()) return new TorrentConnectionStatus(false, false, type(), null, null, null);
         try {
             qbittorrent.validate();
@@ -181,7 +183,7 @@ public class QBittorrentClient implements TorrentClient {
         var fields = new java.util.LinkedHashMap<String, String>();
         fields.put("urls", download.magnet());
         fields.put("category", category);
-        fields.put("tags", String.join(",", tags.stream().map(tag -> java.util.Objects.requireNonNull(tag).trim()).distinct().toList()));
+        fields.put("tags", String.join(",", tags.stream().map(tag -> Objects.requireNonNull(tag).trim()).distinct().toList()));
         fields.put("stopped", Boolean.toString(!download.start()));
         fields.put("autoTMM", Boolean.toString(automatic));
         if (!automatic && savePath != null && !savePath.isBlank()) fields.put("savepath", savePath);
@@ -234,7 +236,7 @@ public class QBittorrentClient implements TorrentClient {
     /** Instantánea completa y sin filtros: permite detectar ausencias y descubrir torrents ajenos al envío. */
     @Override
     public java.util.List<RemoteTorrent> listTorrents() {
-        if (dynamic()) return configured(QBittorrentClient::listTorrents);
+        if (dynamic()) return configured(value -> Objects.requireNonNull(value).listTorrents());
         var response = readAuthenticatedJson("torrents/info");
         if (!response.isArray()) throw new QBittorrentConnectionException(UPSTREAM);
         var result = new java.util.ArrayList<RemoteTorrent>();
@@ -334,7 +336,7 @@ public class QBittorrentClient implements TorrentClient {
 
     @Override
     public java.util.List<String> listCategories() {
-        if (dynamic()) return configured(QBittorrentClient::listCategories);
+        if (dynamic()) return configured(value -> Objects.requireNonNull(value).listCategories());
         var response = readAuthenticatedJson("torrents/categories");
         if (!response.isObject()) throw new QBittorrentConnectionException(UPSTREAM);
         var names = new java.util.ArrayList<String>();

@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.controller;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.model.CatalogBook;
 import com.rlibanez.eplsync.repository.CatalogBookRepository;
 import com.rlibanez.eplsync.service.CoverCheckService;
@@ -14,7 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = {"spring.datasource.url=jdbc:sqlite::memory:",
@@ -34,7 +35,7 @@ class CoverCheckTests {
         logger.addAppender(appender);
         try {
             service.check(true, 10, null, 10, true);
-            var messages = appender.list.stream().map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage).toList();
+            var messages = appender.list.stream().map(value -> Objects.requireNonNull(value).getFormattedMessage()).toList();
             assertThat(messages.getFirst()).contains("Inicio comprobación", "dryRun=true", "total=10", "afterId=10", "size=10");
             var progress = messages.stream().filter(message -> message.startsWith("Progreso")).toList();
             assertThat(progress).hasSize(10);
@@ -101,11 +102,11 @@ class CoverCheckTests {
         assertThat(first.hasMore()).isTrue();
         verify(probe, times(1)).check("https://example.org/ok.jpg");
         var next = service.check(false, first.nextAfterId(), null, 2, true);
-        assertThat(next.items()).extracting(CoverCheckService.Item::eplId).containsExactly(3L);
+        assertThat(next.items()).extracting(value -> Objects.requireNonNull(value).eplId()).containsExactly(3L);
         assertThat(next.hasMore()).isFalse();
         assertThat(service.check(true, 0, null, 20, true).checked()).isZero();
         assertThat(service.check(true, 0, 2L, 20, false).items())
-                .extracting(CoverCheckService.Item::eplId).containsExactly(2L);
+                .extracting(value -> Objects.requireNonNull(value).eplId()).containsExactly(2L);
     }
 
     @Test void rejectsInvalidLimitsWithoutNetworkRequests() throws Exception {

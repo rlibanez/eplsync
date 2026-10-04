@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.importer;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.config.CatalogImportProperties;
 import com.rlibanez.eplsync.service.*;
 import com.rlibanez.eplsync.repository.*;
@@ -110,8 +112,8 @@ class RetainedCatalogPreviewTests {
     @Test void recoversDescriptorAfterRestartAndRejectsTamperedZip() throws Exception {
         var token = service.previewCatalog(null,0,50).summary().preview().token();
         var restarted = new CatalogImportStore(properties, new ZipExtractor(), cache);
-        assertThat(restarted.usePreview(token, CatalogImportStore.Snapshot::summary).recordsCreated()).isEqualTo(1);
-        assertThat(restarted.usePreview(token, CatalogImportStore.Snapshot::sourceType)).isEqualTo("URL");
+        assertThat(restarted.usePreview(token, value -> Objects.requireNonNull(value).summary()).recordsCreated()).isEqualTo(1);
+        assertThat(restarted.<String>usePreview(token, value -> Objects.requireNonNull(value).sourceType())).isEqualTo("URL");
         Files.writeString(cache.resolve("catalog.zip"),"changed");
         assertThatThrownBy(() -> service.applyPreview(token)).hasMessage("PREVIEW_FILE_CHANGED");
         assertThat(books.count()).isZero();

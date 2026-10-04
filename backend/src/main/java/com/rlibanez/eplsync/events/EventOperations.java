@@ -62,7 +62,7 @@ public class EventOperations {
                 var events = byId.get(id);
                 var latest = events.getLast();
                 var start = events.stream().filter(e -> e.outcome() == EventJournal.Outcome.STARTED)
-                    .map(EventJournal.Entry::createdAt).min(Comparator.naturalOrder()).orElse(null);
+                    .map(value -> Objects.requireNonNull(value).createdAt()).min(Comparator.naturalOrder()).orElse(null);
                 var end = switch (latest.outcome()) {
                     case SUCCEEDED, PARTIAL, FAILED, CANCELLED -> latest.createdAt();
                     default -> null;

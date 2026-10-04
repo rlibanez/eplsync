@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.controller;
 
+import java.util.Objects;
+
 import com.rlibanez.eplsync.config.CoverCheckProperties;
 import com.rlibanez.eplsync.exception.GlobalExceptionHandler;
 import com.rlibanez.eplsync.maintenance.MaintenanceGate;
@@ -61,7 +63,7 @@ class CoverTaskTests {
         assertThat(result.checked()).isEqualTo(61);
         assertThat(result.total()).isEqualTo(61);
         var entries = events.after(cursor, 10);
-        assertThat(entries).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+        assertThat(entries).extracting(value -> Objects.requireNonNull(value).outcome())
                 .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
                     com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
         assertThat(entries.getLast().details()).containsEntry("checked", 61);
