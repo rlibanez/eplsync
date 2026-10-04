@@ -5,7 +5,7 @@
     "failed": "No se pudieron cargar las sugerencias. Puedes seguir escribiendo.",
     "retry": "Reintentar",
     "more": "Cargar más"
-},
+  },
   "sorting": {
     "title": "Ordenar",
     "help": "Mayús + clic en una cabecera añade un criterio.",
@@ -56,7 +56,18 @@
     "books": "Ver libros",
     "find": "Encuentra una lectura",
     "findDescription": "Combina título, autor e idioma y abre la ficha para conocer todos los detalles.",
-    "search": "Buscar en el catálogo"
+    "search": "Buscar en el catálogo",
+    "import": "Importar catálogo",
+    "overview": "Resumen de EPL Sync",
+    "booksCount": "libros en el catálogo",
+    "downloadsCount": "descargas registradas",
+    "activeJobs": "trabajos pendientes o en curso",
+    "noJobs": "No hay trabajos activos.",
+    "recentBooks": "Últimos libros añadidos",
+    "recentEvents": "Últimos eventos",
+    "noEvents": "Todavía no hay eventos registrados.",
+    "seeAll": "Ver todos",
+    "dismissIntro": "Ocultar presentación"
   },
   "catalog": {
     "description": "Explora tu colección. Encuentra tu próxima lectura.",
@@ -103,10 +114,8 @@
     "navigation": "Navegar entre libros",
     "previous": "Anterior",
     "next": "Siguiente",
-
     "language": "Idioma",
     "genres": "Género",
-
     "back": "Volver al catálogo",
     "heading": "FICHA DEL LIBRO · EPL {{id}}",
     "unknownLanguage": "Idioma sin indicar",

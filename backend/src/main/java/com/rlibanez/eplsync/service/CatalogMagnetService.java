@@ -31,7 +31,7 @@ public class CatalogMagnetService {
 
     public List<String> search(CatalogBookFilter filter, Sort sort) {
         // Desempate estable: si varios libros comparten hash, se conserva el primero.
-        Sort stableSort = sort.getOrderFor("eplId") == null ? sort.and(Sort.by("eplId")) : sort;
+        Sort stableSort = CatalogOrdering.normalize(sort);
         var books = repository.findBy(CatalogBookSpecifications.fromFilter(filter),
                 query -> query.as(CatalogMagnetSource.class).sortBy(stableSort).all());
         var magnets = new LinkedHashMap<String, String>();

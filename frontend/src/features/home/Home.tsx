@@ -1,55 +1,290 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { ArrowRight, Library, Search, BookOpen } from "lucide-react";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import {
+  ArrowRight,
+  Library,
+  Download,
+  ListChecks,
+  BookOpen,
+  X,
+} from "lucide-react";
+import { ActionIcon, Badge } from "@mantine/core";
+import { get, type BookPage } from "../../api/catalog";
+import { useLocale } from "../../locales/useLocale";
+import { BookCover } from "../catalog/BookCover";
+import { type Metadata } from "../maintenance/CatalogMetadata";
+import { type Page, type Job } from "../downloads/shared";
+import { operationOutcome, type OperationPage } from "../events/eventTypes";
+import { Failure, Loading } from "../../components/Feedback";
+
+const activeStates = ["QUEUED", "RUNNING", "RETRY_WAIT", "PAUSED"];
 export function Home() {
   const { t } = useTranslation();
+  const [heroHidden, setHeroHidden] = useState(() => {
+    try {
+      return localStorage.getItem("eplsync.home.heroHidden") === "true";
+    } catch {
+      return false;
+    }
+  });
+  function dismissHero() {
+    setHeroHidden(true);
+    try {
+      localStorage.setItem("eplsync.home.heroHidden", "true");
+    } catch {
+      /* Keep dismissal usable when browser storage is unavailable. */
+    }
+  }
+  const { date, status } = useLocale();
+  const books = useQuery({
+    queryKey: ["catalog", "home-recent"],
+    queryFn: ({ signal }) =>
+      get<BookPage>(
+        "/catalog/books?page=0&size=10&sort=insertDate,desc&sort=eplId,desc",
+        signal,
+      ),
+  });
+  const metadata = useQuery({
+    queryKey: ["catalog-metadata"],
+    queryFn: ({ signal }) =>
+      get<{ metadata: Metadata | null }>("/catalog/import/metadata", signal),
+  });
+  const downloads = useQuery({
+    queryKey: ["download-summary", ""],
+    queryFn: ({ signal }) =>
+      get<{ total: number; byStatus: Record<string, number> }>(
+        "/torrent/downloads/summary",
+        signal,
+      ),
+  });
+  const jobs = useQueries({
+    queries: activeStates.map((state) => ({
+      queryKey: ["jobs", "home", state],
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        get<Page<Job>>(`/torrent/jobs?page=0&size=1&status=${state}`, signal),
+    })),
+  });
+  const events = useQuery({
+    queryKey: ["events", "home"],
+    queryFn: ({ signal }) =>
+      get<OperationPage>("/events/operations?page=0&size=5", signal),
+  });
+  const empty = books.data?.meta.totalItems === 0;
+  const jobError = jobs.find((query) => query.isError);
+  const jobsLoaded = jobs.every((query) => query.data);
+  const activeCount = jobs.reduce(
+    (total, query) => total + (query.data?.meta.totalItems ?? 0),
+    0,
+  );
   return (
-    <>
-      <div className="eyebrow">{t("home.welcome")} </div>
-      <section className="hero">
-        <div>
-          <h1>
-            {t("home.title")} <br />
-            <span>{t("home.subtitle")} </span>
-          </h1>
-          <p>{t("home.description")} </p>
-          <Link className="primary-link" to="/catalog">
-            {t("nav.explore")} <ArrowRight size={18} />
+    <div className="home-dashboard">
+      {!heroHidden && (
+        <section className="hero home-hero">
+          <ActionIcon
+            className="home-hero-close"
+            variant="subtle"
+            color="gray"
+            size="lg"
+            aria-label={t("home.dismissIntro")}
+            title={t("home.dismissIntro")}
+            onClick={dismissHero}
+          >
+            <X size={20} />
+          </ActionIcon>
+          <div>
+            <h1>
+              {t("home.title")}
+              <br />
+              <span>{t("home.subtitle")}</span>
+            </h1>
+            <p>{t("home.description")}</p>
+            <Link
+              className="primary-link"
+              to={empty ? "/settings/database" : "/catalog"}
+            >
+              {t(empty ? "home.import" : "nav.explore")}{" "}
+              <ArrowRight size={18} />
+            </Link>
+          </div>
+          <div className="book-art" aria-hidden="true">
+            <div className="art-book one">
+              EPL<span>{t("home.art")}</span>
+              <BookOpen />
+            </div>
+            <div className="art-book two" />
+            <div className="art-book three" />
+          </div>
+        </section>
+      )}
+      <section className="home-stats" aria-label={t("home.overview")}>
+        <article className="home-panel">
+          <Link className="home-panel-title" to="/catalog">
+            <Library size={20} />
+            <h2>{t("nav.catalog")}</h2>
+            <ArrowRight size={16} />
+          </Link>
+          {books.isPending ? (
+            <Loading />
+          ) : books.isError ? (
+            <Failure error={books.error} retry={() => books.refetch()} />
+          ) : (
+            <>
+              <strong className="home-count">
+                {books.data.meta.totalItems}
+              </strong>
+              <span className="muted">{t("home.booksCount")}</span>
+            </>
+          )}
+          <p className="muted home-small">
+            {t("metadata.sourceModifiedAt")}:{" "}
+            {metadata.data?.metadata?.sourceModifiedAt?.replace("T", " ") ??
+              "—"}
+          </p>
+          {metadata.isError && (
+            <Failure error={metadata.error} retry={() => metadata.refetch()} />
+          )}
+        </article>
+        <article className="home-panel">
+          <Link className="home-panel-title" to="/downloads">
+            <Download size={20} />
+            <h2>{t("nav.downloads")}</h2>
+            <ArrowRight size={16} />
+          </Link>
+          {downloads.isPending ? (
+            <Loading />
+          ) : downloads.isError ? (
+            <Failure
+              error={downloads.error}
+              retry={() => downloads.refetch()}
+            />
+          ) : (
+            <>
+              <strong className="home-count">{downloads.data.total}</strong>
+              <span className="muted">{t("home.downloadsCount")}</span>
+              <div className="home-statuses">
+                {Object.entries(downloads.data.byStatus)
+                  .filter(([, count]) => count > 0)
+                  .map(([key, count]) => (
+                    <span key={key}>
+                      {status(key)} <b>{count}</b>
+                    </span>
+                  ))}
+              </div>
+            </>
+          )}
+        </article>
+        <article className="home-panel">
+          <Link className="home-panel-title" to="/downloads/jobs">
+            <ListChecks size={20} />
+            <h2>{t("nav.jobs")}</h2>
+            <ArrowRight size={16} />
+          </Link>
+          {jobError ? (
+            <Failure
+              error={jobError.error}
+              retry={() => {
+                jobs.forEach((query) => void query.refetch());
+              }}
+            />
+          ) : !jobsLoaded ? (
+            <Loading />
+          ) : (
+            <>
+              <strong className="home-count">{activeCount}</strong>
+              <span className="muted">{t("home.activeJobs")}</span>
+              {activeCount === 0 ? (
+                <p className="muted home-small">{t("home.noJobs")}</p>
+              ) : (
+                <div className="home-statuses">
+                  {jobs.map(
+                    (query, i) =>
+                      query.data!.meta.totalItems > 0 && (
+                        <span key={activeStates[i]}>
+                          {status(activeStates[i])}{" "}
+                          <b>{query.data!.meta.totalItems}</b>
+                        </span>
+                      ),
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </article>
+      </section>
+      {!!books.data?.items.length && (
+        <section className="home-panel">
+          <div className="home-section-title">
+            <h2>{t("home.recentBooks")}</h2>
+            <Link to="/catalog?sort=insertDate%2Cdesc&sort=eplId%2Cdesc">
+              {t("home.seeAll")} <ArrowRight size={16} />
+            </Link>
+          </div>
+          <div className="home-books">
+            {books.data.items.map((book) => (
+              <Link
+                className="home-book"
+                key={book.eplId}
+                to={`/catalog/${book.eplId}`}
+              >
+                <div className="home-cover">
+                  <BookCover book={book} />
+                </div>
+                <strong title={book.title}>{book.title}</strong>
+                <span className="muted" title={book.author}>
+                  {book.author}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+      <section className="home-panel">
+        <div className="home-section-title">
+          <h2>{t("home.recentEvents")}</h2>
+          <Link to="/events">
+            {t("home.seeAll")} <ArrowRight size={16} />
           </Link>
         </div>
-        <div className="book-art" aria-hidden="true">
-          <div className="art-book one">
-            EPL
-            <span>{t("home.art")}</span>
-            <BookOpen />
-          </div>
-          <div className="art-book two" />
-          <div className="art-book three" />
-        </div>
+        {events.isPending ? (
+          <Loading />
+        ) : events.isError ? (
+          <Failure error={events.error} retry={() => events.refetch()} />
+        ) : !events.data.items.length ? (
+          <p className="muted">{t("home.noEvents")}</p>
+        ) : (
+          <ul className="home-events">
+            {events.data.items.map(({ latest }) => (
+              <li key={latest.operationId}>
+                <Link
+                  to={`/events?operationId=${encodeURIComponent(latest.operationId)}`}
+                >
+                  <span>
+                    {t(`events.actions.${latest.action}`, {
+                      defaultValue: latest.action,
+                    })}
+                  </span>
+                  <Badge
+                    color={
+                      latest.outcome === "FAILED"
+                        ? "red"
+                        : latest.outcome === "SUCCEEDED"
+                          ? "teal"
+                          : "gray"
+                    }
+                  >
+                    {t(`events.outcomes.${operationOutcome(latest.outcome)}`)}
+                  </Badge>
+                  <time dateTime={latest.createdAt}>
+                    {date(latest.createdAt)}
+                  </time>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
-      <section className="home-bottom">
-        <div>
-          <div className="eyebrow">{t("home.space")} </div>
-          <h2>{t("home.heading")} </h2>
-          <p className="muted">{t("home.intro")} </p>
-        </div>
-        <Link className="feature-card" to="/catalog">
-          <Library />
-          <h3>{t("home.browse")} </h3>
-          <p>{t("home.browseDescription")} </p>
-          <span>
-            {t("home.books")} <ArrowRight size={16} />
-          </span>
-        </Link>
-        <Link className="feature-card" to="/catalog">
-          <Search />
-          <h3>{t("home.find")} </h3>
-          <p>{t("home.findDescription")} </p>
-          <span>
-            {t("home.search")} <ArrowRight size={16} />
-          </span>
-        </Link>
-      </section>
-    </>
+    </div>
   );
 }

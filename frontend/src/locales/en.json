@@ -5,7 +5,7 @@
     "failed": "Suggestions could not be loaded. You can keep typing.",
     "retry": "Retry",
     "more": "Load more"
-},
+  },
   "sorting": {
     "title": "Sort",
     "help": "Shift + click a column header to add a criterion.",
@@ -56,7 +56,18 @@
     "books": "View books",
     "find": "Find your next read",
     "findDescription": "Combine title, author and language filters and open a book to discover the details.",
-    "search": "Search the catalog"
+    "search": "Search the catalog",
+    "import": "Import catalog",
+    "overview": "EPL Sync overview",
+    "booksCount": "books in the catalog",
+    "downloadsCount": "recorded downloads",
+    "activeJobs": "pending or ongoing jobs",
+    "noJobs": "No active jobs.",
+    "recentBooks": "Recently added books",
+    "recentEvents": "Recent events",
+    "noEvents": "No events recorded yet.",
+    "seeAll": "View all",
+    "dismissIntro": "Hide introduction"
   },
   "catalog": {
     "description": "Explore your collection. Find your next read.",
@@ -103,10 +114,8 @@
     "navigation": "Browse books",
     "previous": "Previous",
     "next": "Next",
-
     "language": "Language",
     "genres": "Genre",
-
     "back": "Back to catalog",
     "heading": "BOOK DETAILS · EPL {{id}}",
     "unknownLanguage": "Language not specified",

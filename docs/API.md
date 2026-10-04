@@ -442,8 +442,14 @@ que esté implementado como filtro.
 - Sin `page` ni `size`, devuelve un array sin paginar.
 - Si aparece cualquiera de ellos, devuelve `items` y `meta`; los valores
   omitidos son `page=0` y `size=20`.
-- En `/api/catalog/books`, `sort` se aplica actualmente **solo a la búsqueda
-  paginada**.
+- En `/api/catalog/books`, `sort` se aplica con y sin paginación.
+- Al ordenar por `insertDate` («Añadido a EPL Sync»), se comparan minutos completos,
+  tanto en ascendente como en descendente. Los siguientes criterios resuelven
+  los empates dentro del minuto; si no se especifica `eplId`, se añade ascendente
+  como último desempate estable. La ordenación se realiza antes de paginar.
+  El mismo criterio se aplica al ordenar los magnet links del catálogo.
+  La fecha almacenada y la devuelta por la API conservan segundos y milisegundos;
+  los filtros temporales y las fechas de eventos y trabajos no cambian.
 - Una búsqueda sin coincidencias devuelve un listado vacío, no `404`.
 
 ```bash

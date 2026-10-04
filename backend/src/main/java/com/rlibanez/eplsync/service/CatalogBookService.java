@@ -35,7 +35,8 @@ public class CatalogBookService {
     @Transactional(readOnly = true)
     public Page<CatalogBook> search(CatalogBookFilter filter, Pageable pageable) {
         var spec = CatalogBookSpecifications.fromFilter(filter);
-        return repository.findAll(spec, pageable);
+        return repository.findAll(spec, org.springframework.data.domain.PageRequest.of(
+                pageable.getPageNumber(), pageable.getPageSize(), CatalogOrdering.normalize(pageable.getSort())));
     }
 
     /**
@@ -43,7 +44,12 @@ public class CatalogBookService {
      */
     @Transactional(readOnly = true)
     public List<CatalogBook> searchAll(CatalogBookFilter filter) {
+        return searchAll(filter, org.springframework.data.domain.Sort.unsorted());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CatalogBook> searchAll(CatalogBookFilter filter, org.springframework.data.domain.Sort sort) {
         var spec = CatalogBookSpecifications.fromFilter(filter);
-        return repository.findAll(spec);
+        return repository.findAll(spec, CatalogOrdering.normalize(sort));
     }
 }

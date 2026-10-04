@@ -87,7 +87,9 @@ public class CatalogBookController {
 
         // Si NO se especifica page/size => sin paginar
         if (page == null && size == null) {
-            return downloads.enrich(catalogBookService.searchAll(filter));
+            return downloads.enrich(pageable.getSort().isSorted()
+                    ? catalogBookService.searchAll(filter, pageable.getSort())
+                    : catalogBookService.searchAll(filter));
         }
 
         // Si se especifica page o size => paginado

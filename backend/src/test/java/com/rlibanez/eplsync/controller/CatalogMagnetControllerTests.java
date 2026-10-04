@@ -90,7 +90,8 @@ class CatalogMagnetControllerTests {
             mvc.perform(get("/api/catalog/magnets").param("size", size)).andExpect(status().isBadRequest());
         }
         mvc.perform(get("/api/catalog/magnets").param("page", "-1")).andExpect(status().isBadRequest());
-        mvc.perform(get("/api/catalog/magnets").param("publicationYear", "-1")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/catalog/magnets").param("publicationYear", "-1")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test

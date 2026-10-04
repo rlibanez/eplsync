@@ -97,6 +97,9 @@ export function EventConnection() {
         href: "/events?operationId=" + encodeURIComponent(event.operationId),
       });
       refresh();
+      if (event.category === "JOB") {
+        void cache.invalidateQueries({ queryKey: ["jobs", "home"] });
+      }
       if (event.outcome !== "STARTED") {
         const keys =
           event.category === "CATALOG"

@@ -81,6 +81,12 @@ public class CatalogBook {
     @Column(name = "insert_date", updatable = false)
     private Instant insertDate;
 
+    // SQLite stores Instant as epoch milliseconds. This read-only expression is
+    // used for minute-level catalog ordering; the original timestamp stays intact.
+    @org.hibernate.annotations.Formula("cast((insert_date - ((insert_date % 60000 + 60000) % 60000)) / 60000 as integer)")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Long insertMinute;
+
     @Column(name = "last_modified_date")
     private Instant lastModifiedDate;
 
