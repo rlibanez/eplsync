@@ -1,10 +1,11 @@
 import { SettingsList } from "./SettingsList";
 import { OptionLabel } from "../downloads/SendOptions";
-import { CoverParameter, durationMs } from "./CoverParameter";
+import { CoverParameter, durationMs, validCoverOptions } from "./CoverParameter";
 import { RotateCcw } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  Alert,
   Button,
   Checkbox,
   PasswordInput,
@@ -118,6 +119,12 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
   const groups = [...new Set(view.fields.map(groupOf))];
   const currentValue = (key: string) =>
     values[key] ?? view.fields.find((f) => f.key === key)?.value;
+  const valid = view.section !== "covers" || validCoverOptions({
+    connectTimeoutMs: durationMs(String(currentValue("catalog.cover-check.connect-timeout"))),
+    requestTimeoutMs: durationMs(String(currentValue("catalog.cover-check.request-timeout"))),
+    batchTimeoutMs: durationMs(String(currentValue("catalog.cover-check.batch-timeout"))),
+    concurrency: Number(currentValue("catalog.cover-check.concurrency")),
+  });
   const dependentGroups = [
     { name: "location", keys: ["torrent.qbittorrent.download.auto-management", "torrent.download.save-path"] },
     { name: "naming", keys: ["torrent.rename.enabled", "torrent.rename.pattern"] },
@@ -270,7 +277,7 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
     return (
       <div key={f.key} className={className}>
         {field(f)}
-        {f.overridden && <small className="muted">{t("serverSettings.customized")}</small>}
+        {view.section !== "covers" && f.overridden && <small className="muted">{t("serverSettings.customized")}</small>}
       </div>
     );
   }
@@ -279,12 +286,12 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          mutation.mutate(false);
+          if (valid && !mutation.isPending) mutation.mutate(false);
         }}
       >
         {groups.map((group) => (
           <fieldset
-            className={`send-options-group${view.section === "covers" ? " cover-parameters" : ""}`}
+            className={`send-options-group${["events", "catalog", "covers"].includes(view.section) ? " settings-borderless" : ""}${view.section === "covers" ? " cover-parameters" : ""}`}
             key={group}
           >
             {group && <legend>{t(`serverSettings.groups.${group}`)}</legend>}
@@ -327,11 +334,12 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
             </div>
           </fieldset>
         ))}
+        {!valid && <Alert color="orange" variant="light" role="alert" className="cover-validation">{t("covers.invalidOptions")}</Alert>}
         <div className="action-row">
           <Button
             type="submit"
             loading={mutation.isPending}
-            disabled={!Object.keys(values).length}
+            disabled={!valid || !Object.keys(values).length}
           >
             {t("serverSettings.save")}
           </Button>

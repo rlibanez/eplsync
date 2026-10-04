@@ -234,7 +234,7 @@
   },
   "settings": {
     "description": "Interface preferences for this browser.",
-    "language": "Language",
+    "language": "Interface language",
     "languageDescription": "Choose your interface language. Your choice is saved in this browser and does not change the language of books.",
     "general": "General",
     "database": "Database",
@@ -259,7 +259,8 @@
     "dark": "Dark",
     "covers": "Covers",
     "about": "About",
-    "repository": "Project repository"
+    "repository": "Project repository",
+    "events": "Events"
   },
   "import": {
     "description": "Download the ePubLibre catalog and create or update your local library.",
@@ -540,8 +541,8 @@
   },
   "covers": {
     "title": "Check covers",
-    "description": "Check catalog covers. Conclusive results are saved and missing covers use an alternative cover. Temporary errors preserve the previous state.",
-    "parametersNote": "These values apply only to this run; they do not change the server configuration.",
+    "description": "Check unavailable catalog covers. Conclusive results are saved and missing covers use an alternative cover. Temporary errors preserve the previous state.",
+    "parametersNote": "These values apply only to this run; they do not change the application configuration.",
     "parameters": "Check parameters",
     "connectTimeoutMs": "Connection timeout (seconds)",
     "requestTimeoutMs": "Timeout per URL (seconds)",
@@ -551,7 +552,7 @@
     "batchTimeoutMsHelp": "Time limit for a group of simultaneous requests.",
     "concurrency": "Simultaneous checks",
     "concurrencyHelp": "Between 1 and 32. More requests may trigger remote server limits.",
-    "invalidOptions": "Use times between 0.001 and 300 seconds, with connection ≤ cover ≤ group, and between 1 and 32 simultaneous checks.",
+    "invalidOptions": "Use times between 0.001 and 300 seconds, with connection timeout ≤ timeout per URL ≤ timeout per batch, and between 1 and 32 concurrent checks.",
     "dryRun": "Check only, without saving changes",
     "start": "Check catalog",
     "restoreDefaults": "Use saved values",
@@ -778,7 +779,7 @@
     "missingOperation": "This event is no longer available. It may have been deleted by maintenance or retention.",
     "title": "Events",
     "description": "Shared EPL Sync operation log, including direct API calls and scheduled tasks.",
-    "maintenance": "Event maintenance",
+    "maintenance": "Delete events",
     "category": "Category",
     "outcome": "Outcome",
     "date": "Date",
@@ -794,13 +795,12 @@
     "empty": "No events match the filters.",
     "retention": "Retains up to {{count}} events for at most {{days}} days.",
     "retentionHint": "Automatic cleanup applies the saved limits in batches every minute.",
-    "deleteScope": "Records to remove",
+    "deleteScope": "Delete",
     "delete": "Delete events",
     "deleteConfirm": "Selected events will be permanently deleted for all users. The catalog and downloads will not be changed.",
     "deleted": "Deleted {{count}} events.",
     "scopes": {
-      "older": "Through the specified date (inclusive)",
-      "range": "Date range (complete days)",
+      "range": "Date range",
       "all": "All events"
     },
     "categories": {
@@ -884,7 +884,8 @@
     "operationsTotal_other": "{{count}} operations",
     "bookAccepted": "The torrent client accepted book {{eplId}}. The download may still be in progress.",
     "unread_one": "{{count}} operation with updates",
-    "unread_other": "{{count}} operations with updates"
+    "unread_other": "{{count}} operations with updates",
+    "fromBeginning": "Beginning"
   },
   "missing": {
     "title": "Delete absent books",
@@ -994,7 +995,7 @@
       "catalog": "Import settings",
       "covers": "Cover settings",
       "torrent": "Torrent settings",
-      "events": "Event retention"
+      "events": "Event settings"
     },
     "groups": {
       "connection": "Connection",

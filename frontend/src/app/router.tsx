@@ -33,6 +33,12 @@ export const router = createBrowserRouter([
             }),
           },
           {
+            path: "events",
+            lazy: async () => ({
+              Component: (await import("../features/settings/EventSettings")).EventSettings,
+            }),
+          },
+          {
             path: "covers",
             lazy: async () => ({
               Component: (await import("../features/settings/CoverSettings"))

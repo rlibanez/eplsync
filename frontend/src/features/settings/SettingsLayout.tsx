@@ -6,7 +6,7 @@ export function SettingsLayout() {
     <>
       <h1>{t("nav.settings")}</h1>
       <nav className="section-tabs" aria-label={t("nav.settings")}>
-        {["general", "database", "covers", "torrent", "about"].map((key) => (
+        {["general", "database", "events", "covers", "torrent", "about"].map((key) => (
           <NavLink key={key} to={`/settings/${key}`}>
             {t(`settings.${key}`)}
           </NavLink>

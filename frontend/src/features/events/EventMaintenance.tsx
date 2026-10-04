@@ -8,6 +8,7 @@ import { AppModal, ModalActions } from "../../components/AppModal";
 import { Failure } from "../../components/Feedback";
 import { get } from "../../api/catalog";
 import { post } from "../downloads/shared";
+import { localDay } from "../catalog/CatalogFilters";
 import { dateBounds } from "./eventTypes";
 import { useNotifications } from "../notifications/Notifications";
 export function EventMaintenance() {
@@ -19,7 +20,7 @@ export function EventMaintenance() {
   }, [hash]);
   const cache = useQueryClient();
   const { notify } = useNotifications();
-  const [scope, setScope] = useState("older");
+  const [scope, setScope] = useState("range");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [confirm, setConfirm] = useState(false);
@@ -31,9 +32,10 @@ export function EventMaintenance() {
         signal,
       ),
   });
+  const today = localDay();
   const valid =
     scope === "all" ||
-    Boolean(to && (scope !== "range" || (from && from <= to)));
+    Boolean((from || to) && (!from || from <= today) && (!to || to <= today) && (!from || !to || from <= to));
   const remove = useMutation({
     meta: {
       silentSuccess: true,
@@ -47,7 +49,7 @@ export function EventMaintenance() {
         confirm: true,
         ...(scope === "all"
           ? {}
-          : dateBounds(scope === "range" ? from : "", to)),
+          : dateBounds(from, to || today)),
       }),
     onSuccess: (result) => {
       setConfirm(false);
@@ -70,20 +72,19 @@ export function EventMaintenance() {
           })}
         </p>
       )}
-      <p className="muted">{t("events.retentionHint")}</p>
       {retention.isError && (
         <Failure
           error={retention.error}
           retry={() => void retention.refetch()}
         />
       )}
-      <div className="filters">
+      <div className="filters event-deletion-filters">
         <Select
           label={t("events.deleteScope")}
           value={scope}
           allowDeselect={false}
           onChange={(value) => setScope(value!)}
-          data={["older", "range", "all"].map((value) => ({
+          data={["range", "all"].map((value) => ({
             value,
             label: t("events.scopes." + value),
           }))}
@@ -93,7 +94,7 @@ export function EventMaintenance() {
             type="date"
             label={t("filters.from")}
             value={from}
-            max={to || undefined}
+            max={to || today}
             onChange={(e) => setFrom(e.currentTarget.value)}
           />
         )}
@@ -102,7 +103,8 @@ export function EventMaintenance() {
             type="date"
             label={t("filters.to")}
             value={to}
-            min={scope === "range" ? from || undefined : undefined}
+            min={from || undefined}
+            max={today}
             onChange={(e) => setTo(e.currentTarget.value)}
           />
         )}
@@ -130,7 +132,7 @@ export function EventMaintenance() {
         <p>
           {t("events.scopes." + scope)}
           {scope !== "all" &&
-            ": " + (scope === "range" ? from + " → " : "") + to}
+            ": " + (from || t("events.fromBeginning")) + " → " + (to || today)}
         </p>
         <ModalActions>
           <Button

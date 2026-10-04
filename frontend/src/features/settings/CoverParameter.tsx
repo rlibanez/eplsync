@@ -74,3 +74,13 @@ export function durationMs(value: string): number {
         Number(iso[4] ?? 0) * 1000
     : 0;
 }
+
+export function validCoverOptions(options: CoverOptions): boolean {
+  return Number.isInteger(options.concurrency) &&
+    options.concurrency >= 1 && options.concurrency <= 32 &&
+    Number.isFinite(options.connectTimeoutMs) && Number.isFinite(options.requestTimeoutMs) && Number.isFinite(options.batchTimeoutMs) &&
+    options.connectTimeoutMs >= 1 &&
+    options.connectTimeoutMs <= options.requestTimeoutMs &&
+    options.requestTimeoutMs <= options.batchTimeoutMs &&
+    options.batchTimeoutMs <= 300000;
+}

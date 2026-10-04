@@ -1,5 +1,6 @@
-import { CoverParameter, coverKeys } from "./CoverParameter";
+import { CoverParameter, coverKeys, validCoverOptions } from "./CoverParameter";
 import { ServerSettings } from "./ServerSettings";
+import { OptionLabel } from "../downloads/SendOptions";
 import { useState } from "react";
 import { Alert, Button, Checkbox, Progress } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -65,14 +66,7 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
   });
   const busy = start.isPending || task?.state === "RUNNING";
   const displayedOptions = task?.state === "RUNNING" ? task.options : options;
-  const valid =
-    Number.isInteger(options.concurrency) &&
-    options.concurrency >= 1 &&
-    options.concurrency <= 32 &&
-    options.connectTimeoutMs >= 1 &&
-    options.connectTimeoutMs <= options.requestTimeoutMs &&
-    options.requestTimeoutMs <= options.batchTimeoutMs &&
-    options.batchTimeoutMs <= 300000;
+  const valid = validCoverOptions(options);
   return (
     <section className="panel settings-section">
       <h2>{t("covers.title")}</h2>
@@ -86,7 +80,7 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
       >
         <fieldset
           disabled={busy}
-          className="send-options-group cover-parameters"
+          className="send-options-group cover-parameters settings-borderless"
         >
           <legend className="sr-only">{t("covers.parameters")}</legend>
           <div className="server-settings-grid">
@@ -103,11 +97,10 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
             ))}
           </div>
         </fieldset>
-        {!valid && <p role="alert">{t("covers.invalidOptions")}</p>}
+        {!valid && <Alert color="orange" variant="light" role="alert" className="cover-validation">{t("covers.invalidOptions")}</Alert>}
         <Checkbox
           className="cover-scope"
-          label={t("covers.includeReviewed")}
-          description={t("covers.includeReviewedHelp")}
+          label={<OptionLabel text={t("covers.includeReviewed")} help={t("covers.includeReviewedHelp")} />}
           checked={
             task?.state === "RUNNING" ? !task.onlyUnchecked : includeReviewed
           }

@@ -181,9 +181,6 @@ export function NotificationSettings() {
               }}
             />
           </div>
-          <p className="muted notification-duration-note">
-            {t("notifications.durationHint")}
-          </p>
         </div>
       </div>
     </section>

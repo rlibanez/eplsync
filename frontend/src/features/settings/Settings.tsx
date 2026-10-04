@@ -1,6 +1,4 @@
-import { ServerSettings } from "./ServerSettings";
 import { NotificationSettings } from "../notifications/NotificationSettings";
-import { EventMaintenance } from "../events/EventMaintenance";
 import { useTranslation } from "react-i18next";
 import { palettes, useAppearance, type Palette } from "../../layout/Appearance";
 import { LanguagePicker } from "../../components/LanguagePicker";
@@ -11,7 +9,6 @@ export function Settings() {
     <>
       <section className="panel settings-section">
         <h2>{t("settings.language")}</h2>
-        <p className="muted">{t("settings.languageDescription")}</p>
         <LanguagePicker />
       </section>
       <section className="panel settings-section">
@@ -30,10 +27,8 @@ export function Settings() {
             </label>
           ))}
         </fieldset>
-        <h3>{t("settings.palette")}</h3>
-        <p className="muted">{t("settings.paletteDescription")}</p>
         <fieldset className="palette-options">
-          <legend className="sr-only">{t("settings.palette")}</legend>
+          <legend>{t("settings.palette")}</legend>
           {(Object.keys(palettes) as Palette[]).map((value) => (
             <label key={value}>
               <input
@@ -54,8 +49,6 @@ export function Settings() {
         </fieldset>
       </section>
       <NotificationSettings />
-      <ServerSettings section="events" />
-      <EventMaintenance />
     </>
   );
 }

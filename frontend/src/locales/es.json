@@ -234,7 +234,7 @@
   },
   "settings": {
     "description": "Preferencias de la interfaz para este navegador.",
-    "language": "Idioma",
+    "language": "Idioma de la interfaz",
     "languageDescription": "Elige el idioma de la interfaz. Tu elección se guarda en este navegador y no cambia el idioma de los libros.",
     "general": "General",
     "database": "Base de datos",
@@ -259,7 +259,8 @@
     "dark": "Oscuro",
     "covers": "Portadas",
     "about": "Acerca de",
-    "repository": "Repositorio del proyecto"
+    "repository": "Repositorio del proyecto",
+    "events": "Eventos"
   },
   "import": {
     "description": "Descarga el catálogo de ePubLibre y crea o actualiza tu biblioteca local.",
@@ -540,8 +541,8 @@
   },
   "covers": {
     "title": "Comprobar portadas",
-    "description": "Comprueba las portadas del catálogo. Los resultados concluyentes se guardan y las portadas no encontradas se sustituyen por una portada alternativa. Los fallos temporales conservan el estado anterior.",
-    "parametersNote": "Estos valores solo se aplican a esta ejecución; no cambian la configuración del servidor.",
+    "description": "Comprueba las portadas no disponibles del catálogo. Los resultados concluyentes se guardan y las portadas no encontradas se sustituyen por una portada alternativa. Los fallos temporales conservan el estado anterior.",
+    "parametersNote": "Estos valores solo se aplican a esta ejecución; no cambian la configuración de la aplicación.",
     "parameters": "Parámetros de comprobación",
     "connectTimeoutMs": "Tiempo de conexión (segundos)",
     "requestTimeoutMs": "Tiempo por URL (segundos)",
@@ -551,7 +552,7 @@
     "batchTimeoutMsHelp": "Límite del grupo de peticiones simultáneas.",
     "concurrency": "Comprobaciones simultáneas",
     "concurrencyHelp": "Entre 1 y 32. Más peticiones pueden provocar límites del servidor remoto.",
-    "invalidOptions": "Usa tiempos entre 0,001 y 300 segundos, con conexión ≤ URL ≤ lote, y entre 1 y 32 comprobaciones simultáneas.",
+    "invalidOptions": "Usa tiempos entre 0,001 y 300 segundos, con tiempo de conexión ≤ tiempo por URL ≤ tiempo por lote, y entre 1 y 32 comprobaciones simultáneas.",
     "dryRun": "Solo comprobar, sin guardar cambios",
     "start": "Comprobar catálogo",
     "restoreDefaults": "Usar valores guardados",
@@ -778,7 +779,7 @@
     "missingOperation": "Este evento ya no está disponible. Puede haberse eliminado por mantenimiento o antigüedad.",
     "title": "Eventos",
     "description": "Registro compartido de las operaciones de EPL Sync, incluidas las ejecutadas desde la API y las tareas programadas.",
-    "maintenance": "Mantenimiento de eventos",
+    "maintenance": "Borrado de eventos",
     "category": "Categoría",
     "outcome": "Resultado",
     "date": "Fecha",
@@ -794,13 +795,12 @@
     "empty": "No hay eventos que coincidan con los filtros.",
     "retention": "Se conservan hasta {{count}} eventos y un máximo de {{days}} días.",
     "retentionHint": "La limpieza automática aplica los límites guardados y se ejecuta por lotes cada minuto.",
-    "deleteScope": "Registros que se eliminarán",
+    "deleteScope": "Borrar",
     "delete": "Eliminar eventos",
     "deleteConfirm": "Se eliminarán definitivamente los eventos seleccionados para todos los usuarios. No se modifican el catálogo ni las descargas.",
     "deleted": "Se han eliminado {{count}} eventos.",
     "scopes": {
-      "older": "Hasta la fecha indicada (incluida)",
-      "range": "Intervalo de fechas (días completos)",
+      "range": "Intervalo de fechas",
       "all": "Todos los eventos"
     },
     "categories": {
@@ -884,7 +884,8 @@
     "operationsTotal_other": "{{count}} ejecuciones",
     "bookAccepted": "El cliente torrent ha aceptado el libro {{eplId}}. La descarga puede seguir en curso.",
     "unread_one": "{{count}} ejecución con novedades",
-    "unread_other": "{{count}} ejecuciones con novedades"
+    "unread_other": "{{count}} ejecuciones con novedades",
+    "fromBeginning": "Inicio"
   },
   "missing": {
     "title": "Eliminar ausentes",
@@ -994,7 +995,7 @@
       "catalog": "Configuración de importación",
       "covers": "Configuración de portadas",
       "torrent": "Configuración torrent",
-      "events": "Conservación de eventos"
+      "events": "Configuración de eventos"
     },
     "groups": {
       "connection": "Conexión",
