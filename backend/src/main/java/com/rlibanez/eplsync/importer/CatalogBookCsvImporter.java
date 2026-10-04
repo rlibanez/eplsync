@@ -32,6 +32,8 @@ public class CatalogBookCsvImporter {
 
     private static final Logger log = LoggerFactory.getLogger(CatalogBookCsvImporter.class);
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.rlibanez.eplsync.service.CatalogSuggestionService suggestions;
     private final CatalogBookRepository repository;
 
     private static final int BATCH_SIZE = 1000;
@@ -59,7 +61,9 @@ public class CatalogBookCsvImporter {
             em.clear();
         }
 
-        return processFile(csvPath, false, 0, 1).summary();
+        var summary = processFile(csvPath, false, 0, 1).summary();
+        if (suggestions != null) suggestions.invalidateAfterCommit();
+        return summary;
     }
 
     @Transactional(readOnly = true)

@@ -13,6 +13,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class DatabaseResetService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.rlibanez.eplsync.service.CatalogSuggestionService suggestions;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CoverTaskService coverTasks;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogMissingService missing;
@@ -57,6 +59,7 @@ public class DatabaseResetService {
                     int jobs = delete("BulkJob");
                     int downloads = delete("DownloadRecord");
                     int books = delete("CatalogBook");
+                    if (suggestions != null) suggestions.invalidateAfterCommit();
                     int metadata = delete("CatalogMetadata");
                     int settingsCount = delete("StoredSetting");
                     int eventCount = events == null ? em.createNativeQuery("delete from app_events").executeUpdate() : events.clearForReset();

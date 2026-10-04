@@ -1,4 +1,11 @@
 {
+  "suggestions": {
+    "loading": "Buscando sugerencias…",
+    "empty": "Sin sugerencias. Puedes buscar el texto escrito.",
+    "failed": "No se pudieron cargar las sugerencias. Puedes seguir escribiendo.",
+    "retry": "Reintentar",
+    "more": "Cargar más"
+},
   "sorting": {
     "title": "Ordenar",
     "help": "Mayús + clic en una cabecera añade un criterio.",

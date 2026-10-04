@@ -1350,6 +1350,27 @@ duplicados; las colecciones se conservan completas. Los campos originales de los
 libros no se modifican. Los valores nulos o vacíos se excluyen. Un tipo, inicial,
 página o tamaño inválido devuelve `400`; idiomas y años no admiten `initial`.
 
+### Sugerencias de búsqueda
+
+`GET /api/catalog/suggestions/{kind}?q=...&offset=0` devuelve sugerencias de texto
+para `titles`, `authors`, `collections` o `genres`. Busca coincidencias parciales ignorando
+mayúsculas y acentos (distingue `N` de `Ñ`). Requiere al menos dos caracteres;
+con menos devuelve una lista vacía. `q` admite hasta 512 caracteres y `offset`
+es un desplazamiento no negativo, por defecto 0.
+
+Devuelve `items` (hasta 20 nombres), `total` (total de coincidencias) y
+`nextOffset` (desplazamiento para continuar, o `null` al finalizar). No devuelve
+libros ni portadas. Los autores y géneros se separan como en el directorio.
+Los títulos y las colecciones se conservan completos, sin dividirlos por signos.
+Los cuatro listados se cargan en memoria con su primera consulta y se invalidan al confirmar una
+importación, eliminar libros ausentes o reiniciar la base de datos. La siguiente
+consulta reconstruye el listado que necesite con los datos actuales.
+
+En Catálogo y Directorio, el desplegable consulta tras una breve pausa al escribir
+y carga más resultados al desplazarse. Permite seguir introduciendo texto libre.
+Seleccionar una sugerencia no ejecuta la búsqueda: en Catálogo añade un criterio;
+en Directorio rellena el campo.
+
 ### Rango de incorporación al catálogo
 
 El filtro compartido admite `insertDateFrom` (instante ISO-8601 inclusivo) y

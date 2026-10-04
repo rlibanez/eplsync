@@ -1,4 +1,11 @@
 {
+  "suggestions": {
+    "loading": "Loading suggestions…",
+    "empty": "No suggestions. You can search for your own text.",
+    "failed": "Suggestions could not be loaded. You can keep typing.",
+    "retry": "Retry",
+    "more": "Load more"
+},
   "sorting": {
     "title": "Sort",
     "help": "Shift + click a column header to add a criterion.",

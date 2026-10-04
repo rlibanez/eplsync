@@ -1,5 +1,9 @@
+import {
+  SuggestionInput,
+  type SuggestionKind,
+} from "../../components/SuggestionInput";
 import { useTranslation } from "react-i18next";
-import { Pill, PillsInput } from "@mantine/core";
+import { Pill } from "@mantine/core";
 
 export function normalizeFilterValue(key: string, raw: string): string | null {
   const value = raw.trim();
@@ -28,6 +32,7 @@ export function FilterTokens({
   onChange,
   commit,
   error,
+  suggestionKind,
 }: {
   label: string;
   values: string[];
@@ -36,48 +41,54 @@ export function FilterTokens({
   onChange: (values: string[]) => void;
   commit: () => void;
   error?: string;
+  suggestionKind?: SuggestionKind;
 }) {
   const { t } = useTranslation();
   return (
-    <PillsInput label={label} error={error}>
-      <Pill.Group>
-        {values.map((value) => (
-          <Pill
-            key={value}
-            withRemoveButton
-            removeButtonProps={{
-              "aria-hidden": false,
-              "aria-label": t("filters.removeValue", { value }),
-              tabIndex: 0,
-            }}
-            onRemove={() => onChange(values.filter((v) => v !== value))}
-          >
-            {value}
-          </Pill>
-        ))}
-        <PillsInput.Field
-          value={draft}
-          onChange={(e) => onDraft(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.nativeEvent.isComposing) return;
-            if (
-              (e.key === "Backspace" || e.key === "Delete") &&
-              !draft &&
-              values.length
-            ) {
-              e.preventDefault();
-              onChange(values.slice(0, -1));
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              if (draft.trim()) commit();
-              else e.currentTarget.form?.requestSubmit();
-            } else if (e.key === "Tab" && !e.shiftKey && draft.trim()) {
-              e.preventDefault();
-              commit();
-            }
+    <SuggestionInput
+      label={label}
+      error={error}
+      kind={suggestionKind}
+      value={draft}
+      onChange={onDraft}
+      excluded={values}
+      onSelect={(value) => {
+        onChange([...new Set([...values, value])]);
+        onDraft("");
+      }}
+      onKeyDown={(e) => {
+        if (e.nativeEvent.isComposing) return;
+        if (
+          (e.key === "Backspace" || e.key === "Delete") &&
+          !draft &&
+          values.length
+        ) {
+          e.preventDefault();
+          onChange(values.slice(0, -1));
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (draft.trim()) commit();
+          else e.currentTarget.form?.requestSubmit();
+        } else if (e.key === "Tab" && !e.shiftKey && draft.trim()) {
+          e.preventDefault();
+          commit();
+        }
+      }}
+    >
+      {values.map((value) => (
+        <Pill
+          key={value}
+          withRemoveButton
+          removeButtonProps={{
+            "aria-hidden": false,
+            "aria-label": t("filters.removeValue", { value }),
+            tabIndex: 0,
           }}
-        />
-      </Pill.Group>
-    </PillsInput>
+          onRemove={() => onChange(values.filter((v) => v !== value))}
+        >
+          {value}
+        </Pill>
+      ))}
+    </SuggestionInput>
   );
 }

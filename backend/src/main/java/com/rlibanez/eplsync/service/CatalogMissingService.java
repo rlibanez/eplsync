@@ -18,6 +18,8 @@ import org.springframework.http.HttpStatus;
 /** Bounded, short-lived review snapshots. Confirmation never downloads a different CSV. */
 @Service
 public class CatalogMissingService {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.rlibanez.eplsync.service.CatalogSuggestionService suggestions;
     public record Book(Long eplId, String title, Double revision) {}
     public record Preview(String token, Instant expiresAt, int total, int page, int size, List<Book> items) {}
     public record Result(int deleted) {}
@@ -99,6 +101,7 @@ public class CatalogMissingService {
                                 throw conflict("Hay trabajos pendientes relacionados con estos libros; cancélalos o espera a que finalicen");
                             em.createQuery("delete from CatalogBook b where b.eplId in :ids").setParameter("ids", batch).executeUpdate();
                         }
+                        if (suggestions != null) suggestions.invalidateAfterCommit();
                         events.completed(EventJournal.Category.CATALOG, "DELETE_MISSING", Map.of("deleted", ids.size()));
                         em.clear();
                         return new Result(ids.size());

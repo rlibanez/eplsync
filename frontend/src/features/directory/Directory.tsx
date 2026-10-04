@@ -1,3 +1,4 @@
+import { SuggestionInput, type SuggestionKind } from "../../components/SuggestionInput";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -77,7 +78,9 @@ function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSecti
           updateSearch({ q: draft.trim(), page: 0 });
         }}
       >
-        <TextInput name="q" label={t("catalog.search")} maxLength={512} value={draft} onChange={e => setDraft(e.currentTarget.value)} />
+        {alphabetical ? <SuggestionInput kind={kind as SuggestionKind} name="q" label={t("catalog.search")} maxLength={512}
+          value={draft} onChange={setDraft} onSelect={setDraft} /> :
+          <TextInput name="q" label={t("catalog.search")} maxLength={512} value={draft} onChange={e => setDraft(e.currentTarget.value)} />}
         <Button type="submit">{t("catalog.search")}</Button>
         <Button variant="subtle" onClick={() => { setDraft(""); updateSearch({ q: "", initial: "", century: "", page: 0 }); }}>{t("catalog.clear")}</Button>
       </form>

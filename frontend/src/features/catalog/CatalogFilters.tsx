@@ -126,6 +126,7 @@ export function CatalogFilters({
     return (
       <FilterTokens
         key={key}
+        suggestionKind={key === "title" ? "titles" : key === "author" ? "authors" : key === "collection" ? "collections" : key === "genres" ? "genres" : undefined}
         label={t(key === "revision" ? "catalog.revision" : `filters.${key}`)}
         values={multi[key]}
         draft={drafts[key] || ""}
