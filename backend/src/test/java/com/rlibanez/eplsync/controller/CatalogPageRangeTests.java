@@ -1,5 +1,6 @@
 package com.rlibanez.eplsync.controller;
 
+import java.util.Objects;
 import com.rlibanez.eplsync.filter.CatalogBookFilter;
 import com.rlibanez.eplsync.model.CatalogBook;
 import com.rlibanez.eplsync.repository.CatalogBookRepository;
@@ -48,6 +49,6 @@ class CatalogPageRangeTests {
         var filter = tools.jackson.databind.json.JsonMapper.builder().build()
             .readValue("{\"pagesFrom\":100,\"pagesTo\":200,\"eplId\":[3,5]}", CatalogBookFilter.class);
         assertThat(books.findAll(CatalogBookSpecifications.fromFilter(filter)))
-            .extracting(CatalogBook::getEplId).containsExactly(3L);
+            .extracting(value -> Objects.requireNonNull(value).getEplId()).containsExactly(3L);
     }
 }

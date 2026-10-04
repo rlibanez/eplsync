@@ -33,7 +33,7 @@ public class CatalogSuggestionService {
         String needle = normalize(query.strip());
         if (needle.length() < 2) return new Result(List.of(), 0, null);
         var matches = values(kind).stream().filter(v -> v.normalized().contains(needle)).toList();
-        var items = matches.stream().skip(offset).limit(20).map(Value::text).toList();
+        var items = matches.stream().skip(offset).limit(20).map(value -> Objects.requireNonNull(value).text()).toList();
         int next = offset + items.size();
         return new Result(items, matches.size(), next < matches.size() ? next : null);
     }

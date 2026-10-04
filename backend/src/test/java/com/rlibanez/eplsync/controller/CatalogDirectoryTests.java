@@ -84,11 +84,11 @@ class CatalogDirectoryTests {
   int[] years = {-2500, -468, 0, 1, 100, 101, 200, 1900, 1901, 2000, 2001, 2100, 2101};
   for (int i=0; i<years.length; i++) em.persist(CatalogBook.builder().eplId((long)i+1).title("Book").author("Author").revision(1.0).publicationYear(years[i]).build());
   em.flush();
-  assertThat(controller.list("years","",0,20,"",0).items()).extracting(CatalogDirectoryController.Entry::value).containsExactly("-2500","-468","0");
-  assertThat(controller.list("years","",0,20,"",1).items()).extracting(CatalogDirectoryController.Entry::value).containsExactly("1","100");
-  assertThat(controller.list("years","",0,20,"",20).items()).extracting(CatalogDirectoryController.Entry::value).containsExactly("1901","2000");
-  assertThat(controller.list("years","",0,20,"",21).items()).extracting(CatalogDirectoryController.Entry::value).containsExactly("2001","2100");
-  assertThat(controller.list("years","200",0,20,"",21).items()).extracting(CatalogDirectoryController.Entry::value).containsExactly("2001");
+  assertThat(controller.list("years","",0,20,"",0).items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("-2500","-468","0");
+  assertThat(controller.list("years","",0,20,"",1).items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("1","100");
+  assertThat(controller.list("years","",0,20,"",20).items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("1901","2000");
+  assertThat(controller.list("years","",0,20,"",21).items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("2001","2100");
+  assertThat(controller.list("years","200",0,20,"",21).items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("2001");
   assertThat(controller.list("years","",1,10,"",20).items()).isEmpty();
   assertThat(controller.list("years","",0,20).items()).hasSize(years.length);
   assertThatThrownBy(() -> controller.list("years","",0,20,"",22)).isInstanceOf(IllegalArgumentException.class);
