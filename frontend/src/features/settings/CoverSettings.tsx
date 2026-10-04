@@ -1,5 +1,7 @@
+import { CoverParameter, coverKeys } from "./CoverParameter";
+import { ServerSettings } from "./ServerSettings";
 import { useState } from "react";
-import { Alert, Button, Checkbox, NumberInput, Progress } from "@mantine/core";
+import { Alert, Button, Checkbox, Progress } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -20,7 +22,15 @@ export function CoverSettings() {
   if (defaults.isPending) return <Loading />;
   if (defaults.isError)
     return <Failure error={defaults.error} retry={() => defaults.refetch()} />;
-  return <CoverSettingsForm defaults={defaults.data} />;
+  return (
+    <>
+      <CoverSettingsForm
+        key={JSON.stringify(defaults.data)}
+        defaults={defaults.data}
+      />
+      <ServerSettings section="covers" />
+    </>
+  );
 }
 
 function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
@@ -32,7 +42,8 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
   const status = useCoverTask();
   const task = status.data?.task;
   const start = useMutation({
-    meta: { backendEvents: true,
+    meta: {
+      backendEvents: true,
       notice: {
         title: "covers.title",
         success: "covers.running",
@@ -73,47 +84,24 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
           if (valid && !busy) start.mutate();
         }}
       >
-        <fieldset disabled={busy} className="cover-controls">
+        <fieldset
+          disabled={busy}
+          className="send-options-group cover-parameters"
+        >
           <legend className="sr-only">{t("covers.parameters")}</legend>
-          {(
-            ["connectTimeoutMs", "requestTimeoutMs", "batchTimeoutMs"] as const
-          ).map((key) => (
-            <NumberInput
-              key={key}
-              label={t(`covers.${key}`)}
-              aria-label={t(`covers.${key}`)}
-              description={t(`covers.${key}Help`)}
-              value={displayedOptions[key] / 1000}
-              min={0.001}
-              max={300}
-              step={1}
-              decimalScale={3}
-              required
-              onChange={(value) =>
-                setOptions((old) => ({
-                  ...old,
-                  [key]:
-                    typeof value === "number" ? Math.round(value * 1000) : 0,
-                }))
-              }
-            />
-          ))}
-          <NumberInput
-            label={t("covers.concurrency")}
-            aria-label={t("covers.concurrency")}
-            description={t("covers.concurrencyHelp")}
-            value={displayedOptions.concurrency}
-            min={1}
-            max={32}
-            allowDecimal={false}
-            required
-            onChange={(value) =>
-              setOptions((old) => ({
-                ...old,
-                concurrency: typeof value === "number" ? value : 0,
-              }))
-            }
-          />
+          <div className="server-settings-grid">
+            {coverKeys.map((key) => (
+              <CoverParameter
+                key={key}
+                name={key}
+                value={displayedOptions[key]}
+                disabled={busy}
+                onChange={(value) =>
+                  setOptions((old) => ({ ...old, [key]: value }))
+                }
+              />
+            ))}
+          </div>
         </fieldset>
         {!valid && <p role="alert">{t("covers.invalidOptions")}</p>}
         <Checkbox

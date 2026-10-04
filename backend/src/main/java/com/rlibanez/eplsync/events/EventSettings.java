@@ -12,6 +12,12 @@ import lombok.Setter;
 @ConfigurationProperties("eplsync.events")
 @Validated @Getter @Setter
 public class EventSettings {
+    @lombok.Getter(lombok.AccessLevel.NONE) @lombok.Setter(lombok.AccessLevel.NONE)
+    private transient java.util.function.Supplier<EventSettings> effectiveSupplier;
+    public void useEffective(java.util.function.Supplier<EventSettings> supplier) { this.effectiveSupplier = supplier; }
+    public EventSettings effective() { return effectiveSupplier == null ? this : effectiveSupplier.get(); }
+    public Retention getRetention() { var current = effective(); return current == this ? retention : current.getRetention(); }
+
     @Valid private Retention retention = new Retention();
     @Getter @Setter
     public static class Retention {

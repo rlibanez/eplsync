@@ -1759,3 +1759,20 @@ summary {
 .synopsis ul, .synopsis ol { padding-left: 24px; margin: 12px 0; }
 .synopsis li + li { margin-top: 4px; }
 .synopsis a { color: var(--accent); text-decoration: underline; }
+.server-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.server-settings-wide { grid-column: 1 / -1; }
+.server-settings-new-row { grid-column: 1; }
+.server-settings-related { min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 16px; }
+.server-settings-related legend { padding: 0 6px; font-size: 0.9rem; font-weight: 500; color: var(--muted); }
+.server-settings-grid small { display: block; margin-top: 4px; }
+@media (max-width: 700px) { .server-settings-grid { grid-template-columns: minmax(0, 1fr); } }
+.cover-parameters .mantine-NumberInput-root { display: flex; flex-direction: column; }
+.cover-parameters .mantine-NumberInput-wrapper { margin-top: auto; }
+.cover-parameters .server-settings-grid { align-items: stretch; }
+.cover-parameters .server-settings-grid > div { display: flex; flex-direction: column; }
+.cover-parameters .server-settings-grid > div > .mantine-NumberInput-root { flex: 1; }
+.cover-parameters { margin-bottom: 24px; }
+.settings-list-label { font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+.settings-list-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.settings-list-row > .mantine-TextInput-root { flex: 1; min-width: 0; }
+.settings-list-row > button { flex-shrink: 0; }

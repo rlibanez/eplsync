@@ -1,3 +1,4 @@
+import { ServerSettings } from "./ServerSettings";
 import { NotificationSettings } from "../notifications/NotificationSettings";
 import { EventMaintenance } from "../events/EventMaintenance";
 import { useTranslation } from "react-i18next";
@@ -53,6 +54,7 @@ export function Settings() {
         </fieldset>
       </section>
       <NotificationSettings />
+      <ServerSettings section="events" />
       <EventMaintenance />
     </>
   );

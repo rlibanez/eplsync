@@ -41,9 +41,9 @@ class BulkTests {
     @BeforeEach
     void setup() {
         items.deleteAll(); jobs.deleteAll(); books.deleteAll();
-        properties.setEnabled(true);
+        properties.effective().setEnabled(true);
         properties.getBulk().setMultipleHashes(MultipleHashes.SKIP);
-        properties.setBaseUrl("http://localhost:8080");
+        properties.effective().setBaseUrl("http://localhost:8080");
         properties.getBulk().setBatchSize(2); properties.getBulk().setConcurrency(1);
         properties.getBulk().setInterval(Duration.ZERO);
         properties.getRename().setPattern("EPL_{eplId}_{title}");
@@ -54,7 +54,7 @@ class BulkTests {
                 .title("Book " + id).author("Author").language(Language.INGLES)
                 .links(String.format("%040X", id)).build());
     }
-    @AfterEach void close() { if (worker != null) worker.close(); properties.setEnabled(false); }
+    @AfterEach void close() { if (worker != null) worker.close(); properties.effective().setEnabled(false); }
     @Test void dryRunPreparesSameItemsWithoutPersistingOrSending() {
         var before = events.cursor();
         var preview = store.preview(new CatalogBookFilter(),PageRequest.of(0,20),false,true,null,true);
@@ -307,7 +307,7 @@ class BulkTests {
     }
 
     @Test void changedDestinationRequiresRestoringOriginalClient() {
-        var job = create(null); properties.setBaseUrl("http://localhost:9090");
+        var job = create(null); properties.effective().setBaseUrl("http://localhost:9090");
         assertThat(store.next()).isNull();
         assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);
         assertThatThrownBy(() -> store.control(job.jobId(), "resume")).isInstanceOf(TorrentOperationException.class);

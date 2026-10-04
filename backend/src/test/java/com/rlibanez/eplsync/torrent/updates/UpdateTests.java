@@ -57,14 +57,14 @@ class UpdateTests {
         when(stubClient.withDefaults(any())).thenAnswer(inv -> inv.getArgument(0));
         when(stubClient.addTorrent(any(), any())).thenReturn(TorrentDownloadResult.Status.ACCEPTED);
         when(stubClient.addTorrent(any())).thenReturn(TorrentDownloadResult.Status.ACCEPTED);
-        properties.setEnabled(true); properties.setBaseUrl("http://localhost:8080");
+        properties.effective().setEnabled(true); properties.effective().setBaseUrl("http://localhost:8080");
         properties.getBulk().setMultipleHashes(MultipleHashes.ALL);
         properties.getBulk().setInterval(java.time.Duration.ZERO);
         mvc = MockMvcBuilders.webAppContextSetup(webContext).build();
         history(1L, 1.0, OLD, DownloadStatus.DOWNLOADED);
         book(1L, 1.2, NEW);
     }
-    @AfterEach void close() { properties.setEnabled(false); }
+    @AfterEach void close() { properties.effective().setEnabled(false); }
     void book(long id, double revision, String hashes) {
         books.save(CatalogBook.builder().eplId(id).revision(revision).title("Book " + id).author("Author").links(hashes).build());
     }
@@ -514,7 +514,7 @@ class UpdateTests {
         when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD, DownloadStatus.DOWNLOADED, null), remote(NEW, DownloadStatus.DOWNLOADED, null)));
         cleaner.clean(job.jobId());
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.BLOCKED);
-        properties.setBaseUrl("http://another-client:8080");
+        properties.effective().setBaseUrl("http://another-client:8080");
         assertThatThrownBy(() -> cleaner.clean(job.jobId())).hasMessageContaining("destino");
         verify(stubClient, never()).deleteTorrent(any(), anyBoolean());
     }

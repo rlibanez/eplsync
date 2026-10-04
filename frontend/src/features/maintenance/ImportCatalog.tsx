@@ -1,3 +1,4 @@
+import { ServerSettings } from "../settings/ServerSettings";
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { ImportWizard } from "./ImportWizard";
 import { MissingBooks } from "./MissingBooks";
@@ -193,6 +194,7 @@ export function ImportCatalog() {
         <p>{t("missing.sectionDescription")}</p>
         <MissingBooks disabled={pending} />
       </section>
+      <ServerSettings section="catalog" />
       <section className="panel settings-section danger-panel">
         <h2>{t("reset.title")}</h2>
         {pending && operation?.mode === "reset" && (
@@ -230,6 +232,7 @@ export function ImportCatalog() {
                   "updatePlans",
                   "cleanupRecords",
                   "metadataRecords",
+                  "settingsRecords",
                   "events",
                 ] as const
               ).map((key) => (

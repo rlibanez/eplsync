@@ -58,11 +58,13 @@ logging:
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
     com.rlibanez.eplsync: DEBUG
 
+# Valores de instalación. Los ajustes guardados desde la interfaz tienen prioridad.
+# Restaurar valores de instalación elimina las personalizaciones del apartado.
 eplsync:
   events:
     retention:
-      max-count: ${EPLSYNC_EVENTS_RETENTION_MAX_COUNT:10000}
-      max-age-days: ${EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS:365}
+      max-count: 10000
+      max-age-days: 365
   catalog:
     zip-url: "https://epublibre.org/rssweb/csv/epub.zip"
     import:

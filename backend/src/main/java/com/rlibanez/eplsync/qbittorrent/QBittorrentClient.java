@@ -4,12 +4,12 @@ import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.torrent.TorrentClient;
 import com.rlibanez.eplsync.torrent.downloads.DownloadStatus;
 import com.rlibanez.eplsync.torrent.downloads.RemoteTorrent;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import com.rlibanez.eplsync.qbittorrent.QBittorrentProperties.AuthMode;
 import com.rlibanez.eplsync.dto.TorrentConnectionStatus;
 import jakarta.annotation.PreDestroy;
 import com.rlibanez.eplsync.exception.TorrentOperationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -37,6 +37,32 @@ public class QBittorrentClient implements TorrentClient {
     private final HttpClient apiKeyClient;
     private final HttpClient sessionClient;
 
+    private Holder runtime;
+    private static class Holder {
+        final QBittorrentClient client;
+        final TorrentProperties torrent;
+        final QBittorrentProperties qb;
+        int users;
+        boolean retired;
+        Holder(TorrentProperties torrent, QBittorrentProperties qb) {
+            this.torrent = torrent; this.qb = qb; this.client = new QBittorrentClient(torrent, qb);
+        }
+    }
+    private boolean dynamic() { return properties.effective() != properties; }
+    private <T> T configured(java.util.function.Function<QBittorrentClient,T> action) {
+        Holder selected;
+        synchronized (this) {
+            var torrent = properties.effective(); var qb = qbittorrent.effective();
+            if (runtime == null || runtime.torrent != torrent || runtime.qb != qb) {
+                if (runtime != null) { runtime.retired = true; if (runtime.users == 0) runtime.client.close(); }
+                runtime = new Holder(torrent, qb);
+            }
+            selected = runtime; selected.users++;
+        }
+        try { return action.apply(selected.client); }
+        finally { synchronized (this) { if (--selected.users == 0 && selected.retired) selected.client.close(); } }
+    }
+
     public QBittorrentClient(TorrentProperties properties, QBittorrentProperties qbittorrent) {
         this.properties = properties;
         this.qbittorrent = qbittorrent;
@@ -55,6 +81,7 @@ public class QBittorrentClient implements TorrentClient {
 
     /** Serializa la renovación de sesión y solo realiza lecturas y login remoto. */
     public synchronized TorrentConnectionStatus checkConnection() {
+        if (dynamic()) return configured(QBittorrentClient::checkConnection);
         if (!properties.isEnabled()) return new TorrentConnectionStatus(false, false, type(), null, null, null);
         try {
             qbittorrent.validate();
@@ -76,6 +103,7 @@ public class QBittorrentClient implements TorrentClient {
 
     @Override
     public synchronized void renameTorrent(String hash, String name) {
+        if (dynamic()) { configured(c -> { c.renameTorrent(hash, name); return null; }); return; }
         if (!properties.isEnabled() || !properties.getRename().isEnabled()) {
             throw new TorrentOperationException(HttpStatus.CONFLICT, "El renombrado torrent está deshabilitado");
         }
@@ -125,6 +153,7 @@ public class QBittorrentClient implements TorrentClient {
     public com.rlibanez.eplsync.dto.TorrentDownloadResult.Status addTorrent(
             com.rlibanez.eplsync.torrent.TorrentDownload download,
             com.rlibanez.eplsync.torrent.TorrentSubmissionContext context) {
+        if (dynamic()) return configured(c -> c.addTorrent(download, context));
         if (!properties.isEnabled()) throw new TorrentOperationException(HttpStatus.CONFLICT,
                 "La conexión torrent está deshabilitada");
         var defaults = qbittorrent.getDownload();
@@ -205,6 +234,7 @@ public class QBittorrentClient implements TorrentClient {
     /** Instantánea completa y sin filtros: permite detectar ausencias y descubrir torrents ajenos al envío. */
     @Override
     public java.util.List<RemoteTorrent> listTorrents() {
+        if (dynamic()) return configured(QBittorrentClient::listTorrents);
         var response = readAuthenticatedJson("torrents/info");
         if (!response.isArray()) throw new QBittorrentConnectionException(UPSTREAM);
         var result = new java.util.ArrayList<RemoteTorrent>();
@@ -233,6 +263,7 @@ public class QBittorrentClient implements TorrentClient {
 
     @Override
     public void deleteTorrent(String remoteId, boolean deleteFiles) {
+        if (dynamic()) { configured(c -> { c.deleteTorrent(remoteId, deleteFiles); return null; }); return; }
         if (!remoteId.matches("(?i)[0-9a-f]{40}|[0-9a-f]{64}"))
             throw new IllegalArgumentException("Identificador remoto inválido");
         boolean key = sendingAuth() == AuthMode.API_KEY;
@@ -303,6 +334,7 @@ public class QBittorrentClient implements TorrentClient {
 
     @Override
     public java.util.List<String> listCategories() {
+        if (dynamic()) return configured(QBittorrentClient::listCategories);
         var response = readAuthenticatedJson("torrents/categories");
         if (!response.isObject()) throw new QBittorrentConnectionException(UPSTREAM);
         var names = new java.util.ArrayList<String>();
@@ -428,7 +460,8 @@ public class QBittorrentClient implements TorrentClient {
     private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
 
     @PreDestroy
-    public void close() {
+    public synchronized void close() {
+        if (runtime != null) { runtime.retired = true; if (runtime.users == 0) runtime.client.close(); runtime = null; }
         if (apiKeyClient != null) apiKeyClient.shutdownNow();
         if (sessionClient != null) sessionClient.shutdownNow();
         cookies.getCookieStore().removeAll();

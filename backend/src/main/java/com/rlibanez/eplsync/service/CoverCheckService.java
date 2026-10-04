@@ -32,6 +32,7 @@ public class CoverCheckService {
         }
     }
     private final CatalogBookRepository repository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private CoverProbeFactory probeFactory;
     private final CoverProbe probe;
     private final TransactionTemplate transactions;
     private final ReentrantLock lock = new ReentrantLock();
@@ -46,7 +47,11 @@ public class CoverCheckService {
     }
 
     public Report check(boolean dryRun, long afterId, Long eplId, Integer size, boolean onlyUnchecked) {
-        return check(dryRun, afterId, eplId, size, onlyUnchecked, properties, probe, (done, total) -> {});
+        var effective = properties.effective();
+        if (effective == properties) return check(dryRun, afterId, eplId, size, onlyUnchecked, properties, probe, (done, total) -> {});
+        var runProbe = probeFactory == null ? new CoverProbe(effective) : probeFactory.create(effective);
+        try { return check(dryRun, afterId, eplId, size, onlyUnchecked, effective, runProbe, (done, total) -> {}); }
+        finally { runProbe.shutdown(); }
     }
 
     public boolean isBusy() { return lock.isLocked(); }

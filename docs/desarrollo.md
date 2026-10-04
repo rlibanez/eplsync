@@ -353,8 +353,8 @@ Límites predeterminados, configurables en `application.yaml` o en el `.env` de 
 eplsync:
   events:
     retention:
-      max-count: ${EPLSYNC_EVENTS_RETENTION_MAX_COUNT:10000}
-      max-age-days: ${EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS:365}
+      max-count: 10000
+      max-age-days: 365
 ```
 
 Ambos deben ser positivos. La limpieza se realiza cada minuto en transacciones de

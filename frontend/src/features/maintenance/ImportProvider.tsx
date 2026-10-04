@@ -41,6 +41,7 @@ export interface ResetResult {
   updatePlans: number;
   cleanupRecords: number;
   metadataRecords: number;
+  settingsRecords: number;
   events: number;
 }
 interface Operation {
@@ -303,6 +304,11 @@ export function ImportProvider({ children }: { children: ReactNode }) {
           "jobs",
           "job",
           "job-items",
+          "server-settings",
+          "send-defaults",
+          "torrent-categories",
+          "cover-config",
+          "event-retention",
         ])
           void client.resetQueries({ queryKey: [key] });
       }

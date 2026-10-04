@@ -18,7 +18,7 @@ export function OptionLabel({ text, help }: { text: string; help: string }) {
   return (
     <Tooltip
       opened={hovered || focused}
-      label={help}
+      label={<span style={{ whiteSpace: "pre-line" }}>{help}</span>}
       multiline
       w={360}
       withArrow

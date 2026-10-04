@@ -10,6 +10,13 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "eplsync.torrent.qbittorrent")
 public class QBittorrentProperties {
+    @lombok.Getter(lombok.AccessLevel.NONE) @lombok.Setter(lombok.AccessLevel.NONE)
+    private transient java.util.function.Supplier<QBittorrentProperties> effectiveSupplier;
+    public void useEffective(java.util.function.Supplier<QBittorrentProperties> supplier) { this.effectiveSupplier = supplier; }
+    public QBittorrentProperties effective() { return effectiveSupplier == null ? this : effectiveSupplier.get(); }
+    public Auth getAuth() { var current = effective(); return current == this ? auth : current.getAuth(); }
+    public Download getDownload() { var current = effective(); return current == this ? download : current.getDownload(); }
+
     private Auth auth = new Auth();
     private Download download = new Download();
 

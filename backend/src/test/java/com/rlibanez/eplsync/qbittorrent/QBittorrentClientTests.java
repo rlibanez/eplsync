@@ -119,6 +119,31 @@ class QBittorrentClientTests {
         qbittorrent.getAuth().setPassword(" p&+=ss ");
     }
 
+    @Test void dynamicSettingsEnableDisabledAdapterAndReplaceAuthenticationWithoutRestart() {
+        var disabled = new TorrentProperties();
+        disabled.setEnabled(false);
+        var originalQb = new QBittorrentProperties();
+        client = new QBittorrentClient(disabled, originalQb);
+        var active = new java.util.concurrent.atomic.AtomicReference<>(properties);
+        var credentials = new java.util.concurrent.atomic.AtomicReference<>(qbittorrent);
+        disabled.useEffective(active::get);
+        originalQb.useEffective(credentials::get);
+        assertThat(client.checkConnection().connected()).isTrue();
+        assertThat(calls).anyMatch(call -> "Bearer test-key".equals(call.authorization()));
+        calls.clear();
+        var changed = new QBittorrentProperties();
+        changed.getAuth().setMode(AuthMode.API_KEY);
+        changed.getAuth().setApiKey("replacement-key");
+        credentials.set(changed);
+        // The fake server may reject the replacement credential; it must nevertheless receive it.
+        try { client.checkConnection(); } catch (RuntimeException ignored) { }
+        assertThat(calls).anyMatch(call -> "Bearer replacement-key".equals(call.authorization()));
+        var next = new TorrentProperties(); next.setEnabled(false); active.set(next);
+        calls.clear();
+        assertThat(client.checkConnection().enabled()).isFalse();
+        assertThat(calls).isEmpty();
+    }
+
     private QBittorrentClient client() {
         properties.validate();
         client = new QBittorrentClient(properties, qbittorrent);

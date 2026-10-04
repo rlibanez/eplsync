@@ -136,3 +136,36 @@ tiempo de ejecución, sin recompilar React. Tras cambiarla, ejecuta
 Desde «Mantenimiento → Actualizar catálogo» puedes previsualizar e importar el
 CSV configurado, incluso para la primera carga. La interfaz y la API comparten
 el mismo puerto publicado.
+
+## Ajustes del servidor desde la interfaz
+
+Los apartados Base de datos, Portadas, Torrent y General (conservación de eventos)
+permiten guardar valores predeterminados del servidor. Se persisten en la tabla
+`app_settings` de `data/eplsync.db`: sobreviven a reinicios y reconstrucciones del
+contenedor. La aplicación no escribe en `application.yaml`, Compose ni `.env`.
+
+La prioridad, de mayor a menor, es:
+
+1. Opciones explícitas de una operación, cuando el endpoint las admite.
+2. Ajustes guardados en la base de datos.
+3. Valores de instalación resueltos por Spring desde variables de entorno/YAML.
+
+Los cambios se aplican también a peticiones REST externas. Cada petición usa una
+instantánea de los ajustes; las comprobaciones de portadas y los trabajos en
+marcha conservan sus opciones. Los trabajos guardan sus parámetros de envío al
+crearse y toman la conexión vigente cuando comienzan a ejecutarse. La conexión
+qBittorrent se renueva para nuevas operaciones sin reiniciar el contenedor.
+
+**Guardar** guarda los campos editados del apartado. **Restaurar valores de
+instalación** elimina sus personalizaciones y recupera los valores resueltos al
+arrancar. Para cambiar estos últimos en YAML/Docker es necesario reiniciar; los
+ajustes guardados siguen teniendo prioridad hasta que se restauren.
+
+Contraseña y API key nunca se devuelven en las respuestas de ajustes. Un campo
+vacío sin editar conserva la credencial; el botón «Borrar credencial» solicita
+borrarla al guardar. Las credenciales guardadas forman parte de la base de datos
+y sus copias de seguridad; no se cifran por esta funcionalidad.
+
+El reinicio completo elimina también `app_settings` y recupera los valores de
+instalación. No incluye selección de tablas. La retención de eventos se aplica en la limpieza automática
+por lotes cada minuto; la conservación de un ZIP se fija cuando se descarga o carga.

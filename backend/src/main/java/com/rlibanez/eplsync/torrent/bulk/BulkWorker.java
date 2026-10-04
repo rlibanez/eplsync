@@ -21,6 +21,8 @@ import java.util.concurrent.*;
 @ConditionalOnProperty(prefix = "eplsync.torrent.bulk", name = "worker-enabled", havingValue = "true", matchIfMissing = true)
 public class BulkWorker {
     private static final Logger log = LoggerFactory.getLogger(BulkWorker.class);
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private com.rlibanez.eplsync.settings.ServerSettings settings;
+    private com.rlibanez.eplsync.settings.ServerSettings.Snapshot activeSettings;
     private final BulkStore store;
     private final TorrentClientService client;
     private final TorrentProperties properties;
@@ -127,7 +129,7 @@ public class BulkWorker {
                     activeId, outcome.retry(), safeLog(outcome.message()));
             iterator.remove();
         }
-        if (!properties.isEnabled()) return IDLE_WAIT;
+        if (!properties.isEnabled() && activeId == null) return IDLE_WAIT;
         BulkJob job = activeId == null ? null : store.job(activeId);
         if (job != null && job.getState() != BulkJob.State.RUNNING) {
             buffer.clear();
@@ -139,9 +141,11 @@ public class BulkWorker {
             activeId = null; job = null; submissionContext = null;
         }
         if (job == null) {
+            if (!properties.isEnabled()) return IDLE_WAIT;
             job = store.next();
             if (job == null) return IDLE_WAIT;
             activeId = job.getId(); buffer.clear();
+            activeSettings = settings == null ? null : settings.snapshot();
             submissionContext = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
             var progress = store.view(activeId);
             activeSelectedItems = progress.selectedItems();
@@ -164,8 +168,9 @@ public class BulkWorker {
             var context = submissionContext;
             var future = new CompletableFuture<Outcome>();
             inFlight.put(item.getId(), new PendingSend(item, future));
+            var runSettings = activeSettings;
             executor.execute(() -> {
-                try { future.complete(send(item, context)); }
+                try (var scope = settings == null ? null : settings.pin(runSettings)) { future.complete(send(item, context)); }
                 catch (Throwable ex) { future.completeExceptionally(ex); }
                 finally {
                     synchronized (store) { store.notifyAll(); }

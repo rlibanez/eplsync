@@ -1,3 +1,4 @@
+import { ServerSettings } from "./ServerSettings";
 import { Button } from "@mantine/core";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -47,34 +48,37 @@ export function TorrentSettings() {
   });
   const data = check.data;
   return (
-    <>
-      <section className="panel settings-section">
-        <h2>{t("torrent.title")}</h2>
-        <p className="muted">{t("torrent.description")}</p>
+    <ServerSettings
+      section="torrent"
+      actions={
         <Button
+          type="button"
+          variant="light"
+          title={t("torrent.description")}
           leftSection={<Network size={18} />}
           loading={check.isPending}
           onClick={() => check.mutate()}
         >
           {t(check.isPending ? "torrent.checking" : "torrent.check")}
         </Button>
-        <div className="connection-result" aria-live="polite">
-          {data && (
-            <>
-              <dl className="import-summary">
-                {(["client", "authMode", "version", "apiVersion"] as const).map(
-                  (key) => (
-                    <div key={key}>
-                      <dt>{t(`torrent.${key}`)}</dt>
-                      <dd>{data[key] || t("torrent.unavailable")}</dd>
-                    </div>
-                  ),
-                )}
-              </dl>
-            </>
-          )}
-        </div>
-      </section>
-    </>
+      }
+    >
+      <div className="connection-result" aria-live="polite">
+        {data && (
+          <>
+            <dl className="import-summary">
+              {(["client", "authMode", "version", "apiVersion"] as const).map(
+                (key) => (
+                  <div key={key}>
+                    <dt>{t(`torrent.${key}`)}</dt>
+                    <dd>{data[key] || t("torrent.unavailable")}</dd>
+                  </div>
+                ),
+              )}
+            </dl>
+          </>
+        )}
+      </div>
+    </ServerSettings>
   );
 }

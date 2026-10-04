@@ -12,6 +12,12 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "eplsync.catalog.import")
 @Validated @Getter @Setter
 public class CatalogImportProperties {
+    @lombok.Getter(lombok.AccessLevel.NONE) @lombok.Setter(lombok.AccessLevel.NONE)
+    private transient java.util.function.Supplier<CatalogImportProperties> effectiveSupplier;
+    public void useEffective(java.util.function.Supplier<CatalogImportProperties> supplier) { this.effectiveSupplier = supplier; }
+    public CatalogImportProperties effective() { return effectiveSupplier == null ? this : effectiveSupplier.get(); }
+    public Duration getRetention() { var current = effective(); return current == this ? retention : current.getRetention(); }
+
     private Duration retention = Duration.ofHours(24);
     @AssertTrue(message = "import.retention debe ser positiva y no superar 7 días")
     public boolean isRetentionValid() {

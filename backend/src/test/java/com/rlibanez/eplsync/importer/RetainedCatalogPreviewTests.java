@@ -33,7 +33,7 @@ class RetainedCatalogPreviewTests {
     Path cache = Path.of(System.getProperty("java.io.tmpdir"), "eplsync-catalog-import");
     @BeforeEach void setup() throws Exception {
         store.clear(); books.deleteAllInBatch(); metadata.deleteAll();
-        properties.setRetention(Duration.ofHours(24));
+        properties.effective().setRetention(Duration.ofHours(24));
         csv = "EPL Id,Título,Autor,Revisión\n2,Original,Autor,1.0\n";
         when(downloader.download(anyString(), anyString(), anyString())).thenAnswer(call -> {
             zip = Files.createTempFile(directory, "download-", ".zip");
@@ -100,7 +100,7 @@ class RetainedCatalogPreviewTests {
         assertThatThrownBy(() -> service.retainedPreview(first)).hasMessage("PREVIEW_EXPIRED");
         assertThatThrownBy(() -> service.runSaved(oldArchive,CatalogImportService.Mode.UPDATE)).hasMessage("ARCHIVE_EXPIRED");
         assertThat(service.retainedPreview(second).preview().token()).isEqualTo(second);
-        properties.setRetention(Duration.ofMillis(50));
+        properties.effective().setRetention(Duration.ofMillis(50));
         var expired = service.previewCatalog(null,0,50).summary().preview().token();
         Thread.sleep(100); store.prune();
         assertThat(store.archive()).isNull();

@@ -57,7 +57,7 @@ class DownloadTrackingTests {
 
     @BeforeEach void setup() {
         bulkItems.deleteAll(); bulkJobs.deleteAll(); downloads.deleteAll(); books.deleteAll(); reset(stubClient);
-        properties.setEnabled(true); properties.setBaseUrl("http://localhost:8080");
+        properties.effective().setEnabled(true); properties.effective().setBaseUrl("http://localhost:8080");
         when(stubClient.addTorrent(any())).thenReturn(TorrentDownloadResult.Status.ACCEPTED);
         when(stubClient.addTorrent(any(), any())).thenReturn(TorrentDownloadResult.Status.ACCEPTED);
         when(stubClient.withDefaults(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -65,7 +65,7 @@ class DownloadTrackingTests {
         mvc = MockMvcBuilders.standaloneSetup(controller, catalog, individualController).setCustomArgumentResolvers(new org.springframework.data.web.PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
-    @AfterEach void close() { properties.setEnabled(false); }
+    @AfterEach void close() { properties.effective().setEnabled(false); }
     CatalogBook book(double revision, String hash) {
         return books.save(CatalogBook.builder().eplId(32L).revision(revision).author("Author").title("Title")
                 .language(Language.ESPANOL).links(hash).build());
@@ -112,7 +112,7 @@ class DownloadTrackingTests {
         assertThat(rows.get(1).details()).containsEntry("checked", 0);
         assertThat(rows.get(0).operationId()).isEqualTo(rows.get(1).operationId());
         cursor = events.cursor();
-        properties.setEnabled(false);
+        properties.effective().setEnabled(false);
         assertThatThrownBy(() -> service.syncDownloads(false, false)).isInstanceOf(RuntimeException.class);
         assertThat(events.after(cursor, 10)).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
                 .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
@@ -395,7 +395,7 @@ class DownloadTrackingTests {
         service.addTorrent(command);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.ALREADY_EXISTS);
         assertThat(only().getSubmittedAt()).isNull();
-        properties.setEnabled(false);
+        properties.effective().setEnabled(false);
         assertThatThrownBy(() -> service.syncDownloads(false, true)).isInstanceOf(TorrentOperationException.class);
         verify(stubClient, never()).listTorrents();
     }
@@ -403,7 +403,7 @@ class DownloadTrackingTests {
     @Test void serverChangeAndCatalogDeletionDoNotDestroyHistory() {
         service.addTorrent(command(1.0, HASH));
         var oldInstance = only().getClientInstanceId();
-        properties.setBaseUrl("http://localhost:9090");
+        properties.effective().setBaseUrl("http://localhost:9090");
         service.syncDownloads(false, true);
         assertThat(only().getStatus()).isEqualTo(DownloadStatus.SUBMITTED);
         service.addTorrent(command(1.0, HASH));

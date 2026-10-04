@@ -17,6 +17,7 @@ public class DatabaseResetService {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CoverTaskService coverTasks;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogMissingService missing;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogImportStore previews;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private com.rlibanez.eplsync.settings.ServerSettings settings;
     private final BulkStore bulk;
     private final ObjectProvider<BulkWorker> workers;
     private final DownloadTrackingService tracking;
@@ -25,7 +26,7 @@ public class DatabaseResetService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DatabaseResetService.class);
 
     public record ResetResult(boolean success, int catalogBooks, int downloads,
-            int jobs, int jobItems, int updatePlans, int cleanupRecords, int metadataRecords, int events) {}
+            int jobs, int jobItems, int updatePlans, int cleanupRecords, int metadataRecords, int events, int settingsRecords) {}
 
     public DatabaseResetService(BulkStore bulk, ObjectProvider<BulkWorker> workers,
             DownloadTrackingService tracking, EntityManager em, PlatformTransactionManager manager) {
@@ -57,11 +58,13 @@ public class DatabaseResetService {
                     int downloads = delete("DownloadRecord");
                     int books = delete("CatalogBook");
                     int metadata = delete("CatalogMetadata");
+                    int settingsCount = delete("StoredSetting");
                     int eventCount = events == null ? em.createNativeQuery("delete from app_events").executeUpdate() : events.clearForReset();
                     em.clear();
-                    return new ResetResult(true, books, downloads, jobs, items, plans, cleanup, metadata, eventCount);
+                    return new ResetResult(true, books, downloads, jobs, items, plans, cleanup, metadata, eventCount, settingsCount);
                 });
                 // Only discard the in-memory queue after the transaction commits.
+                if (settings != null) settings.resetAfterCommit();
                 if (worker != null) worker.clearIdleState();
                 if (coverTasks != null) coverTasks.clearIdleState();
                 if (missing != null) missing.clear();

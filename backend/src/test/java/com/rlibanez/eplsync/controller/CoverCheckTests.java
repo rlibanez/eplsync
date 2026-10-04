@@ -23,6 +23,7 @@ class CoverCheckTests {
     @Autowired CatalogBookRepository repository;
     @Autowired CoverCheckService service;
     @MockitoBean CoverProbe probe;
+    @MockitoBean com.rlibanez.eplsync.service.CoverProbeFactory probeFactory;
     MockMvc mvc;
 
     @Test void logsStartTenPercentProgressAndSummaryUsingSelectedTotal() {
@@ -54,6 +55,7 @@ class CoverCheckTests {
     }
 
     @BeforeEach void setup() {
+        when(probeFactory.create(any())).thenReturn(probe);
         repository.deleteAllInBatch();
         mvc = MockMvcBuilders.standaloneSetup(new CoverCheckController(service))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();

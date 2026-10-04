@@ -35,6 +35,8 @@ public class CatalogImportService {
 
     private static final Logger log = LoggerFactory.getLogger(CatalogImportService.class);
     private final String catalogZipUrl;
+    @org.springframework.beans.factory.annotation.Autowired(required = false) private com.rlibanez.eplsync.settings.ServerSettings settings;
+    private String configuredUrl() { return settings == null ? catalogZipUrl : settings.snapshot().zipUrl(); }
     private final com.rlibanez.eplsync.repository.CatalogMetadataRepository metadataRepository;
     private final org.springframework.transaction.support.TransactionTemplate transactions;
 
@@ -62,7 +64,7 @@ public class CatalogImportService {
      * @return Resumen del proceso de importación.
      */
     public ImportResult importCatalog() {
-        return importCatalog(catalogZipUrl);
+        return importCatalog(configuredUrl());
     }
 
     /**
@@ -88,7 +90,7 @@ public class CatalogImportService {
 
     private ImportResult performImport(String zipUrl, boolean truncateBeforeImport) {
         long started = System.nanoTime();
-        String source = zipUrl == null ? catalogZipUrl : zipUrl;
+        String source = zipUrl == null ? configuredUrl() : zipUrl;
         return previews.replace(source, zipName(source), () -> fileDownloader.download(source, "epublibre-", ".zip"),
                 (archive,csv) -> importFile(csv, archive, "URL", truncateBeforeImport, started));
     }
@@ -133,7 +135,7 @@ public class CatalogImportService {
     public ImportPreviewResult previewCatalog(String zipUrl, int page, int size) {
         java.util.function.Supplier<ImportPreviewResult> work =
                 () -> {
-                    String source = zipUrl == null ? catalogZipUrl : zipUrl;
+                    String source = zipUrl == null ? configuredUrl() : zipUrl;
                     return previews.replace(source, zipName(source), () -> fileDownloader.download(source, "epublibre-", ".zip"),
                             (archive,csv) -> previews.preview(archive, evaluate(csv, page, size), "URL"));
                 };
@@ -202,7 +204,7 @@ public class CatalogImportService {
         });
     }
 
-    public String defaultUrl() { return catalogZipUrl; }
+    public String defaultUrl() { return configuredUrl(); }
     public CatalogImportStore.Archive savedArchive() { return previews.archive(); }
     public enum Mode { PREVIEW, UPDATE }
     public ImportResult runSaved(String archiveId, Mode mode) {
@@ -245,7 +247,7 @@ public class CatalogImportService {
 
     private <T> T withCatalogFile(String zipUrl, CatalogFileOperation<T> operation) {
         if (zipUrl == null) {
-            zipUrl = catalogZipUrl;
+            zipUrl = configuredUrl();
         }
         log.info("Iniciando importación del catálogo desde: {}", zipUrl);
 

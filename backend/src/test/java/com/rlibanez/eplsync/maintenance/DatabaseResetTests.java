@@ -85,10 +85,10 @@ class DatabaseResetTests {
     }
     @Test void resetsAllDataAndCanBeRepeated() {
         var result = service.reset();
-        assertThat(result).isEqualTo(new DatabaseResetService.ResetResult(true, 1, 1, 1, 1, 1, 1, 1, 1));
+        assertThat(result).isEqualTo(new DatabaseResetService.ResetResult(true, 1, 1, 1, 1, 1, 1, 1, 1, 0));
         assertRebuilt();
         assertThat(events.after(0, 100)).isEmpty();
-        assertThat(service.reset()).isEqualTo(new DatabaseResetService.ResetResult(true, 0, 0, 0, 0, 0, 0, 0, 0));
+        assertThat(service.reset()).isEqualTo(new DatabaseResetService.ResetResult(true, 0, 0, 0, 0, 0, 0, 0, 0, 0));
         assertRebuilt();
         verifyNoInteractions(downloader);
     }
@@ -130,7 +130,7 @@ class DatabaseResetTests {
         for (String body : new String[]{"{}", "{\"confirm\":false}", "{\"confirm\":null}"})
             mvc.perform(post("/api/maintenance/reset").contentType("application/json").content(body)).andExpect(status().isBadRequest());
         verifyNoInteractions(mocked);
-        when(mocked.reset()).thenReturn(new DatabaseResetService.ResetResult(true,0,0,0,0,0,0,0,0));
+        when(mocked.reset()).thenReturn(new DatabaseResetService.ResetResult(true,0,0,0,0,0,0,0,0, 0));
         mvc.perform(post("/api/maintenance/reset").contentType("application/json").content("{\"confirm\":true}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true));
         verify(mocked).reset();

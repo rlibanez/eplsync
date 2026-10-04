@@ -18,6 +18,20 @@ import com.rlibanez.eplsync.torrent.TorrentNameResolver;
 @Component
 @ConfigurationProperties(prefix = "eplsync.torrent")
 public class TorrentProperties {
+    @lombok.Getter(lombok.AccessLevel.NONE) @lombok.Setter(lombok.AccessLevel.NONE)
+    private transient java.util.function.Supplier<TorrentProperties> effectiveSupplier;
+    public void useEffective(java.util.function.Supplier<TorrentProperties> supplier) { this.effectiveSupplier = supplier; }
+    public TorrentProperties effective() { return effectiveSupplier == null ? this : effectiveSupplier.get(); }
+    public boolean isEnabled() { var current = effective(); return current == this ? enabled : current.isEnabled(); }
+    public String getClient() { var current = effective(); return current == this ? client : current.getClient(); }
+    public String getBaseUrl() { var current = effective(); return current == this ? baseUrl : current.getBaseUrl(); }
+    public Duration getConnectTimeout() { var current = effective(); return current == this ? connectTimeout : current.getConnectTimeout(); }
+    public Duration getRequestTimeout() { var current = effective(); return current == this ? requestTimeout : current.getRequestTimeout(); }
+    public Rename getRename() { var current = effective(); return current == this ? rename : current.getRename(); }
+    public Download getDownload() { var current = effective(); return current == this ? download : current.getDownload(); }
+    public Bulk getBulk() { var current = effective(); return current == this ? bulk : current.getBulk(); }
+    public List<String> getTrackers() { var current = effective(); return current == this ? trackers : current.getTrackers(); }
+
     private boolean enabled;
     private String client = "qbittorrent";
     private String baseUrl = "http://localhost:8080";

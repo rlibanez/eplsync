@@ -1489,8 +1489,12 @@ ya confirmados; desconectar un navegador no cancela operaciones del backend.
 ### Conservación y borrado
 
 `GET /api/events/retention` devuelve `{ "maxCount": 10000, "maxAgeDays": 365 }`
-por defecto. Se configuran con `EPLSYNC_EVENTS_RETENTION_MAX_COUNT` y
-`EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS`; ambos positivos. Limpieza por lotes cada
+por defecto. Se configuran desde Ajustes o mediante `eplsync.events.retention.max-count` y
+`eplsync.events.retention.max-age-days` en YAML; ambos positivos. Las variables de
+entorno de Spring son `EPLSYNC_EVENTS_RETENTION_MAXCOUNT` y
+`EPLSYNC_EVENTS_RETENTION_MAXAGEDAYS`. Compose traduce las variables de `.env`
+`EPLSYNC_EVENTS_RETENTION_MAX_COUNT` y `EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS`
+a esos nombres. Limpieza por lotes cada
 minuto, aplicando ambos límites. El reinicio del catálogo conserva este historial.
 
 `POST /api/events/delete`, con todos los parámetros en el cuerpo:
@@ -1535,3 +1539,45 @@ El envío individual `POST /api/torrent/books/{eplId}` también admite `batchSiz
 predeterminados de los trabajos múltiples. `options.hash` selecciona el torrent
 concreto cuando el libro tiene varios enlaces. La ficha permite elegirlo antes
  de abrir el formulario compartido de opciones de envío.
+
+## Ajustes persistentes del servidor
+
+- `GET /api/settings/{section}` consulta valores efectivos y personalizaciones.
+- `PUT /api/settings/{section}` guarda los campos indicados del apartado de forma
+  atómica. Los campos omitidos se conservan. No admite simulación.
+- `DELETE /api/settings/{section}` restaura los valores de instalación del apartado.
+
+Apartados: `catalog`, `covers`, `torrent`, `events`. Cada campo se identifica por
+su clave de configuración sin el prefijo `eplsync.`. Solo se admiten las claves
+expuestas por GET para ese apartado; una clave desconocida o un valor inválido
+produce `400` sin guardar cambios.
+
+Ejemplo de cuerpo de PUT a `/api/settings/covers`:
+
+```json
+{
+  "catalog.cover-check.connect-timeout": "3s",
+  "catalog.cover-check.request-timeout": "5s",
+  "catalog.cover-check.batch-timeout": "6s",
+  "catalog.cover-check.concurrency": 8
+}
+```
+
+GET/PUT/DELETE devuelven `{ "section": "covers", "fields": [...] }`. Cada campo
+incluye `key`, `type`, `value`, `overridden` (existe una personalización guardada)
+y `configured` (hay una credencial efectiva, solo para secretos). Las duraciones
+admiten formatos Spring como `500ms`, `3s`, `24h`. Trackers y etiquetas son arrays
+de cadenas. Los valores secretos se devuelven siempre como `""`; omitirlos en PUT
+los conserva, enviar `""` los borra y enviar `null` elimina su personalización
+para volver al valor de instalación. `null` también restaura un campo no secreto.
+Todas las respuestas de ajustes llevan `Cache-Control: no-store`.
+
+Límites: concurrencia de portadas 1–32; timeouts de portadas entre 1ms y 5min,
+con conexión ≤ petición ≤ lote; retención ZIP positiva y de hasta 7 días;
+lote torrent 1–1000, concurrencia 1–16 e intervalo 0–60s; timeouts torrent
+positivos y hasta 5min; límites de retención de eventos enteros positivos.
+La integración habilitada requiere credenciales coherentes con su modo de
+autenticación. Los ajustes se aplican al servidor, no al navegador que los guarda.
+
+`POST /api/maintenance/reset` elimina también los ajustes; su resultado incluye
+`settingsRecords` con el número de personalizaciones eliminadas.

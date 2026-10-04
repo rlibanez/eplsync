@@ -16,6 +16,15 @@ import org.springframework.validation.annotation.Validated;
 @Getter
 @Setter
 public class CoverCheckProperties {
+    @lombok.Getter(lombok.AccessLevel.NONE) @lombok.Setter(lombok.AccessLevel.NONE)
+    private transient java.util.function.Supplier<CoverCheckProperties> effectiveSupplier;
+    public void useEffective(java.util.function.Supplier<CoverCheckProperties> supplier) { this.effectiveSupplier = supplier; }
+    public CoverCheckProperties effective() { return effectiveSupplier == null ? this : effectiveSupplier.get(); }
+    public Duration getConnectTimeout() { var current = effective(); return current == this ? connectTimeout : current.getConnectTimeout(); }
+    public Duration getRequestTimeout() { var current = effective(); return current == this ? requestTimeout : current.getRequestTimeout(); }
+    public Duration getBatchTimeout() { var current = effective(); return current == this ? batchTimeout : current.getBatchTimeout(); }
+    public int getConcurrency() { var current = effective(); return current == this ? concurrency : current.getConcurrency(); }
+
     private Duration connectTimeout = Duration.ofSeconds(3);
     private Duration requestTimeout = Duration.ofSeconds(3);
     private Duration batchTimeout = Duration.ofSeconds(4);
