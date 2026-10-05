@@ -25,7 +25,7 @@ public class EventJournal {
         }
         public Filter {
             if (from != null && before != null && !from.isBefore(before))
-                throw new IllegalArgumentException("from debe ser anterior a before (límite exclusivo)");
+                throw new com.rlibanez.eplsync.exception.UserInputException("from debe ser anterior a before (límite exclusivo)");
         }
     }
     public record Page(List<Entry> items, long total, int page, int size, long cursor) {}
@@ -94,7 +94,7 @@ public class EventJournal {
         return transactions.execute(tx -> {
             long now = timestamp.toEpochMilli();
             var json = mapper.writeValueAsString(details);
-            if (json.length() > 16384) throw new IllegalArgumentException("Resumen del evento demasiado grande");
+            if (json.length() > 16384) throw new com.rlibanez.eplsync.exception.UserInputException("Resumen del evento demasiado grande");
             long id = jdbc.queryForObject("""
                 INSERT INTO app_events(created_at, category, action, outcome, origin, operation_id, details)
                 VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
@@ -107,11 +107,14 @@ public class EventJournal {
     }
 
     private String failureReason(RuntimeException ex) {
+        if(ex instanceof com.rlibanez.eplsync.exception.CatalogImportException) {
+            return ex.getCause() instanceof com.rlibanez.eplsync.exception.CatalogDownloadException rejected
+                ? rejected.getMessage() : "No se pudo importar el catálogo";
+        }
         // Only expose messages from exceptions explicitly designed for API consumers.
         return ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException
-                || ex instanceof com.rlibanez.eplsync.exception.CatalogValidationException
-                || ex instanceof com.rlibanez.eplsync.exception.CatalogImportException
-                ? ex.getMessage() : ex.getClass().getSimpleName();
+                || ex instanceof com.rlibanez.eplsync.exception.UserInputException
+                ? ex.getMessage() : "Ha ocurrido un error inesperado";
     }
 
     public void rejected(Category category, String action, Map<String, ?> context, Instant startedAt, RuntimeException ex) {
@@ -188,8 +191,8 @@ public class EventJournal {
     public Unread unread(long afterId) { return unread(afterId, List.of()); }
     public Unread unread(long afterId, List<Long> readIds) {
         if (readIds == null || readIds.size() > 10000 || readIds.stream().anyMatch(id -> id == null || id <= 0))
-            throw new IllegalArgumentException("readIds debe contener hasta 10000 identificadores positivos");
-        if (afterId < 0) throw new IllegalArgumentException("afterId debe ser >= 0");
+            throw new com.rlibanez.eplsync.exception.UserInputException("readIds debe contener hasta 10000 identificadores positivos");
+        if (afterId < 0) throw new com.rlibanez.eplsync.exception.UserInputException("afterId debe ser >= 0");
         return transactions.execute(tx -> {
             long latest = cursor();
             long effective = afterId > latest ? 0 : afterId;
@@ -213,7 +216,7 @@ public class EventJournal {
         return sql;
     }
     public Page search(Filter filter, int page, int size) {
-        if (page < 0 || size < 1 || size > 200) throw new IllegalArgumentException("page >= 0 y size entre 1 y 200");
+        if (page < 0 || size < 1 || size > 200) throw new com.rlibanez.eplsync.exception.UserInputException("page >= 0 y size entre 1 y 200");
         return transactions.execute(tx -> {
             var args = new ArrayList<Object>(); var where = where(filter, args);
             long total = jdbc.queryForObject("SELECT COUNT(*) FROM app_events" + where, Long.class, args.toArray());

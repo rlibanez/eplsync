@@ -10,6 +10,6 @@ public enum PreviousVersions {
     @JsonValue public String value() { return value; }
     @JsonCreator public static PreviousVersions parse(String value) {
         for (var policy : values()) if (policy.value.equals(value)) return policy;
-        throw new IllegalArgumentException("previousVersions debe ser keep, removeTorrent o removeTorrentAndFiles");
+        throw new com.rlibanez.eplsync.exception.UserInputException("previousVersions debe ser keep, removeTorrent o removeTorrentAndFiles");
     }
 }

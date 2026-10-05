@@ -13,15 +13,15 @@ public final class OperationBody {
     private OperationBody() {}
     public static void noQuery(jakarta.servlet.http.HttpServletRequest request) {
         if (request.getQueryString() != null && !request.getQueryString().isBlank())
-            throw new IllegalArgumentException("Las opciones deben ir en el cuerpo de la petición");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Las opciones deben ir en el cuerpo de la petición");
     }
     public static <T> T read(Map<String,Object> body, Class<T> type, jakarta.servlet.http.HttpServletRequest request) {
         noQuery(request);
         if (!(body.get("dryRun") instanceof Boolean))
-            throw new IllegalArgumentException("dryRun es obligatorio y debe ser booleano");
+            throw new com.rlibanez.eplsync.exception.UserInputException("dryRun es obligatorio y debe ser booleano");
         final T input;
         try { input = JSON.convertValue(body, type); }
-        catch (RuntimeException ex) { throw new IllegalArgumentException("Opciones desconocidas o inválidas", ex); }
+        catch (RuntimeException ex) { throw new com.rlibanez.eplsync.exception.UserInputException("Opciones desconocidas o inválidas", ex); }
         var violations = VALIDATOR.validate(input);
         if (!violations.isEmpty()) throw new jakarta.validation.ConstraintViolationException(violations);
         return input;

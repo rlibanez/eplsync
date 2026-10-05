@@ -23,7 +23,7 @@ public record TorrentOperationRequest(boolean dryRun, @Valid CatalogBookFilter f
         var orders = new java.util.ArrayList<Sort.Order>();
         if (sort != null) for (String value : sort) {
             String[] parts = value.split(",", -1);
-            if (parts.length > 2 || parts[0].isBlank()) throw new IllegalArgumentException("Orden inválido");
+            if (parts.length > 2 || parts[0].isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("Orden inválido");
             orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]),parts[0]));
         }
         com.rlibanez.eplsync.config.QueryLimits.page(pageNumber(), size == null ? 20 : size);

@@ -22,7 +22,7 @@ public class TorrentClientService {
         this.tracking = tracking;
         var matches = clients.stream().filter(client -> client.type().equals(properties.getClient())).toList();
         if (properties.isEnabled() && matches.size() != 1) {
-            throw new IllegalArgumentException("Configuración torrent: client debe seleccionar un único adaptador implementado");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Configuración torrent: client debe seleccionar un único adaptador implementado");
         }
         selectedClient = matches.size() == 1 ? matches.getFirst() : null;
     }

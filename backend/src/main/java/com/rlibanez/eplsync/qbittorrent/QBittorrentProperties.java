@@ -60,6 +60,6 @@ public class QBittorrentProperties {
     }
 
     private IllegalArgumentException invalid(String message) {
-        return new IllegalArgumentException("Configuración qBittorrent: " + message);
+        return new com.rlibanez.eplsync.exception.UserInputException("Configuración qBittorrent: " + message);
     }
 }

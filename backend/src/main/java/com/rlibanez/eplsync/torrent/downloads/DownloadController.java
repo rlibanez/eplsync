@@ -18,13 +18,13 @@ public class DownloadController {
     @PostMapping("/sync")
     public DownloadTrackingService.SyncResult sync(@RequestParam MultiValueMap<String, String> params,
             @RequestBody java.util.Map<String, Object> body) {
-        if (!params.isEmpty()) throw new IllegalArgumentException("Las opciones de sincronización deben ir en el cuerpo JSON");
+        if (!params.isEmpty()) throw new com.rlibanez.eplsync.exception.UserInputException("Las opciones de sincronización deben ir en el cuerpo JSON");
         if (body.keySet().stream().anyMatch(key -> !java.util.Set.of("dryRun", "includeDetails").contains(key)))
-            throw new IllegalArgumentException("Opción de sincronización desconocida");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Opción de sincronización desconocida");
         if (!(body.get("dryRun") instanceof Boolean dryRun))
-            throw new IllegalArgumentException("dryRun es obligatorio y debe ser booleano");
+            throw new com.rlibanez.eplsync.exception.UserInputException("dryRun es obligatorio y debe ser booleano");
         if (body.containsKey("includeDetails") && !(body.get("includeDetails") instanceof Boolean))
-            throw new IllegalArgumentException("includeDetails debe ser booleano");
+            throw new com.rlibanez.eplsync.exception.UserInputException("includeDetails debe ser booleano");
         return client.syncDownloads(dryRun, Boolean.TRUE.equals(body.get("includeDetails")));
     }
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")

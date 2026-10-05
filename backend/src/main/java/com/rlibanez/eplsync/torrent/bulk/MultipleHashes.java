@@ -14,6 +14,6 @@ public enum MultipleHashes {
     public static MultipleHashes parse(String value) {
         if (value == null) return null;
         try { return valueOf(value.trim().toUpperCase(Locale.ROOT)); }
-        catch (IllegalArgumentException ex) { throw new IllegalArgumentException("multipleHashes debe ser all, skip o first"); }
+        catch (IllegalArgumentException ex) { throw new com.rlibanez.eplsync.exception.UserInputException("multipleHashes debe ser all, skip o first"); }
     }
 }

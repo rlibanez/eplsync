@@ -27,7 +27,7 @@ final class CatalogDownloadPolicy {
             if (!(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null
                     || uri.getRawUserInfo() != null || uri.getRawFragment() != null
                     || uri.getPort() == 0 || uri.getPort() > 65535 || uri.getHost().contains("%"))
-                throw new IllegalArgumentException();
+                throw new com.rlibanez.eplsync.exception.UserInputException();
             int port = uri.getPort();
             if ((scheme.equals("http") && port == 80) || (scheme.equals("https") && port == 443)) port = -1;
             String path = uri.getRawPath();
@@ -37,7 +37,7 @@ final class CatalogDownloadPolicy {
                 + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery()));
         } catch (RuntimeException ex) {
             // Parser exceptions and rejected URLs may contain credentials or query tokens.
-            throw new IllegalArgumentException("La URL debe usar HTTP o HTTPS, con host y puerto válidos, sin credenciales ni fragmento");
+            throw new com.rlibanez.eplsync.exception.UserInputException("La URL debe usar HTTP o HTTPS, con host y puerto válidos, sin credenciales ni fragmento");
         }
     }
     Target resolve(URI uri, boolean mustRemainPublic) throws CatalogDownloadException {

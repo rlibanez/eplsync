@@ -56,7 +56,7 @@ public class CatalogMissingService {
         }
     }
     public Preview page(String token, int page, int size) {
-        if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("Paginación inválida");
+        if (page < 0 || size < 1 || size > 100) throw new com.rlibanez.eplsync.exception.UserInputException("Paginación inválida");
         synchronized (previews) {
             var snapshot = snapshot(token);
             int from = (int) Math.min((long) page * size, snapshot.books().size());
@@ -74,7 +74,7 @@ public class CatalogMissingService {
         return snapshot;
     }
     public Result delete(String token, boolean confirm) {
-        if (!confirm) throw new IllegalArgumentException("Es necesario confirmar la eliminación");
+        if (!confirm) throw new com.rlibanez.eplsync.exception.UserInputException("Es necesario confirmar la eliminación");
         synchronized (bulk) {
             return tracking.exclusive(() -> {
                 synchronized (previews) {

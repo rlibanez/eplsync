@@ -21,7 +21,7 @@ public class CoverAlternativeController {
     @PostMapping("/{eplId}/alternative")
     public ResponseEntity<?> alternative(@PathVariable long eplId, @RequestBody Request request) {
         if (request.expectedCoverUrl() == null || request.expectedCoverUrl().isBlank())
-            throw new IllegalArgumentException("expectedCoverUrl es obligatorio");
+            throw new com.rlibanez.eplsync.exception.UserInputException("expectedCoverUrl es obligatorio");
         return transactions.execute(status -> {
             var book = repository.findById(eplId).orElse(null);
             if (book == null) return ResponseEntity.notFound().build();

@@ -33,7 +33,7 @@ public class CatalogMagnetController {
             @RequestParam(required = false) Integer size, jakarta.servlet.http.HttpServletRequest request) {
         for (String key : java.util.List.of("page", "size")) {
             if (request.getParameterValues(key) != null && request.getParameterValues(key).length != 1)
-                throw new IllegalArgumentException("Parámetro repetido: " + key);
+                throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro repetido: " + key);
         }
         int pageNumber = page == null ? 0 : page;
         int pageSize = size == null ? 20 : size;

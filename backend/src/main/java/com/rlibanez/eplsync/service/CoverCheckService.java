@@ -68,10 +68,10 @@ public class CoverCheckService {
             com.rlibanez.eplsync.config.CoverCheckProperties options, CoverProbe runProbe,
             java.util.function.BiConsumer<Long, Long> listener) {
         if (afterId < 0 || (eplId != null && eplId < 1) || (size != null && size < 1)) {
-            throw new IllegalArgumentException("afterId >= 0, eplId >= 1, size >= 1 (opcional)");
+            throw new com.rlibanez.eplsync.exception.UserInputException("afterId >= 0, eplId >= 1, size >= 1 (opcional)");
         }
         if (!options.isTimeoutConfigurationValid() || options.getConcurrency() < 1 || options.getConcurrency() > 32)
-            throw new IllegalArgumentException("Parámetros de comprobación inválidos");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetros de comprobación inválidos");
         if (!lock.tryLock()) throw new BusyException();
         int concurrency = options.getConcurrency();
         var batchTimeout = options.getBatchTimeout();

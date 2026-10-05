@@ -60,9 +60,9 @@ public class TorrentDownloadService {
             hash = hashes.getFirst();
         } else {
             if (!options.hash().matches("(?i)([0-9a-f]{40}|[a-z2-7]{32})"))
-                throw new IllegalArgumentException("Hash torrent inválido");
+                throw new com.rlibanez.eplsync.exception.UserInputException("Hash torrent inválido");
             hash = magnets.hashes(options.hash()).getFirst();
-            if (!hashes.contains(hash)) throw new IllegalArgumentException("El hash no pertenece al libro");
+            if (!hashes.contains(hash)) throw new com.rlibanez.eplsync.exception.UserInputException("El hash no pertenece al libro");
         }
         var rename = options.rename();
         boolean renameEnabled = rename != null && rename.enabled() != null

@@ -219,7 +219,7 @@ public class CatalogImportService {
         String originalName = file.getOriginalFilename();
         String name = com.rlibanez.eplsync.importer.CatalogFileNames.display(originalName, "");
         if (file.isEmpty() || originalName == null || !originalName.toLowerCase(java.util.Locale.ROOT).endsWith(".zip"))
-            throw new IllegalArgumentException("Selecciona un archivo ZIP no vacío");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Selecciona un archivo ZIP no vacío");
         String displayName = name;
         long started = System.nanoTime();
         return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG,

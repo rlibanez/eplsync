@@ -9,7 +9,7 @@ public final class AdminCommand {
     private AdminCommand() {}
     public static void run(String[] args) {
         if (args.length != 3 || !args[1].equals("reset"))
-            throw new IllegalArgumentException("Uso: --admin reset USER_OR_EMAIL");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Uso: --admin reset USER_OR_EMAIL");
         var app=new SpringApplication(EplsyncApplication.class);
         app.setWebApplicationType(WebApplicationType.NONE);
         try(var context=app.run("--eplsync.torrent.enabled=false","--eplsync.torrent.bulk.worker-enabled=false","--spring.main.banner-mode=off","--logging.level.root=ERROR")) {

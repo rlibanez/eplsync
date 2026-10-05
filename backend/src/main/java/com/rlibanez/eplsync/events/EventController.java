@@ -47,7 +47,7 @@ public class EventController {
     public record DeleteRequest(Boolean confirm, Instant from, Instant before) {}
     @PostMapping("/delete")
     public Map<String, Long> delete(@RequestBody DeleteRequest request) {
-        if (!Boolean.TRUE.equals(request.confirm())) throw new IllegalArgumentException("confirm=true es obligatorio");
+        if (!Boolean.TRUE.equals(request.confirm())) throw new com.rlibanez.eplsync.exception.UserInputException("confirm=true es obligatorio");
         return Map.of("deleted", journal.delete(new EventJournal.Filter(null, null, request.from(), request.before())));
     }
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)

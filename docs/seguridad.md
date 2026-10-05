@@ -297,3 +297,20 @@ claro: el cifrado no elimina esas copias. El contenedor crea archivos con
 `umask 077`; no cambia los permisos de archivos existentes en el host. Restringe
 los directorios de datos a 700 y SQLite, WAL, journals y backups a 600, con el
 propietario correspondiente a PUID/PGID. Fuera de Docker usa también `umask 077`.
+
+## Errores públicos y referencias de incidencia
+
+Los errores inesperados devuelven un mensaje genérico sin SQL, rutas internas,
+mensajes de librerías ni causas técnicas. La respuesta incluye `incidentId`,
+el encabezado `X-Incident-ID` y la referencia dentro de `details`, visible en los
+avisos del frontend. El log conserva la excepción técnica con ese mismo UUID;
+no se incluye el cuerpo de la petición ni su query string en la respuesta.
+
+Las validaciones deliberadas utilizan `UserInputException` y mantienen sus
+mensajes claros. Una `IllegalArgumentException` procedente de una librería recibe
+un mensaje genérico, aunque su mensaje original parezca útil. Los rechazos
+controlados de ZIP/CSV, descarga y autenticación conservan las explicaciones
+preparadas por la aplicación; los errores internos de importación quedan ocultos
+con una referencia. Eventos y trabajos tampoco publican mensajes arbitrarios de
+excepciones internas. Los logs son información técnica restringida: no los
+expongas públicamente.

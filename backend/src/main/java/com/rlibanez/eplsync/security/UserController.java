@@ -24,7 +24,7 @@ public class UserController {
         accounts.approve(id,sessions.current().id());return Map.of("success",true);
     }
     @PostMapping("/users/{id}/password") public AccountStore.Temporary password(@PathVariable String id) {
-        var user=accounts.find(id);if(user==null) throw new IllegalArgumentException("Usuario inexistente");return accounts.recover(user.username(),false);
+        var user=accounts.find(id);if(user==null) throw new com.rlibanez.eplsync.exception.UserInputException("Usuario inexistente");return accounts.recover(user.username(),false);
     }
     public record Delete(@jakarta.validation.constraints.AssertTrue boolean confirm) {}
     @DeleteMapping("/users/{id}") public Map<String,Boolean> delete(@PathVariable String id,@Valid @RequestBody Delete input) {

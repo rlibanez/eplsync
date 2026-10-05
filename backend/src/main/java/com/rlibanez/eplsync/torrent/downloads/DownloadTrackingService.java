@@ -141,7 +141,7 @@ public class DownloadTrackingService {
         if (request == null || request.eplId() == null || request.eplId() <= 0
                 || request.revision() == null || !Double.isFinite(request.revision()) || request.revision() <= 0
                 || request.hash() == null || !request.hash().matches("(?i)([0-9a-f]{40}|[0-9a-f]{64})"))
-            throw new IllegalArgumentException("EPL ID, revisión y hash válidos son obligatorios");
+            throw new com.rlibanez.eplsync.exception.UserInputException("EPL ID, revisión y hash válidos son obligatorios");
         return exclusive(() -> {
             if (!instanceId().equals(request.clientInstanceId()))
                 throw new TorrentOperationException(HttpStatus.CONFLICT, "El cliente ha cambiado; vuelve a sincronizar");

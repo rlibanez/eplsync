@@ -86,8 +86,8 @@ public class CatalogImportController {
         var mode = request.dryRun() ? CatalogImportService.Mode.PREVIEW : CatalogImportService.Mode.UPDATE;
         if (request.source() == Source.SAVED) {
             if (request.page() != null || request.size() != null || Boolean.TRUE.equals(request.includeDetails()))
-                throw new IllegalArgumentException("El detalle paginado solo se admite al previsualizar una URL");
-            if (request.archiveId() == null || request.archiveId().isBlank()) throw new IllegalArgumentException("Falta archiveId");
+                throw new com.rlibanez.eplsync.exception.UserInputException("El detalle paginado solo se admite al previsualizar una URL");
+            if (request.archiveId() == null || request.archiveId().isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("Falta archiveId");
             return catalogImportService.runSaved(request.archiveId(), mode);
         }
         String url = validateUrl(request.url());
@@ -96,7 +96,7 @@ public class CatalogImportController {
             return Boolean.TRUE.equals(request.includeDetails()) ? preview : preview.summary();
         }
         if (request.page() != null || request.size() != null || Boolean.TRUE.equals(request.includeDetails()))
-            throw new IllegalArgumentException("El detalle paginado solo se admite al previsualizar una URL");
+            throw new com.rlibanez.eplsync.exception.UserInputException("El detalle paginado solo se admite al previsualizar una URL");
         return catalogImportService.updateCatalog(url);
     }
     public record UploadRequest(boolean dryRun) {}

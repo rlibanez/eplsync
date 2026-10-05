@@ -62,6 +62,8 @@ public class GlobalExceptionHandler {
             IllegalArgumentException ex,
             HttpServletRequest request) {
 
+        if (!(ex instanceof UserInputException))
+            return incident(HttpStatus.BAD_REQUEST,"Solicitud inválida","Los parámetros proporcionados no son válidos",ex,request);
         String details = getMessageOrDefault(ex, "Los parámetros proporcionados no son válidos");
         log.warn("Solicitud inválida: {}", details);
 
@@ -103,23 +105,20 @@ public class GlobalExceptionHandler {
             CatalogImportInterruptedException ex,
             HttpServletRequest request) {
 
-        log.error("Importación interrumpida", ex);
-
-        String details = getMessageOrDefault(ex, "La importación fue interrumpida");
+        log.debug("Importación interrumpida: {}",ex.getClass().getSimpleName());
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(buildError(HttpStatus.SERVICE_UNAVAILABLE, "Proceso interrumpido", details, request));
+            .body(buildError(HttpStatus.SERVICE_UNAVAILABLE,"Proceso interrumpido","La operación de importación fue interrumpida",request));
     }
 
     @ExceptionHandler(CatalogImportException.class)
-    public ResponseEntity<ErrorResponse> handleCatalogImport(
-            CatalogImportException ex,
-            HttpServletRequest request) {
-
-        log.error("Error de importación", ex);
-
-        String details = getMessageOrDefault(ex, "No se pudo importar el catálogo");
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(buildError(HttpStatus.INTERNAL_SERVER_ERROR, "Error de importación", details, request));
+    public ResponseEntity<ErrorResponse> handleCatalogImport(CatalogImportException ex,HttpServletRequest request) {
+        // Only our download rejections contain deliberately authored public messages.
+        if(ex.getCause() instanceof CatalogDownloadException rejected) {
+            log.warn("Descarga del catálogo rechazada: {}",rejected.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildError(HttpStatus.INTERNAL_SERVER_ERROR,"Error de importación",rejected.getMessage(),request));
+        }
+        return incident(HttpStatus.INTERNAL_SERVER_ERROR,"Error de importación","No se pudo importar el catálogo",ex,request);
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
@@ -127,8 +126,8 @@ public class GlobalExceptionHandler {
             HttpRequestMethodNotSupportedException ex,
             HttpServletRequest request) {
 
-        String details = ex.getMessage(); 
-        log.warn("Método HTTP no permitido: {}", details);
+        String details = "El método HTTP no está permitido para este recurso";
+        log.warn("Método HTTP no permitido");
 
         return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
                 .body(buildError(HttpStatus.METHOD_NOT_ALLOWED, "Método no permitido", details, request));
@@ -156,8 +155,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({org.springframework.web.multipart.support.MissingServletRequestPartException.class,
             org.springframework.web.bind.MissingServletRequestParameterException.class})
     public ResponseEntity<ErrorResponse> handleMissingInput(Exception ex, HttpServletRequest request) {
+        String field=ex instanceof org.springframework.web.multipart.support.MissingServletRequestPartException part
+            ? part.getRequestPartName() : ((org.springframework.web.bind.MissingServletRequestParameterException)ex).getParameterName();
         return ResponseEntity.badRequest().body(buildError(HttpStatus.BAD_REQUEST,
-                "Solicitud inválida", ex.getMessage(), request));
+                "Solicitud inválida", "Falta el campo obligatorio: " + field, request));
     }
 
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
@@ -210,11 +211,16 @@ public class GlobalExceptionHandler {
             Exception ex,
             HttpServletRequest request) {
 
-        log.error("Error inesperado", ex);
+        return incident(HttpStatus.INTERNAL_SERVER_ERROR,"Error inesperado","Ha ocurrido un error inesperado",ex,request);
+    }
 
-        String details = "Ha ocurrido un error inesperado";
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(buildError(HttpStatus.INTERNAL_SERVER_ERROR, "Error inesperado", details, request));
+    private ResponseEntity<ErrorResponse> incident(HttpStatus status,String message,String publicDetails,
+            Exception ex,HttpServletRequest request) {
+        String id=java.util.UUID.randomUUID().toString();
+        log.error("Error de aplicación: incidencia={}",id,ex);
+        return ResponseEntity.status(status).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .header("X-Incident-ID",id)
+            .body(new ErrorResponse(status.value(),message,publicDetails+". Referencia: "+id,request.getRequestURI(),id));
     }
 
     private void resetDownloadResponse(jakarta.servlet.http.HttpServletResponse response) {

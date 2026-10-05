@@ -13,7 +13,7 @@ public final class QBittorrentDestination {
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
             if (!(scheme.equals("http") || scheme.equals("https")) || uri.getHost() == null
                     || uri.getUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null
-                    || uri.getPort() == 0 || uri.getPort() > 65535) throw new IllegalArgumentException();
+                    || uri.getPort() == 0 || uri.getPort() > 65535) throw new com.rlibanez.eplsync.exception.UserInputException();
             String host = uri.getHost().toLowerCase(Locale.ROOT);
             int port = uri.getPort();
             if ((scheme.equals("http") && port == 80) || (scheme.equals("https") && port == 443)) port = -1;
@@ -21,7 +21,7 @@ public final class QBittorrentDestination {
             return scheme + "://" + host + (port == -1 ? "" : ":" + port) + path;
         } catch (RuntimeException ex) {
             // Never include a rejected URL: it may contain a password in user-info.
-            throw new IllegalArgumentException("El destino de qBittorrent debe ser una URL HTTP(S) con host y puerto válidos, sin credenciales, query ni fragmento");
+            throw new com.rlibanez.eplsync.exception.UserInputException("El destino de qBittorrent debe ser una URL HTTP(S) con host y puerto válidos, sin credenciales, query ni fragmento");
         }
     }
 }

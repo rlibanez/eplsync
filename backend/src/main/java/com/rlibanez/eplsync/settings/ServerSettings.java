@@ -132,7 +132,7 @@ public class ServerSettings {
     }
     private List<Definition> section(String section) {
         var fields = definitions.stream().filter(f -> f.section().equals(section)).toList();
-        if (fields.isEmpty()) throw new IllegalArgumentException("Apartado de ajustes desconocido");
+        if (fields.isEmpty()) throw new com.rlibanez.eplsync.exception.UserInputException("Apartado de ajustes desconocido");
         return fields;
     }
     public synchronized View view(String section) {
@@ -148,7 +148,7 @@ public class ServerSettings {
         Map<String, Object> next = new LinkedHashMap<>(overrides);
         for (var entry : values.entrySet()) {
             var field = fields.stream().filter(f -> f.key().equals(entry.getKey())).findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Ajuste desconocido para este apartado"));
+                .orElseThrow(() -> new com.rlibanez.eplsync.exception.UserInputException("Ajuste desconocido para este apartado"));
             Object value = entry.getValue();
             if (value == null) { next.remove(field.key()); continue; }
             boolean valid = switch (field.type()) {
@@ -157,7 +157,7 @@ public class ServerSettings {
                 case "list" -> value instanceof List<?> list && list.size() <= 100 && list.stream().allMatch(v -> v instanceof String s && s.length() <= 2048);
                 default -> value instanceof String s && s.length() <= 4096;
             };
-            if (!valid) throw new IllegalArgumentException("Tipo o tamaño de ajuste inválido: " + field.key());
+            if (!valid) throw new com.rlibanez.eplsync.exception.UserInputException("Tipo o tamaño de ajuste inválido: " + field.key());
             if (value instanceof List<?> list) value = list.stream().map(v -> ((String) v).trim()).filter(v -> !v.isEmpty()).toList();
             next.put(field.key(), value);
         }
@@ -221,7 +221,7 @@ public class ServerSettings {
         String target = destination(values);
         if (CREDENTIALS.stream().anyMatch(key -> values.containsKey(key) && !String.valueOf(values.get(key)).isBlank())
                 && !target.equals(values.get(DESTINATION))) {
-            throw new IllegalArgumentException("Las credenciales de qBittorrent no corresponden al destino configurado");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Las credenciales de qBittorrent no corresponden al destino configurado");
         }
         if (!target.equals(destination(Map.of()))) {
             CREDENTIALS.forEach(key -> { if (!values.containsKey(key)) merged.put(key, ""); });
@@ -240,21 +240,21 @@ public class ServerSettings {
             com.rlibanez.eplsync.importer.FileDownloader.validateUrl(url);
             // Validate even while disabled, so enabling later cannot publish invalid options.
             boolean enabled = t.isEnabled(); t.setEnabled(true); t.validate(); t.setEnabled(enabled);
-            if (!t.getClient().equals(installation.get("torrent.client"))) throw new IllegalArgumentException();
+            if (!t.getClient().equals(installation.get("torrent.client"))) throw new com.rlibanez.eplsync.exception.UserInputException();
             if (enabled && t.getClient().equals("qbittorrent")) q.validate();
-            if (q.getDownload().getCategory().chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException();
+            if (q.getDownload().getCategory().chars().anyMatch(Character::isISOControl)) throw new com.rlibanez.eplsync.exception.UserInputException();
             new com.rlibanez.eplsync.torrent.TorrentNameResolver().resolveTags(q.getDownload().getTags(), new com.rlibanez.eplsync.model.CatalogBook());
-            if (!i.isRetentionValid() || !c.isTimeoutConfigurationValid() || c.getConcurrency() < 1 || c.getConcurrency() > 32) throw new IllegalArgumentException();
+            if (!i.isRetentionValid() || !c.isTimeoutConfigurationValid() || c.getConcurrency() < 1 || c.getConcurrency() > 32) throw new com.rlibanez.eplsync.exception.UserInputException();
             var b = t.getBulk();
             if (b.getBatchSize() < 1 || b.getBatchSize() > 1000 || b.getConcurrency() < 1 || b.getConcurrency() > 16 || b.getMultipleHashes() == null
-                || b.getInterval().isNegative() || b.getInterval().compareTo(Duration.ofSeconds(60)) > 0) throw new IllegalArgumentException();
-            if (t.getConnectTimeout().compareTo(Duration.ofMinutes(5)) > 0 || t.getRequestTimeout().compareTo(Duration.ofMinutes(5)) > 0) throw new IllegalArgumentException();
-            if (e.getRetention().getMaxCount() < 1 || e.getRetention().getMaxAgeDays() < 1) throw new IllegalArgumentException();
+                || b.getInterval().isNegative() || b.getInterval().compareTo(Duration.ofSeconds(60)) > 0) throw new com.rlibanez.eplsync.exception.UserInputException();
+            if (t.getConnectTimeout().compareTo(Duration.ofMinutes(5)) > 0 || t.getRequestTimeout().compareTo(Duration.ofMinutes(5)) > 0) throw new com.rlibanez.eplsync.exception.UserInputException();
+            if (e.getRetention().getMaxCount() < 1 || e.getRetention().getMaxAgeDays() < 1) throw new com.rlibanez.eplsync.exception.UserInputException();
             com.rlibanez.eplsync.torrent.TorrentNameResolver.validatePattern(t.getRename().getPattern());
             return new Snapshot(t,q,i,c,e,url);
         } catch (RuntimeException ex) {
             // Binding exceptions may contain the rejected credential. Never expose their cause or value.
-            throw new IllegalArgumentException("Configuración inválida. Revisa las URL, credenciales, patrones, límites y tiempos de espera (portadas: conexión <= petición <= lote). ");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Configuración inválida. Revisa las URL, credenciales, patrones, límites y tiempos de espera (portadas: conexión <= petición <= lote). ");
         }
     }
 }

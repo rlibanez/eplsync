@@ -29,13 +29,13 @@ public class TorrentRenameService {
     public TorrentRenameResult rename(Long eplId, String hash) {
         client.requireRenameEnabled();
         if (!hash.matches("(?i)([0-9a-f]{40}|[a-z2-7]{32})")) {
-            throw new IllegalArgumentException("El hash debe ser hexadecimal de 40 caracteres o Base32 de 32");
+            throw new com.rlibanez.eplsync.exception.UserInputException("El hash debe ser hexadecimal de 40 caracteres o Base32 de 32");
         }
         var book = repository.findById(eplId).orElseThrow(() ->
                 new TorrentOperationException(HttpStatus.NOT_FOUND, "El libro no existe en el catálogo"));
         String normalizedHash = magnets.hashes(hash).getFirst();
         if (!magnets.hashes(book.getLinks()).contains(normalizedHash)) {
-            throw new IllegalArgumentException("El hash no pertenece a los enlaces del libro");
+            throw new com.rlibanez.eplsync.exception.UserInputException("El hash no pertenece a los enlaces del libro");
         }
         String name = names.resolve(properties.getRename().getPattern(), book);
         client.renameTorrent(normalizedHash, name);

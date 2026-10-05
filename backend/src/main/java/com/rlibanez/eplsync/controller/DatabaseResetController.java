@@ -16,9 +16,9 @@ public class DatabaseResetController {
     @PostMapping("/reset")
     public DatabaseResetService.ResetResult reset(@Valid @RequestBody Confirmation confirmation) {
         if (!Boolean.TRUE.equals(confirmation.confirm()))
-            throw new IllegalArgumentException("Se requiere confirm=true para reiniciar la base de datos");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Se requiere confirm=true para reiniciar la base de datos");
         if (Boolean.TRUE.equals(confirmation.eraseUsersAndSettings()) && !"BORRAR TODO".equals(confirmation.fullResetConfirmation()))
-            throw new IllegalArgumentException("Escribe BORRAR TODO para confirmar el reinicio completo");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Escribe BORRAR TODO para confirmar el reinicio completo");
         return service.reset(Boolean.TRUE.equals(confirmation.eraseUsersAndSettings()));
     }
 }

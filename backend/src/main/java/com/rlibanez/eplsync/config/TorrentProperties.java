@@ -81,7 +81,7 @@ public class TorrentProperties {
     }
 
     private IllegalArgumentException invalid(String message) {
-        return new IllegalArgumentException("Configuración torrent: " + message);
+        return new com.rlibanez.eplsync.exception.UserInputException("Configuración torrent: " + message);
     }
 
     public void setTrackers(List<String> trackers) {
@@ -96,7 +96,7 @@ public class TorrentProperties {
                 || uri.getHost() == null || uri.getUserInfo() != null || uri.getFragment() != null
                 || uri.getPort() > 65535 || uri.getPort() == 0
                 || (uri.getScheme().equalsIgnoreCase("udp") && uri.getPort() < 1)) {
-            throw new IllegalArgumentException("Tracker inválido: se requiere una URL HTTP(S) o UDP con puerto válido");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Tracker inválido: se requiere una URL HTTP(S) o UDP con puerto válido");
         }
     }
 }

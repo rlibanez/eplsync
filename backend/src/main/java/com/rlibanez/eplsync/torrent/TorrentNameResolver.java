@@ -31,17 +31,17 @@ public class TorrentNameResolver {
 
     private static void validatePattern(String pattern, String label) {
         if (pattern == null || pattern.isBlank() || pattern.chars().anyMatch(Character::isISOControl)) {
-            throw new IllegalArgumentException(label + " no puede estar vacío ni contener caracteres de control");
+            throw new com.rlibanez.eplsync.exception.UserInputException(label + " no puede estar vacío ni contener caracteres de control");
         }
         Matcher matcher = TOKEN.matcher(pattern);
         while (matcher.find()) {
             if (!FIELDS.containsKey(matcher.group(1))) {
-                throw new IllegalArgumentException(label + " contiene un campo que no existe en CatalogBook: " + matcher.group(1));
+                throw new com.rlibanez.eplsync.exception.UserInputException(label + " contiene un campo que no existe en CatalogBook: " + matcher.group(1));
             }
         }
         String literals = matcher.replaceAll("");
         if (literals.contains("{") || literals.contains("}")) {
-            throw new IllegalArgumentException(label + " tiene llaves inválidas");
+            throw new com.rlibanez.eplsync.exception.UserInputException(label + " tiene llaves inválidas");
         }
     }
 
@@ -49,23 +49,23 @@ public class TorrentNameResolver {
         validatePattern(pattern);
         String name = expand(pattern, book);
         name = name.replaceAll("[\\p{Cc}\\p{Zl}\\p{Zp}]", " ").strip();
-        if (name.isBlank()) throw new IllegalArgumentException("El patrón genera un nombre de torrent vacío");
+        if (name.isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("El patrón genera un nombre de torrent vacío");
         return name;
     }
 
     /** Cada entrada sigue siendo una etiqueta; nunca se divide por comas. */
     public java.util.List<String> resolveTags(java.util.List<String> patterns, CatalogBook book) {
-        if (patterns == null) throw new IllegalArgumentException("tags debe ser una lista");
+        if (patterns == null) throw new com.rlibanez.eplsync.exception.UserInputException("tags debe ser una lista");
         var tags = new java.util.LinkedHashSet<String>();
         for (String pattern : patterns) {
-            if (pattern == null) throw new IllegalArgumentException("tags no admite elementos null");
+            if (pattern == null) throw new com.rlibanez.eplsync.exception.UserInputException("tags no admite elementos null");
             if (pattern.isBlank() && pattern.codePoints().noneMatch(Character::isISOControl)) continue;
             validatePattern(pattern, "tags");
             String tag = expand(pattern, book).strip();
             if (tag.contains(",") || tag.codePoints().anyMatch(c -> Character.isISOControl(c)
                     || Character.getType(c) == Character.LINE_SEPARATOR
                     || Character.getType(c) == Character.PARAGRAPH_SEPARATOR))
-                throw new IllegalArgumentException("Las etiquetas resueltas no pueden contener comas ni caracteres de control");
+                throw new com.rlibanez.eplsync.exception.UserInputException("Las etiquetas resueltas no pueden contener comas ni caracteres de control");
             if (!tag.isBlank()) tags.add(tag);
         }
         return java.util.List.copyOf(tags);

@@ -19,7 +19,7 @@ public class EventStream {
     private final ExecutorService writers = Executors.newVirtualThreadPerTaskExecutor();
     public EventStream(EventJournal journal) { this.journal = journal; }
     public SseEmitter connect(Long after) {
-        if (after != null && after < 0) throw new IllegalArgumentException("Last-Event-ID debe ser positivo");
+        if (after != null && after < 0) throw new com.rlibanez.eplsync.exception.UserInputException("Last-Event-ID debe ser positivo");
         if (!slots.tryAcquire()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Demasiadas conexiones de eventos");
         var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();

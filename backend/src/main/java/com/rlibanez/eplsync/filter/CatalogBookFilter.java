@@ -118,28 +118,28 @@ public class CatalogBookFilter {
     public void normalize() {
         for (Long[] ids : new Long[][]{selectedIds, excludedIds}) {
             if (ids != null && ids.length > com.rlibanez.eplsync.config.QueryLimits.MAX_SELECTION_IDS)
-                throw new IllegalArgumentException("Máximo de 10000 identificadores por selección");
+                throw new com.rlibanez.eplsync.exception.UserInputException("Máximo de 10000 identificadores por selección");
             if (ids != null && java.util.Arrays.stream(ids).anyMatch(id -> id == null || id < 1))
-                throw new IllegalArgumentException("Los identificadores seleccionados deben ser positivos");
+                throw new com.rlibanez.eplsync.exception.UserInputException("Los identificadores seleccionados deben ser positivos");
         }
 
         if (eplId != null && java.util.Arrays.stream(eplId).anyMatch(v -> v == null || v < 1))
-            throw new IllegalArgumentException("eplId debe ser un entero mayor que cero");
+            throw new com.rlibanez.eplsync.exception.UserInputException("eplId debe ser un entero mayor que cero");
         eplId = compact(eplId); revision = compact(revision);
         language = compact(language); publicationStatus = compact(publicationStatus);
 
         if (revision != null && java.util.Arrays.stream(revision).anyMatch(v -> v == null || !Double.isFinite(v) || v < 0))
-            throw new IllegalArgumentException("revision debe ser un número finito mayor o igual a cero");
+            throw new com.rlibanez.eplsync.exception.UserInputException("revision debe ser un número finito mayor o igual a cero");
         if ((pagesFrom != null && pagesFrom < 0) || (pagesTo != null && pagesTo < 0))
-            throw new IllegalArgumentException("Los límites de páginas deben ser >= 0");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Los límites de páginas deben ser >= 0");
         if (pagesFrom != null && pagesTo != null && pagesFrom > pagesTo)
-            throw new IllegalArgumentException("pagesFrom debe ser <= pagesTo");
+            throw new com.rlibanez.eplsync.exception.UserInputException("pagesFrom debe ser <= pagesTo");
         if (publicationYearFrom != null && publicationYearTo != null && publicationYearFrom > publicationYearTo)
-            throw new IllegalArgumentException("publicationYearFrom debe ser <= publicationYearTo");
+            throw new com.rlibanez.eplsync.exception.UserInputException("publicationYearFrom debe ser <= publicationYearTo");
         if (publicationDateFrom != null && publicationDateTo != null && publicationDateFrom.isAfter(publicationDateTo))
-            throw new IllegalArgumentException("publicationDateFrom debe ser <= publicationDateTo");
+            throw new com.rlibanez.eplsync.exception.UserInputException("publicationDateFrom debe ser <= publicationDateTo");
         if (insertDateFrom != null && insertDateBefore != null && !insertDateFrom.isBefore(insertDateBefore))
-            throw new IllegalArgumentException("insertDateFrom debe ser anterior a insertDateBefore");
+            throw new com.rlibanez.eplsync.exception.UserInputException("insertDateFrom debe ser anterior a insertDateBefore");
         author = norm(author, 255);
         title = norm(title, 512);
         genres = norm(genres, 512);
@@ -148,9 +148,9 @@ public class CatalogBookFilter {
 
     private static <T> T[] compact(T[] values) {
         if (values == null || values.length == 0) return null;
-        if (values.length > 100) throw new IllegalArgumentException("Máximo de 100 valores por campo");
+        if (values.length > 100) throw new com.rlibanez.eplsync.exception.UserInputException("Máximo de 100 valores por campo");
         if (java.util.Arrays.stream(values).anyMatch(java.util.Objects::isNull))
-            throw new IllegalArgumentException("Los filtros no admiten valores null");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Los filtros no admiten valores null");
         return values;
     }
     private String[] norm(String[] values, int limit) {
@@ -158,7 +158,7 @@ public class CatalogBookFilter {
         if (values == null) return null;
         var result = java.util.Arrays.stream(values).map(value -> Objects.requireNonNull(value).trim()).filter(v -> !v.isEmpty()).distinct().toArray(String[]::new);
         if (java.util.Arrays.stream(result).anyMatch(v -> v.length() > limit))
-            throw new IllegalArgumentException("Texto de filtro demasiado largo");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Texto de filtro demasiado largo");
         return result.length == 0 ? null : result;
     }
 }

@@ -23,11 +23,11 @@ public class UpdateController {
         var input = com.rlibanez.eplsync.api.OperationBody.read(body, TorrentOperationRequest.class, request);
         log.info("Solicitud torrent: dryRun={}, filtros={}", input.dryRun(), SelectionQueries.safeLog(input.filters()));
         if (input.detailPage()!=null || input.detailSize()!=null || input.includeDetails() != null || input.selection() != null || input.all() != null || input.sort() != null)
-            throw new IllegalArgumentException("selection, all y sort no se admiten en updates");
+            throw new com.rlibanez.eplsync.exception.UserInputException("selection, all y sort no se admiten en updates");
         if (input.dryRun()) com.rlibanez.eplsync.config.QueryLimits.page(input.pageNumber(), input.pageSize());
         if (input.dryRun()) return ResponseEntity.ok(planner.previewPage(input.filter(),
                 Boolean.TRUE.equals(input.includeNotFound()), input.multipleHashes(), UpdatePlanner.Selection.UPDATES,input.pageNumber(),input.pageSize()));
-        if (input.paginated()) throw new IllegalArgumentException("page y size solo paginan la previsualización");
+        if (input.paginated()) throw new com.rlibanez.eplsync.exception.UserInputException("page y size solo paginan la previsualización");
         synchronized (bulk) {
             var job = planner.create(input.filter(), Boolean.TRUE.equals(input.includeNotFound()), input.update(), UpdatePlanner.Selection.UPDATES);
             return ResponseEntity.accepted().location(URI.create("/api/torrent/jobs/" + job.jobId())).body(job);
@@ -69,7 +69,7 @@ public class UpdateController {
         var names = java.util.Set.of(allowed);
         params.forEach((key, values) -> {
             if (!names.contains(key) || values.size() != 1 || values.getFirst().isBlank())
-                throw new IllegalArgumentException("Parámetro desconocido, vacío o repetido: " + key);
+                throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido, vacío o repetido: " + key);
         });
     }
 

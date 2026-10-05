@@ -19,16 +19,16 @@ public class BulkController {
             jakarta.servlet.http.HttpServletRequest request) {
         var allowed = java.util.Set.of("page", "size", "status");
         if (!allowed.containsAll(request.getParameterMap().keySet()))
-            throw new IllegalArgumentException("Parámetro desconocido; se admiten page, size y status");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size y status");
         for (var values : request.getParameterMap().values())
-            if (values.length != 1 || values[0].isBlank()) throw new IllegalArgumentException("Parámetro vacío o repetido");
+            if (values.length != 1 || values[0].isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro vacío o repetido");
         java.util.List<BulkJob.State> states = null;
         if (status != null) {
             try {
                 states = java.util.Arrays.stream(status.split(",", -1))
                         .map(value -> Objects.requireNonNull(value).trim()).map(BulkJob.State::valueOf).distinct().toList();
             } catch (IllegalArgumentException ex) {
-                throw new IllegalArgumentException("status debe contener estados de job válidos separados por comas");
+                throw new com.rlibanez.eplsync.exception.UserInputException("status debe contener estados de job válidos separados por comas");
             }
         }
         synchronized (store) { return store.list(page, size, states); }
@@ -44,16 +44,16 @@ public class BulkController {
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
             @RequestParam(required = false) String status, jakarta.servlet.http.HttpServletRequest request) {
         if (!java.util.Set.of("page", "size", "status").containsAll(request.getParameterMap().keySet()))
-            throw new IllegalArgumentException("Parámetro desconocido; se admiten page, size y status");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size y status");
         for (var values : request.getParameterMap().values())
-            if (values.length != 1 || values[0].isBlank()) throw new IllegalArgumentException("Parámetro vacío o repetido");
+            if (values.length != 1 || values[0].isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro vacío o repetido");
         java.util.List<BulkItem.State> states = null;
         if (status != null) {
             try {
                 states = java.util.Arrays.stream(status.split(",", -1)).map(value -> Objects.requireNonNull(value).trim())
                         .map(BulkItem.State::valueOf).distinct().toList();
             } catch (IllegalArgumentException ex) {
-                throw new IllegalArgumentException("status debe contener estados de elemento válidos separados por comas");
+                throw new com.rlibanez.eplsync.exception.UserInputException("status debe contener estados de elemento válidos separados por comas");
             }
         }
         synchronized (store) { return store.details(id, page, size, states); }

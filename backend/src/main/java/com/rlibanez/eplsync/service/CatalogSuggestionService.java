@@ -29,7 +29,7 @@ public class CatalogSuggestionService {
     public Result suggest(String kind, String query, int offset) {
         if (!Set.of("titles", "authors", "collections", "genres").contains(kind)
                 || query.length() > 512 || offset < 0)
-            throw new IllegalArgumentException("Sugerencia, búsqueda o desplazamiento inválidos");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Sugerencia, búsqueda o desplazamiento inválidos");
         String needle = normalize(query.strip());
         if (needle.length() < 2) return new Result(List.of(), 0, null);
         var matches = values(kind).stream().filter(v -> v.normalized().contains(needle)).toList();
@@ -44,7 +44,7 @@ public class CatalogSuggestionService {
                 case "authors" -> "author";
                 case "collections" -> "collection";
                 case "genres" -> "genres";
-                default -> throw new IllegalArgumentException("Campo inválido");
+                default -> throw new com.rlibanez.eplsync.exception.UserInputException("Campo inválido");
             };
             var source = em.createQuery("select distinct b." + field + " from CatalogBook b where b." + field + " is not null", String.class)
                 .getResultList();

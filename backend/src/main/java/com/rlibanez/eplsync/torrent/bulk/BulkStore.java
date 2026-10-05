@@ -89,7 +89,7 @@ public class BulkStore {
         client.requireEnabled();
         filter.normalize();
         if (!paginated && !all && !hasFilter(filter))
-            throw new IllegalArgumentException("Sin filtros ni paginación se requiere all=true");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Sin filtros ni paginación se requiere all=true");
         var input = request == null ? new BulkRequest(null, null, null, null) : request;
         var job = newJob(input, !dryRun);
         var policy = job.getMultipleHashes();
@@ -109,7 +109,7 @@ public class BulkStore {
         long totalBooks = paginated
             ? Math.max(0, Math.min(matchingBooks - offset, pageable.getPageSize()))
             : matchingBooks;
-        if (!dryRun && totalBooks == 0) throw new IllegalArgumentException("No hay libros que coincidan con los filtros");
+        if (!dryRun && totalBooks == 0) throw new com.rlibanez.eplsync.exception.UserInputException("No hay libros que coincidan con los filtros");
         long position = 0;
         long selectedBooks = 0;
         int lastProgressCheckpoint = 0;
@@ -131,7 +131,7 @@ public class BulkStore {
             var orders = new ArrayList<jakarta.persistence.criteria.Order>();
             for (var order : sort) orders.add(order.isAscending() ? criteria.asc(root.get(order.getProperty())) : criteria.desc(root.get(order.getProperty())));
             query.orderBy(orders);
-            if (offset > Integer.MAX_VALUE) throw new IllegalArgumentException("Paginación fuera de rango");
+            if (offset > Integer.MAX_VALUE) throw new com.rlibanez.eplsync.exception.UserInputException("Paginación fuera de rango");
             var batch = em.createQuery(query).setFirstResult((int) offset).setMaxResults(size).getResultList();
             if (batch.isEmpty()) break;
             for (var book : batch) {
@@ -201,22 +201,22 @@ public class BulkStore {
     private BulkJob newJob(BulkRequest input) { return newJob(input, true); }
     private BulkJob newJob(BulkRequest input, boolean persist) {
         if (input.options() != null && input.options().hash() != null)
-            throw new IllegalArgumentException("Bulk selecciona el hash de cada libro; no admite options.hash");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Bulk selecciona el hash de cada libro; no admite options.hash");
         int batchSize = input.batchSize() == null ? properties.getBulk().getBatchSize() : input.batchSize();
         int concurrency = input.concurrency() == null ? properties.getBulk().getConcurrency() : input.concurrency();
         var policy = input.multipleHashes() == null ? properties.getBulk().getMultipleHashes() : input.multipleHashes();
-        if (policy == null) throw new IllegalArgumentException("multipleHashes debe ser all, skip o first");
+        if (policy == null) throw new com.rlibanez.eplsync.exception.UserInputException("multipleHashes debe ser all, skip o first");
         long interval;
         try {
             var duration = input.interval() == null ? properties.getBulk().getInterval()
                     : DurationStyle.detectAndParse(input.interval());
             if (duration.isNegative() || duration.compareTo(java.time.Duration.ofSeconds(60)) > 0)
-                throw new IllegalArgumentException("interval fuera de rango");
+                throw new com.rlibanez.eplsync.exception.UserInputException("interval fuera de rango");
             interval = duration.toMillis();
-        } catch (RuntimeException ex) { throw new IllegalArgumentException("interval debe ser una duración como 500ms o 2s"); }
-        if (batchSize < 1 || batchSize > 1000) throw new IllegalArgumentException("batchSize debe estar entre 1 y 1000");
-        if (concurrency < 1 || concurrency > 16) throw new IllegalArgumentException("concurrency debe estar entre 1 y 16");
-        if (interval < 0 || interval > 60_000) throw new IllegalArgumentException("interval debe estar entre 0ms y 60s");
+        } catch (RuntimeException ex) { throw new com.rlibanez.eplsync.exception.UserInputException("interval debe ser una duración como 500ms o 2s"); }
+        if (batchSize < 1 || batchSize > 1000) throw new com.rlibanez.eplsync.exception.UserInputException("batchSize debe estar entre 1 y 1000");
+        if (concurrency < 1 || concurrency > 16) throw new com.rlibanez.eplsync.exception.UserInputException("concurrency debe estar entre 1 y 16");
+        if (interval < 0 || interval > 60_000) throw new com.rlibanez.eplsync.exception.UserInputException("interval debe estar entre 0ms y 60s");
         var job = new BulkJob();
         job.setEventOrigin(com.rlibanez.eplsync.events.EventContext.origin().name());
         job.setId(UUID.randomUUID().toString()); job.setState(BulkJob.State.QUEUED);
@@ -275,7 +275,7 @@ public class BulkStore {
     private void validateSort(Sort sort) {
         var bean = new BeanWrapperImpl(com.rlibanez.eplsync.model.CatalogBook.class);
         for (var order : sort) if (order.getProperty().equals("class") || order.getProperty().contains(".")
-                || !bean.isReadableProperty(order.getProperty())) throw new IllegalArgumentException("Campo sort inválido");
+                || !bean.isReadableProperty(order.getProperty())) throw new com.rlibanez.eplsync.exception.UserInputException("Campo sort inválido");
     }
 
     @Transactional(readOnly = true)
@@ -341,7 +341,7 @@ public class BulkStore {
                 job.setState(BulkJob.State.CANCELLED);
                 items.transition(id, BulkItem.State.PENDING, BulkItem.State.CANCELLED);
             }
-            default -> throw new IllegalArgumentException("Acción desconocida");
+            default -> throw new com.rlibanez.eplsync.exception.UserInputException("Acción desconocida");
         }
         job.setUpdatedAt(Instant.now()); jobs.saveAndFlush(job);
         if (previousState != job.getState()) event(job, switch (action) {
@@ -440,6 +440,8 @@ public class BulkStore {
         catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
     static String safeMessage(Exception ex) {
+        if(!(ex instanceof com.rlibanez.eplsync.exception.UserInputException)
+                && !(ex instanceof TorrentOperationException)) return "No se pudo completar la operación torrent";
         String message = ex.getMessage();
         return message == null ? "Opciones inválidas" : message.substring(0, Math.min(500, message.length()));
     }

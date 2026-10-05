@@ -30,7 +30,7 @@ public class AccountStore {
         this.jdbc = jdbc; this.encoder = encoder;
         defaultPasswordMinimumLength = environment.getProperty("eplsync.security.password-min-length", Integer.class, 8);
         if (defaultPasswordMinimumLength < 8 || defaultPasswordMinimumLength > 128)
-            throw new IllegalArgumentException("La longitud mínima de contraseña debe estar entre 8 y 128");
+            throw new com.rlibanez.eplsync.exception.UserInputException("La longitud mínima de contraseña debe estar entre 8 y 128");
         dummyHash = encoder.encode(UUID.randomUUID().toString());
         jdbc.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -75,9 +75,9 @@ public class AccountStore {
     }
     @Transactional public void policy(Policy policy) {
         if (policy.idleMinutes() < 5 || policy.idleMinutes() > 1440 || policy.maximumHours() < 1 || policy.maximumHours() > 168)
-            throw new IllegalArgumentException("Límites de sesión inválidos");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Límites de sesión inválidos");
         if (policy.passwordMinimumLength() < 8 || policy.passwordMinimumLength() > 128)
-            throw new IllegalArgumentException("La longitud mínima de contraseña debe estar entre 8 y 128");
+            throw new com.rlibanez.eplsync.exception.UserInputException("La longitud mínima de contraseña debe estar entre 8 y 128");
         jdbc.update("UPDATE security_policy SET registration_enabled=?,approval_required=?,idle_minutes=?,maximum_hours=?,password_minimum_length=? WHERE id=1",
             policy.registrationEnabled(),policy.approvalRequired(),policy.idleMinutes(),policy.maximumHours(),policy.passwordMinimumLength());
     }
@@ -86,14 +86,14 @@ public class AccountStore {
     private static String normalized(String username) { return username.toLowerCase(Locale.ROOT); }
     private static void identity(String username, String email) {
         if (username == null || !username.matches("[A-Za-z0-9][A-Za-z0-9_.-]{2,63}"))
-            throw new IllegalArgumentException("El usuario debe tener entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo");
+            throw new com.rlibanez.eplsync.exception.UserInputException("El usuario debe tener entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo");
         if (email == null || email.length() > 254 || !email.equals(email.strip()) || email.chars().anyMatch(Character::isISOControl)
-                || !email.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) throw new IllegalArgumentException("Email inválido");
+                || !email.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) throw new com.rlibanez.eplsync.exception.UserInputException("Email inválido");
     }
     private void password(String password) {
         int minimum = policy().passwordMinimumLength();
         if (password == null || password.length() < minimum || password.length() > 256 || password.isBlank())
-            throw new IllegalArgumentException("La contraseña debe tener entre " + minimum + " y 256 caracteres");
+            throw new com.rlibanez.eplsync.exception.UserInputException("La contraseña debe tener entre " + minimum + " y 256 caracteres");
     }
     public Account find(String id) {
         var accounts = jdbc.query("SELECT * FROM users WHERE id=?", (r,n) -> {
@@ -122,10 +122,10 @@ public class AccountStore {
     }
     private String insert(String username,String email,String password,String role,String status,boolean temporary,Instant expiry,String actor) {
         identity(username,email); password(password);
-        if (!Set.of("ADMIN","USER").contains(role)) throw new IllegalArgumentException("Rol inválido");
+        if (!Set.of("ADMIN","USER").contains(role)) throw new com.rlibanez.eplsync.exception.UserInputException("Rol inválido");
         // Callers hold SQLite's write lock, so this check and insert cannot race.
         if (jdbc.queryForObject("SELECT count(*) FROM users WHERE username_normalized=?", Long.class, normalized(username)) > 0)
-            throw new IllegalArgumentException("El nombre de usuario no está disponible");
+            throw new com.rlibanez.eplsync.exception.UserInputException("El nombre de usuario no está disponible");
         String id=UUID.randomUUID().toString(), now=Instant.now().toString();
         try {
             jdbc.update("""
@@ -134,7 +134,7 @@ public class AccountStore {
               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
               """,id,username,normalized(username),email,encoder.encode(password),role,status,temporary,
                 expiry==null?null:expiry.toString(),now,now,status.equals("ACTIVE")?now:null,actor);
-        } catch (org.springframework.dao.DuplicateKeyException ex) { throw new IllegalArgumentException("El nombre de usuario no está disponible"); }
+        } catch (org.springframework.dao.DuplicateKeyException ex) { throw new com.rlibanez.eplsync.exception.UserInputException("El nombre de usuario no está disponible"); }
         audit("USER_CREATE",id,username,actor);
         return id;
     }
@@ -150,13 +150,13 @@ public class AccountStore {
     @Transactional public Account initialize(String username,String email,String password,String passwordConfirmation) {
         lockMutations();
         if (initialized()) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,"La instalación ya está inicializada");
-        if (!Objects.equals(password,passwordConfirmation)) throw new IllegalArgumentException("Las contraseñas no coinciden");
+        if (!Objects.equals(password,passwordConfirmation)) throw new com.rlibanez.eplsync.exception.UserInputException("Las contraseñas no coinciden");
         String id=insert(username,email,password,"ADMIN","ACTIVE",false,null,null);
         return find(id).authenticatedNow();
     }
     @Transactional public Temporary create(String username,String email,String role,String actor) {
         lockMutations();
-        if (!initialized()) throw new IllegalArgumentException("Crea primero el administrador desde la aplicación web");
+        if (!initialized()) throw new com.rlibanez.eplsync.exception.UserInputException("Crea primero el administrador desde la aplicación web");
         String secret=randomPassword(); Instant expiry=Instant.now().plusSeconds(86400);
         String id=insert(username,email,secret,role,"ACTIVE",true,expiry,actor);
         return new Temporary(view(id),secret,expiry);
@@ -167,11 +167,11 @@ public class AccountStore {
         var ids=byEmail ? jdbc.queryForList("SELECT id,email FROM users WHERE role='ADMIN'").stream()
             .filter(row -> ((String)row.get("email")).equalsIgnoreCase(identifier)).map(row -> (String)row.get("id")).toList()
             : jdbc.queryForList("SELECT id FROM users WHERE username_normalized=?",String.class,normalized(identifier));
-        if(ids.size()>1) throw new IllegalArgumentException("El email corresponde a varios administradores; utiliza el nombre de usuario");
-        if(ids.isEmpty()) throw new IllegalArgumentException("Usuario inexistente");
+        if(ids.size()>1) throw new com.rlibanez.eplsync.exception.UserInputException("El email corresponde a varios administradores; utiliza el nombre de usuario");
+        if(ids.isEmpty()) throw new com.rlibanez.eplsync.exception.UserInputException("Usuario inexistente");
         String id=ids.getFirst(); var a=find(id);
-        if(terminal && !a.role().equals("ADMIN")) throw new IllegalArgumentException("La herramienta de emergencia solo recupera administradores");
-        if(!a.status().equals("ACTIVE")) throw new IllegalArgumentException("La cuenta no está activa");
+        if(terminal && !a.role().equals("ADMIN")) throw new com.rlibanez.eplsync.exception.UserInputException("La herramienta de emergencia solo recupera administradores");
+        if(!a.status().equals("ACTIVE")) throw new com.rlibanez.eplsync.exception.UserInputException("La cuenta no está activa");
         String secret=randomPassword(); Instant expiry=Instant.now().plusSeconds(terminal?300:86400);
         jdbc.update("UPDATE users SET password_hash=?,must_change_password=1,temporary_password_expires_at=?,security_version=security_version+1,updated_at=? WHERE id=?",
             encoder.encode(secret),expiry.toString(),Instant.now().toString(),id);
@@ -182,8 +182,8 @@ public class AccountStore {
         lockMutations();
         password(newPassword);
         var a=authenticate(actor.username(),oldPassword);
-        if(a==null || a.securityVersion()!=actor.securityVersion()) throw new IllegalArgumentException("La contraseña actual no es válida");
-        if(oldPassword.equals(newPassword)) throw new IllegalArgumentException("Elige una contraseña diferente");
+        if(a==null || a.securityVersion()!=actor.securityVersion()) throw new com.rlibanez.eplsync.exception.UserInputException("La contraseña actual no es válida");
+        if(oldPassword.equals(newPassword)) throw new com.rlibanez.eplsync.exception.UserInputException("Elige una contraseña diferente");
         int changed=jdbc.update("UPDATE users SET password_hash=?,must_change_password=0,temporary_password_expires_at=NULL,password_changed_at=?,updated_at=?,security_version=security_version+1 WHERE id=? AND security_version=?",
             encoder.encode(newPassword),Instant.now().toString(),Instant.now().toString(),actor.id(),actor.securityVersion());
         if(changed!=1) throw new org.springframework.security.access.AccessDeniedException("La cuenta ha cambiado");
@@ -195,14 +195,14 @@ public class AccountStore {
     }
     @Transactional public void update(String id,String role,String status,Map<String,String> overrides,String actor) {
         lockMutations();
-        if(!Set.of("ADMIN","USER").contains(role)||!Set.of("ACTIVE","PENDING","DISABLED","REJECTED").contains(status)) throw new IllegalArgumentException("Rol o estado inválido");
-        var previous=find(id); if(previous==null) throw new IllegalArgumentException("Usuario inexistente");
+        if(!Set.of("ADMIN","USER").contains(role)||!Set.of("ACTIVE","PENDING","DISABLED","REJECTED").contains(status)) throw new com.rlibanez.eplsync.exception.UserInputException("Rol o estado inválido");
+        var previous=find(id); if(previous==null) throw new com.rlibanez.eplsync.exception.UserInputException("Usuario inexistente");
         if(previous.role().equals("ADMIN") && previous.status().equals("ACTIVE") && (!role.equals("ADMIN")||!status.equals("ACTIVE"))
                 && jdbc.queryForObject("SELECT count(*) FROM users WHERE role='ADMIN' AND status='ACTIVE'",Long.class)<=1)
-            throw new IllegalArgumentException("Debe permanecer al menos un administrador activo");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Debe permanecer al menos un administrador activo");
         if(overrides==null || overrides.size()>Permission.values().length || (role.equals("ADMIN")&&!overrides.isEmpty()))
-            throw new IllegalArgumentException("Excepciones de permisos inválidas");
-        overrides.forEach((key,value)-> { Permission.valueOf(key); if(!Set.of("ALLOW","DENY").contains(value)) throw new IllegalArgumentException("Excepción inválida"); });
+            throw new com.rlibanez.eplsync.exception.UserInputException("Excepciones de permisos inválidas");
+        overrides.forEach((key,value)-> { Permission.valueOf(key); if(!Set.of("ALLOW","DENY").contains(value)) throw new com.rlibanez.eplsync.exception.UserInputException("Excepción inválida"); });
         jdbc.update("UPDATE users SET role=?,status=?,security_version=security_version+1,updated_at=?,approved_at=CASE WHEN ?='ACTIVE' AND approved_at IS NULL THEN ? ELSE approved_at END,approved_by=CASE WHEN ?='ACTIVE' AND approved_at IS NULL THEN ? ELSE approved_by END WHERE id=?",
             role,status,Instant.now().toString(),status,Instant.now().toString(),status,actor,id);
         jdbc.update("DELETE FROM user_permission_overrides WHERE user_id=?",id);
@@ -212,17 +212,17 @@ public class AccountStore {
     @Transactional public void approve(String id,String actor) {
         lockMutations();
         var user=find(id);
-        if(user==null) throw new IllegalArgumentException("Usuario inexistente");
-        if(!user.status().equals("PENDING")) throw new IllegalArgumentException("La cuenta no está pendiente de aprobación");
+        if(user==null) throw new com.rlibanez.eplsync.exception.UserInputException("Usuario inexistente");
+        if(!user.status().equals("PENDING")) throw new com.rlibanez.eplsync.exception.UserInputException("La cuenta no está pendiente de aprobación");
         update(id,user.role(),"ACTIVE",view(id).overrides(),actor);
     }
     @Transactional public void delete(String id) {
         lockMutations();
         var user=find(id);
-        if(user==null) throw new IllegalArgumentException("Usuario inexistente");
+        if(user==null) throw new com.rlibanez.eplsync.exception.UserInputException("Usuario inexistente");
         if(user.role().equals("ADMIN") && user.status().equals("ACTIVE")
                 && jdbc.queryForObject("SELECT count(*) FROM users WHERE role='ADMIN' AND status='ACTIVE'",Long.class)<=1)
-            throw new IllegalArgumentException("Debe permanecer al menos un administrador activo");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Debe permanecer al menos un administrador activo");
         jdbc.update("DELETE FROM user_permission_overrides WHERE user_id=?",id);
         jdbc.update("DELETE FROM users WHERE id=?",id);
         audit("USER_DELETE",id,user.username(),null);

@@ -85,7 +85,7 @@ public class CoverProbe {
         if (!("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()))
                 || uri.getHost()==null || uri.getRawUserInfo()!=null || uri.getRawFragment()!=null
                 || uri.getPort()==0 || uri.getPort()>65535 || uri.getHost().contains("%"))
-            throw new IllegalArgumentException("Invalid cover URL");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Invalid cover URL");
         String host=uri.getHost(); if(host.startsWith("[")) host=host.substring(1,host.length()-1);
         final String name=host;
         Future<InetAddress[]> lookup;
@@ -96,9 +96,9 @@ public class CoverProbe {
         catch(TimeoutException ex) { throw new java.net.SocketTimeoutException(); }
         catch(ExecutionException ex) { throw new java.io.IOException("DNS lookup failed"); }
         finally { lookup.cancel(true); }
-        if(addresses==null || addresses.length==0) throw new IllegalArgumentException("No cover addresses");
+        if(addresses==null || addresses.length==0) throw new com.rlibanez.eplsync.exception.UserInputException("No cover addresses");
         for(var address:addresses) if(address==null || !PublicNetworkAddresses.isPublicAddress(address))
-            throw new IllegalArgumentException("Cover URLs must use public addresses");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Cover URLs must use public addresses");
         return new Target(uri,addresses);
     }
     static DnsResolver pinnedResolver(Target target) {

@@ -90,7 +90,9 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
         try {
             qbittorrent.validate();
         } catch (IllegalArgumentException ex) {
-            throw new TorrentOperationException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+            String details=ex instanceof com.rlibanez.eplsync.exception.UserInputException ? ex.getMessage()
+                : "La configuración de autenticación de qBittorrent es incompleta o inválida; revisa los ajustes del cliente";
+            throw new TorrentOperationException(HttpStatus.SERVICE_UNAVAILABLE, details);
         }
         var auth = qbittorrent.getAuth();
         if (auth.getMode() == AuthMode.SESSION) return checkSession();
@@ -112,7 +114,7 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
             throw new TorrentOperationException(HttpStatus.CONFLICT, "El renombrado torrent está deshabilitado");
         }
         if (hash == null || !hash.matches("(?i)[0-9a-f]{40}") || name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Se requiere un hash válido y un nombre de torrent no vacío");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Se requiere un hash válido y un nombre de torrent no vacío");
         }
         // Elegir/autenticar con lecturas antes de la escritura. El POST no se reintenta.
         var connection = checkConnection();
@@ -169,15 +171,15 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
                 ? options.autoManagement() : defaults.isAutoManagement();
         category = category == null ? "" : category.trim();
         if (category.chars().anyMatch(Character::isISOControl))
-            throw new IllegalArgumentException("Categoría inválida");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Categoría inválida");
         if (tags == null || tags.stream().anyMatch(tag -> tag == null || tag.isBlank()
                 || tag.contains(",") || tag.chars().anyMatch(Character::isISOControl)))
-            throw new IllegalArgumentException("Las etiquetas no pueden estar vacías ni contener comas o caracteres de control");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Las etiquetas no pueden estar vacías ni contener comas o caracteres de control");
         String savePath = download.savePath();
         if (savePath != null && savePath.chars().anyMatch(Character::isISOControl))
-            throw new IllegalArgumentException("savePath contiene caracteres de control");
+            throw new com.rlibanez.eplsync.exception.UserInputException("savePath contiene caracteres de control");
         if (automatic && savePath != null && !savePath.isBlank())
-            throw new IllegalArgumentException("savePath requiere autoManagement=false");
+            throw new com.rlibanez.eplsync.exception.UserInputException("savePath requiere autoManagement=false");
         if (context.containsTorrent(download.hash(), this::submissionHashes))
             return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS;
         if (!category.isEmpty()) validateCategory(category, context);
@@ -269,7 +271,7 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
     public void deleteTorrent(String remoteId, boolean deleteFiles) {
         if (dynamic()) { configured(c -> { c.deleteTorrent(remoteId, deleteFiles); return null; }); return; }
         if (!remoteId.matches("(?i)[0-9a-f]{40}|[0-9a-f]{64}"))
-            throw new IllegalArgumentException("Identificador remoto inválido");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Identificador remoto inválido");
         boolean key = sendingAuth() == AuthMode.API_KEY;
         var builder = request("torrents/delete").header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString("hashes=" + encode(remoteId) + "&deleteFiles=" + deleteFiles));

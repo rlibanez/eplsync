@@ -91,7 +91,7 @@ public enum Language {
             if (language.isoCode.equalsIgnoreCase(value.trim()) || language.name().equalsIgnoreCase(value.trim()))
                 return language;
         }
-        throw new IllegalArgumentException("Código de idioma no reconocido");
+        throw new com.rlibanez.eplsync.exception.UserInputException("Código de idioma no reconocido");
     }
 
     /**

@@ -12,9 +12,9 @@ final class CredentialCipher {
     private final byte[] key;
     CredentialCipher(String encodedKey) {
         try {
-            if(encodedKey==null || !encodedKey.matches("[A-Za-z0-9+/]{43}=")) throw new IllegalArgumentException();
+            if(encodedKey==null || !encodedKey.matches("[A-Za-z0-9+/]{43}=")) throw new com.rlibanez.eplsync.exception.UserInputException();
             byte[] decoded=Base64.getDecoder().decode(encodedKey);
-            if(decoded.length!=32 || !Base64.getEncoder().encodeToString(decoded).equals(encodedKey)) throw new IllegalArgumentException();
+            if(decoded.length!=32 || !Base64.getEncoder().encodeToString(decoded).equals(encodedKey)) throw new com.rlibanez.eplsync.exception.UserInputException();
             key=decoded;
         } catch(RuntimeException ex) { throw invalidKey(); }
     }

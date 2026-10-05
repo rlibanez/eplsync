@@ -54,7 +54,7 @@ public class DownloadQueryService {
         var orders = new ArrayList<Sort.Order>();
         for (var value : params.getOrDefault("sort", List.of("createdAt,desc"))) {
             var parts = value.split(",", -1);
-            if (parts.length > 2 || !SORT_FIELDS.contains(parts[0])) throw new IllegalArgumentException("Ordenación de descargas inválida");
+            if (parts.length > 2 || !SORT_FIELDS.contains(parts[0])) throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación de descargas inválida");
             orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]), parts[0]));
         }
         com.rlibanez.eplsync.config.QueryLimits.sort(Sort.by(orders));
@@ -69,10 +69,10 @@ public class DownloadQueryService {
         var allowed = new HashSet<>(Set.of("eplId", "hash", "revision", "status", "origin", "client", "clientInstanceId", "completed"));
         if (listing) allowed.addAll(Set.of("page", "size", "sort"));
         DATE_FIELDS.forEach(field -> { allowed.add(field + "From"); allowed.add(field + "To"); });
-        if (!allowed.containsAll(params.keySet())) throw new IllegalArgumentException("Filtro de descargas desconocido");
+        if (!allowed.containsAll(params.keySet())) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro de descargas desconocido");
         params.forEach((key, values) -> {
-            if (!key.equals("sort") && values.size() != 1) throw new IllegalArgumentException("Parámetro repetido: " + key);
-            if (values.stream().anyMatch(value -> value == null || value.isBlank())) throw new IllegalArgumentException("Parámetro vacío: " + key);
+            if (!key.equals("sort") && values.size() != 1) throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro repetido: " + key);
+            if (values.stream().anyMatch(value -> value == null || value.isBlank())) throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro vacío: " + key);
         });
     }
 
@@ -84,19 +84,19 @@ public class DownloadQueryService {
             try {
                 switch (key) {
                     case "page", "size", "sort" -> { }
-                    case "eplId" -> { long id = Long.parseLong(text); if (id < 1) throw new IllegalArgumentException(); values.put(key, id); }
-                    case "revision" -> { double revision = Double.parseDouble(text); if (!Double.isFinite(revision) || revision < 0) throw new IllegalArgumentException(); values.put(key, revision); }
-                    case "completed" -> { if (!text.equals("true") && !text.equals("false")) throw new IllegalArgumentException(); values.put(key, Boolean.valueOf(text)); }
+                    case "eplId" -> { long id = Long.parseLong(text); if (id < 1) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, id); }
+                    case "revision" -> { double revision = Double.parseDouble(text); if (!Double.isFinite(revision) || revision < 0) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, revision); }
+                    case "completed" -> { if (!text.equals("true") && !text.equals("false")) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, Boolean.valueOf(text)); }
                     case "status" -> values.put(key, Arrays.stream(text.split(",", -1)).map(DownloadStatus::valueOf).toList());
                     case "origin" -> values.put(key, Arrays.stream(text.split(",", -1)).map(DownloadRecord.Origin::valueOf).toList());
-                    case "hash" -> { if (!text.matches("(?i)[0-9a-f]{40}|[0-9a-f]{64}")) throw new IllegalArgumentException(); values.put(key, text.toUpperCase(Locale.ROOT)); }
+                    case "hash" -> { if (!text.matches("(?i)[0-9a-f]{40}|[0-9a-f]{64}")) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, text.toUpperCase(Locale.ROOT)); }
                     default -> values.put(key, key.endsWith("From") || key.endsWith("To") ? Instant.parse(text) : text);
                 }
-            } catch (RuntimeException ex) { throw new IllegalArgumentException("Valor inválido para " + key); }
+            } catch (RuntimeException ex) { throw new com.rlibanez.eplsync.exception.UserInputException("Valor inválido para " + key); }
         }
         DATE_FIELDS.forEach(field -> {
             var from = (Instant) values.get(field + "From"); var to = (Instant) values.get(field + "To");
-            if (from != null && to != null && from.isAfter(to)) throw new IllegalArgumentException("Intervalo inválido para " + field);
+            if (from != null && to != null && from.isAfter(to)) throw new com.rlibanez.eplsync.exception.UserInputException("Intervalo inválido para " + field);
         });
         return (root, query, cb) -> {
             var predicates = new ArrayList<Predicate>();
@@ -113,6 +113,6 @@ public class DownloadQueryService {
 
     private int integer(String value, int fallback) {
         try { return value == null ? fallback : Integer.parseInt(value); }
-        catch (NumberFormatException ex) { throw new IllegalArgumentException("Paginación inválida"); }
+        catch (NumberFormatException ex) { throw new com.rlibanez.eplsync.exception.UserInputException("Paginación inválida"); }
     }
 }

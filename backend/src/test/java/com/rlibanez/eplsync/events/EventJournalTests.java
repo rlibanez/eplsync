@@ -203,6 +203,6 @@ class EventJournalTests {
         assertThatThrownBy(() -> journal.run(Category.CATALOG,"UPDATE", () -> { throw internal; }, result -> Map.of()))
             .isSameAs(internal);
         assertThat(journal.search(all,0,20).items().getFirst().details().get("reason"))
-            .isEqualTo("IllegalArgumentException");
+            .isEqualTo("Ha ocurrido un error inesperado");
     }
 }

@@ -25,7 +25,7 @@ public class CoverTaskService {
             p.setBatchTimeout(Duration.ofMillis(batchTimeoutMs));
             p.setConcurrency(concurrency);
             if (!p.isTimeoutConfigurationValid() || concurrency < 1 || concurrency > 32)
-                throw new IllegalArgumentException("Los tiempos deben estar entre 1ms y 5min: connect <= request <= batch; concurrency entre 1 y 32");
+                throw new com.rlibanez.eplsync.exception.UserInputException("Los tiempos deben estar entre 1ms y 5min: connect <= request <= batch; concurrency entre 1 y 32");
             return p;
         }
     }

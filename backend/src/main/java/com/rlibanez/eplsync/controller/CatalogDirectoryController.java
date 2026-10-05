@@ -30,16 +30,16 @@ public class CatalogDirectoryController {
     public PageResponse<Entry> list(@PathVariable String kind, @RequestParam(defaultValue="") String q,
             @RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size, @RequestParam(defaultValue="") String initial, @RequestParam(required=false) Integer century) {
         if (century != null && (!kind.equals("years") || century < 0 || century > 21))
-            throw new IllegalArgumentException("Siglo inválido: usa 0 para años <= 0 o un siglo entre 1 y 21");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Siglo inválido: usa 0 para años <= 0 o un siglo entre 1 y 21");
         String field = FIELDS.get(kind);
         if (field == null || page < 0 || !List.of(10,20,50,100,200,500,1000).contains(size)
                 || (long)page * size > Integer.MAX_VALUE || q.length() > 512)
-            throw new IllegalArgumentException("Directorio, página, tamaño o búsqueda inválidos");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Directorio, página, tamaño o búsqueda inválidos");
         if (!initial.isEmpty() && !initial.matches("[A-ZÑ#]"))
-            throw new IllegalArgumentException("Inicial inválida");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Inicial inválida");
         if (kind.equals("authors") || kind.equals("genres") || kind.equals("collections"))
             return alphabeticalValues(field, kind.equals("authors") ? "&" : kind.equals("genres") ? "," : null, q, page, size, initial);
-        if (!initial.isEmpty()) throw new IllegalArgumentException("Este directorio no admite iniciales");
+        if (!initial.isEmpty()) throw new com.rlibanez.eplsync.exception.UserInputException("Este directorio no admite iniciales");
         String expr = "b." + field;
         String where = " from CatalogBook b where " + expr + " is not null and trim(cast(" + expr + " as String)) <> ''";
         if (!q.isBlank()) where += " and locate(:q, lower(cast(" + expr + " as String))) > 0";

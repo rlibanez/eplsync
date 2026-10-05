@@ -71,7 +71,7 @@ public class CatalogBookController {
             if (!names.contains(name)) {
                 String hint = names.stream().filter(known -> known.equalsIgnoreCase(name))
                         .findFirst().map(known -> "; utiliza " + known).orElse("");
-                throw new IllegalArgumentException("Parámetro desconocido: " + name + hint);
+                throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido: " + name + hint);
             }
         }
         // Validate both spellings, including repeated values, before applying the alias.
@@ -84,9 +84,9 @@ public class CatalogBookController {
                 try {
                     id = Long.parseLong(value.trim());
                 } catch (NumberFormatException ex) {
-                    throw new IllegalArgumentException(name + " debe ser un entero mayor que cero");
+                    throw new com.rlibanez.eplsync.exception.UserInputException(name + " debe ser un entero mayor que cero");
                 }
-                if (id < 1) throw new IllegalArgumentException(name + " debe ser un entero mayor que cero");
+                if (id < 1) throw new com.rlibanez.eplsync.exception.UserInputException(name + " debe ser un entero mayor que cero");
                 requestedIds.add(id);
             }
         }
@@ -97,7 +97,7 @@ public class CatalogBookController {
         com.rlibanez.eplsync.config.QueryLimits.page(pageNumber, pageSize);
         for (String key : java.util.List.of("page", "size")) {
             if (request.getParameterValues(key) != null && request.getParameterValues(key).length != 1)
-                throw new IllegalArgumentException("Parámetro repetido: " + key);
+                throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro repetido: " + key);
         }
         pageable = org.springframework.data.domain.PageRequest.of(pageNumber, pageSize, pageable.getSort());
 
