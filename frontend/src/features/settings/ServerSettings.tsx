@@ -1,3 +1,4 @@
+import { useAuth } from "../auth/Auth";
 import { secureFetch } from "../auth/transport";
 import { SettingsList } from "./SettingsList";
 import { OptionLabel } from "../downloads/SendOptions";
@@ -68,11 +69,31 @@ export function ServerSettings({
 function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
+  const { user } = useAuth();
+  const connectionAdmin = user?.role === "ADMIN";
   const { notify } = useNotifications();
   const [values, setValues] = useState<Record<string, Field["value"]>>({});
   const [confirm, setConfirm] = useState(false);
+  const normalizeDestination = (value: Field["value"] | undefined) => {
+    try {
+      const url = new URL(String(value));
+      return url.origin + url.pathname.replace(/\/+$/, "");
+    } catch { return String(value); }
+  };
+  const originalDestination = view.fields.find((f) => f.key === "torrent.base-url")?.value;
+  const destinationChanged = view.section === "torrent" &&
+    normalizeDestination(values["torrent.base-url"] ?? originalDestination) !== normalizeDestination(originalDestination);
   const change = (key: string, value: Field["value"]) =>
-    setValues((old) => ({ ...old, [key]: value }));
+    setValues((old) => {
+      const next = { ...old, [key]: value };
+      if (key === "torrent.base-url" && normalizeDestination(value) !== normalizeDestination(old[key] ?? originalDestination)) {
+        next["torrent.enabled"] = false;
+        next["torrent.qbittorrent.auth.username"] = "";
+        delete next["torrent.qbittorrent.auth.password"];
+        delete next["torrent.qbittorrent.auth.api-key"];
+      }
+      return next;
+    });
   const mutation = useMutation({
     meta: { silentSuccess: true, notice: { title: "serverSettings.title" } },
     mutationFn: async (restore: boolean) => {
@@ -167,6 +188,7 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
         ),
       disabled:
         mutation.isPending ||
+        (!connectionAdmin && (f.key === "torrent.base-url" || f.key.includes(".auth."))) ||
         (f.key === "torrent.download.save-path" &&
           currentValue("torrent.qbittorrent.download.auto-management") ===
             true) ||
@@ -217,7 +239,7 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
             autoComplete="new-password"
             value={String(value)}
             placeholder={
-              f.configured
+              f.configured && !destinationChanged
                 ? t("serverSettings.secretSet")
                 : t("serverSettings.secretEmpty")
             }
@@ -235,7 +257,7 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
           <Button
             variant="subtle"
             size="compact-sm"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !connectionAdmin}
             onClick={() => change(f.key, "")}
           >
             {t("serverSettings.clearSecret")}
@@ -314,6 +336,12 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
           if (valid && !mutation.isPending) mutation.mutate(false);
         }}
       >
+        {destinationChanged && (
+          <Alert color="orange" role="alert" mb="md">{t("serverSettings.destinationChangeWarning")}</Alert>
+        )}
+        {view.section === "torrent" && !connectionAdmin && (
+          <Alert color="blue" mb="md">{t("serverSettings.connectionAdminOnly")}</Alert>
+        )}
         {groups.map((group) => (
           <fieldset
             className={`send-options-group${["events", "catalog", "covers"].includes(view.section) ? " settings-borderless" : ""}${view.section === "covers" ? " cover-parameters" : ""}`}
@@ -393,7 +421,7 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
           </Button>
           <Button
             variant="default"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || (view.section === "torrent" && !connectionAdmin)}
             onClick={() => setConfirm(true)}
           >
             {t("serverSettings.restore")}
@@ -408,6 +436,7 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
         title={t("serverSettings.restore")}
       >
         <p>{t("serverSettings.restoreHelp")}</p>
+        {view.section === "torrent" && <p>{t("serverSettings.restoreDestinationHelp")}</p>}
         <ModalActions>
           <Button variant="default" onClick={() => setConfirm(false)}>
             {t("import.cancel")}

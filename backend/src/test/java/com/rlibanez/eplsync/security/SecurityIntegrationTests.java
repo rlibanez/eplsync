@@ -375,4 +375,21 @@ class SecurityIntegrationTests {
         assertThat(accounts.users().getFirst().role()).isEqualTo("ADMIN");
     }
 
+    @Test void onlyAdminCanChangeTorrentDestinationCredentialsOrRestoreThem() throws Exception {
+        var administrator = admin();
+        accounts.policy(new AccountStore.Policy(true,false,30,12));
+        accounts.register("settingsuser","settings@example.org",PASSWORD);
+        var user = accounts.authenticate("settingsuser",PASSWORD);
+        accounts.update(user.id(),"USER","ACTIVE",Map.of("SETTINGS_MANAGE","ALLOW"),initial.user().id());
+        var session = login("settingsuser",PASSWORD);
+        for (var body : List.of(Map.of("torrent.base-url","http://other.example"),Map.of("torrent.qbittorrent.auth.api-key","secret"),Map.of("torrent.qbittorrent.auth.mode","session")))
+            mvc.perform(put("/api/settings/torrent").session(session).with(csrf()).contentType("application/json").content(json(body))).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/settings/torrent").session(session).with(csrf())).andExpect(status().isForbidden());
+        mvc.perform(put("/api/settings/torrent").session(session).with(csrf()).contentType("application/json")
+            .content(json(Map.of("torrent.bulk.concurrency",2)))).andExpect(status().isOk());
+        mvc.perform(put("/api/settings/torrent").session(administrator).with(csrf()).contentType("application/json")
+            .content(json(Map.of("torrent.base-url","http://other.example")))).andExpect(status().isOk());
+        mvc.perform(delete("/api/settings/torrent").session(administrator).with(csrf())).andExpect(status().isOk());
+    }
+
 }

@@ -70,18 +70,7 @@ public class TorrentProperties {
     @PostConstruct
     public void validate() {
         if (!enabled) return;
-        URI uri;
-        try {
-            uri = URI.create(baseUrl);
-        } catch (RuntimeException ex) {
-            throw invalid("base-url debe ser una URL HTTP(S) válida");
-        }
-        if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
-                || uri.getHost() == null || uri.getUserInfo() != null
-                || uri.getRawQuery() != null || uri.getRawFragment() != null
-                || uri.getPort() == 0 || uri.getPort() > 65535) {
-            throw invalid("base-url requiere HTTP(S), host y puerto válido, sin credenciales, query ni fragmento");
-        }
+        com.rlibanez.eplsync.qbittorrent.QBittorrentDestination.normalize(baseUrl);
         if (connectTimeout == null || connectTimeout.isNegative() || connectTimeout.isZero()
                 || requestTimeout == null || requestTimeout.isNegative() || requestTimeout.isZero()) {
             throw invalid("los timeouts deben ser positivos");

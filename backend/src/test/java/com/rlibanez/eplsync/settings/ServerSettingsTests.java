@@ -67,6 +67,7 @@ class ServerSettingsTests {
         mvc.perform(put("/api/settings/torrent").contentType("application/json").content("{\"torrent.qbittorrent.auth.password\":\"private-secret\",\"torrent.bulk.concurrency\":4}"))
             .andExpect(status().isOk()).andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("private-secret"))));
         var freshTorrent = new TorrentProperties();
+        freshTorrent.setBaseUrl(settings.snapshot().torrent().getBaseUrl());
         var reloaded = new ServerSettings(jdbc, manager, env, freshTorrent, new QBittorrentProperties(), new CatalogImportProperties(), new CoverCheckProperties(), new EventSettings());
         assertThat(freshTorrent.getBulk().getConcurrency()).isEqualTo(4);
         assertThat(reloaded.snapshot().qbittorrent().getAuth().getPassword()).isEqualTo("private-secret");
@@ -96,4 +97,161 @@ class ServerSettingsTests {
         assertThat(jdbc.queryForObject("select count(*) from app_settings", Integer.class)).isZero();
         assertThat(settings.snapshot().events().getRetention().getMaxCount()).isEqualTo(10000);
     }
+    private ServerSettings withInstallationCredentials(String url) {
+        var t = new TorrentProperties(); t.setBaseUrl(url); t.setEnabled(true);
+        var q = new QBittorrentProperties();
+        q.getAuth().setApiKey("installation-key");
+        q.getAuth().setUsername("installation-user");
+        q.getAuth().setPassword("installation-password");
+        return new ServerSettings(jdbc,manager,env,t,q,new CatalogImportProperties(),new CoverCheckProperties(),new EventSettings());
+    }
+    private void assertCredentialsCleared(ServerSettings target) {
+        assertThat(target.snapshot().torrent().isEnabled()).isFalse();
+        var auth = target.snapshot().qbittorrent().getAuth();
+        assertThat(auth.getApiKey()).isEmpty();
+        assertThat(auth.getUsername()).isEmpty();
+        assertThat(auth.getPassword()).isEmpty();
+        assertThat(target.view("torrent").fields().stream().filter(f -> f.type().equals("secret")))
+            .allMatch(f -> !f.configured());
+    }
+    @Test void endpointChangesInvalidateInstallationCredentialsAndStayInvalidAfterReload() {
+        var target = withInstallationCredentials("https://qbit.example:443/qbit/");
+        target.save("torrent",Map.of("torrent.base-url","https://QBIT.EXAMPLE/qbit"));
+        assertThat(target.snapshot().torrent().isEnabled()).isTrue();
+        assertThat(target.snapshot().qbittorrent().getAuth().getApiKey()).isEqualTo("installation-key");
+        for (String url : new String[]{"http://qbit.example/qbit", "http://qbit.example:8080/qbit", "http://other.example/qbit", "http://other.example/other"}) {
+            target.save("torrent",Map.of("torrent.base-url",url));
+            assertCredentialsCleared(target);
+        }
+        assertCredentialsCleared(withInstallationCredentials("https://qbit.example/qbit"));
+        assertThatThrownBy(() -> target.save("torrent",Map.of("torrent.enabled",true))).isInstanceOf(IllegalArgumentException.class);
+        var cleared = new java.util.HashMap<String,Object>();
+        cleared.put("torrent.qbittorrent.auth.api-key",null);
+        cleared.put("torrent.qbittorrent.auth.password",null);
+        target.save("torrent",cleared);
+        assertCredentialsCleared(target);
+        target.save("torrent",Map.of("torrent.base-url","https://qbit.example/qbit"));
+        assertCredentialsCleared(target); // Returning to the old destination does not resurrect its secrets.
+        target.restore("torrent");
+        assertThat(target.snapshot().torrent().isEnabled()).isTrue();
+        assertThat(target.snapshot().qbittorrent().getAuth().getApiKey()).isEqualTo("installation-key");
+    }
+    @Test void onlyExplicitCredentialsCanEnableANewDestinationAndPartialCredentialsNeverInherit() {
+        var target = withInstallationCredentials("http://original.example");
+        target.save("torrent",Map.of("torrent.base-url","http://new.example","torrent.enabled",true,
+            "torrent.qbittorrent.auth.mode","session","torrent.qbittorrent.auth.username","new-user"));
+        assertThat(target.snapshot().torrent().isEnabled()).isFalse();
+        assertThat(target.snapshot().qbittorrent().getAuth().getPassword()).isEmpty();
+        target.save("torrent",Map.of("torrent.qbittorrent.auth.password","new-password","torrent.enabled",true));
+        assertThat(target.snapshot().torrent().isEnabled()).isTrue();
+        var reloaded = withInstallationCredentials("http://original.example");
+        assertThat(reloaded.snapshot().torrent().isEnabled()).isTrue();
+        assertThat(reloaded.snapshot().qbittorrent().getAuth().getPassword()).isEqualTo("new-password");
+        assertThat(reloaded.snapshot().qbittorrent().getAuth().getApiKey()).isEmpty();
+        reloaded.save("torrent",Map.of("torrent.base-url","http://third.example","torrent.enabled",true,
+            "torrent.qbittorrent.auth.mode","api-key","torrent.qbittorrent.auth.api-key","third-key"));
+        assertThat(reloaded.snapshot().torrent().isEnabled()).isTrue();
+        assertThat(reloaded.snapshot().qbittorrent().getAuth().getApiKey()).isEqualTo("third-key");
+        assertThat(reloaded.snapshot().qbittorrent().getAuth().getPassword()).isEmpty();
+    }
+    @Test void legacyOrMismatchedBindingsAreInvalidatedOnStartup() {
+        jdbc.update("insert into app_settings values (?,?)","torrent.base-url",JSON_VALUE("http://other.example"));
+        jdbc.update("insert into app_settings values (?,?)","torrent.qbittorrent.auth.api-key",JSON_VALUE("legacy-key"));
+        var target = withInstallationCredentials("http://original.example");
+        assertCredentialsCleared(target);
+        target.save("torrent",Map.of("torrent.qbittorrent.auth.api-key","new-key","torrent.enabled",true));
+        jdbc.update("update app_settings set setting_value=? where setting_key='torrent.base-url'",JSON_VALUE("http://tampered.example"));
+        assertCredentialsCleared(withInstallationCredentials("http://original.example"));
+    }
+    private String JSON_VALUE(String value) {
+        return tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(value);
+    }
+    @Test void checksNeverSendPreviousCredentialsToTheNewServerIncludingAfterRestartAndRestore() throws Exception {
+        var originalCalls = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var newCalls = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var original = fakeServer(originalCalls);
+        var replacement = fakeServer(newCalls);
+        String oldUrl = "http://127.0.0.1:"+original.getAddress().getPort();
+        String newUrl = "http://127.0.0.1:"+replacement.getAddress().getPort();
+        try {
+            var target = withInstallationCredentials(oldUrl);
+            try (var client = new QBittorrentClient(target.snapshot().torrent(),target.snapshot().qbittorrent())) {
+                assertThat(client.checkConnection().connected()).isTrue();
+            }
+            assertThat(originalCalls).allMatch(v -> v.equals("Bearer installation-key"));
+            target.save("torrent",Map.of("torrent.base-url",newUrl));
+            var reloaded = withInstallationCredentials(oldUrl);
+            try (var client = new QBittorrentClient(reloaded.snapshot().torrent(),reloaded.snapshot().qbittorrent())) {
+                assertThat(client.checkConnection().enabled()).isFalse();
+            }
+            assertThat(newCalls).isEmpty();
+            reloaded.save("torrent",Map.of("torrent.qbittorrent.auth.api-key","replacement-key","torrent.enabled",true));
+            try (var client = new QBittorrentClient(reloaded.snapshot().torrent(),reloaded.snapshot().qbittorrent())) {
+                assertThat(client.checkConnection().connected()).isTrue();
+            }
+            assertThat(newCalls).hasSize(2).allMatch(v -> v.equals("Bearer replacement-key"));
+            reloaded.restore("torrent");
+            try (var client = new QBittorrentClient(reloaded.snapshot().torrent(),reloaded.snapshot().qbittorrent())) {
+                assertThat(client.checkConnection().connected()).isTrue();
+            }
+            assertThat(originalCalls).hasSize(4).allMatch(v -> v.equals("Bearer installation-key"));
+        } finally { original.stop(0); replacement.stop(0); }
+    }
+    private com.sun.net.httpserver.HttpServer fakeServer(java.util.List<String> calls) throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/", exchange -> {
+            calls.add(String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")));
+            var body = "5.2.0".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200,body.length);
+            exchange.getResponseBody().write(body); exchange.close();
+        });
+        server.start(); return server;
+    }
+
+    @Test void sessionPasswordsAndCookiesAreNeverReusedForAReplacementServer() throws Exception {
+        var oldCalls = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var newCalls = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var original = sessionServer("original",oldCalls);
+        var replacement = sessionServer("replacement",newCalls);
+        String oldUrl = "http://127.0.0.1:"+original.getAddress().getPort();
+        String newUrl = "http://127.0.0.1:"+replacement.getAddress().getPort();
+        try {
+            var target = withInstallationCredentials(oldUrl);
+            target.save("torrent",Map.of("torrent.qbittorrent.auth.mode","session"));
+            var t = new TorrentProperties(); t.useEffective(() -> target.snapshot().torrent());
+            var q = new QBittorrentProperties(); q.useEffective(() -> target.snapshot().qbittorrent());
+            try (var client = new QBittorrentClient(t,q)) {
+                assertThat(client.checkConnection().connected()).isTrue();
+                assertThat(oldCalls).anyMatch(v -> v.contains("installation-password"));
+                target.save("torrent",Map.of("torrent.base-url",newUrl));
+                assertThat(client.checkConnection().enabled()).isFalse();
+                assertThat(newCalls).isEmpty();
+                target.save("torrent",Map.of("torrent.qbittorrent.auth.username","new-user",
+                    "torrent.qbittorrent.auth.password","new-password","torrent.enabled",true));
+                assertThat(client.checkConnection().connected()).isTrue();
+                assertThat(newCalls).hasSize(3).noneMatch(v -> v.contains("installation-") || v.contains("original-cookie"));
+                assertThat(newCalls).anyMatch(v -> v.contains("new-password"));
+                assertThat(newCalls).anyMatch(v -> v.contains("replacement-cookie"));
+            }
+        } finally { original.stop(0); replacement.stop(0); }
+    }
+    private com.sun.net.httpserver.HttpServer sessionServer(String name,java.util.List<String> calls) throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/", exchange -> {
+            try (exchange) {
+                calls.add(String.valueOf(exchange.getRequestHeaders().getFirst("Authorization"))+";"+
+                    String.valueOf(exchange.getRequestHeaders().getFirst("Cookie"))+";"+
+                    new String(exchange.getRequestBody().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8));
+                if (exchange.getRequestURI().getPath().endsWith("/auth/login")) {
+                    exchange.getResponseHeaders().add("Set-Cookie","SID="+name+"-cookie; Path=/; HttpOnly");
+                    exchange.sendResponseHeaders(204,-1);
+                } else {
+                    var body = "5.2.0".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(200,body.length); exchange.getResponseBody().write(body);
+                }
+            }
+        });
+        server.start(); return server;
+    }
+
 }

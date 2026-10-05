@@ -198,3 +198,51 @@ test('dependent client defaults are grouped and preserve disabled values', async
   await naming.getByRole('checkbox').check();
   await expect(pattern).toHaveValue('{author} - {title}');
 });
+
+const connectionFields = [
+  { key: "torrent.enabled", type: "boolean", value: true },
+  { key: "torrent.base-url", type: "text", value: "https://qbit.example:443/qbit/" },
+  { key: "torrent.qbittorrent.auth.username", type: "text", value: "old-user" },
+  { key: "torrent.qbittorrent.auth.password", type: "secret", value: "", configured: true },
+  { key: "torrent.qbittorrent.auth.api-key", type: "secret", value: "", configured: true },
+  { key: "torrent.bulk.concurrency", type: "number", value: 1 },
+];
+
+test("changing destination warns, disables integration and requires fresh credentials", async ({ page }) => {
+  let saved: Record<string, unknown> = {};
+  await page.route("**/api/settings/torrent", route => {
+    if (route.request().method() === "PUT") saved = route.request().postDataJSON();
+    return route.fulfill({ json: { section: "torrent", fields: connectionFields } });
+  });
+  await page.goto("/settings/torrent");
+  const url = page.getByRole("textbox", { name: "URL del cliente", exact: true });
+  await url.fill("https://QBIT.EXAMPLE/qbit");
+  await expect(page.getByRole("alert").filter({ hasText: "Al cambiar el servidor" })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "Habilitar integración torrent" })).toBeChecked();
+  await url.fill("http://new-qbit:8090");
+  await expect(page.getByRole("alert").filter({ hasText: "Al cambiar el servidor" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Habilitar integración torrent" })).not.toBeChecked();
+  await expect(page.getByRole("textbox", { name: "Usuario", exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Contraseña", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Contraseña", { exact: true })).toHaveAttribute("placeholder", "Sin configurar");
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect.poll(() => saved["torrent.base-url"]).toBe("http://new-qbit:8090");
+  expect(saved["torrent.enabled"]).toBe(false);
+  expect(saved["torrent.qbittorrent.auth.username"]).toBe("");
+  expect(saved).not.toHaveProperty("torrent.qbittorrent.auth.password");
+  expect(saved).not.toHaveProperty("torrent.qbittorrent.auth.api-key");
+});
+
+test("settings users can edit operational fields but cannot change connection credentials or restore", async ({ page }) => {
+  await page.route("**/api/auth/me", route => route.fulfill({ json: {
+    id: "settings-user", username: "operator", email: "operator@example.org", role: "USER", mustChangePassword: false,
+    permissions: ["SETTINGS_MANAGE"],
+  } }));
+  await page.route("**/api/settings/torrent", route => route.fulfill({ json: { section: "torrent", fields: connectionFields } }));
+  await page.goto("/settings/torrent");
+  await expect(page.getByRole("textbox", { name: "URL del cliente", exact: true })).toBeDisabled();
+  await expect(page.getByRole("textbox", { name: "Usuario", exact: true })).toBeDisabled();
+  await expect(page.getByLabel("Contraseña", { exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Restaurar valores de instalación", exact: true })).toBeDisabled();
+  await expect(page.getByRole("spinbutton", { name: "Envíos simultáneos", exact: true })).toBeEnabled();
+});

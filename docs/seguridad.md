@@ -44,9 +44,21 @@ ADMIN dispone de todos los permisos y administra usuarios, seguridad y reinicio 
 | CATALOG_DELETE | Revisar y borrar libros ausentes |
 | COVERS_MANAGE | Comprobaciones y tareas de portadas |
 | EVENTS_MANAGE | Consultar y borrar eventos compartidos |
-| SETTINGS_MANAGE | Consultar y editar los ajustes del sistema |
+| SETTINGS_MANAGE | Consultar y editar los ajustes del sistema; cambiar el destino y la autenticación de qBittorrent requiere ADMIN |
 
 El registro público está deshabilitado y la aprobación obligatoria está habilitada inicialmente. ADMIN puede cambiar ambos ajustes. El registro abierto solo crea USER; si requiere aprobación, la cuenta queda pendiente y no puede iniciar sesión. Los cambios en estado, rol o permisos revocan las sesiones existentes.
+
+## Credenciales de qBittorrent
+
+Solo ADMIN puede modificar el destino y la autenticación de qBittorrent o restaurar sus ajustes de instalación. `SETTINGS_MANAGE` permite administrar las demás opciones operativas, pero no concede esas capacidades.
+
+Las credenciales quedan vinculadas al protocolo, host, puerto y ruta base del cliente. Se normalizan el uso de mayúsculas en el host, los puertos predeterminados y las barras finales. Cambiar el destino elimina las credenciales anteriores y desactiva la integración; volver al destino anterior no las recupera. Un administrador puede introducir credenciales nuevas completas y activar la integración en el mismo guardado.
+
+Las credenciales de `.env` solo se utilizan para el destino de instalación correspondiente. Un destino personalizado sin credenciales nunca hereda las de instalación. La restauración recupera conjuntamente el destino y las credenciales de instalación. Esta vinculación se guarda en SQLite y se comprueba al arrancar. Las configuraciones antiguas con credenciales persistidas y un destino distinto al de instalación, sin una vinculación conocida, se desactivan y requieren configurar nuevamente las credenciales.
+
+El cliente verifica el destino antes de cada envío y no sigue redirecciones HTTP, ni siquiera al iniciar sesión. Los clientes y las cookies de sesión se sustituyen al cambiar la configuración. Las operaciones ya iniciadas conservan su configuración original y su destino original. Los logs de peticiones no incluyen tokens, contraseñas, cabeceras Authorization ni cookies.
+
+Se permiten direcciones locales, privadas y de redes Docker. La configuración del destino por ADMIN autoriza ese endpoint; no hay una lista externa de hosts permitidos. Las conexiones HTTPS utilizan la verificación de certificados predeterminada de Java, sin desactivar su validación. Los secretos introducidos desde la interfaz se persisten en SQLite; usar un gestor externo de secretos requeriría una integración adicional.
 
 ## Contraseñas y sesiones
 

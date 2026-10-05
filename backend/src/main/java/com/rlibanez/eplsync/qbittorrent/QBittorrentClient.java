@@ -29,7 +29,7 @@ import static com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.*
 
 @Service
 @ConditionalOnProperty(prefix = "eplsync.torrent", name = "client", havingValue = "qbittorrent", matchIfMissing = true)
-public class QBittorrentClient implements TorrentClient {
+public class QBittorrentClient implements TorrentClient, AutoCloseable {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(QBittorrentClient.class);
     private final tools.jackson.databind.json.JsonMapper jsonMapper = tools.jackson.databind.json.JsonMapper.builder().build();
     private AuthMode sendingAuth;
@@ -37,6 +37,7 @@ public class QBittorrentClient implements TorrentClient {
     private final QBittorrentProperties qbittorrent;
     private final CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
     private final HttpClient apiKeyClient;
+    private final String authorizedDestination;
     private final HttpClient sessionClient;
 
     private Holder runtime;
@@ -68,6 +69,7 @@ public class QBittorrentClient implements TorrentClient {
     public QBittorrentClient(TorrentProperties properties, QBittorrentProperties qbittorrent) {
         this.properties = properties;
         this.qbittorrent = qbittorrent;
+        authorizedDestination = properties.isEnabled() ? QBittorrentDestination.normalize(properties.getBaseUrl()) : null;
         // Sin conexiones al arrancar ni clientes HTTP cuando la integración está deshabilitada.
         apiKeyClient = properties.isEnabled() ? newClient().build() : null;
         sessionClient = properties.isEnabled() ? newClient().cookieHandler(cookies).build() : null;
@@ -424,7 +426,7 @@ public class QBittorrentClient implements TorrentClient {
     }
 
     private HttpRequest.Builder request(String path) {
-        String base = properties.getBaseUrl().replaceAll("/+$", "");
+        String base = QBittorrentDestination.normalize(properties.getBaseUrl());
         URI uri = URI.create(base);
         return HttpRequest.newBuilder(URI.create(base + "/api/v2/" + path))
                 .timeout(properties.getRequestTimeout())
@@ -433,6 +435,11 @@ public class QBittorrentClient implements TorrentClient {
     }
 
     private HttpResponse<String> send(HttpClient client, HttpRequest request) {
+        String expected = authorizedDestination + "/api/v2/";
+        if (!request.uri().toString().startsWith(expected)
+                || !QBittorrentDestination.normalize(properties.getBaseUrl()).equals(authorizedDestination)) {
+            throw new QBittorrentConnectionException(UPSTREAM);
+        }
         String path = request.uri().getPath();
         String endpoint = path.substring(path.lastIndexOf("/api/v2/"));
         long started = System.nanoTime();
@@ -462,6 +469,7 @@ public class QBittorrentClient implements TorrentClient {
     private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
 
     @PreDestroy
+    @Override
     public synchronized void close() {
         if (runtime != null) { runtime.retired = true; if (runtime.users == 0) runtime.client.close(); runtime = null; }
         if (apiKeyClient != null) apiKeyClient.shutdownNow();

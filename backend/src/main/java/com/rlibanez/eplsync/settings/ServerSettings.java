@@ -3,6 +3,7 @@ package com.rlibanez.eplsync.settings;
 import com.rlibanez.eplsync.config.*;
 import com.rlibanez.eplsync.events.EventSettings;
 import com.rlibanez.eplsync.qbittorrent.QBittorrentProperties;
+import com.rlibanez.eplsync.qbittorrent.QBittorrentDestination;
 import java.time.Duration;
 import java.util.*;
 import org.springframework.boot.context.properties.bind.*;
@@ -22,6 +23,11 @@ public class ServerSettings {
     private record Definition(String section, String key, String type) {}
     public record Snapshot(TorrentProperties torrent, QBittorrentProperties qbittorrent,
             CatalogImportProperties catalogImport, CoverCheckProperties covers, EventSettings events, String zipUrl) {}
+    private static final String DESTINATION = "torrent.credentials-destination";
+    private static final String URL = "torrent.base-url";
+    private static final String ENABLED = "torrent.enabled";
+    private static final List<String> CREDENTIALS = List.of("torrent.qbittorrent.auth.username",
+        "torrent.qbittorrent.auth.password", "torrent.qbittorrent.auth.api-key");
     private final Map<String, Object> installation = new LinkedHashMap<>();
     private final List<Definition> definitions = new ArrayList<>();
     private final Binder installationBinder;
@@ -68,10 +74,24 @@ public class ServerSettings {
         Map<String, Object> saved = new LinkedHashMap<>();
         jdbc.query("select setting_key, setting_value from app_settings", (org.springframework.jdbc.core.RowCallbackHandler) row -> {
             String key = row.getString(1);
-            if (installation.containsKey(key)) saved.put(key, JSON.readValue(row.getString(2), Object.class));
+            if (installation.containsKey(key) || key.equals(DESTINATION)) saved.put(key, JSON.readValue(row.getString(2), Object.class));
         });
-        current = build(saved);
-        overrides = Map.copyOf(saved);
+        // Existing credentials with an unknown or changed destination must never be rebound silently.
+        var loaded = new LinkedHashMap<>(saved);
+        String destination = destination(saved);
+        boolean hasSavedCredentials = CREDENTIALS.stream().anyMatch(key -> saved.containsKey(key) && !String.valueOf(saved.get(key)).isBlank());
+        String binding = (String) saved.get(DESTINATION);
+        if (binding == null && hasSavedCredentials && destination.equals(destination(Map.of()))) {
+            saved.put(DESTINATION, destination);
+        } else if (hasSavedCredentials && !destination.equals(binding)) {
+            CREDENTIALS.forEach(key -> saved.put(key, ""));
+            saved.put(ENABLED, false);
+            saved.put(DESTINATION, destination);
+        }
+        if (!destination.equals(destination(Map.of())) && binding == null) saved.put(ENABLED, false);
+        maskInstallationCredentials(saved);
+        if (!saved.equals(loaded)) publish(saved);
+        else { current = build(saved); overrides = Map.copyOf(saved); }
         t.useEffective(() -> snapshot().torrent()); q.useEffective(() -> snapshot().qbittorrent());
         i.useEffective(() -> snapshot().catalogImport()); c.useEffective(() -> snapshot().covers());
         e.useEffective(() -> snapshot().events());
@@ -118,12 +138,39 @@ public class ServerSettings {
             if (value instanceof List<?> list) value = list.stream().map(v -> ((String) v).trim()).filter(v -> !v.isEmpty()).toList();
             next.put(field.key(), value);
         }
+        if (section.equals("torrent")) {
+            String destination = destination(next);
+            boolean changed = !destination.equals(QBittorrentDestination.normalize(current.torrent().getBaseUrl()));
+            if (changed) {
+                // Only credentials explicitly supplied in this request belong to the new endpoint.
+                CREDENTIALS.forEach(key -> next.put(key, values.get(key) instanceof String text ? text : ""));
+                next.put(ENABLED, false);
+            }
+            if (changed || CREDENTIALS.stream().anyMatch(values::containsKey)) next.put(DESTINATION, destination);
+            maskInstallationCredentials(next);
+            if (changed && Boolean.TRUE.equals(values.get(ENABLED))) {
+                var candidate = build(next);
+                try { candidate.qbittorrent().validate(); next.put(ENABLED, true); }
+                catch (IllegalArgumentException ignored) { /* Keep disabled until complete credentials are configured. */ }
+            }
+        }
         publish(next);
         return view(section);
     }
     public synchronized View restore(String section) {
         Map<String, Object> next = new LinkedHashMap<>(overrides);
-        section(section).forEach(f -> next.remove(f.key())); publish(next); return view(section);
+        section(section).forEach(f -> next.remove(f.key()));
+        if (section.equals("torrent")) next.remove(DESTINATION);
+        publish(next); return view(section);
+    }
+    private String destination(Map<String, Object> values) {
+        return QBittorrentDestination.normalize((String) values.getOrDefault(URL, installation.get(URL)));
+    }
+    private void maskInstallationCredentials(Map<String, Object> values) {
+        if (!destination(values).equals(destination(Map.of()))) {
+            // An explicit empty override prevents fallback to credentials belonging to the installation URL.
+            CREDENTIALS.forEach(key -> { if (!values.containsKey(key)) values.put(key, ""); });
+        }
     }
     private void publish(Map<String, Object> next) {
         Snapshot candidate = build(next);
@@ -137,8 +184,17 @@ public class ServerSettings {
     public synchronized void resetAfterCommit() { overrides = Map.of(); current = build(Map.of()); }
     private Snapshot build(Map<String, Object> values) {
         Map<String, Object> merged = new LinkedHashMap<>(installation); merged.putAll(values);
+        String target = destination(values);
+        if (CREDENTIALS.stream().anyMatch(key -> values.containsKey(key) && !String.valueOf(values.get(key)).isBlank())
+                && !target.equals(values.get(DESTINATION))) {
+            throw new IllegalArgumentException("Las credenciales de qBittorrent no corresponden al destino configurado");
+        }
+        if (!target.equals(destination(Map.of()))) {
+            CREDENTIALS.forEach(key -> { if (!values.containsKey(key)) merged.put(key, ""); });
+        }
         Map<String, Object> source = new LinkedHashMap<>();
-        merged.forEach((key, value) -> source.put("eplsync." + key, value));
+        merged.put(URL, target);
+        merged.forEach((key, value) -> { if (!key.equals(DESTINATION)) source.put("eplsync." + key, value); });
         try {
             var binder = new Binder(new MapConfigurationPropertySource(source));
             var t = binder.bind("eplsync.torrent", Bindable.of(TorrentProperties.class)).get();

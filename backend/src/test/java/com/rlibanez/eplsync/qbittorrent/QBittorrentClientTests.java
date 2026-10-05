@@ -686,4 +686,56 @@ class QBittorrentClientTests {
         assertThatThrownBy(() -> client().listCategories()).isInstanceOf(QBittorrentConnectionException.class);
     }
 
+    @Test void redirectsNeverForwardApiKeysPasswordsOrCookiesToAnotherServer() throws Exception {
+        var leaked = new CopyOnWriteArrayList<String>();
+        var other = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        other.createContext("/", exchange -> {
+            leaked.add(exchange.getRequestHeaders().toString()+new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8));
+            respond(exchange,200,"5.2.0"); exchange.close();
+        });
+        other.start();
+        try {
+            server.removeContext("/");
+            server.createContext("/", exchange -> {
+                try (exchange) {
+                    if (exchange.getRequestURI().getPath().endsWith("/auth/login")) {
+                        exchange.getRequestBody().readAllBytes();
+                        exchange.getResponseHeaders().add("Set-Cookie","SID=old-cookie; Path=/; HttpOnly");
+                        respond(exchange,204,"");
+                    } else {
+                        exchange.getResponseHeaders().add("Location","http://127.0.0.1:"+other.getAddress().getPort()+"/api/v2/app/version");
+                        respond(exchange,307,"");
+                    }
+                }
+            });
+            for (var mode : new AuthMode[]{AuthMode.API_KEY,AuthMode.SESSION}) {
+                qbittorrent.getAuth().setMode(mode);
+                try (var adapter = new QBittorrentClient(properties,qbittorrent)) {
+                    assertThatThrownBy(adapter::checkConnection).isInstanceOf(QBittorrentConnectionException.class);
+                }
+            }
+            server.removeContext("/");
+            server.createContext("/", exchange -> {
+                try (exchange) {
+                    exchange.getRequestBody().readAllBytes();
+                    exchange.getResponseHeaders().add("Location","http://127.0.0.1:"+other.getAddress().getPort()+"/api/v2/auth/login");
+                    respond(exchange,307,"");
+                }
+            });
+            try (var adapter = new QBittorrentClient(properties,qbittorrent)) {
+                assertThatThrownBy(adapter::checkConnection).isInstanceOf(QBittorrentConnectionException.class);
+            }
+            assertThat(leaked).isEmpty();
+        } finally { other.stop(0); }
+    }
+    @Test void clientRejectsDestinationMutationBeforeSendingItsCredentialsOrSessionCookies() throws Exception {
+        qbittorrent.getAuth().setMode(AuthMode.SESSION);
+        client = client();
+        assertThat(client.checkConnection().connected()).isTrue();
+        calls.clear();
+        properties.setBaseUrl(properties.getBaseUrl().replace("/qbit/","/other/"));
+        assertThatThrownBy(client::checkConnection).isInstanceOf(QBittorrentConnectionException.class);
+        assertThat(calls).isEmpty();
+    }
+
 }

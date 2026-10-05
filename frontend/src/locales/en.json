@@ -928,6 +928,9 @@
     "noMagnets": "The selection contains no magnet links."
   },
   "serverSettings": {
+    "destinationChangeWarning": "Changing the server clears the previous credentials and disables the integration until the new destination is configured. You can enter the new credentials here and enable the integration before saving.",
+    "connectionAdminOnly": "Only an administrator can change the qBittorrent server and authentication or restore its installation settings.",
+    "restoreDestinationHelp": "The qBittorrent server and its installation credentials will also be restored together.",
     "addRow": "Add row",
     "removeRow": "Remove {{name}} {{number}}",
     "help": {
