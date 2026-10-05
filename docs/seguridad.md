@@ -64,7 +64,7 @@ Se permiten direcciones locales, privadas y de redes Docker. La configuración d
 
 `CATALOG_IMPORT` es el único permiso para importar. ADMIN y USER con ese permiso pueden utilizar URLs HTTP o HTTPS, de cualquier dominio y con puertos personalizados, incluidos servidores locales, privados, Docker o WebDAV. No se exige un rol administrativo adicional ni hay una lista de dominios permitidos. Subir un ZIP local mantiene la misma autorización.
 
-El descargador valida la URL en todos los flujos: importación, previsualización y URL inicial de Ajustes o `.env`. Se rechazan protocolos distintos de HTTP/HTTPS, puertos inválidos, credenciales incrustadas en la URL y fragmentos. Los parámetros de consulta, incluidos los tokens de enlaces firmados, se conservan al descargar.
+El descargador valida la URL en todos los flujos: importación, previsualización y URL inicial de Ajustes o `.env`. Se rechazan protocolos distintos de HTTP/HTTPS, puertos inválidos, credenciales incrustadas en la URL y fragmentos. Los parámetros de consulta, incluidos los tokens de enlaces firmados, se conservan al descargar. En redirecciones se elimina únicamente el fragmento desde un `#` literal, que no forma parte de la petición HTTP; las secuencias `%23` en rutas y parámetros permanecen intactas. Una redirección que solo cambia el fragmento se rechaza como bucle.
 
 Antes de cada petición se resuelve el destino. La conexión utiliza exclusivamente las direcciones obtenidas y comprobadas para ese salto, sin una segunda consulta DNS sin controlar. El hostname original se conserva para Host, SNI y la validación del certificado HTTPS. No se siguen proxies del sistema automáticamente ni se comparten cookies o credenciales entre saltos.
 

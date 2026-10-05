@@ -22,10 +22,10 @@ class FileDownloaderTests {
             exchange.getResponseBody().write(content);
         }
     }
-    @Test void follows302RedirectAndDownloadsLocalContent() throws Exception {
+    @Test void follows302RedirectWithEmptyFragmentAndDownloadsLocalContent() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/redirect",exchange -> {
-            exchange.getResponseHeaders().add("Location","/catalog.zip");
+            exchange.getResponseHeaders().add("Location","/catalog.zip#");
             respond(exchange,302,"text/html",new byte[16_384]);
         });
         server.createContext("/catalog.zip",exchange -> respond(exchange,200,"application/zip",ZIP));
@@ -105,6 +105,53 @@ class FileDownloaderTests {
         finally { Files.deleteIfExists(file); }
         assertThat(sends.get()).isEqualTo(2);
     }
+    @Test void stripsOnlyLiteralRedirectFragmentsAndPreservesSignedQueriesAndEncodedHashes() throws Exception {
+        var cases=java.util.Map.of(
+            "https://downloads.example/a%2Fb.zip?token=a%2Fb%2Bc&other=%252F#", "https://downloads.example/a%2Fb.zip?token=a%2Fb%2Bc&other=%252F",
+            "https://downloads.example/archive%23name.zip?token=a%23b#section", "https://downloads.example/archive%23name.zip?token=a%23b",
+            "../archive%23name.zip?token=a%23b#section", "https://source.example/archive%23name.zip?token=a%23b",
+            "/archive.zip?token=a%2Bb#section", "https://source.example/archive.zip?token=a%2Bb",
+            "//downloads.example/archive.zip?token=%23signed#", "https://downloads.example/archive.zip?token=%23signed"
+        );
+        for(var entry:cases.entrySet()) {
+            var sends=new AtomicInteger();
+            var downloader=new FileDownloader(host -> new InetAddress[]{InetAddress.getByName("93.184.216.34")},(target,writer) -> {
+                if(sends.incrementAndGet()==1) return new CatalogDownloadTransport.Result(302,entry.getKey(),"",null);
+                assertThat(target.uri().toString()).isEqualTo(entry.getValue());
+                assertThat(target.uri().getRawFragment()).isNull();
+                return new CatalogDownloadTransport.Result(200,null,"application/zip",writer.write(200,"application/zip",new ByteArrayInputStream(ZIP)));
+            });
+            var file=downloader.download("https://source.example/folder/catalog.zip?original=a%23b","test-fragment-",".zip");
+            try { assertThat(Files.readAllBytes(file)).isEqualTo(ZIP); }
+            finally { Files.deleteIfExists(file); }
+            assertThat(sends.get()).isEqualTo(2);
+        }
+    }
+    @Test void fragmentOnlyRedirectsAreLoopsWithoutChangingTheResourceOrQuery() {
+        for(String location:java.util.List.of("#","#section")) {
+            var sends=new AtomicInteger();
+            var downloader=new FileDownloader(host -> new InetAddress[]{InetAddress.getByName("93.184.216.34")},(target,writer) -> {
+                sends.incrementAndGet();return new CatalogDownloadTransport.Result(302,location,"",null);
+            });
+            assertThatThrownBy(() -> downloader.download("https://source.example/folder/catalog.zip?token=a%23b","test-loop-",".zip"))
+                .hasMessageContaining("bucle de redirecciones");
+            assertThat(sends.get()).isEqualTo(1);
+        }
+    }
+    @Test void removingFragmentsDoesNotPermitRedirectsToInternalAddressesOrUnsafeProtocols() {
+        var sends=new AtomicInteger();
+        var downloader=new FileDownloader(host -> new InetAddress[]{InetAddress.getByName(host.equals("source.example") ? "93.184.216.34" : "127.0.0.1")},(target,writer) -> {
+            sends.incrementAndGet();return new CatalogDownloadTransport.Result(302,"http://internal.example/archive.zip#","",null);
+        });
+        assertThatThrownBy(() -> downloader.download("https://source.example/catalog.zip","test-private-",".zip"))
+            .hasMessageContaining("destino público");
+        assertThat(sends.get()).isEqualTo(1);
+        var invalid=new FileDownloader(host -> new InetAddress[]{InetAddress.getByName("93.184.216.34")},
+            (target,writer) -> new CatalogDownloadTransport.Result(302,"file:///tmp/private#","",null));
+        assertThatThrownBy(() -> invalid.download("https://source.example/catalog.zip","test-protocol-",".zip"))
+            .hasMessageContaining("URL no permitida");
+    }
+
     @Test void rejectsLoopsTooManyRedirectsMissingLocationsAndInvalidRedirectProtocols() {
         for (String location : new String[]{"http://public.example/catalog.zip", "file:///tmp/private", "http://user:private-token@public.example/zip", "", "http://public.example:0/zip"}) {
             var downloader = new FileDownloader(host -> new InetAddress[]{InetAddress.getByName("93.184.216.34")},

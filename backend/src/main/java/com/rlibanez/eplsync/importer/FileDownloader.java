@@ -68,7 +68,14 @@ public class FileDownloader {
                     if (hop >= MAX_REDIRECTS) throw new CatalogDownloadException("La descarga del catálogo supera el límite de redirecciones");
                     if (result.location() == null || result.location().isBlank())
                         throw new CatalogDownloadException("El servidor devolvió una redirección sin destino");
-                    try { uri = validateUrl(uri.resolve(result.location()).toString()); }
+                    try {
+                        // Fragments never reach HTTP servers. Strip only a literal '#'; preserve raw escapes and signed queries.
+                        String location=result.location();
+                        int fragment=location.indexOf('#');
+                        if(fragment>=0) location=location.substring(0,fragment);
+                        // Resolving an empty reference with URI.resolve would change the path: fragment-only redirects keep this resource.
+                        uri = validateUrl(location.isEmpty() ? uri.toString() : uri.resolve(location).toString());
+                    }
                     catch (IllegalArgumentException ex) { throw new CatalogDownloadException("La redirección del catálogo contiene una URL no permitida"); }
                     continue;
                 }
