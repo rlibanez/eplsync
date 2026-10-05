@@ -13,6 +13,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError, NetworkError } from "../../api/catalog";
+import { PreviewError, readImportError } from "./importErrors";
 export type ImportMode =
   "preview" | "update" | "reset" | "apply" | "refresh" | "discard";
 export type ImportSource =
@@ -52,15 +53,6 @@ interface Operation {
   result?: ImportResult;
   resetResult?: ResetResult;
   error?: Error;
-}
-class PreviewError extends ApiError {
-  constructor(
-    status: number,
-    public code: string,
-    operationId?: string | null,
-  ) {
-    super(status, operationId);
-  }
 }
 
 const Context = createContext<{
@@ -218,12 +210,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
         throw new NetworkError("Import response unavailable");
       }
       if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new PreviewError(
-          response.status,
-          body.code ?? "",
-          response.headers.get("X-EPLSync-Operation-Id"),
-        );
+        throw await readImportError(response);
       }
       if (mode === "discard") {
         remember(null);
@@ -261,16 +248,18 @@ export function ImportProvider({ children }: { children: ReactNode }) {
         code === "ARCHIVE_EXPIRED" ||
         code === "ZIP_TOO_LARGE"
           ? t(`import.previewErrors.${code}`)
-          : t(
-              error instanceof ApiError && error.status === 409
-                ? "reset.busy"
-                : error instanceof NetworkError
-                  ? "import.networkError"
-                  : error instanceof ApiError
-                    ? "import.httpError"
-                    : "import.unexpectedError",
-              { status: error instanceof ApiError ? error.status : "" },
-            );
+          : error instanceof ApiError && error.details
+            ? error.details
+            : t(
+                error instanceof ApiError && error.status === 409
+                  ? "reset.busy"
+                  : error instanceof NetworkError
+                    ? "import.networkError"
+                    : error instanceof ApiError
+                      ? "import.httpError"
+                      : "import.unexpectedError",
+                { status: error instanceof ApiError ? error.status : "" },
+              );
       if (!(error instanceof ApiError && error.eventOperationId))
         notify({
           title,
@@ -280,7 +269,10 @@ export function ImportProvider({ children }: { children: ReactNode }) {
             !code.startsWith("PREVIEW_") &&
             code !== "ARCHIVE_EXPIRED" &&
             code !== "ZIP_TOO_LARGE" &&
-            !(error instanceof ApiError && error.status === 409)
+            !(
+              error instanceof ApiError &&
+              (error.status === 409 || error.details)
+            )
               ? "\n" +
                 t(mode === "reset" ? "reset.uncertain" : "import.uncertain")
               : ""),

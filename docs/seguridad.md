@@ -74,6 +74,66 @@ Los errores no incluyen fragmentos de respuestas remotas, URLs completas ni par�
 
 Esta política permite deliberadamente acceder a la red interna mediante `CATALOG_IMPORT`. La protección de DNS y redirecciones evita desviar una descarga pública hacia esa red; no elimina la capacidad de solicitar directamente destinos internos que concede ese permiso.
 
+## Límites y validación de las importaciones
+
+Las descargas remotas, subidas multipart y reutilizaciones de ZIP guardados comparten
+los límites definidos en `CatalogImportLimits` del backend. Son límites de seguridad
+fijos; no añaden variables de entorno ni ajustes de usuario.
+
+| Recurso | Máximo |
+| --- | --- |
+| ZIP recibido o guardado | 128 MiB |
+| CSV y cualquier otra entrada descomprimida | 512 MiB por entrada |
+| Datos descomprimidos de todas las entradas | 768 MiB |
+| Entradas del ZIP, incluidos directorios y archivos descartados | 128 |
+| Relación de compresión por entrada | 200:1 |
+| Descarga completa, incluidos DNS y redirecciones | 5 minutos |
+| Extracción y validación estructural del CSV | 2 minutos |
+| Registros del CSV | 1.000.000 |
+| Columnas del CSV | 64 |
+| Caracteres por registro, incluidas sus líneas | 1.048.576 |
+| Líneas físicas por registro multilínea | 1.000 |
+| Errores de conversión de datos | 1.000 |
+
+El tamaño declarado por HTTP permite un rechazo temprano, pero el límite también se
+comprueba contando los bytes realmente recibidos, antes de escribirlos. La descarga
+se cancela al agotar su plazo total aunque el servidor continúe enviando datos. No se
+aplica descompresión HTTP automática adicional al ZIP.
+
+Antes de abrir el ZIP se valida su directorio central y se cuenta su contenido, para
+limitar también la memoria utilizada por el índice del archivo. Solo se admiten ZIP
+de un volumen, incluidos ZIP64 con los mismos límites. Se validan también los
+registros ZIP64, sus offsets y recuentos, sin permitir desbordamientos ni tamaños
+incoherentes. La extracción comprueba los tamaños declarados,
+los bytes realmente descomprimidos, el consumo real del descompresor y el CRC de cada entrada, incluidas las que no se
+importan. Los nombres del ZIP nunca se utilizan como rutas de extracción ni como comandos.
+Se rechazan rutas absolutas, componentes `.` y `..`, nombres con caracteres de
+control o de formato invisible y nombres excesivamente largos. Se admiten carpetas
+normales dentro del ZIP. Los nombres descriptivos del ZIP y del CSV se normalizan
+como Unicode NFC, se limpian de caracteres de control, separadores de línea y
+marcas invisibles y se limitan a 200 caracteres. El frontend los presenta como texto,
+sin interpretarlos como HTML.
+
+Los rechazos de validación devuelven una explicación breve a la interfaz y al evento
+de importación fallida, además del log. Solo se publican mensajes de excepciones
+explícitamente seguras; los mensajes técnicos de otras excepciones no se copian a
+Eventos. La interfaz conserva las traducciones de los códigos conocidos y muestra
+el detalle seguro del backend para el resto de rechazos.
+
+Debe existir exactamente un CSV no vacío, en UTF-8, con las columnas `EPL Id`,
+`Título`, `Autor` y `Revisión`, sin cabeceras duplicadas y con el mismo número de
+columnas en cada registro. Se siguen admitiendo campos entre comillas, sinopsis
+multilínea y la reparación del formato conocido de la columna Portada. Los registros
+sobredimensionados se rechazan antes de que OpenCSV los acumule en memoria. Los
+errores de conversión aislados siguen contabilizándose; un CSV sin ningún libro válido se rechaza; un exceso aborta la operación
+y no se guardan las filas originales en la cola de errores.
+
+Un fallo de descarga, descompresión o validación elimina sus temporales y no modifica
+el catálogo ni sus metadatos. Un ZIP malformado no se conserva para reutilizarlo.
+Iniciar una nueva fuente sigue invalidando el ZIP guardado anteriormente, incluso si
+la nueva carga falla. Un fallo posterior de persistencia mantiene el ZIP ya validado
+para reintentar y revierte los cambios de la transacción.
+
 ## Contraseñas y sesiones
 
 Las contraseñas se guardan con Argon2id (19 MiB, dos iteraciones, paralelismo uno), sal aleatoria de 16 bytes y hash de 32 bytes. La longitud mínima es configurable en **Ajustes → Usuarios y seguridad**, entre 8 y 128 caracteres (8 por defecto); el máximo es 256. Antes de inicializar la instalación, `EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH` fija el mínimo inicial. La configuración se persiste y los cambios afectan solo a nuevas contraseñas. Las contraseñas temporales tienen al menos 192 bits aleatorios y también se almacenan como hash. La API nunca devuelve hashes; solo devuelve la contraseña temporal al generarla.

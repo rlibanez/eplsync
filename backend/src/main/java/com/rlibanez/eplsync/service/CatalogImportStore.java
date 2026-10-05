@@ -92,6 +92,7 @@ public class CatalogImportStore {
             throw new CatalogPreviewException("ARCHIVE_EXPIRED");
         ExtractedCsv csv = null;
         try {
+            com.rlibanez.eplsync.importer.CatalogImportLimits.checkZip(zipPath());
             if (!state.archive().sha256().equals(digest(zipPath()))) throw new CatalogPreviewException("PREVIEW_FILE_CHANGED");
             csv = extractor.extractCsvWithMetadata(zipPath());
             log.info("CSV extraído del ZIP guardado: nombre={}, bytes={}, fecha del CSV={}", csv.name(), Files.size(csv.path()), csv.modifiedAt());

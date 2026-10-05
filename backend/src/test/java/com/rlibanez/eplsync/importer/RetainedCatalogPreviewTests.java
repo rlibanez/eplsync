@@ -129,10 +129,10 @@ class RetainedCatalogPreviewTests {
         jdbc.execute("DROP TRIGGER fail_preview_apply");
         assertThat(service.applyPreview(token).recordsCreated()).isEqualTo(1);
     }
-    @Test void malformedCsvKeepsZipButNoExtractedCsv() throws Exception {
+    @Test void malformedCsvIsRejectedBeforeRetainingZip() throws Exception {
         csv = "EPL Id,Título,Autor,Revisión\n3,\"unterminated";
         assertThatThrownBy(() -> service.previewCatalog(null,0,50)).isInstanceOf(RuntimeException.class);
-        try (var files = Files.list(cache)) { assertThat(files.map(p -> p.getFileName().toString()).toList()).containsExactlyInAnyOrder("catalog.zip","state.json"); }
+        try (var files = Files.list(cache)) { assertThat(files.toList()).isEmpty(); }
     }
     @Test void failedReplacementRemovesPreviousArchive() throws Exception {
         var token = service.previewCatalog(null,0,50).summary().preview().token();
@@ -193,5 +193,44 @@ class RetainedCatalogPreviewTests {
             assertThat(java.util.List.of(first.get(), second.get())).containsExactlyInAnyOrder(true,false);
         }
         assertThat(books.count()).isEqualTo(1);
+    }
+
+    @Test void invalidIncomingCsvPreservesExistingCatalogAndMetadata() throws Exception {
+        service.updateCatalog(null);
+        var original = books.findById(2L).orElseThrow();
+        var sourceHash = metadata.findById(1L).orElseThrow().getSourceSha256();
+        csv = "EPL Id,Título,Autor,Revisión\n1,Wrong column count\n";
+        assertThatThrownBy(() -> service.importCatalog(null)).hasMessageContaining("columnas incorrecto");
+        assertThat(books.findById(2L).orElseThrow()).usingRecursiveComparison().isEqualTo(original);
+        assertThat(metadata.findById(1L).orElseThrow().getSourceSha256()).isEqualTo(sourceHash);
+        assertThat(store.archive()).isNull();
+        try (var files = Files.list(cache)) { assertThat(files.toList()).isEmpty(); }
+    }
+    @Test void oversizedRetainedArchiveIsRejectedBeforeHashing() throws Exception {
+        service.updateCatalog(null);
+        String id = store.archive().id();
+        try (var file = new java.io.RandomAccessFile(cache.resolve("catalog.zip").toFile(), "rw")) {
+            file.setLength(CatalogImportLimits.ZIP_BYTES + 1);
+        }
+        assertThatThrownBy(() -> service.runSaved(id, CatalogImportService.Mode.UPDATE)).hasMessageContaining("128 MiB");
+        assertThat(books.findById(2L).orElseThrow().getTitle()).isEqualTo("Original");
+    }
+    @Test void oversizedUploadIsRejectedWithoutAllocatingItsContents() {
+        var file = new org.springframework.mock.web.MockMultipartFile("file", "catalog.zip", "application/zip", new byte[]{1}) {
+            @Override public long getSize() { return CatalogImportLimits.ZIP_BYTES + 1; }
+            @Override public java.io.InputStream getInputStream() { throw new AssertionError("Oversized upload must not be read"); }
+        };
+        assertThatThrownBy(() -> service.runUpload(file, CatalogImportService.Mode.UPDATE)).hasMessageContaining("128 MiB");
+        assertThat(store.archive()).isNull();
+        assertThat(books.count()).isZero();
+    }
+
+    @Test void longUploadNameUsesOriginalExtensionAndBoundedDisplayMetadata() throws Exception {
+        Path fixture = downloader.download("fixture", "fixture", ".zip");
+        byte[] bytes = Files.readAllBytes(fixture); Files.delete(fixture);
+        var file = new org.springframework.mock.web.MockMultipartFile("file", "x".repeat(210) + ".ZIP", "application/zip", bytes);
+        assertThat(service.runUpload(file, CatalogImportService.Mode.PREVIEW).recordsCreated()).isEqualTo(1);
+        assertThat(store.archive().name()).isEqualTo("x".repeat(200));
+        assertThat(books.count()).isZero();
     }
 }

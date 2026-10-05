@@ -215,4 +215,19 @@ class CatalogImportTests {
         assertThat(importer.importFile(file, false).processed()).isEqualTo(2);
         assertThat(repository.findById(2L).orElseThrow().getSynopsis()).isEqualTo("Termina en \"comillas\"");
     }
+
+    @Test void excessiveConversionErrorsAbortAndRollBackCatalogReplacement() throws Exception {
+        importer.importFile(csv("1,1,Autor,Original\n"), true);
+        Path invalid = csv("2,1,Autor,Nuevo\n" + "invalid,1,Autor,Invalid\n".repeat(CatalogImportLimits.CONVERSION_ERRORS + 1));
+        assertThatThrownBy(() -> importer.importFile(invalid, true)).hasStackTraceContaining("1000 errores de conversión");
+        assertThat(repository.findById(1L).orElseThrow().getTitle()).isEqualTo("Original");
+        assertThat(repository.existsById(2L)).isFalse();
+    }
+
+    @Test void csvWithoutAnyValidBookCannotEraseTheCatalog() throws Exception {
+        importer.importFile(csv("1,1,Autor,Original\n"), true);
+        assertThatThrownBy(() -> importer.importFile(csv("invalid,1,Autor,Invalid\n"), true))
+            .hasMessageContaining("ningún libro válido");
+        assertThat(repository.findById(1L).orElseThrow().getTitle()).isEqualTo("Original");
+    }
 }

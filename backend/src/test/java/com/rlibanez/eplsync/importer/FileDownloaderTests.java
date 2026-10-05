@@ -26,7 +26,7 @@ class FileDownloaderTests {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/redirect",exchange -> {
             exchange.getResponseHeaders().add("Location","/catalog.zip");
-            exchange.sendResponseHeaders(302,-1); exchange.close();
+            respond(exchange,302,"text/html",new byte[16_384]);
         });
         server.createContext("/catalog.zip",exchange -> respond(exchange,200,"application/zip",ZIP));
         server.start();
@@ -188,4 +188,86 @@ class FileDownloaderTests {
         assertThat(received.get()).doesNotExist();
     }
 
+
+    @Test void boundsActualBytesWithoutContentLengthAndRemovesPartialDownload() throws Exception {
+        String prefix = "oversize-" + java.util.UUID.randomUUID();
+        var downloader = new FileDownloader(host -> new InetAddress[]{InetAddress.getLoopbackAddress()},
+            (target, writer) -> new CatalogDownloadTransport.Result(200,null,"application/zip",
+                writer.write(200,"application/zip",new ByteArrayInputStream(new byte[65]))),64,java.time.Duration.ofSeconds(5));
+        assertThatThrownBy(() -> downloader.download("http://local.test/catalog.zip",prefix,".zip"))
+            .isInstanceOf(CatalogDownloadException.class).hasMessageContaining("tamaño máximo");
+        try (var paths = Files.list(java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))) {
+            assertThat(paths.filter(p -> p.getFileName().toString().startsWith(prefix)).toList()).isEmpty();
+        }
+    }
+    @Test void acceptsExactlyTheByteLimit() throws Exception {
+        var downloader = new FileDownloader(host -> new InetAddress[]{InetAddress.getLoopbackAddress()},
+            (target, writer) -> new CatalogDownloadTransport.Result(200,null,"application/zip",
+                writer.write(200,"application/zip",new ByteArrayInputStream(new byte[64]))),64,java.time.Duration.ofSeconds(5));
+        var path = downloader.download("http://local.test/catalog.zip","exact-limit-",".zip");
+        try { assertThat(Files.size(path)).isEqualTo(64); } finally { Files.delete(path); }
+    }
+    @Test void totalBudgetBoundsDnsResolution() {
+        var downloader = new FileDownloader(host -> {
+            try { Thread.sleep(10_000); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); throw new java.net.UnknownHostException("interrupted"); }
+            return new InetAddress[]{InetAddress.getLoopbackAddress()};
+        }, (target, writer) -> { throw new AssertionError("No request after DNS deadline"); },64,java.time.Duration.ofMillis(100));
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(2), () ->
+            assertThatThrownBy(() -> downloader.download("http://local.test/catalog.zip","dns-budget-",".zip"))
+                .isInstanceOf(CatalogDownloadException.class).hasMessageContaining("tiempo máximo"));
+    }
+    @Test void totalBudgetCancelsAStalledHttpBodyAndRemovesPartialFile() throws Exception {
+        String prefix = "stalled-" + java.util.UUID.randomUUID();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        server.createContext("/catalog.zip",exchange -> {
+            try (exchange) {
+                exchange.sendResponseHeaders(200,0);
+                exchange.getResponseBody().write(ZIP); exchange.getResponseBody().flush();
+                try { release.await(); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+            }
+        });
+        server.start();
+        try {
+            var downloader = new FileDownloader(InetAddress::getAllByName,new PinnedCatalogTransport(),64,java.time.Duration.ofMillis(300));
+            org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () ->
+                assertThatThrownBy(() -> downloader.download(url(server,"/catalog.zip"),prefix,".zip"))
+                    .isInstanceOf(CatalogDownloadException.class).hasMessageContaining("tiempo máximo"));
+            try (var paths = Files.list(java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))) {
+                assertThat(paths.filter(p -> p.getFileName().toString().startsWith(prefix)).toList()).isEmpty();
+            }
+        } finally { release.countDown(); server.stop(0); }
+    }
+
+    @Test void redirectsShareOneTransferDeadline() throws Exception {
+        var calls = new AtomicInteger();
+        var downloader = new FileDownloader(InetAddress::getAllByName, (target, writer) -> {
+            Thread.sleep(120);
+            int call = calls.incrementAndGet();
+            return new CatalogDownloadTransport.Result(302,"/redirect"+call,"",null);
+        },64,java.time.Duration.ofMillis(200));
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(java.time.Duration.ofSeconds(3), () ->
+            assertThatThrownBy(() -> downloader.download("http://127.0.0.1/catalog.zip","redirect-budget-",".zip"))
+                .hasMessageContaining("tiempo máximo"));
+        assertThat(calls.get()).isLessThanOrEqualTo(2);
+    }
+    @Test void rejectsOversizedDeclaredHttpBodyBeforeCreatingTemporaryFile() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/catalog.zip",exchange -> {
+            try (exchange) {
+                exchange.sendResponseHeaders(200,CatalogImportLimits.ZIP_BYTES + 1);
+                exchange.getResponseBody().write(1);
+                exchange.getResponseBody().flush();
+            }
+        });
+        server.start();
+        String prefix = "declared-" + java.util.UUID.randomUUID();
+        try {
+            assertThatThrownBy(() -> new FileDownloader().download(url(server,"/catalog.zip"),prefix,".zip"))
+                .hasMessageContaining("tamaño máximo");
+            try (var paths = Files.list(java.nio.file.Path.of(System.getProperty("java.io.tmpdir")))) {
+                assertThat(paths.filter(p -> p.getFileName().toString().startsWith(prefix)).toList()).isEmpty();
+            }
+        } finally { server.stop(0); }
+    }
 }

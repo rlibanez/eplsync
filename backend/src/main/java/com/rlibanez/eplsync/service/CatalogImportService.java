@@ -216,9 +216,9 @@ public class CatalogImportService {
                 () -> previews.useArchive(archiveId, (archive,csv) -> processSource(archive, csv, mode, "SAVED_ZIP", started)), this::eventSummary);
     }
     public ImportResult runUpload(org.springframework.web.multipart.MultipartFile file, Mode mode) {
-        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().replace('\\', '/');
-        name = name.substring(name.lastIndexOf('/') + 1).replaceAll("[\\p{Cntrl}]", "");
-        if (file.isEmpty() || !name.toLowerCase(java.util.Locale.ROOT).endsWith(".zip"))
+        String originalName = file.getOriginalFilename();
+        String name = com.rlibanez.eplsync.importer.CatalogFileNames.display(originalName, "");
+        if (file.isEmpty() || originalName == null || !originalName.toLowerCase(java.util.Locale.ROOT).endsWith(".zip"))
             throw new IllegalArgumentException("Selecciona un archivo ZIP no vacío");
         String displayName = name;
         long started = System.nanoTime();
@@ -226,7 +226,22 @@ public class CatalogImportService {
             mode == Mode.PREVIEW ? "PREVIEW" : "UPDATE", java.util.Map.of("dryRun", mode == Mode.PREVIEW),
             () -> previews.replace(null, displayName, () -> {
                 Path uploaded = Files.createTempFile("eplsync-upload-", ".zip");
-                try { file.transferTo(uploaded); return uploaded; }
+                try {
+                    if (file.getSize() > com.rlibanez.eplsync.importer.CatalogImportLimits.ZIP_BYTES)
+                        throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP supera el máximo de 128 MiB");
+                    try (var input = file.getInputStream(); var output = Files.newOutputStream(uploaded)) {
+                        byte[] buffer = new byte[8192];
+                        long total = 0;
+                        for (int read; (read = input.read(buffer)) != -1;) {
+                            if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Carga del ZIP interrumpida");
+                            total += read;
+                            if (total > com.rlibanez.eplsync.importer.CatalogImportLimits.ZIP_BYTES)
+                                throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP supera el máximo de 128 MiB");
+                            output.write(buffer, 0, read);
+                        }
+                    }
+                    return uploaded;
+                }
                 catch (Exception ex) { cleanupTempFile(uploaded); throw ex; }
             }, (archive,csv) -> processSource(archive,csv,mode,"LOCAL_FILE",started)), this::eventSummary);
     }
@@ -238,8 +253,7 @@ public class CatalogImportService {
     }
     private String zipName(String source) {
         String path = FileDownloader.validateUrl(source).getPath();
-        String name = path == null ? "" : path.substring(path.lastIndexOf('/') + 1);
-        return name.isBlank() ? "catalog.zip" : name;
+        return com.rlibanez.eplsync.importer.CatalogFileNames.display(path, "catalog.zip");
     }
 
     @FunctionalInterface

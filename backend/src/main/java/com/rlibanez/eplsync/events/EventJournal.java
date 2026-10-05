@@ -109,6 +109,8 @@ public class EventJournal {
     private String failureReason(RuntimeException ex) {
         // Only expose messages from exceptions explicitly designed for API consumers.
         return ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException
+                || ex instanceof com.rlibanez.eplsync.exception.CatalogValidationException
+                || ex instanceof com.rlibanez.eplsync.exception.CatalogImportException
                 ? ex.getMessage() : ex.getClass().getSimpleName();
     }
 

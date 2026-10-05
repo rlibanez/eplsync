@@ -69,7 +69,7 @@ public class CatalogBookCsvImporter {
     @Transactional(readOnly = true)
     public ImportPreviewResult previewFile(Path csvPath, int page, int size) throws IOException {
         if (page < 0 || size < 1) {
-            throw new IllegalArgumentException("page debe ser >= 0 y size debe ser > 0");
+            throw new com.rlibanez.eplsync.exception.CatalogValidationException("page debe ser >= 0 y size debe ser > 0");
         }
         var result = processFile(csvPath, true, page, size);
         var stats = result.summary();
@@ -84,7 +84,7 @@ public class CatalogBookCsvImporter {
     public Analysis analyzeMissing(Path path) throws IOException {
         var result = processFile(path, true, 0, 1);
         if (result.summary().errors() > 0 || result.summary().processed() == 0)
-            throw new IllegalArgumentException("El CSV está vacío o contiene errores; no se pueden eliminar ausentes");
+            throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV está vacío o contiene errores; no se pueden eliminar ausentes");
         return new Analysis(result.summary(), result.missingBooks());
     }
     private record ProcessResult(ImportStats summary, List<CatalogBook> createdBooks,
@@ -102,6 +102,9 @@ public class CatalogBookCsvImporter {
         int unchanged = 0;
         int rowNumber = 1;
 
+        if (Files.size(csvPath) > CatalogImportLimits.CSV_BYTES)
+            throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV supera el máximo de 512 MiB");
+        var conversionErrors = new java.util.concurrent.atomic.AtomicInteger();
         try (Reader reader = new CoverCsvReader(Files.newBufferedReader(csvPath))) {
 
             var parser = new CsvToBeanBuilder<CatalogBookCsvRow>(reader)
@@ -109,12 +112,21 @@ public class CatalogBookCsvImporter {
                     .withSeparator(',')
                     .withQuoteChar('"')
                     .withIgnoreLeadingWhiteSpace(true)
-                    .withThrowExceptions(false)
+                    .withMultilineLimit(CatalogImportLimits.RECORD_LINES)
+                    .withExceptionHandler(exception -> {
+                        if (conversionErrors.incrementAndGet() > CatalogImportLimits.CONVERSION_ERRORS)
+                            throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV supera el máximo de 1000 errores de conversión");
+                        // Do not retain attacker-controlled rows/values in OpenCSV's exception queue.
+                        var safe = new com.opencsv.exceptions.CsvException("Datos incompatibles con el tipo de una columna");
+                        safe.setLineNumber(exception.getLineNumber());
+                        return safe;
+                    })
                     .build();
             var it = parser.iterator();
 
             while (it.hasNext()) {
-                rowNumber++;
+                if (++rowNumber > CatalogImportLimits.RECORDS + 1)
+                    throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV supera el máximo de 1000000 registros");
                 CatalogBookCsvRow row = null;
                 CatalogBook entity;
                 row = it.next(); // Los fallos de lectura abortan; los de conversión los captura OpenCSV.
@@ -145,7 +157,7 @@ public class CatalogBookCsvImporter {
 
                     if (entity.getEplId() == null || entity.getRevision() == null
                             || entity.getAuthor() == null || entity.getTitle() == null) {
-                        throw new IllegalArgumentException("Faltan campos obligatorios del libro");
+                        throw new com.rlibanez.eplsync.exception.CatalogValidationException("Faltan campos obligatorios del libro");
                     }
                 } catch (Exception ex) {
                     errors++;
@@ -206,6 +218,8 @@ public class CatalogBookCsvImporter {
                     log.warn("Error convirtiendo fila {}: {}", error.getLineNumber(), error.getMessage());
                 }
             }
+            if (processed == 0)
+                throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV no contiene ningún libro válido");
             if (!preview) {
                 repository.flush();
             }

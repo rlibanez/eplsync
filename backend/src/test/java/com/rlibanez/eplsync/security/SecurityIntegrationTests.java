@@ -435,4 +435,25 @@ class SecurityIntegrationTests {
         }
     }
 
+
+    @Test void unsafeArchiveNamesReturnTheSameConciseReasonInApiAndEvents() throws Exception {
+        var session = admin();
+        var bytes = new java.io.ByteArrayOutputStream();
+        try (var zip = new java.util.zip.ZipOutputStream(bytes)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("../../catalog.csv"));
+            zip.write("EPL Id,Título,Autor,Revisión\n1,Libro,Autor,1\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        var file = new org.springframework.mock.web.MockMultipartFile("file","catalog.zip","application/zip",bytes.toByteArray());
+        var options = new org.springframework.mock.web.MockMultipartFile("options","","application/json","{\"dryRun\":true}".getBytes());
+        var result = mvc.perform(multipart("/api/catalog/import/run").file(file).file(options).session(session).with(csrf()))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.details").value("El ZIP contiene una ruta de archivo no permitida"))
+            .andReturn();
+        String operation = result.getResponse().getHeader("X-EPLSync-Operation-Id");
+        assertThat(operation).isNotBlank();
+        String details = jdbc.queryForObject("SELECT details FROM app_events WHERE operation_id=? AND outcome='FAILED'",String.class,operation);
+        assertThat(details).contains("El ZIP contiene una ruta de archivo no permitida").doesNotContain("../../catalog.csv");
+        assertThat(books.count()).isZero();
+    }
 }

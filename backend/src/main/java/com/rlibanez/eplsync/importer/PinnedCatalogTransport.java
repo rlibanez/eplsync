@@ -35,6 +35,10 @@ final class PinnedCatalogTransport implements CatalogDownloadTransport {
         };
     }
     @Override public Result fetch(CatalogDownloadPolicy.Target target, BodyWriter writer) throws IOException, InterruptedException {
+        return fetch(target, writer, new DownloadBudget(CatalogImportLimits.DOWNLOAD_TIME));
+    }
+    @Override public Result fetch(CatalogDownloadPolicy.Target target, BodyWriter writer, DownloadBudget budget)
+            throws IOException, InterruptedException {
         var manager = PoolingHttpClientConnectionManagerBuilder.create()
             .setDnsResolver(pinnedResolver(target))
             .setDefaultConnectionConfig(ConnectionConfig.custom().setConnectTimeout(TIMEOUT).setSocketTimeout(TIMEOUT).build())
@@ -43,24 +47,36 @@ final class PinnedCatalogTransport implements CatalogDownloadTransport {
                 .setRoutePlanner(new DefaultRoutePlanner(DefaultSchemePortResolver.INSTANCE))
                 .setDefaultRequestConfig(RequestConfig.custom().setResponseTimeout(TIMEOUT)
                     .setConnectionRequestTimeout(TIMEOUT).setAuthenticationEnabled(false).build())
-                .disableRedirectHandling().disableAutomaticRetries().disableCookieManagement().disableAuthCaching()
+                .disableContentCompression().disableRedirectHandling().disableAutomaticRetries().disableCookieManagement().disableAuthCaching()
                 .build()) {
             var request = new HttpGet(target.uri());
             request.setHeader(HttpHeaders.USER_AGENT,"EplSync/1.0");
-            var response = client.executeOpen(null,request,null);
+            var cancellation = budget.cancelAtDeadline(request::cancel);
             try {
-                int status = response.getCode();
-                var type = response.getFirstHeader(HttpHeaders.CONTENT_TYPE);
-                String contentType = type == null ? "" : type.getValue().toLowerCase(Locale.ROOT);
-                var location = response.getFirstHeader(HttpHeaders.LOCATION);
-                var file = writer.write(status,contentType,
-                    response.getEntity() == null ? InputStream.nullInputStream() : response.getEntity().getContent());
-                return new Result(status, location == null ? null : location.getValue(), contentType, file);
-            } finally {
-                // Do not drain arbitrary redirect/error bodies to reuse a connection. Each hop has its own client.
-                client.close(CloseMode.IMMEDIATE);
-                response.close();
-            }
+                var response = client.executeOpen(null,request,null);
+                boolean bodyCompleted = false;
+                try {
+                    int status = response.getCode();
+                    if (status >= 200 && status < 300 && response.getEntity() != null
+                            && response.getEntity().getContentLength() > CatalogImportLimits.ZIP_BYTES)
+                        throw new com.rlibanez.eplsync.exception.CatalogDownloadException("El ZIP descargado supera el tamaño máximo permitido (128 MiB)");
+                    var type = response.getFirstHeader(HttpHeaders.CONTENT_TYPE);
+                    String contentType = type == null ? "" : type.getValue().toLowerCase(Locale.ROOT);
+                    var location = response.getFirstHeader(HttpHeaders.LOCATION);
+                    var file = writer.write(status,contentType,
+                        response.getEntity() == null ? InputStream.nullInputStream() : response.getEntity().getContent());
+                    bodyCompleted = status >= 200 && status < 300;
+                    return new Result(status, location == null ? null : location.getValue(), contentType, file);
+                } finally {
+                    // Do not drain arbitrary redirect/error bodies to reuse a connection. Each hop has its own client.
+                    client.close(CloseMode.IMMEDIATE);
+                    try { response.close(); }
+                    catch (IOException cleanup) {
+                        // A failed response must retain its rejection reason, even if closing a partial body fails.
+                        if (bodyCompleted) throw cleanup;
+                    }
+                }
+            } finally { cancellation.cancel(false); }
         } catch (InterruptedIOException ex) {
             if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Descarga del catálogo interrumpida");
             throw ex;

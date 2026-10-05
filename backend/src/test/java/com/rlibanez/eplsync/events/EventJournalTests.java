@@ -193,4 +193,16 @@ class EventJournalTests {
         journal.prune();
         assertThat(journal.search(all, 0, 20).total()).isZero();
     }
+
+    @Test void catalogRejectionsExposeSafeReasonsButNeverArbitraryExceptionMessages() {
+        var safe = new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP supera el máximo de 128 MiB");
+        assertThatThrownBy(() -> journal.run(Category.CATALOG,"UPDATE", () -> { throw safe; }, result -> Map.of()))
+            .isSameAs(safe);
+        assertThat(journal.search(all,0,20).items().getFirst().details().get("reason")).isEqualTo(safe.getMessage());
+        var internal = new IllegalArgumentException("SQL token=private-secret");
+        assertThatThrownBy(() -> journal.run(Category.CATALOG,"UPDATE", () -> { throw internal; }, result -> Map.of()))
+            .isSameAs(internal);
+        assertThat(journal.search(all,0,20).items().getFirst().details().get("reason"))
+            .isEqualTo("IllegalArgumentException");
+    }
 }

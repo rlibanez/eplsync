@@ -1,32 +1,37 @@
 package com.rlibanez.eplsync.importer;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
-
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.zip.ZipEntry;
+import java.util.Locale;
+import java.util.zip.CRC32;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipEntry;
+import org.springframework.stereotype.Component;
 
-/**
- * Utilidad para extraer archivos de un ZIP.
- */
+/** Validates every entry, including discarded files, before publishing the extracted CSV. */
 @Component
 public class ZipExtractor {
+    private final long maxEntryBytes;
+    private final long maxExpandedBytes;
+    private final int maxEntries;
+    private final int maxRatio;
+    private final java.time.Duration timeout;
 
-    private static final Logger log = LoggerFactory.getLogger(ZipExtractor.class);
+    public ZipExtractor() {
+        this(CatalogImportLimits.CSV_BYTES, CatalogImportLimits.EXPANDED_BYTES,
+            CatalogImportLimits.ENTRIES, CatalogImportLimits.COMPRESSION_RATIO, CatalogImportLimits.EXTRACTION_TIME);
+    }
+    ZipExtractor(long maxEntryBytes, long maxExpandedBytes, int maxEntries, int maxRatio, java.time.Duration timeout) {
+        this.maxEntryBytes = maxEntryBytes;
+        this.maxExpandedBytes = maxExpandedBytes;
+        this.maxEntries = maxEntries;
+        this.maxRatio = maxRatio;
+        this.timeout = timeout;
+    }
 
-    /**
-     * Extrae el único archivo CSV de un ZIP temporalmente.
-     *
-     * @param zipFile Ruta al archivo ZIP de entrada.
-     * @return Ruta al archivo CSV extraído.
-     * @throws IOException              Si ocurre un error de E/S al leer o extraer.
-     * @throws IllegalArgumentException Si no hay o hay múltiples archivos CSV.
-     */
     public record ExtractedCsv(Path path, String name, String modifiedAt) {}
 
     public Path extractCsv(Path zipFile) throws IOException {
@@ -34,60 +39,86 @@ public class ZipExtractor {
     }
 
     public ExtractedCsv extractCsvWithMetadata(Path zipFile) throws IOException {
-        log.trace("Extrayendo archivo CSV desde ZIP: {}", zipFile);
-
-        Path extractedFile = null;
-        int csvCount = 0;
-        String originalName = null;
+        CatalogImportLimits.checkZip(zipFile);
+        long deadline = System.nanoTime() + timeout.toNanos();
+        ZipArchiveValidator.validate(zipFile, maxEntries, deadline);
+        Path extracted = null;
+        String name = null;
         String modifiedAt = null;
-
-        try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(zipFile))) {
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
+        long total = 0;
+        int count = 0;
+        try (var zip = new ZipFile(zipFile.toFile()); var input = new EntryStream(Files.newInputStream(zipFile))) {
+            var indexed = new java.util.HashMap<String, ZipEntry>();
+            var entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                var entry = entries.nextElement();
+                CatalogFileNames.validateEntry(entry.getName());
+                if (indexed.putIfAbsent(entry.getName(), entry) != null)
+                    throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP contiene nombres de entrada duplicados");
+            }
+            for (ZipEntry local; (local = input.getNextEntry()) != null;) {
+                CatalogImportLimits.checkDeadline(deadline);
+                var entry = indexed.remove(local.getName());
+                if (entry == null || entry.getMethod() != local.getMethod())
+                    throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP contiene entradas incompatibles con su directorio central");
+                if (++count > maxEntries)
+                    throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP supera el máximo de 128 entradas");
+                if (entry.getSize() < 0 || entry.getCompressedSize() < 0 || entry.getCompressedSize() > Files.size(zipFile) || entry.getSize() > maxEntryBytes)
+                    throw new com.rlibanez.eplsync.exception.CatalogValidationException("Una entrada del ZIP supera el máximo de 512 MiB o tiene un tamaño inválido");
+                long ratioLimit = Math.max(1, entry.getCompressedSize()) * maxRatio;
+                if (entry.getSize() > ratioLimit)
+                    throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP supera la relación máxima de compresión de 200:1");
+                CatalogFileNames.validateEntry(local.getName());
                 String entryName = entry.getName().replace('\\', '/');
-
-                if (!entry.isDirectory() && entryName.toLowerCase().endsWith(".csv")) {
-                    csvCount++;
-                    if (csvCount > 1) {
-                        throw new IllegalArgumentException(
-                                "El ZIP contiene múltiples archivos CSV. No es posible determinar cuál usar: "
-                                        + zipFile);
-                    }
-                    String fileName = entryName.substring(entryName.lastIndexOf('/') + 1);
-                    originalName = fileName;
+                boolean csv = !entry.isDirectory() && entryName.toLowerCase(Locale.ROOT).endsWith(".csv");
+                if (csv) {
+                    if (extracted != null) throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP contiene múltiples archivos CSV");
+                    name = CatalogFileNames.display(entryName, "catalog.csv");
                     modifiedAt = entry.getTimeLocal() == null ? null : entry.getTimeLocal().toString();
-                    String prefix = fileName.replaceAll("[^a-zA-Z0-9]", "_");
-                    String suffix = ".csv";
-                    Path tempFile = Files.createTempFile(prefix + "-", suffix);
-                    try {
-                        Files.copy(zis, tempFile, StandardCopyOption.REPLACE_EXISTING);
-                        log.trace("CSV extraído exitosamente: {} ({} bytes)",
-                                tempFile, Files.size(tempFile));
-                        extractedFile = tempFile;
-                    } catch (IOException e) {
-                        Files.deleteIfExists(tempFile);
-                        throw e;
+                    extracted = Files.createTempFile("eplsync-csv-", ".csv");
+                }
+                long bytes = 0;
+                var crc = new CRC32();
+                try (var output = csv ? Files.newOutputStream(extracted) : OutputStream.nullOutputStream()) {
+                    byte[] buffer = new byte[8192];
+                    for (int read; (read = input.read(buffer)) != -1;) {
+                        CatalogImportLimits.checkDeadline(deadline);
+                        bytes += read;
+                        total += read;
+                        if (bytes > maxEntryBytes || bytes > entry.getSize() || bytes > ratioLimit
+                                || total > maxExpandedBytes)
+                            throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP supera los límites de descompresión del catálogo");
+                        crc.update(buffer, 0, read);
+                        output.write(buffer, 0, read);
                     }
                 }
-                zis.closeEntry();
+                // The inflater reports consumed compressed bytes, independently of forged ZIP metadata.
+                long consumed = entry.getMethod() == ZipEntry.DEFLATED ? input.compressedBytes() : bytes;
+                if (consumed != entry.getCompressedSize() || bytes > Math.max(1, consumed) * maxRatio)
+                    throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP contiene un tamaño comprimido incorrecto o supera la relación máxima de compresión de 200:1");
+                if (bytes != entry.getSize() || crc.getValue() != entry.getCrc())
+                    throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP está dañado: tamaño o CRC incorrecto");
             }
-        } catch (IOException | RuntimeException e) {
-            // El servicio aún no conoce esta ruta si la extracción no llega a devolverla.
-            if (extractedFile != null) {
-                try {
-                    Files.deleteIfExists(extractedFile);
-                } catch (IOException cleanupError) {
-                    e.addSuppressed(cleanupError);
-                }
+            if (!indexed.isEmpty()) throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP contiene entradas ausentes o truncadas");
+            if (extracted == null) throw new com.rlibanez.eplsync.exception.CatalogValidationException("No se encontró ningún archivo CSV en el ZIP");
+            CatalogCsvValidator.validate(extracted, deadline);
+            return new ExtractedCsv(extracted, name, modifiedAt);
+        } catch (IOException | RuntimeException ex) {
+            if (extracted != null) {
+                try { Files.deleteIfExists(extracted); }
+                catch (IOException cleanup) { ex.addSuppressed(cleanup); }
             }
-            throw e;
+            if (ex instanceof java.io.EOFException)
+                throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP está incompleto o dañado", ex);
+            if (ex instanceof IllegalArgumentException && !(ex instanceof com.rlibanez.eplsync.exception.CatalogValidationException))
+                throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP contiene metadatos inválidos", ex);
+            if (ex instanceof java.util.zip.ZipException)
+                throw new com.rlibanez.eplsync.exception.CatalogValidationException("El ZIP está dañado o no es un archivo ZIP compatible", ex);
+            throw ex;
         }
-
-        if (csvCount == 0) {
-            throw new IllegalArgumentException(
-                    "No se encontró ningún archivo CSV en el ZIP: " + zipFile);
-        }
-        
-        return new ExtractedCsv(extractedFile, originalName, modifiedAt);
+    }
+    private static final class EntryStream extends ZipInputStream {
+        EntryStream(java.io.InputStream input) { super(input); }
+        long compressedBytes() { return inf.getBytesRead(); }
     }
 }
