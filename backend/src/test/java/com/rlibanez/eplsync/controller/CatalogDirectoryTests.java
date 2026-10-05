@@ -96,4 +96,18 @@ class CatalogDirectoryTests {
   assertThatThrownBy(() -> controller.list("authors","",0,20,"",1)).isInstanceOf(IllegalArgumentException.class);
  }
 
+ @Test void unicodeWhitespaceIsStrippedBeforeDeduplicationAndPaging() {
+  em.createQuery("delete from CatalogBook").executeUpdate();
+  em.persist(CatalogBook.builder().eplId(1L).title("Book").author("\u2003Álvaro\u2003")
+      .collection("\u2003Álvaro\u2003").revision(1.0).build());
+  em.persist(CatalogBook.builder().eplId(2L).title("Book").author("Álvaro")
+      .collection("Álvaro").revision(1.0).build());
+  em.flush();
+  for (String kind : java.util.List.of("authors", "collections")) {
+   var page = controller.list(kind, "alv", 0, 10, "A");
+   assertThat(page.items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("Álvaro");
+   assertThat(page.meta().totalItems()).isEqualTo(1);
+  }
+ }
+
 }

@@ -383,7 +383,7 @@ metadatos ni conectar con qBittorrent. Conserva los endpoints de libros existent
 | Petición GET | Respuesta |
 | --- | --- |
 | `/api/catalog/books/{eplId}/magnets` | Array JSON de magnets del libro; `[]` si no tiene hashes válidos y `404` si no existe |
-| `/api/catalog/magnets` | Array JSON de magnets de los libros filtrados |
+| `/api/catalog/magnets` | Primera página de magnets filtrados: `items` y `meta`, tamaño predeterminado 20 |
 | `/api/catalog/magnets?page=0&size=20` | `{ "items": [...], "meta": {...} }`, con la misma estructura de metadatos que la búsqueda de libros |
 | `/api/catalog/magnets/export` | Archivo `magnets.txt`, `text/plain;charset=UTF-8`, con un magnet por línea |
 
@@ -489,15 +489,20 @@ Los valores almacenados en la base de datos no cambian; no hace falta reimportar
 
 ## Tamaño de página
 
-Los endpoints de catálogo y torrent aceptan `page >= 0` y `size > 0`, sin límites
-artificiales de 100, 500 o 2000 elementos. Spring tampoco recorta `size` a 2000.
-Los parámetros usan enteros de 32 bits (máximo representable: 2147483647).
-Los valores por defecto y el comportamiento sin paginación se mantienen.
+Los listados de libros, magnets, descargas, trabajos y elementos de trabajos aceptan
+`page >= 0` y `size` entre 1 y 1000. El desplazamiento `page * size` no puede superar
+2147483647. Los valores inválidos se rechazan con HTTP 400, sin recortes silenciosos.
+Libros y magnets devuelven siempre `items` y `meta`, incluso sin parámetros:
+`page=0` y `size=20`. Eventos y previsualización de ausentes mantienen sus máximos
+más restrictivos (200 y 100 respectivamente); el directorio conserva sus tamaños
+predefinidos hasta 1000.
 
-Por ejemplo, `POST /api/torrent/books`
-selecciona hasta 10000 libros; no inicia 10000 envíos simultáneos. `batchSize`,
-`concurrency` e `interval` siguen controlando la ejecución. En listados GET, una
-página grande genera una respuesta mayor y requiere más memoria y tiempo.
+La ordenación del catálogo admite hasta 8 criterios sobre campos reconocidos.
+Las selecciones y exclusiones explícitas admiten como máximo 10000 IDs por campo;
+los demás filtros múltiples mantienen el máximo de 100 valores por campo.
+El envío de todos los resultados mediante filtros sigue disponible: el límite de
+página no limita el tamaño total de un trabajo solicitado para todo el catálogo.
+La generación de exportaciones se abordará por separado.
 
 ## Filtrar el catálogo por eplId
 

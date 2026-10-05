@@ -1,7 +1,5 @@
 package com.rlibanez.eplsync.controller;
 
-import java.util.Objects;
-
 import com.rlibanez.eplsync.dto.PageResponse;
 import com.rlibanez.eplsync.model.enums.Language;
 import jakarta.persistence.EntityManager;
@@ -78,7 +76,7 @@ public class CatalogDirectoryController {
         // Only project distinct names, never load full books. Unicode normalization
         // and Spanish collation happen before filtering and pagination.
         String sql = separator == null
-            ? "SELECT DISTINCT trim(collection) FROM catalog_books WHERE collection IS NOT NULL"
+            ? "SELECT DISTINCT trim(collection) AS value FROM catalog_books WHERE collection IS NOT NULL"
             : """
             WITH RECURSIVE parts(value, rest) AS (
               SELECT '', %s || :separator FROM (SELECT DISTINCT %s FROM catalog_books WHERE %s IS NOT NULL)
@@ -88,21 +86,39 @@ public class CatalogDirectoryController {
               FROM parts WHERE rest <> ''
             ) SELECT DISTINCT value FROM parts WHERE value <> ''
             """.formatted(field, field, field);
-        var query = em.createNativeQuery(sql, String.class);
-        if (separator != null) query.setParameter("separator", separator);
-        @SuppressWarnings("unchecked")
-        List<String> names = query.getResultList();
-        var collator = java.text.Collator.getInstance(Locale.forLanguageTag("es"));
-        String search = normalize(q.strip());
-        var entries = names.stream().map(value -> Objects.requireNonNull(value).strip()).filter(value -> !value.isEmpty()).distinct()
-                .map(value -> new Entry(value, initial(value)))
-                .filter(entry -> (initial.isEmpty() || initial.equals(entry.initial())) && normalize(entry.value()).contains(search))
-                .sorted(java.util.Comparator.comparingInt((Entry entry) -> LETTERS.indexOf(entry.initial()))
-                    .thenComparing(value -> Objects.requireNonNull(value).value(), collator).thenComparing(value -> Objects.requireNonNull(value).value()))
-                .toList();
-        long total = entries.size();
+        // SQLite applies Unicode filtering and Spanish collation before LIMIT/OFFSET.
+        // Functions are registered on the transaction's connection, including pooled connections.
+        em.unwrap(org.hibernate.Session.class).doWork(connection -> {
+            var sqlite = connection.unwrap(org.sqlite.SQLiteConnection.class);
+            org.sqlite.Function.create(sqlite, "epl_strip", new org.sqlite.Function() {
+                @Override protected void xFunc() throws java.sql.SQLException { result(value_text(0).strip()); }
+            }, 1, org.sqlite.Function.FLAG_DETERMINISTIC);
+            org.sqlite.Function.create(sqlite, "epl_normalize", new org.sqlite.Function() {
+                @Override protected void xFunc() throws java.sql.SQLException { result(normalize(value_text(0))); }
+            }, 1, org.sqlite.Function.FLAG_DETERMINISTIC);
+            org.sqlite.Function.create(sqlite, "epl_initial", new org.sqlite.Function() {
+                @Override protected void xFunc() throws java.sql.SQLException { result(initial(value_text(0))); }
+            }, 1, org.sqlite.Function.FLAG_DETERMINISTIC);
+            org.sqlite.Collation.create(sqlite, "epl_spanish", new org.sqlite.Collation() {
+                private final java.text.Collator collator = java.text.Collator.getInstance(Locale.forLanguageTag("es"));
+                @Override protected int xCompare(String left, String right) { return collator.compare(left, right); }
+            });
+        });
+        String filtered = "WITH names AS (" + sql + "), entries AS (SELECT DISTINCT epl_strip(value) AS value FROM names WHERE epl_strip(value) <> '') "
+                + "SELECT %s FROM entries WHERE instr(epl_normalize(value), :search) > 0 "
+                + "AND (:initial = '' OR epl_initial(value) = :initial)";
+        var count = em.createNativeQuery(filtered.formatted("count(*)"), Long.class);
+        var rows = em.createNativeQuery(filtered.formatted("value")
+                + " ORDER BY instr('" + LETTERS + "', epl_initial(value)), value COLLATE epl_spanish, value", String.class);
+        for (var query : java.util.List.of(count, rows)) {
+            if (separator != null) query.setParameter("separator", separator);
+            query.setParameter("search", normalize(q.strip())); query.setParameter("initial", initial);
+        }
+        long total = ((Number) count.getSingleResult()).longValue();
+        var items = rows.setFirstResult(page * size).setMaxResults(size).getResultList().stream()
+                .map(value -> new Entry((String) value, initial((String) value))).toList();
         int pages = (int) ((total + size - 1) / size);
-        return new PageResponse<>(entries.stream().skip((long) page * size).limit(size).toList(),
-                new PageResponse.PageMeta(page, size, total, pages, page == 0, page + 1 >= pages, page + 1 < pages, page > 0));
+        return new PageResponse<>(items, new PageResponse.PageMeta(page, size, total, pages,
+                page == 0, page >= pages - 1, page < pages - 1, page > 0));
     }
 }

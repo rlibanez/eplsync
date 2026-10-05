@@ -36,7 +36,7 @@ class LanguageApiTests {
         var book = CatalogBook.builder().eplId(32L).language(Language.ESPANOL).coverUrl("https://example.org/32.jpg")
                 .coverAvailable(false).build();
         when(service.getByEplId(32L)).thenReturn(Optional.of(book));
-        when(service.searchAll(any())).thenReturn(List.of(book));
+        when(service.search(any(), any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(book)));
         var conversion = new DefaultFormattingConversionService();
         new LanguageWebConfiguration().addFormatters(conversion);
         var mvc = MockMvcBuilders.standaloneSetup(new CatalogBookController(service, new com.rlibanez.eplsync.torrent.downloads.CatalogDownloadViewService(
@@ -50,11 +50,11 @@ class LanguageApiTests {
                 .andExpect(jsonPath("$.coverAvailable").value(false));
         for (String value : List.of("es", "ESPANOL")) {
             mvc.perform(get("/api/catalog/books").param("language", value)).andExpect(status().isOk())
-                    .andExpect(jsonPath("$[0].language").value("es"))
-                    .andExpect(jsonPath("$[0].coverUrl").value("https://example.org/32.jpg"));
+                    .andExpect(jsonPath("$.items[0].language").value("es"))
+                    .andExpect(jsonPath("$.items[0].coverUrl").value("https://example.org/32.jpg"));
         }
         var captor = org.mockito.ArgumentCaptor.forClass(CatalogBookFilter.class);
-        verify(service, times(2)).searchAll(captor.capture());
+        verify(service, times(2)).search(captor.capture(), any());
         assertThat(captor.getAllValues()).allSatisfy(filter -> assertThat(filter.getLanguage()).containsExactly(Language.ESPANOL));
         when(service.search(any(), any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(book)));
         mvc.perform(get("/api/catalog/books").param("page", "0").param("size", "20"))

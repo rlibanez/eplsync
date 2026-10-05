@@ -9,7 +9,7 @@ import java.util.List;
 import org.springframework.data.domain.*;
 
 public record TorrentOperationRequest(boolean dryRun, @Valid CatalogBookFilter filters, String selection,
-        Boolean includeNotFound, @Min(0) Integer page, @Min(1) Integer size, List<String> sort, Boolean all,
+        Boolean includeNotFound, @Min(0) Integer page, @Min(1) @jakarta.validation.constraints.Max(com.rlibanez.eplsync.config.QueryLimits.MAX_SIZE) Integer size, List<String> sort, Boolean all,
         Boolean includeDetails, PreviousVersions previousVersions, TorrentDownloadRequest options,
         Integer batchSize, Integer concurrency, String interval, MultipleHashes multipleHashes) {
     public CatalogBookFilter filter() { var f = filters == null ? new CatalogBookFilter() : filters; f.normalize(); return f; }
@@ -23,6 +23,8 @@ public record TorrentOperationRequest(boolean dryRun, @Valid CatalogBookFilter f
             if (parts.length > 2 || parts[0].isBlank()) throw new IllegalArgumentException("Orden inválido");
             orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]),parts[0]));
         }
+        com.rlibanez.eplsync.config.QueryLimits.page(pageNumber(), size == null ? 20 : size);
+        com.rlibanez.eplsync.config.QueryLimits.sort(Sort.by(orders));
         return PageRequest.of(pageNumber(),size == null ? 20 : size,Sort.by(orders));
     }
     public BulkRequest bulk() { return new BulkRequest(options,batchSize,concurrency,interval,multipleHashes); }

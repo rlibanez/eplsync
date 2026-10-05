@@ -8,7 +8,7 @@ final class SelectionQueries {
     private SelectionQueries() {}
 
     static <T> PageResponse<T> page(List<T> result, int page, int size) {
-        if (page < 0 || size < 1) throw new IllegalArgumentException("page >= 0 y size > 0");
+        com.rlibanez.eplsync.config.QueryLimits.page(page, size);
         long offset = (long) page * size;
         var selected = offset >= result.size() ? List.<T>of()
                 : result.subList((int) offset, (int) Math.min(offset + size, result.size()));

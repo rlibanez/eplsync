@@ -9,7 +9,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -34,22 +33,10 @@ public class CatalogBookService {
      */
     @Transactional(readOnly = true)
     public Page<CatalogBook> search(CatalogBookFilter filter, Pageable pageable) {
+        com.rlibanez.eplsync.config.QueryLimits.page(pageable.getPageNumber(), pageable.getPageSize());
         var spec = CatalogBookSpecifications.fromFilter(filter);
         return repository.findAll(spec, org.springframework.data.domain.PageRequest.of(
                 pageable.getPageNumber(), pageable.getPageSize(), CatalogOrdering.normalize(pageable.getSort())));
     }
 
-    /**
-     * Listado/búsqueda sin paginar.
-     */
-    @Transactional(readOnly = true)
-    public List<CatalogBook> searchAll(CatalogBookFilter filter) {
-        return searchAll(filter, org.springframework.data.domain.Sort.unsorted());
-    }
-
-    @Transactional(readOnly = true)
-    public List<CatalogBook> searchAll(CatalogBookFilter filter, org.springframework.data.domain.Sort sort) {
-        var spec = CatalogBookSpecifications.fromFilter(filter);
-        return repository.findAll(spec, CatalogOrdering.normalize(sort));
-    }
 }

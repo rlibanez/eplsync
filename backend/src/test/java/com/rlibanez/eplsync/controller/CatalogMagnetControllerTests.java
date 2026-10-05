@@ -55,6 +55,31 @@ class CatalogMagnetControllerTests {
             .andExpect(status().isOk()).andExpect(content().string(""));
     }
 
+    @Autowired jakarta.persistence.EntityManager em;
+
+    @Test void temporaryDeduplicationIsCleanedOnSuccessAndFailureWithoutLoadingEntities() {
+        em.clear();
+        var page = service.page(new com.rlibanez.eplsync.filter.CatalogBookFilter(), org.springframework.data.domain.Sort.unsorted(), 0, 1);
+        org.assertj.core.api.Assertions.assertThat(page.items()).containsExactly(first);
+        org.assertj.core.api.Assertions.assertThat(em.unwrap(org.hibernate.engine.spi.SessionImplementor.class)
+                .getPersistenceContext().getNumberOfManagedEntities()).isZero();
+        assertNoTemporaryMagnetTables();
+        var failingBuilder = org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.MagnetLinkBuilder.class);
+        org.mockito.Mockito.when(failingBuilder.hashes(org.mockito.Mockito.any())).thenReturn(java.util.List.of("A".repeat(40)));
+        org.mockito.Mockito.when(failingBuilder.build(org.mockito.Mockito.any(), org.mockito.Mockito.any(), org.mockito.Mockito.any()))
+                .thenThrow(new IllegalStateException("Simulated output failure"));
+        var failingService = new CatalogMagnetService(repository, failingBuilder);
+        org.springframework.test.util.ReflectionTestUtils.setField(failingService, "em", em);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> failingService.page(
+                new com.rlibanez.eplsync.filter.CatalogBookFilter(), org.springframework.data.domain.Sort.unsorted(), 0, 1))
+                .isInstanceOf(IllegalStateException.class);
+        assertNoTemporaryMagnetTables();
+    }
+    private void assertNoTemporaryMagnetTables() {
+        org.assertj.core.api.Assertions.assertThat(((Number) em.createNativeQuery(
+                "SELECT count(*) FROM sqlite_temp_master WHERE name LIKE 'magnet_page_%'").getSingleResult()).longValue()).isZero();
+    }
+
     @Test
     void returnsBookMagnetsEmptyListAndNotFound() throws Exception {
         mvc.perform(get("/api/catalog/books/1/magnets")).andExpect(status().isOk())
@@ -66,12 +91,12 @@ class CatalogMagnetControllerTests {
     @Test
     void filtersSortsAndDeduplicatesHashesAcrossBooks() throws Exception {
         mvc.perform(get("/api/catalog/magnets")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2)).andExpect(jsonPath("$[0]").value(first));
+                .andExpect(jsonPath("$.items.length()").value(2)).andExpect(jsonPath("$.items[0]").value(first));
         mvc.perform(get("/api/catalog/magnets").param("author", "Otro"))
-                .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0]").value(first.replace("EPL_1_Uno", "EPL_2_Dos")));
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0]").value(first.replace("EPL_1_Uno", "EPL_2_Dos")));
         mvc.perform(get("/api/catalog/magnets").param("sort", "title,asc"))
-                .andExpect(jsonPath("$[0]").value(first.replace("EPL_1_Uno", "EPL_2_Dos")));
+                .andExpect(jsonPath("$.items[0]").value(first.replace("EPL_1_Uno", "EPL_2_Dos")));
     }
 
     @Test
@@ -81,8 +106,7 @@ class CatalogMagnetControllerTests {
                 .andExpect(jsonPath("$.meta.totalItems").value(2))
                 .andExpect(jsonPath("$.meta.totalPages").value(2));
         mvc.perform(get("/api/catalog/magnets").param("page", "2147483647").param("size", "500"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0))
-                .andExpect(jsonPath("$.meta.totalItems").value(2));
+                .andExpect(status().isBadRequest());
         mvc.perform(get("/api/catalog/magnets").param("size", "1"))
                 .andExpect(jsonPath("$.meta.page").value(0));
         mvc.perform(get("/api/catalog/magnets").param("page", "0"))
@@ -92,7 +116,7 @@ class CatalogMagnetControllerTests {
         }
         mvc.perform(get("/api/catalog/magnets").param("page", "-1")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/catalog/magnets").param("publicationYear", "-1")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(0));
+                .andExpect(jsonPath("$.items.length()").value(0));
     }
 
     @Test

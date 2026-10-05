@@ -50,13 +50,14 @@ public class DownloadQueryService {
     public PageResponse<DownloadRecord> search(MultiValueMap<String, String> params) {
         validate(params, true);
         int page = integer(params.getFirst("page"), 0), size = integer(params.getFirst("size"), 20);
-        if (page < 0 || size < 1) throw new IllegalArgumentException("page debe ser >= 0 y size debe ser > 0");
+        com.rlibanez.eplsync.config.QueryLimits.page(page, size);
         var orders = new ArrayList<Sort.Order>();
         for (var value : params.getOrDefault("sort", List.of("createdAt,desc"))) {
             var parts = value.split(",", -1);
             if (parts.length > 2 || !SORT_FIELDS.contains(parts[0])) throw new IllegalArgumentException("Ordenación de descargas inválida");
             orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]), parts[0]));
         }
+        com.rlibanez.eplsync.config.QueryLimits.sort(Sort.by(orders));
         if (orders.stream().noneMatch(order -> order.getProperty().equals("id"))) orders.add(Sort.Order.asc("id"));
         var spec = filters(params);
         var result = repository.findAll(spec, PageRequest.of(page, size, Sort.by(orders)));

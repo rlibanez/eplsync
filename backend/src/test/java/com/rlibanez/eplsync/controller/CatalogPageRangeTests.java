@@ -33,13 +33,13 @@ class CatalogPageRangeTests {
     }
     @Test void inclusiveAndOpenBoundsExcludeUnknownPageCounts() throws Exception {
         mvc.perform(get("/api/catalog/books").param("pagesFrom","200"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$[*].eplId", org.hamcrest.Matchers.containsInAnyOrder(4,5)));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].eplId", org.hamcrest.Matchers.containsInAnyOrder(4,5)));
         mvc.perform(get("/api/catalog/books").param("pagesTo","100"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$[*].eplId", org.hamcrest.Matchers.containsInAnyOrder(2,3)));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].eplId", org.hamcrest.Matchers.containsInAnyOrder(2,3)));
         mvc.perform(get("/api/catalog/books").param("pagesFrom","100").param("pagesTo","200"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$[*].eplId", org.hamcrest.Matchers.containsInAnyOrder(3,4)));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].eplId", org.hamcrest.Matchers.containsInAnyOrder(3,4)));
         mvc.perform(get("/api/catalog/books").param("pagesFrom","200").param("pagesTo","200"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$[0].eplId").value(4)).andExpect(jsonPath("$.length()").value(1));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].eplId").value(4)).andExpect(jsonPath("$.items.length()").value(1));
     }
     @Test void rejectsInvalidRanges() throws Exception {
         mvc.perform(get("/api/catalog/books").param("pagesFrom","200").param("pagesTo","100")).andExpect(status().isBadRequest());

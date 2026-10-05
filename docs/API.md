@@ -329,7 +329,7 @@ además de los torrents y archivos del cliente. Queda registrada en Eventos.
 | Método | Endpoint | Resultado |
 | --- | --- | --- |
 | GET | `/api/catalog/books/{eplId}` | Un objeto; `404` si el libro no existe. |
-| GET | `/api/catalog/books` | Listado filtrado, con paginación opcional. |
+| GET | `/api/catalog/books` | Listado filtrado, siempre paginado. |
 
 ```bash
 curl -s 'http://192.168.2.2:8088/api/catalog/books/32' | jq
@@ -345,7 +345,7 @@ minúsculas, con una excepción: `eplid` se acepta como alias de `eplId` (nombre
 Se pueden repetir ambos nombres: sus identificadores se combinan sin duplicados.
 Los valores vacíos o inválidos devuelven `400`. Los parámetros desconocidos también devuelven
 `400` para evitar listar todo el catálogo por un filtro mal escrito.
-La consulta por filtro devuelve una lista; la ruta `/api/catalog/books/32` devuelve un objeto.
+La consulta por filtro devuelve `items` y `meta`; la ruta `/api/catalog/books/32` devuelve un objeto.
 
 Los resultados incluyen `download.items`, con `id`, `revision`, `status` y
 `completed` de los registros de descarga asociados. Es información guardada en
@@ -444,13 +444,12 @@ que esté implementado como filtro.
 | Parámetro | Comportamiento |
 | --- | --- |
 | `page` | Página desde `0`. |
-| `size` | Número positivo de elementos. |
+| `size` | Entre 1 y 1000; predeterminado: 20. |
 | `sort` | `campo,asc` o `campo,desc`; se puede repetir. |
 
-- Sin `page` ni `size`, devuelve un array sin paginar.
-- Si aparece cualquiera de ellos, devuelve `items` y `meta`; los valores
-  omitidos son `page=0` y `size=20`.
-- En `/api/catalog/books`, `sort` se aplica con y sin paginación.
+- Siempre devuelve `items` y `meta`; sin parámetros utiliza `page=0` y `size=20`.
+- Tamaños superiores a 1000 y desplazamientos superiores a 2147483647 se rechazan con HTTP 400.
+- Se permiten hasta 8 criterios de ordenación, sobre campos reconocidos.
 - Al ordenar por `insertDate` («Añadido a EPL Sync»), se comparan minutos completos,
   tanto en ascendente como en descendente. Los siguientes criterios resuelven
   los empates dentro del minuto; si no se especifica `eplId`, se añade ascendente
@@ -531,7 +530,7 @@ rechaza con HTTP 409 una URL que haya cambiado desde la comprobación.
 | Método | Endpoint | Resultado |
 | --- | --- | --- |
 | GET | `/api/catalog/books/{eplId}/magnets` | Array de magnets de un libro. |
-| GET | `/api/catalog/magnets` | Magnets según los filtros compartidos. |
+| GET | `/api/catalog/magnets` | Magnets filtrados, siempre paginados (`items` y `meta`). |
 | GET | `/api/catalog/magnets/export` | Texto con un magnet por línea; archivo `magnets.txt`. |
 
 ```bash

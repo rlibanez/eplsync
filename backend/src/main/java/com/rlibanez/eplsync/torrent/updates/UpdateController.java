@@ -24,6 +24,7 @@ public class UpdateController {
         log.info("Solicitud torrent: dryRun={}, filtros={}", input.dryRun(), SelectionQueries.safeLog(input.filters()));
         if (input.includeDetails() != null || input.selection() != null || input.all() != null || input.sort() != null)
             throw new IllegalArgumentException("selection, all y sort no se admiten en updates");
+        if (input.dryRun()) com.rlibanez.eplsync.config.QueryLimits.page(input.pageNumber(), input.pageSize());
         if (input.dryRun()) return ResponseEntity.ok(SelectionQueries.page(UpdatePlanner.visible(planner.preview(input.filter(),
                 Boolean.TRUE.equals(input.includeNotFound()), input.multipleHashes(), UpdatePlanner.Selection.UPDATES)),
                 input.pageNumber(), input.pageSize()));

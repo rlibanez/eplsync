@@ -35,16 +35,16 @@ class CatalogMultiFilterTests {
  @Test void repeatedQueryValuesUseOrWithinFieldsAndAndAcrossFields() throws Exception {
   mvc.perform(get("/api/catalog/books").param("author","Asimov","Sanderson").param("language","es","en")
    .param("status","DISPONIBLE","VERIFICADO").param("publicationStatus","PUBLISHED","UPDATED"))
-   .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
-   .andExpect(jsonPath("$[*].eplId",org.hamcrest.Matchers.containsInAnyOrder(1,2)));
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2))
+   .andExpect(jsonPath("$.items[*].eplId",org.hamcrest.Matchers.containsInAnyOrder(1,2)));
   mvc.perform(get("/api/catalog/books").param("eplId","1","2","4").param("revision","1.4","3.0"))
-   .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].eplId").value(1));
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.items[0].eplId").value(1));
  }
  @Test void commaInSingleTextValueIsNotSplit() throws Exception {
   mvc.perform(get("/api/catalog/books").param("author","García Márquez, Gabriel"))
-   .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].eplId").value(5));
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.items[0].eplId").value(5));
   mvc.perform(get("/api/catalog/books").param("author","Nobody, Asimov"))
-   .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
  }
  @Test void jsonSupportsArraysAndSingleValuesWithoutLosingOtherFilters() {
   var mapper=tools.jackson.databind.json.JsonMapper.builder().build();
@@ -57,4 +57,14 @@ class CatalogMultiFilterTests {
   mvc.perform(get("/api/catalog/books").param("eplId","1","-2")).andExpect(status().isBadRequest());
   mvc.perform(get("/api/catalog/books").param("revision","1.4","NaN")).andExpect(status().isBadRequest());
  }
+ @Test void explicitSelectionsHaveAFiniteLimitBeforeQuerying() {
+  var filter = new com.rlibanez.eplsync.filter.CatalogBookFilter();
+  filter.setSelectedIds(java.util.stream.LongStream.rangeClosed(1,10001).boxed().toArray(Long[]::new));
+  org.assertj.core.api.Assertions.assertThatThrownBy(filter::normalize).isInstanceOf(IllegalArgumentException.class)
+      .hasMessage("Máximo de 10000 identificadores por selección");
+  filter.setSelectedIds(new Long[]{});
+  filter.setExcludedIds(java.util.stream.LongStream.rangeClosed(1,10001).boxed().toArray(Long[]::new));
+  org.assertj.core.api.Assertions.assertThatThrownBy(filter::normalize).isInstanceOf(IllegalArgumentException.class);
+ }
+
 }

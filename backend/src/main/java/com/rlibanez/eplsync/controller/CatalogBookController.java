@@ -83,17 +83,15 @@ public class CatalogBookController {
         }
         if (!requestedIds.isEmpty()) filter.setEplId(requestedIds.toArray(Long[]::new));
 
-        if ((page != null && page < 0) || (size != null && size < 1))
-            throw new IllegalArgumentException("page >= 0 y size > 0");
-
-        // Si NO se especifica page/size => sin paginar
-        if (page == null && size == null) {
-            return downloads.enrich(pageable.getSort().isSorted()
-                    ? catalogBookService.searchAll(filter, pageable.getSort())
-                    : catalogBookService.searchAll(filter));
+        int pageNumber = page == null ? 0 : page;
+        int pageSize = size == null ? com.rlibanez.eplsync.config.QueryLimits.DEFAULT_SIZE : size;
+        com.rlibanez.eplsync.config.QueryLimits.page(pageNumber, pageSize);
+        for (String key : java.util.List.of("page", "size")) {
+            if (request.getParameterValues(key) != null && request.getParameterValues(key).length != 1)
+                throw new IllegalArgumentException("Parámetro repetido: " + key);
         }
+        pageable = org.springframework.data.domain.PageRequest.of(pageNumber, pageSize, pageable.getSort());
 
-        // Si se especifica page o size => paginado
         Page<CatalogBook> resultPage = catalogBookService.search(filter, pageable);
 
         var meta = new PageResponse.PageMeta(

@@ -178,3 +178,22 @@ Los controladores de `/api` necesitan una política explícita `@PreAuthorize`, 
 Las contraseñas temporales generadas desde **Usuarios → Acciones** se muestran en una ventana emergente una sola vez, sin guardarse en el navegador. También se permite reiniciar la del administrador conectado: su sesión se cierra, pero la ventana permanece visible hasta que se oculta. El editor de permisos no incluye otra acción de recuperación.
 
 La creación, edición, borrado y recuperación de cuentas genera eventos en la categoría **Seguridad**, vinculados a la transacción que realiza el cambio. Contienen identificadores y el nombre de usuario, nunca contraseñas, hashes ni emails. Solo los administradores pueden verlos en el historial, los contadores de no leídos y las notificaciones SSE; disponer de `EVENTS_MANAGE` no permite ver eventos de seguridad. Se aplica la retención habitual de eventos.
+
+### Límites de consultas de listados
+
+Libros y magnets siempre devuelven `items` y `meta`, con página inicial 0 y tamaño
+predeterminado 20. Los listados de catálogo, descargas, trabajos y sus elementos
+rechazan tamaños fuera de 1–1000 y desplazamientos mayores que 2147483647.
+Eventos y ausentes conservan sus máximos de 200 y 100; el directorio admite sus
+opciones existentes hasta 1000. Catálogo y descargas aceptan como máximo ocho
+criterios de ordenación, sobre campos autorizados. Las selecciones/exclusiones
+explícitas admiten 10000 IDs por campo, incluyendo los cuerpos JSON.
+
+Los libros, descargas y trabajos se paginan en SQLite. En el directorio alfabético,
+SQLite filtra, deduplica y ordena antes de aplicar el límite, conservando la
+normalización Unicode y la ordenación española. Para magnets se recorre una
+proyección mediante un cursor y se deduplica en una tabla temporal de SQLite;
+solo la página se materializa en Java. La tabla se elimina también ante fallos.
+Este recorrido sigue necesitando examinar los libros filtrados y ocupar la
+conexión durante la consulta. Las exportaciones y los límites de concurrencia
+quedan para la siguiente intervención.

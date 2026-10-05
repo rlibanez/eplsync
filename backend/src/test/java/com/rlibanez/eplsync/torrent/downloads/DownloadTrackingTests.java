@@ -124,10 +124,10 @@ class DownloadTrackingTests {
         book(1.1, HASH);
         books.save(CatalogBook.builder().eplId(33L).revision(1.2).title("Other").author("Author").links(OTHER).build());
         mvc.perform(get("/api/catalog/books").param("revision", "1.1"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].eplId").value(32));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].eplId").value(32));
         mvc.perform(get("/api/catalog/books").param("revision", "1.2").param("eplId", "32"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
         for (String invalid : List.of("-1", "NaN", "Infinity", "abc"))
             mvc.perform(get("/api/catalog/books").param("revision", invalid)).andExpect(status().isBadRequest());
     }
@@ -168,29 +168,46 @@ class DownloadTrackingTests {
 
     @Autowired org.springframework.web.context.WebApplicationContext webContext;
 
-    @Test void largePagesAreNotRejectedOrSilentlyTruncatedBySpring() throws Exception {
+    @Test void listPagesAreBoundedAndDefaultsNeverReturnTheWholeCatalog() throws Exception {
         var fixtures = java.util.stream.LongStream.rangeClosed(1, 2001)
                 .mapToObj(id -> CatalogBook.builder().eplId(id).revision(1.0).title("Book " + id).author("Author")
                         .links(String.format("%040X", id)).build()).toList();
         books.saveAll(fixtures);
         var realMvc = MockMvcBuilders.webAppContextSetup(webContext).build();
-        realMvc.perform(get("/api/catalog/books").param("size", "10000"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000))
-                .andExpect(jsonPath("$.items.length()").value(2001));
-        realMvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("size", "10000").field("sort", "eplId,asc"))
-                .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(2001));
-        realMvc.perform(get("/api/catalog/magnets").param("size", "10000"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000));
-        realMvc.perform(get("/api/torrent/downloads").param("size", "10000"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000));
-        realMvc.perform(get("/api/torrent/jobs").param("size", "10000"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.size").value(10000));
+        for (String endpoint : List.of("/api/catalog/books", "/api/catalog/magnets")) {
+            realMvc.perform(get(endpoint).param("size", "20", "1000")).andExpect(status().isBadRequest());
+            realMvc.perform(get(endpoint)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.meta.size").value(20))
+                    .andExpect(jsonPath("$.meta.totalItems").value(2001))
+                    .andExpect(jsonPath("$.items.length()").value(20));
+            realMvc.perform(get(endpoint).param("size", "1000"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1000));
+        }
+        realMvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false)
+                .field("size", "1000").field("sort", "eplId,asc"))
+                .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1000));
         var id = bulkJobs.findAll().getFirst().getId();
-        realMvc.perform(get("/api/torrent/jobs/" + id + "/items").param("size", "10000"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2001));
-        for (String endpoint : List.of("/api/catalog/books", "/api/catalog/magnets", "/api/torrent/downloads", "/api/torrent/jobs")) {
-            realMvc.perform(get(endpoint).param("size", "0")).andExpect(status().isBadRequest());
+        for (String endpoint : List.of("/api/catalog/books", "/api/catalog/magnets", "/api/torrent/downloads",
+                "/api/torrent/jobs", "/api/torrent/jobs/" + id + "/items")) {
+            for (String size : List.of("0", "-1", "1001", "10000", "2147483647", "invalid"))
+                realMvc.perform(get(endpoint).param("size", size)).andExpect(status().isBadRequest());
             realMvc.perform(get(endpoint).param("page", "-1")).andExpect(status().isBadRequest());
+            realMvc.perform(get(endpoint).param("page", "2147483647").param("size", "1000"))
+                    .andExpect(status().isBadRequest());
+        }
+        realMvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("size", "1001"))
+                .andExpect(status().isBadRequest());
+        for (String endpoint : List.of("/api/torrent/updates", "/api/torrent/refresh")) {
+            realMvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation(endpoint, true).field("size", "1001"))
+                    .andExpect(status().isBadRequest());
+            realMvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation(endpoint, true)
+                    .field("page", "2147483647").field("size", "1000"))
+                    .andExpect(status().isBadRequest());
+        }
+        for (String endpoint : List.of("/api/catalog/books", "/api/catalog/magnets", "/api/torrent/downloads")) {
+            realMvc.perform(get(endpoint).param("sort", "unknown,asc")).andExpect(status().isBadRequest());
+            realMvc.perform(get(endpoint).param("sort", java.util.Collections.nCopies(9, "eplId,asc").toArray(String[]::new)))
+                    .andExpect(status().isBadRequest());
         }
     }
 
@@ -200,19 +217,19 @@ class DownloadTrackingTests {
                 .title("Another title").links(OTHER).build());
         var api = MockMvcBuilders.webAppContextSetup(webContext).build();
         api.perform(get("/api/catalog/books").param("eplId", "32"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].eplId").value(32));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].eplId").value(32));
         api.perform(get("/api/catalog/books").param("eplId", "32").param("size", "10"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1))
                 .andExpect(jsonPath("$.items[0].eplId").value(32));
         api.perform(get("/api/catalog/books").param("eplId", "32").param("title", "does not match"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
         api.perform(get("/api/catalog/books").param("eplId", "999"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
         api.perform(get("/api/catalog/books/999")).andExpect(status().isNotFound());
         api.perform(get("/api/catalog/magnets").param("eplId", "32"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0]").value(org.hamcrest.Matchers.containsString(HASH)));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0]").value(org.hamcrest.Matchers.containsString(HASH)));
         api.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/books", false).field("eplId", "32"))
                 .andExpect(status().isAccepted()).andExpect(jsonPath("$.selectedBooks").value(1));
         assertThat(bulkItems.findAll()).hasSize(1).allMatch(item -> item.getEplId().equals(32L));
@@ -506,7 +523,7 @@ class DownloadTrackingTests {
         mvc.perform(get("/api/catalog/books").param("page", "0").param("size", "20"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].download.items[0].completed").value(true));
         mvc.perform(get("/api/catalog/books"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$[0].download.items[0].completed").value(true));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].download.items[0].completed").value(true));
         var enriched = views.enrich(books.findAll());
         assertThat(enriched.getFirst().download().items()).hasSize(1);
         downloads.deleteAll();

@@ -7,6 +7,12 @@ final class CatalogOrdering {
     private CatalogOrdering() {}
 
     static Sort normalize(Sort requested) {
+        com.rlibanez.eplsync.config.QueryLimits.sort(requested);
+        var allowed = java.util.Set.of("eplId", "title", "author", "revision", "genres", "collection", "volume",
+                "publicationYear", "pages", "language", "publicationStatus", "publicationDate", "insertDate",
+                "lastModifiedDate", "status", "rating", "votesCount", "coverAvailable");
+        if (requested.stream().anyMatch(order -> !allowed.contains(order.getProperty())))
+            throw new IllegalArgumentException("Campo de ordenación del catálogo inválido");
         var orders = requested.stream().map(order -> order.getProperty().equals("insertDate")
                 ? order.withProperty("insertMinute") : order).toList();
         Sort result = Sort.by(orders);

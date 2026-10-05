@@ -50,12 +50,12 @@ class CatalogMinuteOrderingTests {
     @Test void magnetProjectionUsesMinuteOrderingToo() throws Exception {
         mvc.perform(get("/api/catalog/magnets").param("sort","insertDate,desc","eplId,desc"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0]", org.hamcrest.Matchers.containsString("dn=EPL_3_")))
-            .andExpect(jsonPath("$[1]", org.hamcrest.Matchers.containsString("dn=EPL_2_")))
-            .andExpect(jsonPath("$[2]", org.hamcrest.Matchers.containsString("dn=EPL_1_")));
+            .andExpect(jsonPath("$.items[0]", org.hamcrest.Matchers.containsString("dn=EPL_3_")))
+            .andExpect(jsonPath("$.items[1]", org.hamcrest.Matchers.containsString("dn=EPL_2_")))
+            .andExpect(jsonPath("$.items[2]", org.hamcrest.Matchers.containsString("dn=EPL_1_")));
     }
     @Test void unpagedApiHonorsTheSameOrdering() throws Exception {
         mvc.perform(get("/api/catalog/books").param("sort","insertDate,desc","eplId,desc"))
-            .andExpect(status().isOk()).andExpect(jsonPath("$[*].eplId").value(org.hamcrest.Matchers.contains(3,2,1,4)));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].eplId").value(org.hamcrest.Matchers.contains(3,2,1,4)));
     }
 }

@@ -116,9 +116,12 @@ public class CatalogBookFilter {
 
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
-        for (Long[] ids : new Long[][]{selectedIds, excludedIds})
+        for (Long[] ids : new Long[][]{selectedIds, excludedIds}) {
+            if (ids != null && ids.length > com.rlibanez.eplsync.config.QueryLimits.MAX_SELECTION_IDS)
+                throw new IllegalArgumentException("Máximo de 10000 identificadores por selección");
             if (ids != null && java.util.Arrays.stream(ids).anyMatch(id -> id == null || id < 1))
                 throw new IllegalArgumentException("Los identificadores seleccionados deben ser positivos");
+        }
 
         if (eplId != null && java.util.Arrays.stream(eplId).anyMatch(v -> v == null || v < 1))
             throw new IllegalArgumentException("eplId debe ser un entero mayor que cero");
