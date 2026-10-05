@@ -95,6 +95,31 @@ class UpdateTests {
         book(4, 2.0, "F".repeat(40)); language(4, com.rlibanez.eplsync.model.enums.Language.INGLES);
     }
 
+    @Test void largeSelectionsKeepPagedPreviewsAndPersistEveryFrozenCommand() {
+        for (long id=100;id<305;id++) book(id,1.0,String.format("%040X",id));
+        var page=planner.previewPage(null,false,MultipleHashes.ALL,UpdatePlanner.Selection.NEW,2,7);
+        assertThat(page.items()).hasSize(7);
+        assertThat(page.meta().totalItems()).isEqualTo(205);
+        assertThat(jobs.count()).isZero();
+        var job=planner.create(null,false,new UpdateRequest(PreviousVersions.KEEP,null,10,2,"0ms",MultipleHashes.ALL),UpdatePlanner.Selection.NEW);
+        assertThat(items.count()).isEqualTo(205);
+        assertThat(plans.findById(job.jobId()).orElseThrow().getSnapshot()).isEqualTo("{\"items\":[]}");
+        assertThat(cleaner.view(job.jobId(),2,7).updates()).hasSize(7);
+    }
+
+    @Test void catalogHistoryIsBoundedButCompleteHistoryRemainsPaged() {
+        for (int index=0;index<45;index++) history(1L,2.0+index,String.format("%040X",1000+index),DownloadStatus.ERROR);
+        var view=new CatalogDownloadViewService(downloads);
+        var embedded=view.enrich(java.util.List.of(books.findById(1L).orElseThrow())).getFirst().download();
+        assertThat(embedded.items()).hasSize(20);
+        assertThat(embedded.totalItems()).isEqualTo(46);
+        assertThat(embedded.statuses()).contains(DownloadStatus.DOWNLOADED,DownloadStatus.ERROR);
+        var first=view.history(1L,0,20); var second=view.history(1L,1,20);
+        assertThat(first.meta().totalItems()).isEqualTo(46);
+        assertThat(first.items()).doesNotContainAnyElementsOf(second.items());
+        assertThat(view.history(1L,2,20).items()).hasSize(6);
+    }
+
     @Test void filteredPreviewsSeparateNewAndUpdatedWithoutWritesOrClientCalls() throws Exception {
         mixedCatalogue();
         mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/torrent/refresh", true).field("language", "es"))

@@ -3,7 +3,10 @@
 Los envíos múltiples usan POST con `dryRun` obligatorio en JSON y todos los parámetros
 en el body. Los filtros van en `filters`; `sort` es una lista. `dryRun=true` prepara
 una simulación sin crear trabajos ni enviar torrents; `includeDetails=true` permite
-ver los elementos previstos. `dryRun=false` crea el job. No hay parámetros en la URL.
+ver los elementos previstos por páginas: `detailPage` (desde 0) y `detailSize`
+(por defecto 20, máximo 1000). El resumen cuenta toda la selección; `meta`
+describe la página de detalles. Estos parámetros solo se admiten en simulaciones
+con `includeDetails=true`. `dryRun=false` crea el job. No hay parámetros en la URL.
 
 
 [Documentación](README.md) · [Inicio](../README.md)
@@ -243,3 +246,7 @@ Los estados admitidos son `PENDING`, `IN_FLIGHT`, `ACCEPTED`, `ALREADY_EXISTS`,
 Se mantiene el orden de selección, `page=0`, `size=50` por defecto y sin máximo de aplicación.
 Los filtros desconocidos, vacíos o inválidos devuelven `400`.
 
+
+La preparación recorre lotes de hasta 100 libros, tiene un presupuesto de dos
+minutos y deduplica los hashes en un índice temporal en disco limitado a 128 MiB.
+Un fallo cancela la creación completa del trabajo; no deja una selección parcial.

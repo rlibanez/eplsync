@@ -137,7 +137,8 @@ export function CatalogCards({
                   <div className="catalog-card-downloads">
                     {[
                       ...new Set(
-                        book.download.items.map((item) => item.status),
+                        book.download.statuses ??
+                          book.download.items.map((item) => item.status),
                       ),
                     ].map((value) => (
                       <span className="badge" key={value}>

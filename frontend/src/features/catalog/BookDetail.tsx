@@ -1,3 +1,4 @@
+import { BookHistory } from "./BookHistory";
 import { useAuth } from "../auth/Auth";
 import { Synopsis } from "./Synopsis";
 import { BookNavigation } from "./BookNavigation";
@@ -15,7 +16,7 @@ import { Loading, Failure } from "../../components/Feedback";
 export function BookDetail() {
   const { t } = useTranslation();
   const auth = useAuth();
-  const { number, date, status } = useLocale();
+  const { number, date } = useLocale();
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -156,31 +157,7 @@ export function BookDetail() {
               </section>
             </div>
             {auth.can("BOOK_HISTORY_READ") && (
-              <section className="panel detail-section">
-                <h2>{t("detail.history")} </h2>
-                {book.download.items.length ? (
-                  <ul className="download-list">
-                    {book.download.items.map((item) => (
-                      <li key={item.id}>
-                        <span>
-                          {t("detail.revision", {
-                            revision:
-                              item.revision == null
-                                ? "—"
-                                : String(item.revision),
-                          })}
-                        </span>
-                        <span className="badge">{status(item.status)}</span>
-                        {item.completed && (
-                          <span>{t("detail.completed")} </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>{t("detail.noDownloads")} </p>
-                )}
-              </section>
+              <BookHistory key={book.eplId} id={book.eplId} />
             )}
           </>
         )

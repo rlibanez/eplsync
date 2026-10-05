@@ -24,6 +24,7 @@ public class UpdateCleanupService {
     private final CatalogBookRepository books;
     private final MagnetLinkBuilder magnets;
     private final TransactionTemplate tx;
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
     private final JsonMapper mapper = JsonMapper.builder().build();
 
     public UpdateCleanupService(UpdatePlanRepository plans, UpdateCleanupRepository entries, DownloadRepository downloads,
@@ -33,11 +34,52 @@ public class UpdateCleanupService {
         this.client = client; this.books = books; this.magnets = magnets; tx = new TransactionTemplate(manager);
     }
 
-    public record View(String jobId, PreviousVersions previousVersions, List<UpdatePlanner.Candidate> updates, List<UpdateCleanup> items) {}
-    public View view(String jobId) {
-        var plan = plan(jobId);
-        return new View(jobId, plan.getPreviousVersions(), mapper.readValue(plan.getSnapshot(), UpdatePlanner.Snapshot.class).items(),
-                entries.findByJobIdOrderByEplIdAsc(jobId));
+    public record View(String jobId,PreviousVersions previousVersions,List<UpdatePlanner.Candidate> updates,List<UpdateCleanup> items,
+            com.rlibanez.eplsync.dto.PageResponse.PageMeta updatesMeta,com.rlibanez.eplsync.dto.PageResponse.PageMeta itemsMeta) {}
+    @org.springframework.transaction.annotation.Transactional(readOnly=true)
+    public View view(String jobId) { return view(jobId,0,20); }
+    @org.springframework.transaction.annotation.Transactional(readOnly=true)
+    public View view(String jobId,int page,int size) {
+        com.rlibanez.eplsync.config.QueryLimits.page(page,size);
+        var plan=plan(jobId); List<UpdatePlanner.Candidate> updates; long total;
+        if (plan.getSnapshot().equals("{\"items\":[]}")) {
+            total=em.createQuery("select count(distinct i.eplId) from BulkItem i where i.jobId=:id",Long.class).setParameter("id",jobId).getSingleResult();
+            var ids=em.createQuery("select distinct i.eplId from BulkItem i where i.jobId=:id order by i.eplId",Long.class)
+                    .setParameter("id",jobId).setFirstResult(page*size).setMaxResults(size).getResultList();
+            updates=ids.stream().map(id -> frozenCandidate(plan,id)).toList();
+        } else {
+            var legacy=mapper.readValue(plan.getSnapshot(),UpdatePlanner.Snapshot.class).items(); total=legacy.size();
+            updates=legacy.stream().skip((long)page*size).limit(size).toList();
+        }
+        var history=entries.findByJobIdOrderByEplIdAsc(jobId,org.springframework.data.domain.PageRequest.of(page,size,
+                org.springframework.data.domain.Sort.by("eplId","id")));
+        return new View(jobId,plan.getPreviousVersions(),UpdatePlanner.visible(updates),history.getContent(),meta(page,size,total),meta(page,size,history.getTotalElements()));
+    }
+    private com.rlibanez.eplsync.dto.PageResponse.PageMeta meta(int page,int size,long total) {
+        int pages=(int)((total+size-1)/size);
+        return new com.rlibanez.eplsync.dto.PageResponse.PageMeta(page,size,total,pages,page==0,page>=pages-1,page<pages-1,page>0);
+    }
+    /** Frozen commands survive later catalogue changes without one giant JSON snapshot. */
+    private UpdatePlanner.Candidate frozenCandidate(UpdatePlan plan,long id) {
+        var json=em.createQuery("select i.commandJson from BulkItem i where i.jobId=:job and i.eplId=:id order by i.position",String.class)
+                .setParameter("job",plan.getJobId()).setParameter("id",id).setMaxResults(1).getSingleResult();
+        var command=mapper.readValue(json,com.rlibanez.eplsync.torrent.TorrentDownload.class);
+        var hashes=em.createQuery("select i.hash from BulkItem i where i.jobId=:job and i.eplId=:id order by i.position",String.class)
+                .setParameter("job",plan.getJobId()).setParameter("id",id).getResultList();
+        var old=em.createQuery("select d from DownloadRecord d,UpdateCleanup c where c.downloadId=d.id and c.jobId=:job and c.eplId=:id order by d.revision desc,d.id",DownloadRecord.class)
+                .setParameter("job",plan.getJobId()).setParameter("id",id).setMaxResults(20).getResultList();
+        long count=em.createQuery("select count(c) from UpdateCleanup c where c.jobId=:job and c.eplId=:id",Long.class)
+                .setParameter("job",plan.getJobId()).setParameter("id",id).getSingleResult();
+        return new UpdatePlanner.Candidate(id,command.book().getTitle(),command.book().getRevision(),old.stream()
+                .map(row -> new UpdatePlanner.Existing(row.getId(),row.getRevision(),row.getHash(),row.getStatus())).toList(),hashes,count);
+    }
+    private boolean protectedTarget(List<UpdatePlan> plans,RemoteTorrent old) {
+        for(int start=0;start<plans.size();start+=250) {
+            var ids=plans.subList(start,Math.min(start+250,plans.size())).stream().map(UpdatePlan::getJobId).toList();
+            if(em.createQuery("select count(i) from BulkItem i where i.jobId in :jobs and i.hash in :hashes",Long.class)
+                    .setParameter("jobs",ids).setParameter("hashes",old.aliases()).getSingleResult()>0) return true;
+        }
+        return false;
     }
     private UpdatePlan plan(String jobId) {
         return plans.findById(jobId).orElseThrow(() -> new TorrentOperationException(HttpStatus.NOT_FOUND,
@@ -119,6 +161,7 @@ public class UpdateCleanupService {
         var unconfirmed = new HashSet<String>();
         for (var plan : selected) {
             var byBook = new HashMap<Long, UpdatePlanner.Candidate>();
+            if (!plan.getSnapshot().equals("{\"items\":[]}")) {
             mapper.readValue(plan.getSnapshot(), UpdatePlanner.Snapshot.class).items().forEach(item -> {
                 byBook.put(item.eplId(), item);
                 for (var hash : item.targetHashes()) {
@@ -126,6 +169,7 @@ public class UpdateCleanupService {
                     if (target != null) protectedTargets.add(target.hash());
                 }
             });
+            }
             snapshots.put(plan.getJobId(), byBook);
             for (var entry : work.get(plan.getJobId())) {
                 var old = byHash.get(entry.getHash());
@@ -151,7 +195,7 @@ public class UpdateCleanupService {
                     if (old == null) { removed(entry); continue; }
                     // Un POST incierto no se repite: una siguiente consulta confirma su ausencia.
                     if (entry.getState() == UpdateCleanup.State.REQUESTED && !retryUnconfirmed) continue;
-                    var candidate = snapshots.get(jobId).get(entry.getEplId());
+                    var candidate = plan.getSnapshot().equals("{\"items\":[]}") ? frozenCandidate(plan,entry.getEplId()) : snapshots.get(jobId).get(entry.getEplId());
                     var targets = candidate.targetHashes().stream().map(byHash::get).toList();
                     if (targets.stream().anyMatch(target -> target == null || target.status() != DownloadStatus.DOWNLOADED)) {
                         postpone(entry, UpdateCleanup.State.WAITING, "La nueva revisión todavía no está completa en el cliente"); continue;
@@ -167,7 +211,7 @@ public class UpdateCleanupService {
                     if (deleteFiles && !exclusivePath(old, paths)) {
                         postpone(entry, UpdateCleanup.State.BLOCKED, "Rutas compartidas o no verificables; no se borran archivos"); continue;
                     }
-                    if (protectedTargets.contains(old.hash()) || conflictingPolicies.contains(old.hash())) {
+                    if (protectedTargets.contains(old.hash()) || protectedTarget(selected,old) || conflictingPolicies.contains(old.hash())) {
                         postpone(entry, UpdateCleanup.State.BLOCKED,
                                 "Torrent necesario para otro plan o con políticas de borrado incompatibles"); continue;
                     }

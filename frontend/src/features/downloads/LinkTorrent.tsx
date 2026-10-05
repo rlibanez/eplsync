@@ -73,7 +73,13 @@ export function LinkTorrent({
         revision: Number(revision),
       }),
     onSuccess: () => {
-      for (const key of ["catalog", "book", "downloads", "download-summary"])
+      for (const key of [
+        "catalog",
+        "book",
+        "book-history",
+        "downloads",
+        "download-summary",
+      ])
         void cache.invalidateQueries({ queryKey: [key] });
       onLinked();
       onClose();

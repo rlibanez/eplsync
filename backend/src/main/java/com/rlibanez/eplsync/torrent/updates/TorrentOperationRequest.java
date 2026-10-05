@@ -11,7 +11,10 @@ import org.springframework.data.domain.*;
 public record TorrentOperationRequest(boolean dryRun, @Valid CatalogBookFilter filters, String selection,
         Boolean includeNotFound, @Min(0) Integer page, @Min(1) @jakarta.validation.constraints.Max(com.rlibanez.eplsync.config.QueryLimits.MAX_SIZE) Integer size, List<String> sort, Boolean all,
         Boolean includeDetails, PreviousVersions previousVersions, TorrentDownloadRequest options,
-        Integer batchSize, Integer concurrency, String interval, MultipleHashes multipleHashes) {
+        Integer batchSize, Integer concurrency, String interval, MultipleHashes multipleHashes,
+        @Min(0) Integer detailPage,@Min(1) @jakarta.validation.constraints.Max(1000) Integer detailSize) {
+    public int detailPageNumber() { return detailPage==null ? 0 : detailPage; }
+    public int detailPageSize() { return detailSize==null ? 20 : detailSize; }
     public CatalogBookFilter filter() { var f = filters == null ? new CatalogBookFilter() : filters; f.normalize(); return f; }
     public int pageNumber() { return page == null ? 0 : page; }
     public int pageSize() { return size == null ? 50 : size; }

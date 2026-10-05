@@ -15,19 +15,31 @@ public class CatalogDownloadViewService {
     public List<CatalogBookResponse> enrich(List<CatalogBook> books) {
         if (!com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.BOOK_HISTORY_READ))
             return books.stream().map(book -> CatalogBookResponse.from(book, new CatalogBookResponse.Download(List.of()))).toList();
-        var grouped = new HashMap<Long, List<DownloadRecord>>();
-        // SQLite limita los parámetros: consultas agrupadas, nunca una consulta por libro.
-        var ids = books.stream().map(value -> Objects.requireNonNull(value).getEplId()).distinct().toList();
+        var grouped = new HashMap<Long, List<CatalogBookResponse.DownloadItem>>();
+        var totals = new HashMap<Long, Long>();
+        var statuses=new HashMap<Long,List<DownloadStatus>>();
+        var ids = books.stream().map(CatalogBook::getEplId).distinct().toList();
         for (int start = 0; start < ids.size(); start += 500) {
-            repository.findByEplIdIn(ids.subList(start, Math.min(start + 500, ids.size())))
-                    .forEach(row -> grouped.computeIfAbsent(row.getEplId(), ignored -> new ArrayList<>()).add(row));
+            for(var row:repository.historyStatuses(ids.subList(start,Math.min(start+500,ids.size()))))
+                statuses.computeIfAbsent(row.getEplId(),ignored -> new ArrayList<>()).add(DownloadStatus.valueOf(row.getStatus()));
+            for (var row : repository.historyWindow(ids.subList(start, Math.min(start+500,ids.size())),20)) {
+                grouped.computeIfAbsent(row.getEplId(),ignored -> new ArrayList<>()).add(new CatalogBookResponse.DownloadItem(
+                        row.getId(),row.getRevision(),DownloadStatus.valueOf(row.getStatus()),row.getCompleted()==1));
+                totals.put(row.getEplId(),row.getTotal());
+            }
         }
-        var order = Comparator.comparing((DownloadRecord value) -> Objects.requireNonNull(value).getRevision()).reversed()
-                .thenComparing(value -> Objects.requireNonNull(value).getCreatedAt(), Comparator.reverseOrder()).thenComparing(value -> Objects.requireNonNull(value).getId());
-        return books.stream().map(book -> {
-            var items = grouped.getOrDefault(book.getEplId(), List.of()).stream().sorted(order)
-                    .map(row -> new CatalogBookResponse.DownloadItem(row.getId(), row.getRevision(), row.getStatus(), row.getCompletedAt() != null)).toList();
-            return CatalogBookResponse.from(book, new CatalogBookResponse.Download(items));
-        }).toList();
+        return books.stream().map(book -> CatalogBookResponse.from(book,new CatalogBookResponse.Download(
+                grouped.getOrDefault(book.getEplId(),List.of()),totals.getOrDefault(book.getEplId(),0L),statuses.getOrDefault(book.getEplId(),List.of())))).toList();
+    }
+    @Transactional(readOnly=true)
+    public com.rlibanez.eplsync.dto.PageResponse<CatalogBookResponse.DownloadItem> history(Long id,int page,int size) {
+        com.rlibanez.eplsync.config.QueryLimits.page(page,size);
+        var result=repository.findByEplId(id,org.springframework.data.domain.PageRequest.of(page,size,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.desc("revision"),
+                        org.springframework.data.domain.Sort.Order.desc("createdAt"),org.springframework.data.domain.Sort.Order.asc("id"))));
+        return new com.rlibanez.eplsync.dto.PageResponse<>(result.getContent().stream().map(row -> new CatalogBookResponse.DownloadItem(
+                row.getId(),row.getRevision(),row.getStatus(),row.getCompletedAt()!=null)).toList(),
+                new com.rlibanez.eplsync.dto.PageResponse.PageMeta(page,size,result.getTotalElements(),result.getTotalPages(),
+                        result.isFirst(),result.isLast(),result.hasNext(),result.hasPrevious()));
     }
 }

@@ -114,6 +114,7 @@ export function SendSelection({
       void cache.invalidateQueries({ queryKey: ["downloads"] });
       void cache.invalidateQueries({ queryKey: ["download-summary"] });
       void cache.invalidateQueries({ queryKey: ["book"] });
+      void cache.invalidateQueries({ queryKey: ["book-history"] });
       void cache.invalidateQueries({ queryKey: ["jobs"] });
       onClose();
       if ("jobId" in data && auth.can("TORRENT_JOBS_MANAGE"))

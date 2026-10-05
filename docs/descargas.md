@@ -154,3 +154,11 @@ antes `POST /api/torrent/downloads/sync` con cuerpo `{"dryRun":false}`. El filtr
 significado habitual (existe `completedAt`); puede incluir registros `NOT_FOUND`
 que terminaron de descargarse anteriormente.
 
+
+## Historial en el catálogo
+
+Con `BOOK_HISTORY_READ`, cada libro incluye hasta 20 registros recientes en
+`download.items`, el total en `download.totalItems` y los estados presentes en
+todo su historial en `download.statuses`. La ficha consulta el historial completo
+por páginas mediante `GET /api/catalog/books/EPL_ID/history?page=0&size=20`
+(máximo 1000 por página). Sin ese permiso no se revelan registros, totales ni estados.

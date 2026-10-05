@@ -106,6 +106,7 @@ function DownloadHistory() {
       void cache.invalidateQueries({ queryKey: ["downloads"] });
       void cache.invalidateQueries({ queryKey: ["download-summary"] });
       void cache.invalidateQueries({ queryKey: ["book"] });
+      void cache.invalidateQueries({ queryKey: ["book-history"] });
     },
   });
   function filter(key: string, value: string) {

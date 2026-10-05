@@ -57,6 +57,22 @@ class BulkTests {
                 .links(String.format("%040X", id)).build());
     }
     @AfterEach void close() { if (worker != null) worker.close(); properties.effective().setEnabled(false); }
+    @Test void detailsArePagedAndHashesAreDeduplicatedAcrossInternalBatches() {
+        books.deleteAll();
+        for(long id=1;id<=205;id++) books.save(CatalogBook.builder().eplId(id).revision(1.0)
+                .title("Book "+id).author("Author").links(String.format("%040X",id==205?1:id)).build());
+        var preview=store.preview(new CatalogBookFilter(),PageRequest.of(0,20),false,true,null,true,2,7);
+        assertThat(preview.items()).hasSize(7);
+        assertThat(preview.selectedBooks()).isEqualTo(205);
+        assertThat(preview.selectedItems()).isEqualTo(205);
+        assertThat(preview.skipped()).isEqualTo(1);
+        assertThat(preview.meta().totalItems()).isEqualTo(205);
+        assertThat(items.count()).isZero();
+        var job=store.create(new CatalogBookFilter(),PageRequest.of(0,20),false,true,null);
+        assertThat(job.selectedItems()).isEqualTo(205);
+        assertThat(items.count()).isEqualTo(205);
+    }
+
     @Test void dryRunPreparesSameItemsWithoutPersistingOrSending() {
         var before = events.cursor();
         var preview = store.preview(new CatalogBookFilter(),PageRequest.of(0,20),false,true,null,true);

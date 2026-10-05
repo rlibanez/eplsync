@@ -1,17 +1,19 @@
 package com.rlibanez.eplsync.torrent.updates;
 
 import com.rlibanez.eplsync.config.TorrentProperties;
-import com.rlibanez.eplsync.dto.TorrentDownloadRequest;
+import com.rlibanez.eplsync.dto.*;
 import com.rlibanez.eplsync.filter.CatalogBookFilter;
+import com.rlibanez.eplsync.model.CatalogBook;
 import com.rlibanez.eplsync.specification.CatalogBookSpecifications;
 import com.rlibanez.eplsync.repository.CatalogBookRepository;
 import com.rlibanez.eplsync.service.TorrentDownloadService;
-import com.rlibanez.eplsync.torrent.*;
+import com.rlibanez.eplsync.torrent.MagnetLinkBuilder;
 import com.rlibanez.eplsync.torrent.bulk.*;
 import com.rlibanez.eplsync.torrent.downloads.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.json.JsonMapper;
+import org.springframework.data.domain.*;
+import org.springframework.data.jpa.domain.Specification;
 import java.time.Instant;
 import java.util.*;
 
@@ -27,118 +29,150 @@ public class UpdatePlanner {
     private final BulkItemRepository items;
     private final UpdatePlanRepository plans;
     private final UpdateCleanupRepository cleanup;
-    private final JsonMapper mapper = JsonMapper.builder().build();
-
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
     public UpdatePlanner(DownloadRepository downloads, CatalogBookRepository books, DownloadTrackingService tracking,
             TorrentProperties properties, MagnetLinkBuilder magnets, TorrentDownloadService preparation, BulkStore bulk,
             BulkItemRepository items, UpdatePlanRepository plans, UpdateCleanupRepository cleanup) {
-        this.downloads = downloads; this.books = books; this.tracking = tracking; this.properties = properties;
-        this.magnets = magnets; this.preparation = preparation; this.bulk = bulk; this.items = items;
-        this.plans = plans; this.cleanup = cleanup;
+        this.downloads=downloads; this.books=books; this.tracking=tracking; this.properties=properties;
+        this.magnets=magnets; this.preparation=preparation; this.bulk=bulk; this.items=items; this.plans=plans; this.cleanup=cleanup;
     }
-
-    public record Existing(String id, double revision, String hash, DownloadStatus status) {}
-    public record Candidate(Long eplId, String title, double catalogRevision, List<Existing> existingDownloads,
-            List<String> targetHashes) {}
+    public record Existing(String id,double revision,String hash,DownloadStatus status) {}
+    public record Candidate(Long eplId,String title,double catalogRevision,List<Existing> existingDownloads,
+            List<String> targetHashes,long existingDownloadsTotal) {
+        public Candidate(Long id,String title,double revision,List<Existing> existing,List<String> hashes) {
+            this(id,title,revision,existing,hashes,existing.size());
+        }
+    }
+    /** Legacy plans remain readable; new plans derive snapshots from their frozen job commands. */
     public record Snapshot(List<Candidate> items) {}
     public static List<Candidate> visible(List<Candidate> candidates) {
         if (com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.BOOK_HISTORY_READ)) return candidates;
-        return candidates.stream().map(c -> new Candidate(c.eplId(), c.title(), c.catalogRevision(), List.of(), c.targetHashes())).toList();
+        return candidates.stream().map(c -> new Candidate(c.eplId(),c.title(),c.catalogRevision(),List.of(),c.targetHashes(),0)).toList();
     }
+    public enum Selection { NEW,UPDATES,BOTH }
 
-    public enum Selection { NEW, UPDATES, BOTH }
-
-    @Transactional(readOnly = true)
-    public List<Candidate> preview(Long eplId, boolean includeNotFound, MultipleHashes multipleHashes) {
-        var filter = new CatalogBookFilter();
-        if (eplId != null) filter.setEplId(eplId);
-        return preview(filter, includeNotFound, multipleHashes, Selection.UPDATES);
+    private Specification<CatalogBook> eligible(String instance,boolean includeNotFound,Selection selection) {
+        return (root,query,cb) -> {
+            var history=query.subquery(String.class); var h=history.from(DownloadRecord.class);
+            history.select(h.get("id")).where(cb.equal(h.get("eplId"),root.get("eplId")),cb.equal(h.get("clientInstanceId"),instance));
+            var eligible=query.subquery(String.class); var e=eligible.from(DownloadRecord.class);
+            var bad=includeNotFound ? List.of(DownloadStatus.ERROR,DownloadStatus.UNKNOWN)
+                    : List.of(DownloadStatus.ERROR,DownloadStatus.UNKNOWN,DownloadStatus.NOT_FOUND);
+            eligible.select(e.get("id")).where(cb.equal(e.get("eplId"),root.get("eplId")),cb.equal(e.get("clientInstanceId"),instance),cb.not(e.get("status").in(bad)));
+            var newer=query.subquery(String.class); var n=newer.from(DownloadRecord.class);
+            newer.select(n.get("id")).where(cb.equal(n.get("eplId"),root.get("eplId")),cb.equal(n.get("clientInstanceId"),instance),
+                    cb.not(n.get("status").in(bad)),cb.greaterThanOrEqualTo(n.get("revision"),root.get("revision")));
+            var active=query.subquery(String.class); var i=active.from(BulkItem.class); var j=active.from(BulkJob.class);
+            active.select(i.get("id")).where(cb.equal(i.get("jobId"),j.get("id")),cb.equal(i.get("eplId"),root.get("eplId")),
+                    cb.equal(j.get("targetFingerprint"),instance),i.get("state").in(BulkItem.State.PENDING,BulkItem.State.IN_FLIGHT),
+                    cb.not(j.get("state").in(BulkJob.State.COMPLETED,BulkJob.State.CANCELLED)));
+            var isNew=cb.not(cb.exists(history)); var isUpdate=cb.and(cb.exists(eligible),cb.not(cb.exists(newer)));
+            return cb.and(cb.not(cb.exists(active)),selection==Selection.NEW ? isNew
+                    : selection==Selection.UPDATES ? isUpdate : cb.or(isNew,isUpdate));
+        };
     }
-
-    @Transactional(readOnly = true)
-    public List<Candidate> preview(CatalogBookFilter filter, boolean includeNotFound,
-            MultipleHashes multipleHashes, Selection selection) {
-        if (filter.getEplId() != null && java.util.Arrays.stream(filter.getEplId()).anyMatch(id -> id == null || id <= 0))
-            throw new IllegalArgumentException("eplId debe ser positivo");
-        var policy = multipleHashes == null ? properties.getBulk().getMultipleHashes() : multipleHashes;
-        String instance = tracking.instanceId();
-        var grouped = new HashMap<Long, List<DownloadRecord>>();
-        for (var row : downloads.findByClientInstanceId(instance))
-            grouped.computeIfAbsent(row.getEplId(), key -> new ArrayList<>()).add(row);
-        var active = new HashSet<>(items.activeBooks(instance,
-                List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT)));
-        // Project only selection fields, avoiding loading every synopsis in a large catalogue.
-        var selected = books.findBy(CatalogBookSpecifications.fromFilter(filter),
-                query -> query.as(CatalogBookRepository.UpdateIdentity.class).all());
-        var result = new ArrayList<Candidate>();
-        for (var book : selected) {
-            if (active.contains(book.getEplId()) || book.getRevision() == null || !Double.isFinite(book.getRevision())) continue;
-            var history = grouped.getOrDefault(book.getEplId(), List.of());
-            boolean isNew = history.isEmpty();
-            if (isNew && selection == Selection.UPDATES || !isNew && selection == Selection.NEW) continue;
-            if (!isNew) {
-                var eligible = history.stream().filter(row -> present(row.getStatus())
-                        || includeNotFound && row.getStatus() == DownloadStatus.NOT_FOUND).toList();
-                if (eligible.isEmpty() || eligible.stream().anyMatch(row -> row.getRevision() >= book.getRevision())) continue;
+    private static void budget(long deadline) {
+        if (System.nanoTime()>=deadline || Thread.currentThread().isInterrupted())
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,
+                    "La selección de torrents ha superado el tiempo máximo de 2 minutos. Reduce los filtros e inténtalo de nuevo.");
+    }
+    private void scan(CatalogBookFilter filter,boolean includeNotFound,MultipleHashes policy,Selection selection,
+            java.util.function.Consumer<Candidate> consume) {
+        String instance=tracking.instanceId(); long after=0;
+        long deadline=System.nanoTime()+java.time.Duration.ofMinutes(2).toNanos();
+        var base=CatalogBookSpecifications.fromFilter(filter).and(eligible(instance,includeNotFound,selection));
+        while (true) {
+            budget(deadline); long cursor=after;
+            var spec=base.and((root,q,cb) -> cb.greaterThan(root.get("eplId"),cursor));
+            var batch=books.findBy(spec,q -> q.as(CatalogBookRepository.UpdateIdentity.class)
+                    .sortBy(Sort.by("eplId")).slice(PageRequest.of(0,100))).getContent();
+            if (batch.isEmpty()) break;
+            for (var book:batch) {
+                budget(deadline); after=book.getEplId();
+                if (book.getRevision()==null || !Double.isFinite(book.getRevision())) continue;
+                var hashes=magnets.hashes(book.getLinks());
+                if (hashes.isEmpty() || hashes.size()>1 && policy==MultipleHashes.SKIP) continue;
+                var targets=policy==MultipleHashes.ALL ? hashes : List.of(hashes.getFirst());
+                boolean blocked=false;
+                for(int start=0;start<targets.size();start+=250) {
+                    var chunk=targets.subList(start,Math.min(start+250,targets.size()));
+                    if(downloads.count((root,q,cb) -> cb.and(cb.equal(root.get("clientInstanceId"),instance),
+                            cb.equal(root.get("eplId"),book.getEplId()),root.get("hash").in(chunk),
+                            cb.or(cb.not(root.get("status").in(DownloadStatus.ERROR,DownloadStatus.NOT_FOUND)),
+                                    cb.notEqual(root.get("revision"),book.getRevision()))))>0) { blocked=true; break; }
+                }
+                if(!blocked) consume.accept(new Candidate(book.getEplId(),book.getTitle(),book.getRevision(),List.of(),targets));
             }
-            var hashes = magnets.hashes(book.getLinks());
-            if (hashes.isEmpty() || hashes.size() > 1 && policy == MultipleHashes.SKIP) continue;
-            var targets = policy == MultipleHashes.ALL ? hashes : List.of(hashes.getFirst());
-            // Never reinterpret an existing hash as a different revision.
-            if (history.stream().anyMatch(row -> targets.contains(row.getHash()) && (present(row.getStatus()) || row.getStatus() == DownloadStatus.UNKNOWN))) continue;
-            if (history.stream().anyMatch(row -> targets.contains(row.getHash()) && row.getRevision() != book.getRevision().doubleValue())) continue;
-            result.add(new Candidate(book.getEplId(), book.getTitle(), book.getRevision(), history.stream()
-                    .filter(row -> row.getRevision() < book.getRevision()).map(row -> new Existing(row.getId(),
-                            row.getRevision(), row.getHash(), row.getStatus())).toList(), targets));
+            if(batch.size()<100) break;
         }
-        result.sort(Comparator.comparing(value -> Objects.requireNonNull(value).eplId()));
-        return result;
     }
-
-    private boolean present(DownloadStatus status) {
-        return status != DownloadStatus.ERROR && status != DownloadStatus.UNKNOWN && status != DownloadStatus.NOT_FOUND;
+    private Specification<DownloadRecord> older(Candidate candidate) {
+        String instance=tracking.instanceId();
+        return (root,q,cb) -> cb.and(cb.equal(root.get("clientInstanceId"),instance),cb.equal(root.get("eplId"),candidate.eplId()),
+                cb.lessThan(root.get("revision"),candidate.catalogRevision()));
     }
-
-    @Transactional
-    public BulkStore.View create(Long eplId, boolean includeNotFound, UpdateRequest request) {
-        var filter = new CatalogBookFilter();
-        if (eplId != null) filter.setEplId(eplId);
-        return create(filter, includeNotFound, request, Selection.UPDATES);
+    @Transactional(readOnly=true,timeout=120)
+    public List<Candidate> preview(Long id,boolean includeNotFound,MultipleHashes hashes) {
+        var filter=new CatalogBookFilter(); if(id!=null) filter.setEplId(id);
+        return preview(filter,includeNotFound,hashes,Selection.UPDATES);
     }
-
-    @Transactional
-    public BulkStore.View create(CatalogBookFilter filter, boolean includeNotFound,
-            UpdateRequest request, Selection selection) {
-        var input = request == null ? new UpdateRequest(null, null, null, null, null, null) : request;
-        if (input.options() != null && input.options().hash() != null)
-            throw new IllegalArgumentException("Las actualizaciones no admiten options.hash");
-        if (input.policy() != PreviousVersions.KEEP) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP);
-        if (input.policy() == PreviousVersions.REMOVE_TORRENT_AND_FILES) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
-        var candidates = preview(filter, includeNotFound, input.multipleHashes(), selection);
-        var commands = new ArrayList<TorrentDownload>();
-        for (int offset = 0; offset < candidates.size(); offset += 500) {
-            var chunk = candidates.subList(offset, Math.min(candidates.size(), offset + 500));
-            var selected = new HashMap<Long, com.rlibanez.eplsync.model.CatalogBook>();
-            books.findAllById(chunk.stream().map(value -> Objects.requireNonNull(value).eplId()).toList()).forEach(book -> selected.put(book.getEplId(), book));
-            for (var candidate : chunk) for (var hash : candidate.targetHashes()) {
-                var options = input.options();
-                commands.add(preparation.prepare(selected.get(candidate.eplId()), options == null
-                        ? new TorrentDownloadRequest(hash, null, null, null, null)
-                        : new TorrentDownloadRequest(hash, options.start(), options.savePath(), options.rename(), options.qbittorrent())));
+    @Transactional(readOnly=true,timeout=120)
+    public List<Candidate> preview(CatalogBookFilter filter,boolean includeNotFound,MultipleHashes hashes,Selection selection) {
+        return previewPage(filter,includeNotFound,hashes,selection,0,50).items();
+    }
+    @Transactional(readOnly=true,timeout=120)
+    public PageResponse<Candidate> previewPage(CatalogBookFilter filter,boolean includeNotFound,MultipleHashes hashes,
+            Selection selection,int page,int size) {
+        com.rlibanez.eplsync.config.QueryLimits.page(page,size);
+        var policy=hashes==null ? properties.getBulk().getMultipleHashes() : hashes;
+        var result=new ArrayList<Candidate>(); long[] total={0}; long offset=(long)page*size;
+        scan(filter,includeNotFound,policy,selection,c -> {
+            long position=total[0]++;
+            if(position<offset || position>=offset+size) return;
+            var history=downloads.findAll(older(c),PageRequest.of(0,20,Sort.by(Sort.Order.desc("revision"),Sort.Order.asc("id"))));
+            result.add(new Candidate(c.eplId(),c.title(),c.catalogRevision(),history.getContent().stream()
+                    .map(row -> new Existing(row.getId(),row.getRevision(),row.getHash(),row.getStatus())).toList(),c.targetHashes(),history.getTotalElements()));
+            em.clear();
+        });
+        int pages=(int)((total[0]+size-1)/size);
+        return new PageResponse<>(visible(result),new PageResponse.PageMeta(page,size,total[0],pages,page==0,page>=pages-1,page<pages-1,page>0));
+    }
+    @Transactional(timeout=120)
+    public BulkStore.View create(Long id,boolean includeNotFound,UpdateRequest request) {
+        var filter=new CatalogBookFilter(); if(id!=null) filter.setEplId(id);
+        return create(filter,includeNotFound,request,Selection.UPDATES);
+    }
+    @Transactional(timeout=120)
+    public BulkStore.View create(CatalogBookFilter filter,boolean includeNotFound,UpdateRequest request,Selection selection) {
+        var input=request==null ? new UpdateRequest(null,null,null,null,null,null) : request;
+        if(input.options()!=null && input.options().hash()!=null) throw new IllegalArgumentException("Las actualizaciones no admiten options.hash");
+        if(input.policy()!=PreviousVersions.KEEP) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP);
+        if(input.policy()==PreviousVersions.REMOVE_TORRENT_AND_FILES) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
+        var job=bulk.beginPrepared(input.bulk()); String jobId=job.getId();
+        var plan=new UpdatePlan(); plan.setJobId(jobId); plan.setClientInstanceId(tracking.instanceId());
+        plan.setPreviousVersions(input.policy()); plan.setCreatedAt(Instant.now()); plan.setSnapshot("{\"items\":[]}"); plans.saveAndFlush(plan);
+        long[] counts={0,0};
+        scan(filter,includeNotFound,input.multipleHashes()==null ? properties.getBulk().getMultipleHashes() : input.multipleHashes(),selection,c -> {
+            var book=books.findById(c.eplId()).orElseThrow(); counts[0]++;
+            for(var hash:c.targetHashes()) {
+                var options=input.options();
+                var command=preparation.prepare(book,options==null ? new TorrentDownloadRequest(hash,null,null,null,null)
+                        : new TorrentDownloadRequest(hash,options.start(),options.savePath(),options.rename(),options.qbittorrent()));
+                bulk.appendPrepared(jobId,command,counts[1]++);
+                if(counts[1]%25==0) { em.flush(); em.clear(); }
             }
-        }
-        var job = bulk.createPrepared(commands, input.bulk());
-        var plan = new UpdatePlan();
-        plan.setJobId(job.jobId()); plan.setClientInstanceId(tracking.instanceId());
-        plan.setPreviousVersions(input.policy()); plan.setCreatedAt(Instant.now());
-        plan.setSnapshot(mapper.writeValueAsString(new Snapshot(candidates))); plans.save(plan);
-        for (var candidate : candidates) for (var old : candidate.existingDownloads()) {
-            var entry = new UpdateCleanup();
-            entry.setJobId(job.jobId()); entry.setDownloadId(old.id()); entry.setEplId(candidate.eplId());
-            entry.setHash(old.hash()); entry.setUpdatedAt(Instant.now());
-            entry.setState(input.policy() == PreviousVersions.KEEP ? UpdateCleanup.State.KEPT : UpdateCleanup.State.WAITING);
-            cleanup.save(entry);
-        }
-        return job;
+            int offset=0;
+            while(true) {
+                var history=downloads.findAll(older(c),PageRequest.of(offset++,100,Sort.by("id")));
+                for(var old:history) {
+                    var entry=new UpdateCleanup(); entry.setJobId(jobId); entry.setDownloadId(old.getId()); entry.setEplId(c.eplId());
+                    entry.setHash(old.getHash()); entry.setUpdatedAt(Instant.now());
+                    entry.setState(input.policy()==PreviousVersions.KEEP ? UpdateCleanup.State.KEPT : UpdateCleanup.State.WAITING);
+                    cleanup.save(entry);
+                }
+                em.flush(); em.clear(); if(!history.hasNext()) break;
+            }
+        });
+        return bulk.finishPrepared(jobId,counts[0]);
     }
 }

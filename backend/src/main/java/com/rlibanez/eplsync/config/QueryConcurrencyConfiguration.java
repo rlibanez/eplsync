@@ -37,7 +37,7 @@ public class QueryConcurrencyConfiguration implements WebMvcConfigurer {
         };
     }
     @Override public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(boundedQueries()).addPathPatterns("/api/catalog/books", "/api/catalog/magnets", "/api/catalog/directory/**",
+        registry.addInterceptor(boundedQueries()).addPathPatterns("/api/catalog/books", "/api/catalog/books/*/history", "/api/catalog/magnets", "/api/catalog/directory/**",
                 "/api/torrent/downloads", "/api/torrent/downloads/summary", "/api/torrent/jobs", "/api/torrent/jobs/*/items",
                 "/api/events", "/api/events/operations", "/api/torrent/books", "/api/torrent/updates", "/api/torrent/refresh");
     }

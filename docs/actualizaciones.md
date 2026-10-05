@@ -184,3 +184,9 @@ seleccionados y bloquea políticas incompatibles sobre el mismo torrent. En una
 cadena de revisiones, puede ser necesario repetir la limpieza una vez resueltos
 los planes anteriores. Sigue disponible la limpieza individual:
 `POST /api/torrent/updates/{jobId}/cleanup`.
+
+La planificación recorre lotes de 100 candidatos y conserva los comandos de cada
+envío en el trabajo, evitando construir un snapshot de toda la selección en memoria.
+Las simulaciones conservan únicamente la página solicitada. El detalle de
+`GET /api/torrent/updates/JOB_ID` admite `page` y `size` (0 y 20 por defecto,
+máximo 1000), con `updatesMeta` e `itemsMeta` para recorrer candidatos y limpieza.

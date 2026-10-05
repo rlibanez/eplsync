@@ -31,7 +31,11 @@ public record CatalogBookResponse(
         String coverUrl,
         Boolean coverAvailable,
         Download download) {
-    public record Download(List<DownloadItem> items) {}
+    public record Download(List<DownloadItem> items,long totalItems,List<DownloadStatus> statuses) {
+        public Download(List<DownloadItem> items) { this(items,items.size()); }
+        public Download(List<DownloadItem> items,long totalItems) { this(items,totalItems,items.stream().map(DownloadItem::status).distinct().toList()); }
+        public boolean hasMore() { return totalItems > items.size(); }
+    }
     public record DownloadItem(String id, Double revision, DownloadStatus status, boolean completed) {}
     public static CatalogBookResponse from(CatalogBook book, Download download) {
         return new CatalogBookResponse(

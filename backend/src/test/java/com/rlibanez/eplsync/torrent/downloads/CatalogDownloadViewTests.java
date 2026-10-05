@@ -20,14 +20,20 @@ class CatalogDownloadViewTests {
         var repository = mock(DownloadRepository.class);
         var rows = List.of(row(1.0, "2026-01-01T00:00:00Z"), row(2.0, "2026-01-01T00:00:00Z"),
                 row(2.0, "2026-01-02T00:00:00Z"));
-        when(repository.findByEplIdIn(any())).thenAnswer(invocation -> {
-            java.util.Collection<Long> ids = invocation.getArgument(0);
+        when(repository.historyWindow(any(),eq(20))).thenAnswer(invocation -> {
+            java.util.Collection<Long> ids=invocation.getArgument(0);
             assertThat(ids.size()).isLessThanOrEqualTo(500);
-            return ids.contains(1L) ? rows : List.of();
+            if(!ids.contains(1L)) return List.of();
+            return List.of(rows.get(2),rows.get(1),rows.get(0)).stream().map(row -> {
+                var projected=mock(DownloadRepository.HistoryRow.class);
+                when(projected.getEplId()).thenReturn(row.getEplId()); when(projected.getId()).thenReturn(row.getId());
+                when(projected.getRevision()).thenReturn(row.getRevision()); when(projected.getStatus()).thenReturn(row.getStatus().name());
+                when(projected.getCompleted()).thenReturn(0); when(projected.getTotal()).thenReturn(3L); return projected;
+            }).toList();
         });
         var books = LongStream.rangeClosed(1, 501).mapToObj(id -> CatalogBook.builder().eplId(id).build()).toList();
         var response = new CatalogDownloadViewService(repository).enrich(books);
-        verify(repository, times(2)).findByEplIdIn(any());
+        verify(repository, times(2)).historyWindow(any(),eq(20));
         assertThat(response).hasSize(501);
         assertThat(response.getFirst().download().items()).extracting(item -> item.id())
                 .containsExactly(rows.get(2).getId(), rows.get(1).getId(), rows.get(0).getId());

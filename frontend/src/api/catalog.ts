@@ -22,6 +22,8 @@ export interface Book {
   coverUrl: string | null;
   coverAvailable: boolean | null;
   download: {
+    totalItems: number;
+    statuses: string[];
     items: {
       id: string;
       revision: number | null;
