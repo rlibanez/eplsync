@@ -134,6 +134,22 @@ Iniciar una nueva fuente sigue invalidando el ZIP guardado anteriormente, inclus
 la nueva carga falla. Un fallo posterior de persistencia mantiene el ZIP ya validado
 para reintentar y revierte los cambios de la transacción.
 
+### Política de actualización y reemplazo
+
+La previsualización muestra las filas válidas y los errores de conversión o los IDs
+duplicados, sin modificar el catálogo. Una actualización admite esas filas válidas,
+conserva los libros anteriores y comunica un resultado parcial. Los fallos de formato,
+integridad, límites o persistencia abortan la operación completa.
+
+El reemplazo exige al menos un libro válido y cero errores, incluidos los IDs
+repetidos. Antes de borrar, se valida la estructura y se recorren todas las filas del
+mismo CSV temporal, sin escribir libros ni consultar el catálogo para clasificarlos.
+Si hay errores, se comunica su número y se conserva el catálogo anterior. La
+importación definitiva vuelve a comprobar el resultado dentro de la transacción:
+cualquier fallo revierte el borrado y las inserciones anteriores, junto con los
+metadatos. Un CSV vacío, con solo cabecera o sin libros válidos tampoco puede vaciar
+el catálogo. El borrado intencionado de datos pertenece a la operación de reinicio.
+
 ## Contraseñas y sesiones
 
 Las contraseñas se guardan con Argon2id (19 MiB, dos iteraciones, paralelismo uno), sal aleatoria de 16 bytes y hash de 32 bytes. La longitud mínima es configurable en **Ajustes → Usuarios y seguridad**, entre 8 y 128 caracteres (8 por defecto); el máximo es 256. Antes de inicializar la instalación, `EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH` fija el mínimo inicial. La configuración se persiste y los cambios afectan solo a nuevas contraseñas. Las contraseñas temporales tienen al menos 192 bits aleatorios y también se almacenan como hash. La API nunca devuelve hashes; solo devuelve la contraseña temporal al generarla.

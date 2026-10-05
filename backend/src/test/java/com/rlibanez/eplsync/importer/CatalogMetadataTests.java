@@ -87,4 +87,29 @@ class CatalogMetadataTests {
         assertThat(metadata.findById(1L).orElseThrow()).usingRecursiveComparison().isEqualTo(before);
         assertThat(books.existsById(2L)).isTrue();
     }
+
+    @Test void partialReplacementPreservesBooksDatesMetadataAndRecordsFailureReason() {
+        service.updateCatalog(null);
+        var originalBook = books.findById(2L).orElseThrow();
+        var originalMetadata = metadata.findById(1L).orElseThrow();
+        long cursor = events.cursor();
+        csv = "EPL Id,Título,Autor,Revisión\n3,Nuevo válido,Autor,1.0\ninvalid,Incorrecto,Autor,1.0\n";
+        assertThatThrownBy(() -> service.importCatalog(null))
+            .hasMessage("No se puede reemplazar el catálogo: el CSV contiene 1 registro con errores. El catálogo anterior se ha conservado.");
+        assertThat(books.count()).isEqualTo(1);
+        assertThat(books.findById(2L).orElseThrow()).usingRecursiveComparison().isEqualTo(originalBook);
+        assertThat(metadata.findById(1L).orElseThrow()).usingRecursiveComparison().isEqualTo(originalMetadata);
+        var recorded = events.after(cursor,10);
+        assertThat(recorded).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+            .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
+        assertThat(recorded.getLast().details().get("reason")).isEqualTo("No se puede reemplazar el catálogo: el CSV contiene 1 registro con errores. El catálogo anterior se ha conservado.");
+        var preview = service.previewCatalog(null,0,20);
+        assertThat(preview.summary().errors()).isEqualTo(1);
+        assertThat(preview.summary().recordsCreated()).isEqualTo(1);
+        assertThat(books.existsById(3L)).isFalse();
+        var partial = service.updateCatalog(null);
+        assertThat(partial.errors()).isEqualTo(1);
+        assertThat(books.findById(2L).orElseThrow()).usingRecursiveComparison().isEqualTo(originalBook);
+        assertThat(books.existsById(3L)).isTrue();
+    }
 }

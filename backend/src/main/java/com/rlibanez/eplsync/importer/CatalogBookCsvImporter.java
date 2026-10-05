@@ -56,12 +56,16 @@ public class CatalogBookCsvImporter {
     public ImportStats importFile(Path csvPath, boolean truncateBeforeImport) throws IOException {
 
         if (truncateBeforeImport) {
+            CatalogCsvValidator.validate(csvPath, System.nanoTime() + CatalogImportLimits.EXTRACTION_TIME.toNanos());
+            requireCompleteReplacement(processFile(csvPath, true, 0, 1, true).summary());
             repository.deleteAllInBatch();
             repository.flush();
             em.clear();
         }
 
         var summary = processFile(csvPath, false, 0, 1).summary();
+        // Keep the transactional guard even after preflight: reading or writing may fail on the second pass.
+        if (truncateBeforeImport) requireCompleteReplacement(summary);
         if (suggestions != null) suggestions.invalidateAfterCommit();
         return summary;
     }
@@ -90,7 +94,19 @@ public class CatalogBookCsvImporter {
     private record ProcessResult(ImportStats summary, List<CatalogBook> createdBooks,
                                  List<BookUpdate> updatedBooks, List<MissingBook> missingBooks) {}
 
+    private void requireCompleteReplacement(ImportStats stats) {
+        if (stats.errors() > 0)
+            throw new com.rlibanez.eplsync.exception.CatalogValidationException(
+                "No se puede reemplazar el catálogo: el CSV contiene "
+                + (stats.errors() == 1 ? "1 registro con errores" : stats.errors() + " registros con errores")
+                + ". El catálogo anterior se ha conservado.");
+    }
+
     private ProcessResult processFile(Path csvPath, boolean preview, int page, int size) throws IOException {
+        return processFile(csvPath, preview, page, size, false);
+    }
+
+    private ProcessResult processFile(Path csvPath, boolean preview, int page, int size, boolean validateOnly) throws IOException {
         List<CatalogBook> createdBooks = new ArrayList<>();
         List<BookUpdate> updatedBooks = new ArrayList<>();
         var seenIds = new HashSet<Long>();
@@ -174,6 +190,11 @@ public class CatalogBookCsvImporter {
                     continue;
                 }
 
+                if (validateOnly) {
+                    processed++;
+                    continue;
+                }
+
                 // Los errores de persistencia abortan la transacción: no se cuentan como filas omitidas.
                 CatalogBook existing = repository.findById(entity.getEplId()).orElse(null);
                 if (existing == null) {
@@ -223,14 +244,14 @@ public class CatalogBookCsvImporter {
             if (!preview) {
                 repository.flush();
             }
-            em.clear();
+            if (!validateOnly) em.clear();
         }
 
-        var missing = errors == 0 ? repository.findMissingIdentities().stream()
+        var missing = !validateOnly && errors == 0 ? repository.findMissingIdentities().stream()
             .filter(book -> !seenIds.contains(book.getEplId()))
             .map(book -> new MissingBook(book.getEplId(), book.getTitle(), book.getRevision(), book.getInsertDate(), book.getLastModifiedDate()))
             .toList() : List.<MissingBook>of();
-        return new ProcessResult(new ImportStats(processed, errors, updated, created, unchanged, errors == 0 ? (long) missing.size() : null),
+        return new ProcessResult(new ImportStats(processed, errors, updated, created, unchanged, !validateOnly && errors == 0 ? (long) missing.size() : null),
                 List.copyOf(createdBooks), List.copyOf(updatedBooks), missing);
     }
 

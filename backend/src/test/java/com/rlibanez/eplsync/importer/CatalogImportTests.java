@@ -23,6 +23,11 @@ import static org.assertj.core.api.Assertions.*;
 class CatalogImportTests {
     @Autowired CatalogBookCsvImporter importer;
     @Autowired CatalogBookRepository repository;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @org.junit.jupiter.api.AfterEach void removeTestTriggers() {
+        jdbc.execute("DROP TRIGGER IF EXISTS block_catalog_delete");
+        jdbc.execute("DROP TRIGGER IF EXISTS fail_second_insert");
+    }
     @TempDir Path directory;
 
     @BeforeEach
@@ -229,5 +234,37 @@ class CatalogImportTests {
         assertThatThrownBy(() -> importer.importFile(csv("invalid,1,Autor,Invalid\n"), true))
             .hasMessageContaining("ningún libro válido");
         assertThat(repository.findById(1L).orElseThrow().getTitle()).isEqualTo("Original");
+    }
+
+    @Test void replacementRejectsPartialErrorsAndDuplicatesBeforeDeletingAnything() throws Exception {
+        importer.importFile(csv("1,1,Autor,Original\n"), true);
+        var original = repository.findById(1L).orElseThrow();
+        jdbc.execute("CREATE TRIGGER block_catalog_delete BEFORE DELETE ON catalog_books BEGIN SELECT RAISE(ABORT, 'Deletion must not run'); END");
+        for (String rows : new String[]{"2,1,Autor,Nuevo\ninvalid,1,Autor,Incorrecto\n", "2,1,Autor,Nuevo\n2,1,Autor,Duplicado\n"}) {
+            assertThatThrownBy(() -> importer.importFile(csv(rows), true))
+                .isInstanceOf(com.rlibanez.eplsync.exception.CatalogValidationException.class)
+                .hasMessage("No se puede reemplazar el catálogo: el CSV contiene 1 registro con errores. El catálogo anterior se ha conservado.");
+            assertThat(repository.findById(1L).orElseThrow()).usingRecursiveComparison().isEqualTo(original);
+            assertThat(repository.count()).isEqualTo(1);
+        }
+    }
+    @Test void emptyReplacementIsRejectedBeforeDeletion() throws Exception {
+        importer.importFile(csv("1,1,Autor,Original\n"), true);
+        jdbc.execute("CREATE TRIGGER block_catalog_delete BEFORE DELETE ON catalog_books BEGIN SELECT RAISE(ABORT, 'Deletion must not run'); END");
+        for (String content : new String[]{"", "EPL Id,Revisión,Autor,Título\n"}) {
+            Path file = Files.writeString(directory.resolve("empty.csv"), content);
+            assertThatThrownBy(() -> importer.importFile(file, true))
+                .isInstanceOf(com.rlibanez.eplsync.exception.CatalogValidationException.class);
+            assertThat(repository.findById(1L).orElseThrow().getTitle()).isEqualTo("Original");
+        }
+    }
+    @Test void replacementRollsBackDeletionAndEarlierInsertsWhenPersistenceFails() throws Exception {
+        importer.importFile(csv("1,1,Autor,Original\n"), true);
+        var original = repository.findById(1L).orElseThrow();
+        jdbc.execute("CREATE TRIGGER fail_second_insert BEFORE INSERT ON catalog_books WHEN NEW.epl_id=3 BEGIN SELECT RAISE(ABORT, 'Persistence failure'); END");
+        assertThatThrownBy(() -> importer.importFile(csv("2,1,Autor,Nuevo\n3,1,Autor,Otro\n"), true))
+            .isInstanceOf(RuntimeException.class);
+        assertThat(repository.findById(1L).orElseThrow()).usingRecursiveComparison().isEqualTo(original);
+        assertThat(repository.count()).isEqualTo(1);
     }
 }
