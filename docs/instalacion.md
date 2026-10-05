@@ -11,6 +11,7 @@ prepara la configuración local (solo la primera vez):
 
 ```sh
 cp .env.example .env
+chmod 600 .env
 mkdir -p data logs
 ```
 
@@ -18,6 +19,9 @@ mkdir -p data logs
 desde Ajustes. Para transmitir todos los valores iniciales de `.env`, utiliza
 `docker-compose-full.yml`. Con este último, para utilizar qBittorrent ajusta su URL,
 configura una API key o usuario y contraseña, y establece `EPLSYNC_TORRENT_ENABLED=true`.
+Para guardar credenciales desde Ajustes, genera la clave con `openssl rand -base64 32`
+y copia el resultado en `EPLSYNC_SECRET_KEY` dentro de `.env`. Conserva ese valor
+y no lo cambies después de guardar credenciales. Ambos Compose lo transmiten.
 La plantilla deja la integración desactivada y las credenciales vacías. `.env.example` contiene valores de ejemplo;
 Compose carga automáticamente `.env`, no `.env.example`.
 
@@ -79,7 +83,7 @@ se utilizan: `PUID` y `PGID` en la construcción; `HOST_BIND` y `HOST_PORT` en e
 puerto publicado; `DATA_DIR` y `LOGS_DIR` en los montajes; el resto se transmite
 al contenedor mediante `environment`.
 
-El mínimo solo transmite `TZ`, además de usar las variables de construcción,
+El mínimo transmite `TZ` y `EPLSYNC_SECRET_KEY`, además de usar las variables de construcción,
 puertos y montajes. Las demás variables de `.env` no se transmiten con el mínimo.
 Para aplicarlas, utiliza el Compose completo. Las opciones disponibles en Ajustes
 también se pueden modificar desde la interfaz.

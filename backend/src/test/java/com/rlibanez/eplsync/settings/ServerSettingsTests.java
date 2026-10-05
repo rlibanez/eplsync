@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @org.springframework.security.test.context.support.WithMockUser(authorities={"ROLE_ADMIN","CATALOG_READ","BOOK_HISTORY_READ","DOWNLOADS_READ","TORRENT_SEND","TORRENT_SYNC","TORRENT_JOBS_MANAGE","TORRENT_CLEANUP","TORRENT_FILES_DELETE","CATALOG_IMPORT","CATALOG_DELETE","COVERS_MANAGE","EVENTS_MANAGE","SETTINGS_MANAGE"})
-@SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","spring.jpa.hibernate.ddl-auto=create-drop","spring.flyway.enabled=false","eplsync.torrent.enabled=false","eplsync.torrent.bulk.worker-enabled=false"})
+@SpringBootTest(properties={"eplsync.security.secret-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=","spring.datasource.url=jdbc:sqlite::memory:","spring.jpa.hibernate.ddl-auto=create-drop","spring.flyway.enabled=false","eplsync.torrent.enabled=false","eplsync.torrent.bulk.worker-enabled=false"})
 class ServerSettingsTests {
     @Autowired ServerSettings settings;
     @Autowired SettingsController controller;
@@ -31,6 +31,50 @@ class ServerSettingsTests {
     @Autowired Environment env;
     @Autowired PlatformTransactionManager manager;
     @AfterEach void restore() { for (String section : new String[]{"torrent","covers","catalog","events"}) settings.restore(section); }
+    private static final String TEST_KEY="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    private ServerSettings reload(String key) {
+        var environment=new org.springframework.mock.env.MockEnvironment()
+            .withProperty("eplsync.catalog.zip-url",env.getRequiredProperty("eplsync.catalog.zip-url"))
+            .withProperty("eplsync.security.secret-key",key);
+        return new ServerSettings(jdbc,manager,environment,new TorrentProperties(),new QBittorrentProperties(),
+            new CatalogImportProperties(),new CoverCheckProperties(),new EventSettings());
+    }
+    @Test void missingOrWrongKeysPreserveCiphertextAndKeepOtherSettingsUsable() throws Exception {
+        var target=reload(TEST_KEY);
+        target.save("torrent",Map.of("torrent.qbittorrent.auth.username","test-user","torrent.qbittorrent.auth.password","private-password","torrent.qbittorrent.auth.api-key","private-key"));
+        String stored=jdbc.queryForObject("select setting_value from app_settings where setting_key='torrent.qbittorrent.auth.password'",String.class);
+        assertThat(stored).contains(CredentialCipher.PREFIX).doesNotContain("private-password");
+        assertThat(reload(TEST_KEY).snapshot().qbittorrent().getAuth().getPassword()).isEqualTo("private-password");
+        var blocked=reload("");
+        assertThat(blocked.snapshot().torrent().isEnabled()).isFalse();
+        assertThat(blocked.view("torrent").credentialsError()).contains("EPLSYNC_SECRET_KEY");
+        blocked.save("events",Map.of("events.retention.max-count",17));
+        assertThat(jdbc.queryForObject("select setting_value from app_settings where setting_key='torrent.qbittorrent.auth.password'",String.class)).isEqualTo(stored);
+        assertThat(jdbc.queryForObject("select setting_value from app_settings where setting_key='torrent.qbittorrent.auth.username'",String.class)).isEqualTo("\"test-user\"");
+        assertThatThrownBy(() -> blocked.save("torrent",Map.of("torrent.enabled",true))).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThatThrownBy(() -> blocked.restore("torrent")).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        var mvc=MockMvcBuilders.standaloneSetup(new SettingsController(blocked)).setControllerAdvice(new GlobalExceptionHandler()).build();
+        mvc.perform(put("/api/settings/torrent").contentType("application/json").content("{\"torrent.enabled\":true}"))
+            .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").doesNotExist());
+
+        var bytes=new byte[32];bytes[0]=1;
+        assertThat(reload(java.util.Base64.getEncoder().encodeToString(bytes)).view("torrent").credentialsError()).isNotNull();
+    }
+    @Test void missingKeyRejectsSecretWritesAtomicallyButAllowsNonSecretSettings() throws Exception {
+        var target=reload("");
+        target.save("torrent",Map.of("torrent.bulk.concurrency",2));
+        var before=jdbc.queryForList("select * from app_settings order by setting_key");
+        assertThatThrownBy(() -> target.save("torrent",Map.of("torrent.qbittorrent.auth.password","private-secret","torrent.bulk.concurrency",3))).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThat(jdbc.queryForList("select * from app_settings order by setting_key")).isEqualTo(before);
+        assertThat(target.snapshot().torrent().getBulk().getConcurrency()).isEqualTo(2);
+        var mvc=MockMvcBuilders.standaloneSetup(new SettingsController(target)).setControllerAdvice(new GlobalExceptionHandler()).build();
+        mvc.perform(put("/api/settings/torrent").contentType("application/json").content("{\"torrent.qbittorrent.auth.password\":\"private-secret\"}"))
+            .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("SECRET_KEY_REQUIRED"))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("private-secret"))));
+        assertThat(jdbc.queryForList("select * from app_settings order by setting_key")).isEqualTo(before);
+
+    }
+
     @Test void preservesConfiguredAndSavedDurationText() {
         assertThat(settings.view("catalog").fields().stream().filter(f -> f.key().equals("catalog.import.retention")).findFirst().orElseThrow().value()).isEqualTo("24h");
         settings.save("catalog", Map.of("catalog.import.retention", "600s"));

@@ -19,10 +19,15 @@ import org.springframework.transaction.support.TransactionTemplate;
 @org.springframework.context.annotation.DependsOn("entityManagerFactory")
 public class ServerSettings {
     public record Field(String key, String type, Object value, boolean overridden, boolean configured) {}
-    public record View(String section, List<Field> fields) {}
+    public record View(String section, List<Field> fields, String credentialsError) {}
     private record Definition(String section, String key, String type) {}
     public record Snapshot(TorrentProperties torrent, QBittorrentProperties qbittorrent,
             CatalogImportProperties catalogImport, CoverCheckProperties covers, EventSettings events, String zipUrl) {}
+    private static final java.util.Set<String> SECRETS = java.util.Set.of("torrent.qbittorrent.auth.password", "torrent.qbittorrent.auth.api-key");
+    private CredentialCipher cipher;
+    private final String secretKey;
+    private String credentialsError;
+    private final Map<String,Object> unreadable = new LinkedHashMap<>();
     private static final String DESTINATION = "torrent.credentials-destination";
     private static final String URL = "torrent.base-url";
     private static final String ENABLED = "torrent.enabled";
@@ -40,6 +45,7 @@ public class ServerSettings {
 
     public ServerSettings(JdbcTemplate jdbc, PlatformTransactionManager manager, Environment env,
             TorrentProperties t, QBittorrentProperties q, CatalogImportProperties i, CoverCheckProperties c, EventSettings e) {
+        this.secretKey=env.getProperty("eplsync.security.secret-key", "");
         this.jdbc = jdbc; this.tx = new TransactionTemplate(manager);
         this.installationBinder = Binder.get(env);
         add("catalog", "catalog.zip-url", "text", env.getRequiredProperty("eplsync.catalog.zip-url"));
@@ -76,6 +82,22 @@ public class ServerSettings {
             String key = row.getString(1);
             if (installation.containsKey(key) || key.equals(DESTINATION)) saved.put(key, JSON.readValue(row.getString(2), Object.class));
         });
+        boolean encrypted = SECRETS.stream().anyMatch(key -> saved.get(key) instanceof String value && value.startsWith("encrypted:"));
+        boolean migration = SECRETS.stream().anyMatch(key -> saved.get(key) instanceof String value && !value.isBlank() && !value.startsWith("encrypted:"));
+        try {
+            if(encrypted || migration || !secretKey.isEmpty()) cipher = new CredentialCipher(secretKey);
+            for(String key:SECRETS) {
+                if(saved.get(key) instanceof String value && value.startsWith("encrypted:")) saved.put(key,cipher.decrypt(key,value));
+            }
+        } catch(IllegalStateException ex) {
+            credentialsError=ex.getMessage();
+            // Keep exact database values, including a partially decoded pair, on subsequent unrelated saves.
+            jdbc.query("select setting_key,setting_value from app_settings",(org.springframework.jdbc.core.RowCallbackHandler) row -> {
+                if(CREDENTIALS.contains(row.getString(1))) unreadable.put(row.getString(1),JSON.readValue(row.getString(2),Object.class));
+            });
+            CREDENTIALS.forEach(key -> saved.put(key,"")); saved.put(ENABLED,false);
+            org.slf4j.LoggerFactory.getLogger(getClass()).error("{}",credentialsError);
+        }
         // Existing credentials with an unknown or changed destination must never be rebound silently.
         var loaded = new LinkedHashMap<>(saved);
         String destination = destination(saved);
@@ -90,7 +112,7 @@ public class ServerSettings {
         }
         if (!destination.equals(destination(Map.of())) && binding == null) saved.put(ENABLED, false);
         maskInstallationCredentials(saved);
-        if (!saved.equals(loaded)) publish(saved);
+        if (credentialsError == null && (!saved.equals(loaded) || migration)) publish(saved);
         else { current = build(saved); overrides = Map.copyOf(saved); }
         t.useEffective(() -> snapshot().torrent()); q.useEffective(() -> snapshot().qbittorrent());
         i.useEffective(() -> snapshot().catalogImport()); c.useEffective(() -> snapshot().covers());
@@ -117,10 +139,11 @@ public class ServerSettings {
         return new View(section, section(section).stream().map(f -> {
             Object value = overrides.getOrDefault(f.key(), installation.get(f.key()));
             boolean secret = f.type().equals("secret");
-            return new Field(f.key(), f.type(), secret ? "" : value, overrides.containsKey(f.key()), secret && !String.valueOf(value).isBlank());
-        }).toList());
+            return new Field(f.key(), f.type(), secret ? "" : value, overrides.containsKey(f.key()), secret && (!String.valueOf(value).isBlank() || unreadable.containsKey(f.key())));
+        }).toList(), section.equals("torrent") ? credentialsError : null);
     }
     public synchronized View save(String section, Map<String, Object> values) {
+        if(section.equals("torrent") && credentialsError != null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,credentialsError);
         var fields = section(section);
         Map<String, Object> next = new LinkedHashMap<>(overrides);
         for (var entry : values.entrySet()) {
@@ -158,6 +181,7 @@ public class ServerSettings {
         return view(section);
     }
     public synchronized View restore(String section) {
+        if(section.equals("torrent") && credentialsError != null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,credentialsError);
         Map<String, Object> next = new LinkedHashMap<>(overrides);
         section(section).forEach(f -> next.remove(f.key()));
         if (section.equals("torrent")) next.remove(DESTINATION);
@@ -174,14 +198,24 @@ public class ServerSettings {
     }
     private void publish(Map<String, Object> next) {
         Snapshot candidate = build(next);
+        var stored=new LinkedHashMap<String,Object>(next);
+        stored.putAll(unreadable);
+        for(String key:SECRETS) {
+            if(unreadable.containsKey(key)) stored.put(key,unreadable.get(key));
+            else if(next.get(key) instanceof String value && !value.isBlank()) {
+                if(cipher==null) throw new SecretKeyRequiredException();
+                stored.put(key,cipher.encrypt(key,value));
+            }
+        }
         tx.executeWithoutResult(status -> {
+            jdbc.execute("PRAGMA secure_delete=ON");
             jdbc.update("delete from app_settings");
-            next.forEach((key, value) -> jdbc.update("insert into app_settings(setting_key,setting_value) values (?,?)", key, JSON.writeValueAsString(value)));
+            stored.forEach((key, value) -> jdbc.update("insert into app_settings(setting_key,setting_value) values (?,?)", key, JSON.writeValueAsString(value)));
         });
         overrides = Map.copyOf(next); current = candidate;
     }
     /** Called only after the full database reset transaction commits. */
-    public synchronized void resetAfterCommit() { overrides = Map.of(); current = build(Map.of()); }
+    public synchronized void resetAfterCommit() { unreadable.clear(); credentialsError=null; overrides = Map.of(); current = build(Map.of()); }
     private Snapshot build(Map<String, Object> values) {
         Map<String, Object> merged = new LinkedHashMap<>(installation); merged.putAll(values);
         String target = destination(values);

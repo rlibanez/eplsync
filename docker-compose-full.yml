@@ -16,6 +16,7 @@ services:
       - "${LOGS_DIR:-./logs}:/app/logs"
     environment:
       TZ: "${TZ:-Europe/Madrid}"
+      EPLSYNC_SECRET_KEY: "${EPLSYNC_SECRET_KEY:-}"
 
       # Interfaz
       EPLSYNC_UI_LANGUAGE: "${EPLSYNC_UI_LANGUAGE:-auto}"

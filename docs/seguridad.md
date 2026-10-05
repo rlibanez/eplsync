@@ -241,3 +241,59 @@ de disponibilidad indeterminado, sin marcar la portada como ausente.
 
 La importación conserva su política independiente: permite destinos locales
 introducidos directamente, como un WebDAV de la red doméstica.
+
+## Credenciales almacenadas y clave de cifrado
+
+Las contraseñas y API keys de qBittorrent guardadas desde Ajustes se cifran con
+AES-256-GCM antes de escribirse en SQLite. Cada escritura usa un nonce aleatorio;
+la autenticación incluye el nombre del ajuste. Las contraseñas de usuarios
+continúan almacenándose mediante hash, sin cifrado reversible.
+
+Configura `EPLSYNC_SECRET_KEY` en `.env` antes de guardar contraseñas o API keys
+mediante la interfaz. Genera una clave única para esta instalación con:
+
+```sh
+openssl rand -base64 32
+```
+
+Copia el resultado en `.env` como `EPLSYNC_SECRET_KEY=RESULTADO` y recrea el
+contenedor. Ambos Compose transmiten la variable. No existe una clave
+predeterminada, no se genera automáticamente y no se usa un archivo de clave ni
+un montaje de secretos. Para ejecutar fuera de Docker, exporta la variable antes
+de iniciar Java.
+
+El formato es rígido: Base64 estándar canónico de exactamente 32 bytes (44
+caracteres, incluido el `=` final), sin espacios ni saltos de línea. No se aceptan
+contraseñas como `mi_password_secreto`, Base64 URL-safe, otros tamaños ni valores
+sin el padding final. El formato puede comprobarse; la aleatoriedad de una clave
+aportada no puede garantizarse, por lo que debe utilizarse el comando anterior.
+
+La clave no es obligatoria para iniciar la aplicación ni consultar el catálogo.
+Si falta y aún no hay secretos cifrados, se permiten los demás ajustes, pero se
+rechaza guardar contraseñas/API keys con un aviso claro y sin cambios parciales.
+La interfaz abre un popup con **Generar**, **Copiar** y **Cerrar**. Generar utiliza
+el generador criptográfico del navegador para crear 32 bytes y mostrarlos en
+Base64; Copiar incluye `EPLSYNC_SECRET_KEY=` para pegar la línea en `.env`. La
+clave no se envía al servidor ni se activa automáticamente: configura la variable,
+recrea el contenedor y vuelve a guardar. El valor se descarta al cerrar el popup.
+Si ya hay credenciales cifradas cuya clave falta o es incorrecta, no se ofrece
+generar una sustituta: debes recuperar la clave original.
+Si la clave está mal formada, o hay credenciales cifradas que no puede descifrar,
+se bloquea la integración y se conservan los valores guardados. El resto de la
+aplicación sigue disponible; Ajustes y el log muestran el problema sin secretos.
+Restablece la clave correcta y recrea el contenedor. No cambies la clave de una
+base de datos con credenciales cifradas: no se implementa rotación de claves.
+
+Conserva la clave por separado del backup de SQLite y protege `.env` con permisos
+600. Perder la clave hace irrecuperables las credenciales cifradas. Quien obtenga
+solamente SQLite no podrá descifrarlas; quien obtenga también `.env`, inspeccione
+las variables del contenedor o controle el proceso sí podrá hacerlo. No se
+implementa backup/restore. Las credenciales suministradas mediante variables de
+entorno no se copian automáticamente a SQLite.
+
+Las escrituras activan `secure_delete` de SQLite. Los backups, snapshots del
+disco y copias anteriores del journal/WAL pueden conservar secretos previos en
+claro: el cifrado no elimina esas copias. El contenedor crea archivos con
+`umask 077`; no cambia los permisos de archivos existentes en el host. Restringe
+los directorios de datos a 700 y SQLite, WAL, journals y backups a 600, con el
+propietario correspondiente a PUID/PGID. Fuera de Docker usa también `umask 077`.

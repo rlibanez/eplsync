@@ -84,6 +84,8 @@ logging:
 # Restaurar valores de instalación elimina las personalizaciones del apartado.
 eplsync:
   security:
+    # Clave AES-256: 32 bytes en Base64 estándar. Generar con: openssl rand -base64 32
+    secret-key: ${EPLSYNC_SECRET_KEY:}
     password-min-length: ${EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH:8}
     # Exige HTTPS y marca la cookie de sesión como Secure; no configura TLS.
     require-https: ${EPLSYNC_SECURITY_REQUIRE_HTTPS:false}

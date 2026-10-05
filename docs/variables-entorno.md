@@ -4,8 +4,8 @@
 
 `.env.example` es la plantilla única para ambos archivos:
 
-- **Mínimo:** `docker-compose.yml`; solo transmite `TZ` y usa las variables de construcción, puerto y montajes. Las opciones de la aplicación conservan sus valores predeterminados; las que están disponibles en Ajustes se pueden modificar desde la interfaz.
-- **Completo:** `docker-compose-full.yml`; utiliza las 39 variables de la plantilla para configurar todos los valores iniciales.
+- **Mínimo:** `docker-compose.yml`; solo transmite `TZ` y `EPLSYNC_SECRET_KEY` y usa las variables de construcción, puerto y montajes. Las opciones de la aplicación conservan sus valores predeterminados; las que están disponibles en Ajustes se pueden modificar desde la interfaz.
+- **Completo:** `docker-compose-full.yml`; utiliza las variables de la plantilla para configurar todos los valores iniciales.
 
 Los dos archivos son alternativas para la misma instalación. El archivo completo se selecciona con:
 
@@ -13,7 +13,7 @@ Los dos archivos son alternativas para la misma instalación. El archivo complet
 docker compose -f docker-compose-full.yml up -d --build
 ```
 
-Cambiar una variable exclusiva del completo en `.env` no tiene efecto al utilizar el mínimo. El mínimo utiliza `PUID`, `PGID`, `TZ`, `HOST_BIND`, `HOST_PORT`, `DATA_DIR` y `LOGS_DIR`; el completo utiliza todas las variables. Los valores predeterminados de la tabla corresponden al Compose y a `.env.example`.
+Cambiar una variable exclusiva del completo en `.env` no tiene efecto al utilizar el mínimo. El mínimo utiliza `PUID`, `PGID`, `TZ`, `HOST_BIND`, `HOST_PORT`, `DATA_DIR`, `LOGS_DIR` y `EPLSYNC_SECRET_KEY`; el completo utiliza todas las variables. Los valores predeterminados de la tabla corresponden al Compose y a `.env.example`.
 
 ## Variables
 
@@ -21,12 +21,13 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 
 | Variable | Descripción | Valor predeterminado |
 | --- | --- | --- |
+| `EPLSYNC_SECRET_KEY` | Necesaria para guardar contraseñas/API keys de qBittorrent en SQLite. Base64 estándar de 32 bytes (44 caracteres). Generar con `openssl rand -base64 32`; conservar y no cambiar si hay credenciales guardadas. Ambos Compose la transmiten. | Vacío |
 | `PUID` | UID del usuario del contenedor; se aplica al construir la imagen. Debe poder escribir en los montajes. | `1000` |
 | `PGID` | GID del usuario del contenedor; se aplica al construir la imagen. | `1000` |
 | `TZ` | Zona horaria del contenedor. | `Europe/Madrid` |
 | `HOST_PORT` | Puerto publicado en el host; el puerto interno sigue siendo 8088. | `8088` |
 | `HOST_BIND` | IP del host donde se publica el puerto. Loopback limita el acceso al propio servidor; una IP LAN permite esa interfaz; 0.0.0.0 publica en todas. | `127.0.0.1` |
-| `DATA_DIR` | Carpeta del host para SQLite, historial y datos persistentes. | `./data` |
+| `DATA_DIR` | Carpeta del host para SQLite, historial y datos persistentes; excluye la clave de cifrado, suministrada mediante EPLSYNC_SECRET_KEY. | `./data` |
 | `LOGS_DIR` | Carpeta del host para los logs. | `./logs` |
 | `EPLSYNC_UI_LANGUAGE` | Idioma inicial: auto detecta el navegador; también admite es y en. | `auto` |
 | `EPLSYNC_SECURITY_REQUIRE_HTTPS` | true rechaza HTTP y marca la cookie como Secure; false permite HTTP y HTTPS. No configura certificados ni el proxy. | `false` |

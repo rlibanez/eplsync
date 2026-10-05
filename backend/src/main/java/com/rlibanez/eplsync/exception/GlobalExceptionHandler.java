@@ -175,6 +175,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<?> handleAccessDenied() {
         return ResponseEntity.status(403).body(java.util.Map.of("code", "ACCESS_DENIED"));
     }
+    @ExceptionHandler(com.rlibanez.eplsync.settings.SecretKeyRequiredException.class)
+    public ResponseEntity<?> handleSecretKeyRequired(com.rlibanez.eplsync.settings.SecretKeyRequiredException ex) {
+        return ResponseEntity.status(ex.getStatusCode()).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+            .body(java.util.Map.of("code","SECRET_KEY_REQUIRED","details",ex.getReason()));
+    }
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
     public ResponseEntity<?> handleStatus(org.springframework.web.server.ResponseStatusException ex) {
         return ResponseEntity.status(ex.getStatusCode()).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(java.util.Map.of("details", ex.getReason() == null ? "Solicitud rechazada" : ex.getReason()));

@@ -22,7 +22,10 @@ import { useTranslation } from "react-i18next";
 import { get, ApiError } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 import { AppModal, ModalActions } from "../../components/AppModal";
+import { SecretKeyDialog } from "./SecretKeyDialog";
 import { useNotifications } from "../notifications/Notifications";
+
+class SecretKeyRequiredError extends ApiError {}
 
 type Field = {
   key: string;
@@ -31,7 +34,11 @@ type Field = {
   overridden: boolean;
   configured: boolean;
 };
-type View = { section: string; fields: Field[] };
+type View = {
+  section: string;
+  fields: Field[];
+  credentialsError?: string | null;
+};
 export function ServerSettings({
   section,
   actions,
@@ -74,19 +81,30 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
   const { notify } = useNotifications();
   const [values, setValues] = useState<Record<string, Field["value"]>>({});
   const [confirm, setConfirm] = useState(false);
+  const [secretKeyDialog, setSecretKeyDialog] = useState(false);
   const normalizeDestination = (value: Field["value"] | undefined) => {
     try {
       const url = new URL(String(value));
       return url.origin + url.pathname.replace(/\/+$/, "");
-    } catch { return String(value); }
+    } catch {
+      return String(value);
+    }
   };
-  const originalDestination = view.fields.find((f) => f.key === "torrent.base-url")?.value;
-  const destinationChanged = view.section === "torrent" &&
-    normalizeDestination(values["torrent.base-url"] ?? originalDestination) !== normalizeDestination(originalDestination);
+  const originalDestination = view.fields.find(
+    (f) => f.key === "torrent.base-url",
+  )?.value;
+  const destinationChanged =
+    view.section === "torrent" &&
+    normalizeDestination(values["torrent.base-url"] ?? originalDestination) !==
+      normalizeDestination(originalDestination);
   const change = (key: string, value: Field["value"]) =>
     setValues((old) => {
       const next = { ...old, [key]: value };
-      if (key === "torrent.base-url" && normalizeDestination(value) !== normalizeDestination(old[key] ?? originalDestination)) {
+      if (
+        key === "torrent.base-url" &&
+        normalizeDestination(value) !==
+          normalizeDestination(old[key] ?? originalDestination)
+      ) {
         next["torrent.enabled"] = false;
         next["torrent.qbittorrent.auth.username"] = "";
         delete next["torrent.qbittorrent.auth.password"];
@@ -104,6 +122,12 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
       });
       if (!response.ok) {
         const error = await response.json().catch(() => null);
+        if (error?.code === "SECRET_KEY_REQUIRED")
+          throw new SecretKeyRequiredError(
+            response.status,
+            undefined,
+            t("serverSettings.secretKey.help"),
+          );
         throw new ApiError(
           response.status,
           undefined,
@@ -111,6 +135,9 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
         );
       }
       return response.json() as Promise<View>;
+    },
+    onError: (error) => {
+      if (error instanceof SecretKeyRequiredError) setSecretKeyDialog(true);
     },
     onSuccess: (data, restore) => {
       setConfirm(false);
@@ -188,7 +215,8 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
         ),
       disabled:
         mutation.isPending ||
-        (!connectionAdmin && (f.key === "torrent.base-url" || f.key.includes(".auth."))) ||
+        (!connectionAdmin &&
+          (f.key === "torrent.base-url" || f.key.includes(".auth."))) ||
         (f.key === "torrent.download.save-path" &&
           currentValue("torrent.qbittorrent.download.auto-management") ===
             true) ||
@@ -336,11 +364,20 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
           if (valid && !mutation.isPending) mutation.mutate(false);
         }}
       >
+        {view.credentialsError && (
+          <Alert color="red" role="alert" mb="md">
+            {view.credentialsError}
+          </Alert>
+        )}
         {destinationChanged && (
-          <Alert color="orange" role="alert" mb="md">{t("serverSettings.destinationChangeWarning")}</Alert>
+          <Alert color="orange" role="alert" mb="md">
+            {t("serverSettings.destinationChangeWarning")}
+          </Alert>
         )}
         {view.section === "torrent" && !connectionAdmin && (
-          <Alert color="blue" mb="md">{t("serverSettings.connectionAdminOnly")}</Alert>
+          <Alert color="blue" mb="md">
+            {t("serverSettings.connectionAdminOnly")}
+          </Alert>
         )}
         {groups.map((group) => (
           <fieldset
@@ -421,7 +458,10 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
           </Button>
           <Button
             variant="default"
-            disabled={mutation.isPending || (view.section === "torrent" && !connectionAdmin)}
+            disabled={
+              mutation.isPending ||
+              (view.section === "torrent" && !connectionAdmin)
+            }
             onClick={() => setConfirm(true)}
           >
             {t("serverSettings.restore")}
@@ -429,6 +469,14 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
           {actions}
         </div>
       </form>
+      {secretKeyDialog && (
+        <SecretKeyDialog
+          onClose={() => {
+            setSecretKeyDialog(false);
+            mutation.reset();
+          }}
+        />
+      )}
       <AppModal
         icon={RotateCcw}
         opened={confirm}
@@ -436,7 +484,9 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
         title={t("serverSettings.restore")}
       >
         <p>{t("serverSettings.restoreHelp")}</p>
-        {view.section === "torrent" && <p>{t("serverSettings.restoreDestinationHelp")}</p>}
+        {view.section === "torrent" && (
+          <p>{t("serverSettings.restoreDestinationHelp")}</p>
+        )}
         <ModalActions>
           <Button variant="default" onClick={() => setConfirm(false)}>
             {t("import.cancel")}

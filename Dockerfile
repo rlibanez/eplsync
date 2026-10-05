@@ -33,7 +33,7 @@ FROM eclipse-temurin:25-jre-noble AS runtime
 ARG PUID=1000
 ARG PGID=1000
 
-RUN mkdir -p /app/data /app/logs \
+RUN mkdir -p -m 700 /app/data /app/logs \
     && chown -R ${PUID}:${PGID} /app
 
 WORKDIR /app
@@ -48,4 +48,4 @@ USER ${PUID}:${PGID}
 
 EXPOSE 8088
 
-ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "/app/app.jar"]
+ENTRYPOINT ["sh", "-c", "umask 077; exec java --enable-native-access=ALL-UNNAMED -jar /app/app.jar \"$@\"", "eplsync"]
