@@ -60,6 +60,20 @@ El cliente verifica el destino antes de cada envío y no sigue redirecciones HTT
 
 Se permiten direcciones locales, privadas y de redes Docker. La configuración del destino por ADMIN autoriza ese endpoint; no hay una lista externa de hosts permitidos. Las conexiones HTTPS utilizan la verificación de certificados predeterminada de Java, sin desactivar su validación. Los secretos introducidos desde la interfaz se persisten en SQLite; usar un gestor externo de secretos requeriría una integración adicional.
 
+## Descarga del catálogo y redirecciones
+
+`CATALOG_IMPORT` es el único permiso para importar. ADMIN y USER con ese permiso pueden utilizar URLs HTTP o HTTPS, de cualquier dominio y con puertos personalizados, incluidos servidores locales, privados, Docker o WebDAV. No se exige un rol administrativo adicional ni hay una lista de dominios permitidos. Subir un ZIP local mantiene la misma autorización.
+
+El descargador valida la URL en todos los flujos: importación, previsualización y URL inicial de Ajustes o `.env`. Se rechazan protocolos distintos de HTTP/HTTPS, puertos inválidos, credenciales incrustadas en la URL y fragmentos. Los parámetros de consulta, incluidos los tokens de enlaces firmados, se conservan al descargar.
+
+Antes de cada petición se resuelve el destino. La conexión utiliza exclusivamente las direcciones obtenidas y comprobadas para ese salto, sin una segunda consulta DNS sin controlar. El hostname original se conserva para Host, SNI y la validación del certificado HTTPS. No se siguen proxies del sistema automáticamente ni se comparten cookies o credenciales entre saltos.
+
+Las redirecciones se procesan manualmente, con un máximo de cinco saltos y detección de bucles. Cada salto vuelve a validar la URL y sus direcciones IPv4 e IPv6. Si la descarga empieza en un destino que resuelve exclusivamente a direcciones públicas, cualquier salto posterior que resuelva a una dirección interna, local o especial se bloquea, incluso si usa el mismo hostname. Se permiten redirecciones entre dominios públicos distintos. Una descarga iniciada expresamente en un servidor interno o local sigue siendo compatible con ese uso.
+
+Los errores no incluyen fragmentos de respuestas remotas, URLs completas ni parámetros de consulta. El transporte HTTP mantiene deshabilitados los logs de cabeceras y contenido, y los logs de la aplicación no muestran las URLs de descarga.
+
+Esta política permite deliberadamente acceder a la red interna mediante `CATALOG_IMPORT`. La protección de DNS y redirecciones evita desviar una descarga pública hacia esa red; no elimina la capacidad de solicitar directamente destinos internos que concede ese permiso.
+
 ## Contraseñas y sesiones
 
 Las contraseñas se guardan con Argon2id (19 MiB, dos iteraciones, paralelismo uno), sal aleatoria de 16 bytes y hash de 32 bytes. La longitud mínima es configurable en **Ajustes → Usuarios y seguridad**, entre 8 y 128 caracteres (8 por defecto); el máximo es 256. Antes de inicializar la instalación, `EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH` fija el mínimo inicial. La configuración se persiste y los cambios afectan solo a nuevas contraseñas. Las contraseñas temporales tienen al menos 192 bits aleatorios y también se almacenan como hash. La API nunca devuelve hashes; solo devuelve la contraseña temporal al generarla.

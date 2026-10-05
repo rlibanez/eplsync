@@ -203,8 +203,7 @@ public class ServerSettings {
             var c = binder.bind("eplsync.catalog.cover-check", Bindable.of(CoverCheckProperties.class)).get();
             var e = binder.bind("eplsync.events", Bindable.of(EventSettings.class)).get();
             String url = (String) merged.get("catalog.zip-url");
-            var uri = java.net.URI.create(url);
-            if (!Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null) throw new IllegalArgumentException();
+            com.rlibanez.eplsync.importer.FileDownloader.validateUrl(url);
             // Validate even while disabled, so enabling later cannot publish invalid options.
             boolean enabled = t.isEnabled(); t.setEnabled(true); t.validate(); t.setEnabled(enabled);
             if (!t.getClient().equals(installation.get("torrent.client"))) throw new IllegalArgumentException();

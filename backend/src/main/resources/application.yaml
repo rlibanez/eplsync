@@ -71,6 +71,11 @@ logging:
 
   level:
     root: INFO
+    # HTTP transport debug/wire logs may contain signed download URLs or response bodies.
+    org.apache.hc.client5.http: WARN
+    org.apache.hc.client5.http.wire: OFF
+    org.apache.hc.client5.http.headers: OFF
+    org.apache.hc.core5.http: WARN
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
     com.rlibanez.eplsync: DEBUG
 

@@ -77,6 +77,9 @@ public class CatalogImportStore {
             Thread.currentThread().interrupt();
             throw new com.rlibanez.eplsync.exception.CatalogImportInterruptedException("Importación interrumpida", ex);
         } catch (RuntimeException ex) { throw ex; }
+        catch (com.rlibanez.eplsync.exception.CatalogDownloadException ex) {
+            throw new com.rlibanez.eplsync.exception.CatalogImportException(ex.getMessage(),ex);
+        }
         catch (Exception ex) { throw new com.rlibanez.eplsync.exception.CatalogImportException("No se pudo cargar el ZIP", ex); }
         finally {
             remove(csv == null ? null : csv.path()); remove(received);

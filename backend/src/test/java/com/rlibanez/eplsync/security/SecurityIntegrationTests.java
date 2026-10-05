@@ -392,4 +392,47 @@ class SecurityIntegrationTests {
         mvc.perform(delete("/api/settings/torrent").session(administrator).with(csrf())).andExpect(status().isOk());
     }
 
+    @Test void catalogImportPermissionAllowsLocalUrlsForAdminAndUserWithoutRoleDifferences() throws Exception {
+        var administrator = admin();
+        accounts.policy(new AccountStore.Policy(true,false,30,12));
+        accounts.register("importer","importer@example.org",PASSWORD);
+        accounts.register("reader","reader@example.org",PASSWORD);
+        var importer = accounts.authenticate("importer",PASSWORD);
+        accounts.update(importer.id(),"USER","ACTIVE",Map.of("CATALOG_IMPORT","ALLOW"),initial.user().id());
+        var importerSession = login("importer",PASSWORD);
+        var readerSession = login("reader",PASSWORD);
+        var bytes = new java.io.ByteArrayOutputStream();
+        try (var zip = new java.util.zip.ZipOutputStream(bytes)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("catalog.csv"));
+            zip.write("EPL Id,Título,Autor,Revisión\n2,Nuevo,Autor,1.0\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/data/epublibre_csv.zip", exchange -> {
+            requests.incrementAndGet();
+            try (exchange) {
+                exchange.getResponseHeaders().set("Content-Type","application/zip");
+                exchange.sendResponseHeaders(200,bytes.size());
+                exchange.getResponseBody().write(bytes.toByteArray());
+            }
+        });
+        server.start();
+        try {
+            String body = json(Map.of("source","URL","dryRun",true,"url","http://127.0.0.1:"+server.getAddress().getPort()+"/data/epublibre_csv.zip"));
+            mvc.perform(post("/api/catalog/import/run").session(readerSession).with(csrf()).contentType("application/json").content(body))
+                .andExpect(status().isForbidden());
+            mvc.perform(post("/api/catalog/import/run").session(importerSession).contentType("application/json").content(body))
+                .andExpect(status().isForbidden());
+            assertThat(requests.get()).isZero();
+            for (var session : java.util.List.of(importerSession,administrator))
+                mvc.perform(post("/api/catalog/import/run").session(session).with(csrf()).contentType("application/json").content(body))
+                    .andExpect(status().isOk());
+            assertThat(requests.get()).isEqualTo(2);
+        } finally {
+            server.stop(0);
+            context.getBean(com.rlibanez.eplsync.service.CatalogImportStore.class).clear();
+        }
+    }
+
 }

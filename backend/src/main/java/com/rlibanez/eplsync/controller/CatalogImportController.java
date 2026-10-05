@@ -9,7 +9,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.net.URI;
 
 /**
  * Controller REST para importar el catálogo de libros de ePubLibre.
@@ -114,13 +113,7 @@ public class CatalogImportController {
             url = null;
         }
 
-        if (url != null) {
-            URI uri = URI.create(url);
-            String scheme = uri.getScheme();
-            if (uri.getHost() == null || uri.getHost().isBlank() || scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
-                throw new IllegalArgumentException("La URL debe usar HTTP o HTTPS");
-            }
-        }
+        if (url != null) com.rlibanez.eplsync.importer.FileDownloader.validateUrl(url);
 
         return url;
     }

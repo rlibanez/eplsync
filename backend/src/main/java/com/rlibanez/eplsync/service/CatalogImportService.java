@@ -237,7 +237,7 @@ public class CatalogImportService {
         return result;
     }
     private String zipName(String source) {
-        String path = java.net.URI.create(source).getPath();
+        String path = FileDownloader.validateUrl(source).getPath();
         String name = path == null ? "" : path.substring(path.lastIndexOf('/') + 1);
         return name.isBlank() ? "catalog.zip" : name;
     }
@@ -251,7 +251,7 @@ public class CatalogImportService {
         if (zipUrl == null) {
             zipUrl = configuredUrl();
         }
-        log.info("Iniciando importación del catálogo desde: {}", zipUrl);
+        log.info("Iniciando descarga del catálogo");
 
         Path zipFile = null;
         Path csvFile = null;

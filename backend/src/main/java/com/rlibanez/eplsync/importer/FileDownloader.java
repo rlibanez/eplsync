@@ -1,97 +1,92 @@
 package com.rlibanez.eplsync.importer;
 
+import com.rlibanez.eplsync.exception.CatalogDownloadException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetAddress;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.Locale;
-import com.rlibanez.eplsync.exception.CatalogDownloadException;
-import java.io.InputStream;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.time.Duration;
-
-/**
- * Utilidad para descargar archivos desde una URL.
- */
+/** Catalog downloads use validated DNS addresses and explicitly checked redirect hops. */
 @Component
 public class FileDownloader {
-
     private static final Logger log = LoggerFactory.getLogger(FileDownloader.class);
-    private static final Duration TIMEOUT = Duration.ofMinutes(5);
+    private static final int MAX_REDIRECTS = 5;
+    private final CatalogDownloadPolicy policy;
+    private final CatalogDownloadTransport transport;
 
-    private final HttpClient httpClient;
-
-    public FileDownloader() {
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(TIMEOUT)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+    public FileDownloader() { this(InetAddress::getAllByName,new PinnedCatalogTransport()); }
+    FileDownloader(CatalogDownloadPolicy.Resolver resolver,CatalogDownloadTransport transport) {
+        this.policy = new CatalogDownloadPolicy(resolver);
+        this.transport = transport;
     }
+    public static URI validateUrl(String value) { return CatalogDownloadPolicy.validateUrl(value); }
 
-    /**
-     * Descarga un archivo desde una URL a un archivo temporal.
-     * 
-     * @param url        La URL del archivo a descargar.
-     * @param filePrefix Prefijo para el archivo temporal.
-     * @param fileSuffix Sufijo para el archivo temporal.
-     * @return Path al archivo temporal descargado.
-     * @throws IOException          Si hay error en la descarga.
-     * @throws InterruptedException Si la descarga es interrumpida.
-     */
-    public Path download(String url, String filePrefix, String fileSuffix)
-            throws IOException, InterruptedException {
-        log.trace("Descargando archivo desde: {}", url);
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .timeout(TIMEOUT)
-                .header("User-Agent", "EplSync/1.0")
-                .GET()
-                .build();
-
-        HttpResponse<InputStream> response = httpClient.send(
-                request,
-                HttpResponse.BodyHandlers.ofInputStream());
-
-        // Cierra también el cuerpo de las respuestas de error.
-        try (InputStream inputStream = response.body()) {
-            int statusCode = response.statusCode();
-            if (statusCode < 200 || statusCode >= 300) {
-                String location = response.headers().firstValue("Location").orElse("sin Location");
-                log.warn("Descarga fallida: HTTP {}, URL={}, Location={}", statusCode, response.uri(), location);
-                throw new CatalogDownloadException("Error al descargar archivo. HTTP " + statusCode
-                        + (statusCode >= 300 && statusCode < 400
-                        ? ": redirección no completada (ver URL y Location en el log)" : ""));
+    public Path download(String url,String filePrefix,String fileSuffix) throws IOException,InterruptedException {
+        URI uri = validateUrl(url);
+        var visited = new HashSet<URI>();
+        boolean publicOrigin = false;
+        var received = new java.util.concurrent.atomic.AtomicReference<Path>();
+        try {
+            for (int hop=0; ; hop++) {
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Descarga del catálogo interrumpida");
+                if (!visited.add(uri)) throw new CatalogDownloadException("La descarga del catálogo contiene un bucle de redirecciones");
+                var target = policy.resolve(uri,hop > 0 && publicOrigin);
+                if (hop == 0) publicOrigin = target.publicOnly();
+                var result = transport.fetch(target,(status,type,body) -> {
+                    if (status < 200 || status >= 300) return null;
+                    if (".zip".equalsIgnoreCase(fileSuffix) && (type.startsWith("text/html") || type.startsWith("text/plain")))
+                        throw new CatalogDownloadException("El servidor devolvió texto en lugar del ZIP del catálogo");
+                    var file = copy(body,filePrefix,fileSuffix);
+                    received.set(file);
+                    return file;
+                });
+                int status = result.status();
+                if (status >= 200 && status < 300) {
+                    received.set(null); // Ownership passes to the importer only after transport cleanup succeeds.
+                    return result.file();
+                }
+                if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
+                    if (hop >= MAX_REDIRECTS) throw new CatalogDownloadException("La descarga del catálogo supera el límite de redirecciones");
+                    if (result.location() == null || result.location().isBlank())
+                        throw new CatalogDownloadException("El servidor devolvió una redirección sin destino");
+                    try { uri = validateUrl(uri.resolve(result.location()).toString()); }
+                    catch (IllegalArgumentException ex) { throw new CatalogDownloadException("La redirección del catálogo contiene una URL no permitida"); }
+                    continue;
+                }
+                throw new CatalogDownloadException("Error al descargar el catálogo. HTTP " + status);
             }
-
-            String contentType = response.headers().firstValue("Content-Type")
-                    .orElse("").toLowerCase(Locale.ROOT);
-            if (".zip".equalsIgnoreCase(fileSuffix)
-                    && (contentType.startsWith("text/html") || contentType.startsWith("text/plain"))) {
-                String message = new String(inputStream.readNBytes(2048), StandardCharsets.UTF_8)
-                        .replaceAll("<[^>]*>", " ").replaceAll("\\s+", " ").trim();
-                if (message.length() > 300) message = message.substring(0, 300);
-                throw new CatalogDownloadException("El servidor devolvió texto en lugar del ZIP del catálogo"
-                        + (message.isEmpty() ? "" : ": " + message));
-            }
-
-            Path tempFile = Files.createTempFile(filePrefix, fileSuffix);
-            try {
-                Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
-                log.trace("Archivo descargado exitosamente: {} ({} bytes)", tempFile, Files.size(tempFile));
-                return tempFile;
-            } catch (IOException e) {
-                Files.deleteIfExists(tempFile);
-                throw e;
-            }
+        } catch (CatalogDownloadException ex) {
+            log.warn("Descarga del catálogo rechazada: {}",ex.getMessage());
+            throw ex;
+        } catch (IOException ex) {
+            // HttpClient exceptions can contain the request URI. Expose neither their message nor their cause.
+            log.warn("Fallo de comunicación al descargar el catálogo: {}",ex.getClass().getSimpleName());
+            throw new CatalogDownloadException("No se pudo descargar el catálogo. Comprueba la conexión y, si usas HTTPS, el certificado del servidor");
+        } finally {
+            if (received.get() != null) Files.deleteIfExists(received.get());
         }
+    }
+    private Path copy(InputStream input,String prefix,String suffix) throws IOException,InterruptedException {
+        Path file = Files.createTempFile(prefix,suffix);
+        long total = 0;
+        try (var output = Files.newOutputStream(file)) {
+            byte[] buffer = new byte[8192];
+            for (int count; (count=input.read(buffer)) != -1;) {
+                if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Descarga del catálogo interrumpida");
+                output.write(buffer,0,count);
+                total += count;
+            }
+        } catch (IOException | InterruptedException | RuntimeException ex) {
+            Files.deleteIfExists(file);
+            throw ex;
+        }
+        log.trace("Catálogo descargado: {} bytes",total);
+        return file;
     }
 }
