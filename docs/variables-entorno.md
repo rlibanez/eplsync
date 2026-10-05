@@ -29,7 +29,6 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 | `HOST_BIND` | IP del host donde se publica el puerto. Loopback limita el acceso al propio servidor; una IP LAN permite esa interfaz; 0.0.0.0 publica en todas. | `127.0.0.1` |
 | `DATA_DIR` | Carpeta del host para SQLite, historial y datos persistentes; excluye la clave de cifrado, suministrada mediante EPLSYNC_SECRET_KEY. | `./data` |
 | `LOGS_DIR` | Carpeta del host para los logs. | `./logs` |
-| `EPLSYNC_UI_LANGUAGE` | Idioma inicial: auto detecta el navegador; también admite es y en. | `auto` |
 | `EPLSYNC_SECURITY_REQUIRE_HTTPS` | true rechaza HTTP y marca la cookie como Secure; false permite HTTP y HTTPS. No configura certificados ni el proxy. | `false` |
 | `EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH` | Longitud mínima inicial de contraseña (8–128). Después se administra en Usuarios y seguridad. | `8` |
 | `EPLSYNC_CATALOG_ZIPURL` | URL del ZIP utilizado para importar el catálogo. | `https://epublibre.org/rssweb/csv/epub.zip` |

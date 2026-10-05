@@ -34,7 +34,7 @@ public class SecurityConfiguration {
         http.csrf(c->c.csrfTokenRepository(new HttpSessionCsrfTokenRepository()));
         http.authorizeHttpRequests(c->c
             .dispatcherTypeMatchers(DispatcherType.ERROR,DispatcherType.FORWARD,DispatcherType.ASYNC).permitAll()
-            .requestMatchers("/api/auth/csrf","/api/auth/status","/api/auth/setup","/api/auth/login","/api/auth/register","/api/ui/config","/actuator/health").permitAll()
+            .requestMatchers("/api/auth/csrf","/api/auth/status","/api/auth/setup","/api/auth/login","/api/auth/register","/actuator/health").permitAll()
             .requestMatchers("/api/**").authenticated()
             .requestMatchers("/actuator/**").denyAll()
             .anyRequest().permitAll());
@@ -51,7 +51,7 @@ public class SecurityConfiguration {
                     var session=req.getSession(false);
                     if(session!=null) session.setMaxInactiveInterval(accounts.policy().idleMinutes()*60);
                     if(a.mustChangePassword() && req.getServletPath().startsWith("/api/")
-                        && !java.util.Set.of("/api/auth/me","/api/auth/password","/api/auth/logout","/api/auth/csrf","/api/auth/status","/api/ui/config").contains(req.getServletPath())) {
+                        && !java.util.Set.of("/api/auth/me","/api/auth/password","/api/auth/logout","/api/auth/csrf","/api/auth/status").contains(req.getServletPath())) {
                         error(req,res,403,"PASSWORD_CHANGE_REQUIRED");return;
                     }
                 }

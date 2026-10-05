@@ -1,16 +1,29 @@
-import { expect, it } from "vitest";
-import { resolveLanguage } from "./preference";
-it("normalizes a deployment language and falls back to English", () => {
-  expect(resolveLanguage("es")).toBe("es");
-  expect(resolveLanguage(" ES-es ")).toBe("es");
-  expect(resolveLanguage("en_GB")).toBe("en");
-  for (const invalid of ["fr", "", null, undefined, 42, "unknown"])
-    expect(resolveLanguage(invalid)).toBe("en");
-});
+import { afterEach, expect, it, vi } from "vitest";
+import { resolveBrowserLanguage, initialLanguage } from "./preference";
 
-it("detects the first available browser language only in auto mode", () => {
-  expect(resolveLanguage("auto", ["fr-FR", "es-ES", "en"])).toBe("es");
-  expect(resolveLanguage("auto", ["de-DE"])).toBe("en");
-  expect(resolveLanguage("en", ["es-ES"])).toBe("en");
-  expect(resolveLanguage("unknown", ["es-ES"])).toBe("en");
+afterEach(() => vi.unstubAllGlobals());
+it("detects the first supported browser preference, including regional variants", () => {
+  expect(resolveBrowserLanguage(["es-ES", "en-US"])).toBe("es");
+  expect(resolveBrowserLanguage(["en_GB", "es"])).toBe("en");
+  expect(resolveBrowserLanguage(["fr-FR", "es-ES", "en"])).toBe("es");
+});
+it("falls back to English when none of the browser preferences are supported", () => {
+  expect(resolveBrowserLanguage(["de-DE", "fr"])).toBe("en");
+  expect(resolveBrowserLanguage([])).toBe("en");
+});
+it("keeps a valid manual choice but ignores obsolete preferences", () => {
+  vi.stubGlobal("localStorage", { getItem: () => "es" });
+  expect(initialLanguage("en")).toBe("es");
+  vi.stubGlobal("localStorage", { getItem: () => "fr" });
+  expect(initialLanguage("en")).toBe("en");
+});
+it("uses browser detection when storage is missing or inaccessible", () => {
+  vi.stubGlobal("localStorage", { getItem: () => null });
+  expect(initialLanguage("es")).toBe("es");
+  vi.stubGlobal("localStorage", {
+    getItem: () => {
+      throw new Error("blocked");
+    },
+  });
+  expect(initialLanguage("es")).toBe("es");
 });

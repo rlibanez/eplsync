@@ -88,7 +88,7 @@ puertos y montajes. Las demás variables de `.env` no se transmiten con el míni
 Para aplicarlas, utiliza el Compose completo. Las opciones disponibles en Ajustes
 también se pueden modificar desde la interfaz.
 
-La plantilla está agrupada por contenedor, almacenamiento, interfaz, seguridad,
+La plantilla está agrupada por contenedor, almacenamiento, seguridad,
 catálogo, portadas, conexión y autenticación torrent, trackers, trabajos, opciones
 de envío y retención de eventos. `TZ` permite cambiar la zona horaria.
 `DATA_DIR` y `LOGS_DIR` conservan `./data` y `./logs` por defecto; si las cambias,
@@ -145,20 +145,11 @@ ni se empaquetan en la imagen Docker.
 
 ## Idioma de la interfaz
 
-En `.env` puedes definir `EPLSYNC_UI_LANGUAGE=es`; el Compose completo transmite la variable.
-También puedes fijarla directamente en el bloque `environment` de tu servicio:
-
-```yaml
-environment:
-  EPLSYNC_UI_LANGUAGE: "es"
-```
-
-El valor predeterminado es `auto`: detecta el idioma del navegador. Si no hay
-traducción compatible, se utiliza inglés. Un código explícito no disponible
-también utiliza inglés. La selección personal guardada en el navegador tiene
-prioridad sobre Docker y la detección automática. La configuración se lee en
-tiempo de ejecución, sin recompilar React. Tras cambiarla, ejecuta
-`docker compose up -d` y recarga la interfaz.
+El idioma inicial se obtiene de las preferencias del navegador. Se selecciona
+el primer idioma disponible en EPL Sync; si no hay coincidencias, se utiliza
+inglés. Las variantes regionales, como `es-ES`, se reconocen. Una selección
+manual guardada en el navegador tiene prioridad sobre esa detección.
+No hace falta configurar variables, recrear el contenedor ni consultar el servidor.
 
 Desde «Mantenimiento → Actualizar catálogo» puedes previsualizar e importar el
 CSV configurado, incluso para la primera carga. La interfaz y la API comparten

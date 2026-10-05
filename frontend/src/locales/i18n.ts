@@ -4,24 +4,15 @@ import { resources, supportedLanguages } from "./resources";
 import {
   initialLanguage,
   languageStorageKey,
-  resolveLanguage,
+  resolveBrowserLanguage,
 } from "./preference";
-let deploymentLanguage: unknown = "auto";
 export async function initializeI18n() {
-  try {
-    const response = await fetch("/api/ui/config", {
-      cache: "no-store",
-      signal: AbortSignal.timeout(4000),
-    });
-    if (response.ok)
-      deploymentLanguage = (await response.json()).defaultLanguage;
-  } catch {
-    /* The interface remains usable if runtime configuration is unavailable. */
-  }
   await i18n.use(initReactI18next).init({
     resources,
     lng: initialLanguage(
-      resolveLanguage(deploymentLanguage, navigator.languages),
+      resolveBrowserLanguage(
+        navigator.languages.length ? navigator.languages : [navigator.language],
+      ),
     ),
     fallbackLng: "en",
     supportedLngs: supportedLanguages.map((l) => l.value),

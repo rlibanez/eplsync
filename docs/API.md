@@ -1,6 +1,6 @@
 # Referencia de la API de EPLsync
 
-Todas las operaciones requieren sesión y los permisos documentados en [Seguridad](seguridad.md). Las escrituras requieren token CSRF; las excepciones públicas son `/api/auth/csrf`, `/api/auth/status`, `/api/auth/setup`, `/api/auth/login`, `/api/auth/register` y `/api/ui/config`.
+Todas las operaciones requieren sesión y los permisos documentados en [Seguridad](seguridad.md). Las escrituras requieren token CSRF; las excepciones públicas son `/api/auth/csrf`, `/api/auth/status`, `/api/auth/setup`, `/api/auth/login`, `/api/auth/register`.
 
 La gestión de usuarios (`/api/security/users`) requiere `ADMIN`. `GET` incluye los permisos efectivos de cada cuenta; `POST` crea una cuenta y devuelve una contraseña temporal; `PUT /{id}` cambia rol, estado y excepciones de permisos. `DELETE /{id}` exige CSRF y el cuerpo `{"confirm":true}`: elimina la cuenta y sus excepciones, revoca sus sesiones y conserva los datos compartidos. El último administrador activo no se puede borrar.
 
@@ -1186,7 +1186,6 @@ mediante la configuración de despliegue.
 | GET | `/api/torrent/updates/{jobId}` |
 | POST | `/api/torrent/updates/{jobId}/cleanup` |
 | POST | `/api/torrent/updates/cleanup` |
-| GET | `/api/ui/config` |
 | GET | `/actuator/health` |
 
 No hay actualmente un endpoint de envío mediante una lista explícita de `eplId`,
@@ -1330,15 +1329,6 @@ curl -s -X POST 'http://192.168.2.2:8088/api/torrent/updates' \
 El bulk normal `POST /api/torrent/books` conserva su comportamiento:
 selecciona todos los libros en español, sin limitarse a novedades y sin preparar
 limpieza de revisiones anteriores.
-
-## Configuración pública de interfaz
-
-`GET /api/ui/config` devuelve únicamente `{ "defaultLanguage": "auto" }` (o el
-valor configurado con `EPLSYNC_UI_LANGUAGE` / `eplsync.ui.language`). Lleva
-`Cache-Control: no-store`; no expone credenciales ni configuración del cliente
-torrent. Con `auto`, el frontend detecta el idioma del navegador. Para códigos explícitos,
-comprueba si dispone de esa traducción y usa inglés en caso contrario. El valor
-por defecto del backend es `auto`.
 
 
 ## Directorio del catálogo

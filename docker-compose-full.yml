@@ -19,7 +19,6 @@ services:
       EPLSYNC_SECRET_KEY: "${EPLSYNC_SECRET_KEY:-}"
 
       # Interfaz
-      EPLSYNC_UI_LANGUAGE: "${EPLSYNC_UI_LANGUAGE:-auto}"
 
       # Seguridad
       EPLSYNC_SECURITY_REQUIRE_HTTPS: "${EPLSYNC_SECURITY_REQUIRE_HTTPS:-false}"

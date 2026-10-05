@@ -1,26 +1,16 @@
 import { supportedLanguages } from "./resources";
 export const languageStorageKey = "eplsync:language";
-export function resolveLanguage(
-  value: unknown,
-  browserLanguages: readonly string[] = [],
+export function resolveBrowserLanguage(
+  browserLanguages: readonly string[],
 ): string {
-  if (value === "auto" || value === undefined || value === null) {
-    for (const candidate of browserLanguages) {
-      const base = candidate.toLowerCase().split(/[-_]/)[0];
-      if (supportedLanguages.some((language) => language.value === base))
-        return base;
-    }
-    return "en";
+  for (const candidate of browserLanguages) {
+    const base = candidate.trim().toLowerCase().split(/[-_]/)[0];
+    if (supportedLanguages.some((language) => language.value === base))
+      return base;
   }
-  const base =
-    typeof value === "string"
-      ? value.trim().toLowerCase().split(/[-_]/)[0]
-      : "";
-  return supportedLanguages.some((language) => language.value === base)
-    ? base
-    : "en";
+  return "en";
 }
-export function initialLanguage(serverLanguage: string): string {
+export function initialLanguage(browserLanguage: string): string {
   try {
     const saved = localStorage.getItem(languageStorageKey);
     if (
@@ -31,5 +21,5 @@ export function initialLanguage(serverLanguage: string): string {
   } catch {
     /* Browser storage is optional. */
   }
-  return serverLanguage;
+  return browserLanguage;
 }

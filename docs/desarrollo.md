@@ -145,12 +145,11 @@ El selector está únicamente en Ajustes → General. Aplica el
 cambio sin recargar ni perder los filtros. La elección manual se guarda en
 `localStorage` (`eplsync:language`) y tiene prioridad.
 
-Sin elección manual, `EPLSYNC_UI_LANGUAGE=auto` (predeterminado) detecta el primer
-idioma compatible de `navigator.languages`. Si ninguno está disponible, se usa
-inglés. Puedes fijar `es` o `en` en Docker para sustituir esa detección inicial;
-un código explícito desconocido utiliza inglés. Las variantes regionales como
-`es-ES` se reconocen. El servidor publica el valor en `GET /api/ui/config` y no
-hace falta recompilar React para cambiarlo, solo recrear el contenedor.
+Sin elección manual, se detecta el primer idioma compatible de
+`navigator.languages` (o `navigator.language` si la lista está vacía).
+Si ninguno está disponible, se usa inglés. Las variantes regionales como
+`es-ES` se reconocen. No hay configuración de idioma en Docker ni una
+petición al servidor para determinarlo.
 
 Si el navegador bloquea el almacenamiento, la elección manual dura solo durante
 la sesión de la aplicación. Ajustes contiene el selector de idioma, sin controles

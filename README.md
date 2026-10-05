@@ -52,9 +52,9 @@ en localhost por defecto; consulta [Seguridad](docs/seguridad.md) para acceso re
 Abre la aplicación web y crea el primer administrador indicando username, email,
 contraseña y su confirmación. El asistente se cierra en cuanto existe la primera cuenta.
 Desde la interfaz, abre **Mantenimiento → Actualizar catálogo** para previsualizar
-e importar los libros. Con el Compose completo, `EPLSYNC_UI_LANGUAGE=es` en `.env` establece español como
-idioma predeterminado. El valor `auto` detecta el navegador; un idioma desconocido
-utiliza inglés.
+e importar los libros. El idioma inicial se obtiene de las preferencias del navegador;
+si ninguna tiene traducción disponible, se utiliza inglés. Una elección manual
+guardada en el navegador tiene prioridad.
 
 Las llamadas de escritura a la API requieren sesión y token CSRF; consulta
 [Usuarios y seguridad](docs/seguridad.md).
