@@ -7,7 +7,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class EplsyncApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(EplsyncApplication.class, args);
+		if (args.length > 0 && args[0].equals("--admin")) {
+            com.rlibanez.eplsync.security.AdminCommand.run(args);
+            return;
+        }
+        SpringApplication.run(EplsyncApplication.class, args);
 	}
 
 }

@@ -67,7 +67,8 @@ Cambiar la configuración requiere reiniciar la aplicación.
 ## Docker y ejecución local
 
 Crear un archivo `.env` con las variables de conexión y activar
-`EPLSYNC_TORRENT_ENABLED=true`. Como alternativa al bloque `environment` actual, puedes configurar `env_file`
+`EPLSYNC_TORRENT_ENABLED=true`. `docker-compose-full.yml` transmite todas las opciones
+de torrent de `.env.example`. Con el mínimo, configura la conexión desde Ajustes. Como alternativa al bloque `environment`, puedes configurar `env_file`
 en el servicio Compose para transmitir todas las variables del archivo:
 
 ```yaml

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('CATALOG_READ')")
 @RestController
 @RequestMapping("/api/catalog/directory")
 public class CatalogDirectoryController {

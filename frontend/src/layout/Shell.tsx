@@ -1,6 +1,11 @@
+import { useAuth } from "../features/auth/Auth";
+import { RouteAccess } from "../features/auth/RouteAccess";
 import { useUnreadEvents } from "../features/events/useUnreadEvents";
 import { EventConnection } from "../features/events/EventConnection";
-import { NotificationsProvider } from "../features/notifications/Notifications";
+import {
+  NotificationsProvider,
+  useNotifications,
+} from "../features/notifications/Notifications";
 import { CoverActivity } from "../features/catalog/CoverActivity";
 import { BackToTop } from "../components/BackToTop";
 import { TorrentActivity } from "../features/downloads/TorrentActivity";
@@ -26,6 +31,7 @@ import {
   PanelLeftOpen,
   Settings,
   Bell,
+  LogOut,
 } from "lucide-react";
 export function Shell() {
   return (
@@ -39,11 +45,27 @@ export function Shell() {
   );
 }
 function ShellContent() {
+  const { notify } = useNotifications();
+  const auth = useAuth();
   const unread = useUnreadEvents();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const { collapsed, setCollapsed } = usePreferences();
   const { operation } = useImport();
+  const downloadLinks = [
+    {
+      to: "/downloads",
+      label: "nav.downloadState",
+      Icon: Download,
+      visible: auth.can("DOWNLOADS_READ") || auth.can("TORRENT_SYNC"),
+    },
+    {
+      to: "/downloads/jobs",
+      label: "nav.jobs",
+      Icon: ListChecks,
+      visible: auth.can("TORRENT_JOBS_MANAGE"),
+    },
+  ].filter((item) => item.visible);
   const mobile = useMediaQuery("(max-width: 700px)");
   return (
     <div className={`shell ${collapsed ? "sidebar-collapsed" : ""}`}>
@@ -92,31 +114,34 @@ function ShellContent() {
           <div className="nav-group-label">
             <span>{t("nav.library")}</span>
           </div>
-          <NavLink
-            to="/catalog"
-            aria-label={t("nav.catalog")}
-            title={t("nav.catalog")}
-            onClick={() => setOpen(false)}
-          >
-            <Library size={19} />
-            <span className="nav-text">{t("nav.catalog")}</span>
-          </NavLink>
-          <NavLink
-            to="/directory"
-            aria-label={t("nav.directory")}
-            title={t("nav.directory")}
-            onClick={() => setOpen(false)}
-          >
-            <FolderOpen size={19} />
-            <span className="nav-text">{t("nav.directory")}</span>
-          </NavLink>
-          <div className="nav-group-label">
-            <span>{t("nav.downloads")}</span>
-          </div>
-          {[
-            { to: "/downloads", label: "nav.downloadState", Icon: Download },
-            { to: "/downloads/jobs", label: "nav.jobs", Icon: ListChecks },
-          ].map(({ to, label, Icon }) => (
+          {auth.can("CATALOG_READ") && (
+            <NavLink
+              to="/catalog"
+              aria-label={t("nav.catalog")}
+              title={t("nav.catalog")}
+              onClick={() => setOpen(false)}
+            >
+              <Library size={19} />
+              <span className="nav-text">{t("nav.catalog")}</span>
+            </NavLink>
+          )}
+          {auth.can("CATALOG_READ") && (
+            <NavLink
+              to="/directory"
+              aria-label={t("nav.directory")}
+              title={t("nav.directory")}
+              onClick={() => setOpen(false)}
+            >
+              <FolderOpen size={19} />
+              <span className="nav-text">{t("nav.directory")}</span>
+            </NavLink>
+          )}
+          {downloadLinks.length > 0 && (
+            <div className="nav-group-label">
+              <span>{t("nav.downloads")}</span>
+            </div>
+          )}
+          {downloadLinks.map(({ to, label, Icon }) => (
             <NavLink
               key={to}
               to={to}
@@ -131,26 +156,28 @@ function ShellContent() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <NavLink
-            className="settings-link"
-            to="/events"
-            title={t("events.title")}
-            aria-label={t("events.title")}
-            onClick={() => setOpen(false)}
-          >
-            <Bell size={19} />
-            <span className="nav-text">{t("events.title")}</span>
-            {unread > 0 && (
-              <span
-                className="event-unread-count"
-                role="status"
-                aria-label={t("events.unread", { count: unread })}
-                title={t("events.unread", { count: unread })}
-              >
-                {unread > 99 ? "99+" : unread}
-              </span>
-            )}
-          </NavLink>
+          {auth.can("EVENTS_MANAGE") && (
+            <NavLink
+              className="settings-link"
+              to="/events"
+              title={t("events.title")}
+              aria-label={t("events.title")}
+              onClick={() => setOpen(false)}
+            >
+              <Bell size={19} />
+              <span className="nav-text">{t("events.title")}</span>
+              {unread > 0 && (
+                <span
+                  className="event-unread-count"
+                  role="status"
+                  aria-label={t("events.unread", { count: unread })}
+                  title={t("events.unread", { count: unread })}
+                >
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
+            </NavLink>
+          )}
           <NavLink
             className="settings-link"
             to="/settings"
@@ -166,6 +193,23 @@ function ShellContent() {
               </span>
             )}
           </NavLink>
+          <button
+            className="settings-link"
+            aria-label={t("auth.logout")}
+            title={t("auth.logout")}
+            onClick={() =>
+              void auth.logout().catch(() =>
+                notify({
+                  title: t("auth.logout"),
+                  message: t("auth.unavailable"),
+                  tone: "error",
+                }),
+              )
+            }
+          >
+            <LogOut size={20} />
+            <span className="nav-text">{t("auth.logout")}</span>
+          </button>
           <button
             className="sidebar-toggle"
             aria-label={t(collapsed ? "nav.expand" : "nav.collapse")}
@@ -184,10 +228,12 @@ function ShellContent() {
         </div>
       </aside>
       <main id="main" tabIndex={-1}>
-        <EventConnection />
+        {auth.can("EVENTS_MANAGE") && <EventConnection />}
         <TorrentActivity />
-        <CoverActivity />
-        <Outlet />
+        {auth.can("COVERS_MANAGE") && <CoverActivity />}
+        <RouteAccess>
+          <Outlet />
+        </RouteAccess>
       </main>
       <BackToTop hidden={open} />
       <ScrollRestoration
@@ -195,7 +241,10 @@ function ShellContent() {
           location.pathname +
           (location.pathname === "/catalog"
             ? "?" +
-              catalogParams(new URLSearchParams(location.search), false).toString()
+              catalogParams(
+                new URLSearchParams(location.search),
+                false,
+              ).toString()
             : location.search)
         }
       />

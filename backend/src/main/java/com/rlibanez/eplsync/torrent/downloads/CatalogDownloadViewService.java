@@ -13,6 +13,8 @@ public class CatalogDownloadViewService {
 
     @Transactional(readOnly = true)
     public List<CatalogBookResponse> enrich(List<CatalogBook> books) {
+        if (!com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.BOOK_HISTORY_READ))
+            return books.stream().map(book -> CatalogBookResponse.from(book, new CatalogBookResponse.Download(List.of()))).toList();
         var grouped = new HashMap<Long, List<DownloadRecord>>();
         // SQLite limita los parámetros: consultas agrupadas, nunca una consulta por libro.
         var ids = books.stream().map(value -> Objects.requireNonNull(value).getEplId()).distinct().toList();

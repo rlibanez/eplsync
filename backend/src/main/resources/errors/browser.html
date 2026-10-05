@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{title}} · EPL Sync</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; background: #f5f7fb; color: #243047; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    main { width: 100%; max-width: 520px; padding: 40px; border: 1px solid #dfe5ee; border-radius: 16px; background: #fff; box-shadow: 0 12px 40px #2430470a; }
+    .brand { margin: 0 0 32px; font-size: 22px; font-weight: 700; letter-spacing: -.5px; }
+    .icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 14px; background: #eaf2ff; color: #2463c6; margin-bottom: 24px; }
+    h1 { margin: 0 0 16px; font-size: 26px; line-height: 1.25; }
+    p { margin: 0; line-height: 1.65; color: #58677e; }
+    .detail { margin-top: 28px; padding-top: 20px; border-top: 1px solid #dfe5ee; font-size: 12px; overflow-wrap: anywhere; }
+    code { font-family: ui-monospace, monospace; }
+    @media (prefers-color-scheme: dark) {
+      :root { background: #101722; color: #edf2fa; }
+      main { background: #192231; border-color: #303d50; }
+      p { color: #b0bdd0; }
+      .icon { background: #243957; color: #88b7ff; }
+      .detail { border-color: #303d50; }
+    }
+    @media (max-width: 480px) { main { padding: 28px 24px; } h1 { font-size: 23px; } }
+  </style>
+</head>
+<body>
+  <main aria-labelledby="error-title">
+    <div class="brand">EPL Sync</div>
+    <div class="icon" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7l-9-4Z"/><path d="M12 8v5m0 3h.01"/></svg>
+    </div>
+    <h1 id="error-title">{{title}}</h1>
+    <p>{{message}}</p>
+    <p class="detail"><code>HTTP {{status}} · {{code}}</code></p>
+  </main>
+</body>
+</html>

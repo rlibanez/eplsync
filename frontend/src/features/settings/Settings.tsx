@@ -9,7 +9,9 @@ export function Settings() {
     <>
       <section className="panel settings-section">
         <h2>{t("settings.language")}</h2>
-        <LanguagePicker />
+        <div className="settings-fields-grid">
+          <LanguagePicker />
+        </div>
       </section>
       <section className="panel settings-section">
         <h2>{t("settings.appearance")}</h2>

@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 
 /** New library entries and revision updates, selected against local client history. */
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SEND')")
 @RestController
 @RequestMapping("/api/torrent")
 public class SelectionController {
@@ -45,8 +46,8 @@ public class SelectionController {
     private ResponseEntity<?> selected(TorrentOperationRequest input, UpdatePlanner.Selection selection) {
         if (input.includeDetails() != null || input.all() != null || input.sort() != null || selection == UpdatePlanner.Selection.BOTH && input.selection() != null)
             throw new IllegalArgumentException("Opciones de selección no admitidas");
-        if (input.dryRun()) return ResponseEntity.ok(SelectionQueries.page(planner.preview(input.filter(),
-                Boolean.TRUE.equals(input.includeNotFound()),input.multipleHashes(),selection),input.pageNumber(),input.pageSize()));
+        if (input.dryRun()) return ResponseEntity.ok(SelectionQueries.page(UpdatePlanner.visible(planner.preview(input.filter(),
+                Boolean.TRUE.equals(input.includeNotFound()),input.multipleHashes(),selection)),input.pageNumber(),input.pageSize()));
         if (input.paginated()) throw new IllegalArgumentException("page y size solo paginan la previsualización");
         synchronized (bulk) {
             var job = planner.create(input.filter(),Boolean.TRUE.equals(input.includeNotFound()),input.update(),selection);

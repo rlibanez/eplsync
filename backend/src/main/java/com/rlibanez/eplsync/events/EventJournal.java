@@ -12,11 +12,14 @@ import tools.jackson.databind.json.JsonMapper;
 
 @Service
 public class EventJournal {
-    public enum Category { CATALOG, JOB, COVERS, TORRENT }
+    public enum Category { CATALOG, JOB, COVERS, TORRENT, SECURITY }
     public enum Outcome { STARTED, SUCCEEDED, PARTIAL, FAILED, PAUSED, RETRY_WAIT, RESUMED, CANCELLED, RECOVERED }
     public record Entry(long id, Instant createdAt, Category category, String action, Outcome outcome,
                         EventContext.Origin origin, String operationId, Map<String, Object> details) {}
-    public record Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before) {
+    public record Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before, String action) {
+        public Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before) {
+            this(category, outcome, origin, from, before, null);
+        }
         public Filter(Category category, Outcome outcome, Instant from, Instant before) {
             this(category, outcome, null, from, before);
         }
@@ -174,6 +177,11 @@ public class EventJournal {
         var value = jdbc.queryForObject("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='app_events'),0)", Long.class);
         return value == null ? 0 : value;
     }
+    public static boolean securityVisible() {
+        var authentication=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        return authentication!=null && authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+    }
+    public static String visibilitySql() { return securityVisible() ? "" : " AND category<>'SECURITY'"; }
     public record Unread(long count, long cursor) {}
     public Unread unread(long afterId) { return unread(afterId, List.of()); }
     public Unread unread(long afterId, List<Long> readIds) {
@@ -184,7 +192,7 @@ public class EventJournal {
             long latest = cursor();
             long effective = afterId > latest ? 0 : afterId;
             var read = new HashSet<>(readIds);
-            long count = jdbc.queryForList("SELECT MAX(id) FROM app_events WHERE id > ? GROUP BY operation_id", Long.class, effective)
+            long count = jdbc.queryForList("SELECT MAX(id) FROM app_events WHERE id > ?" + visibilitySql() + " GROUP BY operation_id", Long.class, effective)
                     .stream().filter(id -> afterId > latest || !read.contains(id)).count();
             return new Unread(count, latest);
         });
@@ -193,7 +201,8 @@ public class EventJournal {
         return jdbc.query("SELECT * FROM app_events WHERE id > ? ORDER BY id LIMIT ?", this::row, cursor, limit);
     }
     private String where(Filter filter, List<Object> args) {
-        String sql = " WHERE 1=1";
+        String sql = " WHERE 1=1" + visibilitySql();
+        if (filter.action() != null) { sql += " AND action=?"; args.add(filter.action()); }
         if (filter.category() != null) { sql += " AND category=?"; args.add(filter.category().name()); }
         if (filter.origin() != null) { sql += " AND origin=?"; args.add(filter.origin().name()); }
         if (filter.outcome() != null) { sql += " AND outcome=?"; args.add(filter.outcome().name()); }

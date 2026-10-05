@@ -6,6 +6,7 @@ import com.rlibanez.eplsync.torrent.bulk.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SEND')")
 @RestController
 @RequestMapping("/api/torrent/books")
 public class TorrentDownloadController {

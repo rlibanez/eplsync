@@ -20,6 +20,7 @@ public class DatabaseResetService {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogMissingService missing;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogImportStore previews;
     @org.springframework.beans.factory.annotation.Autowired(required = false) private com.rlibanez.eplsync.settings.ServerSettings settings;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.security.AccountStore accounts;
     private final BulkStore bulk;
     private final ObjectProvider<BulkWorker> workers;
     private final DownloadTrackingService tracking;
@@ -38,9 +39,9 @@ public class DatabaseResetService {
     }
 
     public ResetResult reset() {
-        return performReset();
+        return reset(false);
     }
-    private ResetResult performReset() {
+    public ResetResult reset(boolean eraseUsersAndSettings) {
         // Worker dispatch and job creation use this same monitor. Do not hold a
         // database transaction while waiting for the worker or tracking locks.
         synchronized (bulk) {
@@ -61,13 +62,14 @@ public class DatabaseResetService {
                     int books = delete("CatalogBook");
                     if (suggestions != null) suggestions.invalidateAfterCommit();
                     int metadata = delete("CatalogMetadata");
-                    int settingsCount = delete("StoredSetting");
+                    int settingsCount = eraseUsersAndSettings ? delete("StoredSetting") : 0;
+                    if (eraseUsersAndSettings) accounts.clear();
                     int eventCount = events == null ? em.createNativeQuery("delete from app_events").executeUpdate() : events.clearForReset();
                     em.clear();
                     return new ResetResult(true, books, downloads, jobs, items, plans, cleanup, metadata, eventCount, settingsCount);
                 });
                 // Only discard the in-memory queue after the transaction commits.
-                if (settings != null) settings.resetAfterCommit();
+                if (settings != null && eraseUsersAndSettings) settings.resetAfterCommit();
                 if (worker != null) worker.clearIdleState();
                 if (coverTasks != null) coverTasks.clearIdleState();
                 if (missing != null) missing.clear();

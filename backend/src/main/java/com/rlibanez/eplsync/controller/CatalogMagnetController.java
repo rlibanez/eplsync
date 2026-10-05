@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('CATALOG_READ')")
 @RestController
 @RequestMapping("/api/catalog")
 public class CatalogMagnetController {

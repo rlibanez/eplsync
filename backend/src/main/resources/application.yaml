@@ -26,8 +26,24 @@ spring:
         order_updates: true
 
 server:
+  # Configuración avanzada para despliegues detrás de un proxy inverso.
+  # none ignora las cabeceras reenviadas; native permite que Tomcat interprete
+  # X-Forwarded-Proto y X-Forwarded-For desde los proxies de confianza.
+  forward-headers-strategy: none
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${EPLSYNC_SECURITY_REQUIRE_HTTPS:false}
   port: 8088
   tomcat:
+    remoteip:
+      # Expresión regular de las IP de proxies internos de confianza (modo native).
+      # Por defecto, solo loopback. Ajustar a la IP del proxy si está en otro
+      # contenedor/equipo; no dejar vacío ni confiar en clientes arbitrarios.
+      internal-proxies: '127[.]0[.]0[.]1|::1'
     accesslog:
       enabled: true
       directory: ${user.dir}/logs
@@ -58,9 +74,14 @@ logging:
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
     com.rlibanez.eplsync: DEBUG
 
-# Valores de instalación. Los ajustes guardados desde la interfaz tienen prioridad.
+# Valores de instalación. Para catálogo, portadas, torrent y eventos,
+# los ajustes guardados desde la interfaz tienen prioridad.
 # Restaurar valores de instalación elimina las personalizaciones del apartado.
 eplsync:
+  security:
+    password-min-length: ${EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH:8}
+    # Exige HTTPS y marca la cookie de sesión como Secure; no configura TLS.
+    require-https: ${EPLSYNC_SECURITY_REQUIRE_HTTPS:false}
   events:
     retention:
       max-count: 10000

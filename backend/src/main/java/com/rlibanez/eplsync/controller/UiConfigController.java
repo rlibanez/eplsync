@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Public, non-sensitive configuration read at runtime by the frontend. */
+@org.springframework.security.access.prepost.PreAuthorize("permitAll()")
 @RestController
 public class UiConfigController {
     private final String language;

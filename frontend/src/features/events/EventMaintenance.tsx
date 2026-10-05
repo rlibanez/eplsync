@@ -35,7 +35,12 @@ export function EventMaintenance() {
   const today = localDay();
   const valid =
     scope === "all" ||
-    Boolean((from || to) && (!from || from <= today) && (!to || to <= today) && (!from || !to || from <= to));
+    Boolean(
+      (from || to) &&
+      (!from || from <= today) &&
+      (!to || to <= today) &&
+      (!from || !to || from <= to),
+    );
   const remove = useMutation({
     meta: {
       silentSuccess: true,
@@ -47,9 +52,7 @@ export function EventMaintenance() {
     mutationFn: () =>
       post<{ deleted: number }>("/events/delete", {
         confirm: true,
-        ...(scope === "all"
-          ? {}
-          : dateBounds(from, to || today)),
+        ...(scope === "all" ? {} : dateBounds(from, to || today)),
       }),
     onSuccess: (result) => {
       setConfirm(false);
@@ -78,7 +81,7 @@ export function EventMaintenance() {
           retry={() => void retention.refetch()}
         />
       )}
-      <div className="filters event-deletion-filters">
+      <div className="settings-fields-grid event-deletion-filters">
         <Select
           label={t("events.deleteScope")}
           value={scope}
@@ -108,6 +111,8 @@ export function EventMaintenance() {
             onChange={(e) => setTo(e.currentTarget.value)}
           />
         )}
+      </div>
+      <div className="action-row">
         <Button
           color="red"
           variant="light"

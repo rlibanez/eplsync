@@ -5,12 +5,55 @@ export type { Page } from "@playwright/test";
 export const test = base.extend<{ eventTransport: void }>({
   eventTransport: [
     async ({ page }, use) => {
+      await page.route("**/api/catalog/import/metadata", (route) =>
+        route.fulfill({ json: { metadata: null } }),
+      );
+      await page.route("**/api/settings/catalog", (route) =>
+        route.fulfill({ json: { section: "catalog", fields: [] } }),
+      );
+      await page.route("**/api/catalog/covers/task", (route) =>
+        route.fulfill({ json: { running: false } }),
+      );
+      await page.route("**/api/auth/me", (route) =>
+        route.fulfill({
+          json: {
+            id: "test-admin",
+            username: "admin",
+            email: "admin@example.org",
+            role: "ADMIN",
+            mustChangePassword: false,
+            permissions: [
+              "CATALOG_READ",
+              "BOOK_HISTORY_READ",
+              "DOWNLOADS_READ",
+              "TORRENT_SEND",
+              "TORRENT_SYNC",
+              "TORRENT_JOBS_MANAGE",
+              "TORRENT_CLEANUP",
+              "TORRENT_FILES_DELETE",
+              "CATALOG_IMPORT",
+              "CATALOG_DELETE",
+              "COVERS_MANAGE",
+              "EVENTS_MANAGE",
+              "SETTINGS_MANAGE",
+            ],
+          },
+        }),
+      );
+      await page.route("**/api/auth/csrf", (route) =>
+        route.fulfill({
+          json: { token: "test-csrf", headerName: "X-CSRF-TOKEN" },
+        }),
+      );
       await page.route("**/api/events/unread**", (route) =>
         route.fulfill({
           json: {
             count: 0,
             cursor: Number(
-              Math.max(route.request().postDataJSON()?.afterId ?? 0, ...(route.request().postDataJSON()?.readIds ?? [])),
+              Math.max(
+                route.request().postDataJSON()?.afterId ?? 0,
+                ...(route.request().postDataJSON()?.readIds ?? []),
+              ),
             ),
           },
         }),
@@ -127,7 +170,7 @@ export function operationResponse(
       };
     })
     .filter((item) =>
-      (["category", "outcome", "origin"] as const).every(
+      (["action", "category", "outcome", "origin"] as const).every(
         (key) => !params.get(key) || params.get(key) === item.latest[key],
       ),
     )

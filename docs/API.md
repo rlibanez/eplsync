@@ -1,5 +1,10 @@
 # Referencia de la API de EPLsync
 
+Todas las operaciones requieren sesión y los permisos documentados en [Seguridad](seguridad.md). Las escrituras requieren token CSRF; las excepciones públicas son `/api/auth/csrf`, `/api/auth/status`, `/api/auth/setup`, `/api/auth/login`, `/api/auth/register` y `/api/ui/config`.
+
+La gestión de usuarios (`/api/security/users`) requiere `ADMIN`. `GET` incluye los permisos efectivos de cada cuenta; `POST` crea una cuenta y devuelve una contraseña temporal; `PUT /{id}` cambia rol, estado y excepciones de permisos. `DELETE /{id}` exige CSRF y el cuerpo `{"confirm":true}`: elimina la cuenta y sus excepciones, revoca sus sesiones y conserva los datos compartidos. El último administrador activo no se puede borrar.
+
+
 Dirección utilizada en todos los ejemplos: **`http://192.168.2.2:8088`**.
 
 Esta referencia describe los endpoints implementados. Los valores configurados en
@@ -270,13 +275,16 @@ analizar ausentes y no sustituye el ZIP del asistente.
 
 ### Reiniciar toda la base de datos
 
-`POST /api/maintenance/reset` requiere un cuerpo JSON `{"confirm":true}`.
+`POST /api/maintenance/reset` requiere ADMIN y un cuerpo JSON `{"confirm":true}`.
+La opción `eraseUsersAndSettings=true` elimina también cuentas y toda la configuración,
+requiere `fullResetConfirmation="BORRAR TODO"` e invalida las sesiones.
+Consulta [Seguridad](seguridad.md) para inicializar de nuevo el administrador.
 Vacía las ocho tablas de datos: libros, metadatos del catálogo, descargas,
 trabajos, elementos de trabajos, planes de actualización, registros de limpieza y eventos.
 **No descarga ni importa el CSV**. El frontend utiliza este endpoint; no utiliza
 `/api/catalog/import/reset`, que continúa reemplazando solo el catálogo desde el CSV.
 
-Conserva el archivo SQLite y su esquema, la configuración, los logs y las preferencias
+Por defecto conserva las cuentas, la configuración, el archivo SQLite y su esquema, los logs y las preferencias
 del navegador. No modifica torrents ni archivos del cliente. Todos los borrados se
 realizan en una transacción: si uno falla, se revierten todos.
 
@@ -1609,5 +1617,5 @@ positivos y hasta 5min; límites de retención de eventos enteros positivos.
 La integración habilitada requiere credenciales coherentes con su modo de
 autenticación. Los ajustes se aplican al servidor, no al navegador que los guarda.
 
-`POST /api/maintenance/reset` elimina también los ajustes; su resultado incluye
+`POST /api/maintenance/reset` conserva cuentas y ajustes por defecto. Para eliminarlos exige `eraseUsersAndSettings=true` y `fullResetConfirmation="BORRAR TODO"`; su resultado incluye
 `settingsRecords` con el número de personalizaciones eliminadas.

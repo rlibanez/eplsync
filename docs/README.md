@@ -1,10 +1,13 @@
 # Documentación de EPL Sync
 
+- [Usuarios y seguridad](seguridad.md): inicialización, recuperación, permisos, sesiones y HTTPS.
+
 [Volver al README](../README.md)
 
 Guías de instalación, uso y mantenimiento. Los comandos parten de la raíz del repositorio salvo indicación contraria.
 
 - [Instalación y despliegue](instalacion.md)
+- [Variables de entorno](variables-entorno.md): descripciones y valores predeterminados de las variables de ambos Compose.
 - [Logs y diagnóstico](logs.md)
 - [Catálogo y magnets](catalogo.md)
 - [Desarrollo y verificación](desarrollo.md)

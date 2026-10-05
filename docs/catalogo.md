@@ -242,13 +242,16 @@ nueva `insertDate` y `lastModifiedDate` queda en `null`.
 
 ## Reiniciar toda la base de datos
 
-`POST /api/maintenance/reset` requiere un cuerpo JSON `{"confirm":true}`.
+`POST /api/maintenance/reset` requiere ADMIN y un cuerpo JSON `{"confirm":true}`.
+La opción `eraseUsersAndSettings=true` elimina también cuentas y toda la configuración,
+requiere `fullResetConfirmation="BORRAR TODO"` e invalida las sesiones.
+Consulta [Seguridad](seguridad.md) para inicializar de nuevo el administrador.
 Vacía las ocho tablas de datos: libros, metadatos del catálogo, descargas,
 trabajos, elementos de trabajos, planes de actualización, registros de limpieza y eventos.
 **No descarga ni importa el CSV**. El frontend utiliza este endpoint; no utiliza
 `/api/catalog/import/reset`, que continúa reemplazando solo el catálogo desde el CSV.
 
-Conserva el archivo SQLite y su esquema, la configuración, los logs y las preferencias
+Por defecto conserva las cuentas, la configuración, el archivo SQLite y su esquema, los logs y las preferencias
 del navegador. No modifica torrents ni archivos del cliente. Todos los borrados se
 realizan en una transacción: si uno falla, se revierten todos.
 

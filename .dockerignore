@@ -31,3 +31,6 @@
 **/*.jks
 **/*.db*
 **/*.sqlite*
+
+!scripts/
+!scripts/eplsync-admin

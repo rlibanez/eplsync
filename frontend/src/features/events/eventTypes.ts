@@ -1,7 +1,7 @@
 export interface AppEvent {
   id: number;
   createdAt: string;
-  category: "CATALOG" | "JOB" | "COVERS" | "TORRENT";
+  category: "CATALOG" | "JOB" | "COVERS" | "TORRENT" | "SECURITY";
   action: string;
   outcome: string;
   origin: string;

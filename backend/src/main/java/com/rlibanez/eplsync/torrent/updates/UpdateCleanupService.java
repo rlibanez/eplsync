@@ -51,12 +51,17 @@ public class UpdateCleanupService {
         if (!plan.getClientInstanceId().equals(tracking.instanceId()))
             throw new TorrentOperationException(HttpStatus.CONFLICT, "El destino del trabajo ha cambiado");
         if (plan.getPreviousVersions() == PreviousVersions.KEEP) return view(jobId);
+        authorizeFiles(List.of(plan));
         var work = pendingEntries(List.of(plan));
         if (work.get(jobId).isEmpty()) return view(jobId);
         client.exclusiveClient(adapter -> execute(List.of(plan), work, adapter, retryUnconfirmed));
         return view(jobId);
     }
 
+    private void authorizeFiles(List<UpdatePlan> selected) {
+        if (selected.stream().anyMatch(plan -> plan.getPreviousVersions() == PreviousVersions.REMOVE_TORRENT_AND_FILES))
+            com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
+    }
     private static final List<UpdateCleanup.State> PENDING = List.of(UpdateCleanup.State.WAITING,
             UpdateCleanup.State.BLOCKED, UpdateCleanup.State.REQUESTED);
     public record JobResult(String jobId, long checked, long removed, long waiting, long blocked,
@@ -66,6 +71,7 @@ public class UpdateCleanupService {
 
     public GlobalResult cleanAll(boolean retryUnconfirmed) {
         var selected = plans.pending(PreviousVersions.KEEP, PENDING);
+        authorizeFiles(selected);
         var work = pendingEntries(selected);
         var errors = new HashMap<String, String>();
         var current = new ArrayList<UpdatePlan>();
@@ -157,6 +163,7 @@ public class UpdateCleanupService {
                             .anyMatch(id -> !id.equals(entry.getEplId())));
                     if (shared) { postpone(entry, UpdateCleanup.State.BLOCKED, "Torrent compartido con otro libro"); continue; }
                     boolean deleteFiles = plan.getPreviousVersions() == PreviousVersions.REMOVE_TORRENT_AND_FILES;
+                    if (deleteFiles) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
                     if (deleteFiles && !exclusivePath(old, paths)) {
                         postpone(entry, UpdateCleanup.State.BLOCKED, "Rutas compartidas o no verificables; no se borran archivos"); continue;
                     }

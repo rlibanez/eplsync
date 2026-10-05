@@ -41,6 +41,10 @@ public class UpdatePlanner {
     public record Candidate(Long eplId, String title, double catalogRevision, List<Existing> existingDownloads,
             List<String> targetHashes) {}
     public record Snapshot(List<Candidate> items) {}
+    public static List<Candidate> visible(List<Candidate> candidates) {
+        if (com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.BOOK_HISTORY_READ)) return candidates;
+        return candidates.stream().map(c -> new Candidate(c.eplId(), c.title(), c.catalogRevision(), List.of(), c.targetHashes())).toList();
+    }
 
     public enum Selection { NEW, UPDATES, BOTH }
 
@@ -108,6 +112,8 @@ public class UpdatePlanner {
         var input = request == null ? new UpdateRequest(null, null, null, null, null, null) : request;
         if (input.options() != null && input.options().hash() != null)
             throw new IllegalArgumentException("Las actualizaciones no admiten options.hash");
+        if (input.policy() != PreviousVersions.KEEP) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP);
+        if (input.policy() == PreviousVersions.REMOVE_TORRENT_AND_FILES) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
         var candidates = preview(filter, includeNotFound, input.multipleHashes(), selection);
         var commands = new ArrayList<TorrentDownload>();
         for (int offset = 0; offset < candidates.size(); offset += 500) {

@@ -4,6 +4,7 @@ import java.util.Map;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.*;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('SETTINGS_MANAGE')")
 @RestController
 @RequestMapping("/api/settings")
 public class SettingsController {

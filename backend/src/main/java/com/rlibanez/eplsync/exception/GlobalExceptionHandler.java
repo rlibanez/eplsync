@@ -171,6 +171,14 @@ public class GlobalExceptionHandler {
                 .body(java.util.Map.of("code", ex.code()));
     }
 
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<?> handleAccessDenied() {
+        return ResponseEntity.status(403).body(java.util.Map.of("code", "ACCESS_DENIED"));
+    }
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<?> handleStatus(org.springframework.web.server.ResponseStatusException ex) {
+        return ResponseEntity.status(ex.getStatusCode()).body(java.util.Map.of("details", ex.getReason() == null ? "Solicitud rechazada" : ex.getReason()));
+    }
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(
             Exception ex,
@@ -178,7 +186,7 @@ public class GlobalExceptionHandler {
 
         log.error("Error inesperado", ex);
 
-        String details = getMessageOrDefault(ex, "Ha ocurrido un error inesperado");
+        String details = "Ha ocurrido un error inesperado";
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(buildError(HttpStatus.INTERNAL_SERVER_ERROR, "Error inesperado", details, request));
     }

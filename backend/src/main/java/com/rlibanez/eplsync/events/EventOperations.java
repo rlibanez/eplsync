@@ -38,8 +38,9 @@ public class EventOperations {
                 )
                 """;
             var args = new ArrayList<Object>(); args.add(cursor);
-            String where = " WHERE 1=1";
+            String where = " WHERE 1=1" + EventJournal.visibilitySql();
             if (operationId != null) { where += " AND operation_id=?"; args.add(operationId); }
+            if (filter.action() != null) { where += " AND action=?"; args.add(filter.action()); }
             if (filter.category() != null) { where += " AND category=?"; args.add(filter.category().name()); }
             if (filter.origin() != null) { where += " AND origin=?"; args.add(filter.origin().name()); }
             if (filter.outcome() == EventJournal.Outcome.STARTED)

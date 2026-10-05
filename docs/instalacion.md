@@ -14,9 +14,11 @@ cp .env.example .env
 mkdir -p data logs
 ```
 
-Edita `.env` antes de arrancar: ajusta la URL de qBittorrent y sustituye `api_key`
-por tu clave real. Si no vas a usar la integración, establece
-`EPLSYNC_TORRENT_ENABLED=false`. `.env.example` contiene valores de ejemplo;
+`docker-compose.yml` es la configuración mínima: permite configurar la aplicación
+desde Ajustes. Para transmitir todos los valores iniciales de `.env`, utiliza
+`docker-compose-full.yml`. Con este último, para utilizar qBittorrent ajusta su URL,
+configura una API key o usuario y contraseña, y establece `EPLSYNC_TORRENT_ENABLED=true`.
+La plantilla deja la integración desactivada y las credenciales vacías. `.env.example` contiene valores de ejemplo;
 Compose carga automáticamente `.env`, no `.env.example`.
 
 Las carpetas `data` y `logs`, y sus archivos existentes, deben permitir escritura
@@ -37,6 +39,18 @@ docker compose logs -f eplsync
 curl http://localhost:8088/actuator/health
 ```
 
+Para utilizar el archivo completo:
+
+```sh
+docker compose -f docker-compose-full.yml up -d --build
+docker compose -f docker-compose-full.yml logs -f eplsync
+```
+
+Los dos archivos son alternativas completas para la misma instalación; elige uno
+y úsalo en todos los comandos (`up`, `logs`, `down`, etc.). No hace falta combinarlos.
+Comparten servicio, imagen, puerto y montajes. `.env.example` se conserva como
+plantilla única. Consulta [todas las variables y sus valores predeterminados](variables-entorno.md).
+
 La imagen compila el backend con el wrapper Maven y Java 25 en una etapa separada;
 la ejecución usa un JRE 25 y un usuario sin privilegios, con el UID/GID indicado.
 No requiere Java ni Maven instalados en el host. `PUID` y `PGID` se aplican durante
@@ -44,13 +58,11 @@ la construcción: si los cambias, ajusta los permisos y reconstruye con
 `docker compose up -d --build`. El build omite los tests; para validarlos antes
 puedes ejecutar `cd backend && ./mvnw verify`.
 
-El puerto publicado por defecto es `8088` en todas las interfaces del host.
-Puedes cambiarlo con `HOST_PORT` en `.env` o con
-`HOST_PORT=8090 docker compose up -d`, manteniendo el 8088 interno. Ajusta también
-el puerto de las peticiones de ejemplo. Esta API no incluye autenticación;
-publica el servicio solo en una red de confianza o detrás de un proxy que controle
-el acceso. Para limitarlo al host, cambia el mapeo de Compose a
-`"127.0.0.1:${HOST_PORT:-8088}:8088"`.
+El puerto publicado por defecto es `8088`, limitado a `127.0.0.1`.
+Puedes cambiarlo con `HOST_PORT` y la interfaz con `HOST_BIND` en `.env`.
+Crea el primer administrador desde el asistente web, con username, email y contraseña confirmada.
+La API requiere sesión, permisos y CSRF para escrituras. Para acceso remoto configura HTTPS;
+consulta [Seguridad](seguridad.md).
 
 SQLite y los jobs/historial se guardan en `./data/eplsync.db` del host, mediante
 el montaje de `./data` en `/app/data`. Si la BD ya existe, el contenedor la utiliza;
@@ -62,31 +74,42 @@ No ejecutes dos instancias contra la misma base SQLite.
 
 `.env` está excluido de Git y del contexto de build. `.env.example` se versiona
 como plantilla y también queda fuera del contexto de build.
-Compose utiliza `.env` para interpolar el YAML; el bloque `environment` actual
-pasa estas variables de la aplicación al contenedor:
+Compose utiliza `.env` para interpolar el YAML. Con `docker-compose-full.yml`, todas las variables de la plantilla
+se utilizan: `PUID` y `PGID` en la construcción; `HOST_BIND` y `HOST_PORT` en el
+puerto publicado; `DATA_DIR` y `LOGS_DIR` en los montajes; el resto se transmite
+al contenedor mediante `environment`.
 
-- `EPLSYNC_UI_LANGUAGE` (idioma de interfaz; `auto` por defecto)
-- `EPLSYNC_CATALOG_ZIPURL`
-- `EPLSYNC_TORRENT_ENABLED`
-- `EPLSYNC_TORRENT_CLIENT`
-- `EPLSYNC_TORRENT_BASEURL`
-- `EPLSYNC_TORRENT_QBITTORRENT_AUTH_APIKEY`
+El mínimo solo transmite `TZ`, además de usar las variables de construcción,
+puertos y montajes. Las demás variables de `.env` no se transmiten con el mínimo.
+Para aplicarlas, utiliza el Compose completo. Las opciones disponibles en Ajustes
+también se pueden modificar desde la interfaz.
 
-También establece `TZ=Europe/Madrid`. Las demás variables de `.env.example`
-son ejemplos para futuras ampliaciones y no se transmiten actualmente.
-La autenticación usa el modo `auto` de `application.yaml`, que permite utilizar
-la API key configurada. Para pasar otras opciones desde `.env`, añádelas primero
-al bloque `environment` del servicio.
+La plantilla está agrupada por contenedor, almacenamiento, interfaz, seguridad,
+catálogo, portadas, conexión y autenticación torrent, trackers, trabajos, opciones
+de envío y retención de eventos. `TZ` permite cambiar la zona horaria.
+`DATA_DIR` y `LOGS_DIR` conservan `./data` y `./logs` por defecto; si las cambias,
+adapta también los comandos de creación de carpetas y sus permisos.
+
+Con el Compose completo, `EPLSYNC_SECURITY_REQUIRE_HTTPS=true` exige HTTPS y marca la cookie de sesión como
+Secure; `false` admite HTTP y HTTPS. No configura certificados ni el proxy.
+Las opciones avanzadas del proxy permanecen documentadas en `application.yaml`,
+fuera de la plantilla habitual; consulta [Seguridad](seguridad.md).
+
+Los valores del catálogo, portadas, torrent y eventos son valores de instalación:
+los ajustes guardados desde la interfaz tienen prioridad. La longitud mínima de
+contraseña se usa al inicializar la configuración de seguridad; después se
+administra desde Usuarios y seguridad.
 
 Los nombres de variables siguen el binding nativo de Spring: puntos por guiones
 bajos y sin guiones dentro de los nombres (`base-url` → `BASEURL`,
-`api-key` → `APIKEY`). `application.yaml` mantiene valores literales y no necesita
-placeholders de entorno. No se utiliza `env_file` con `format: raw`; si un valor
-de `.env` contiene un `$` literal, puedes encerrarlo entre comillas simples para
-evitar su interpolación por Compose.
+`api-key` → `APIKEY`). Para eventos, Compose traduce los nombres legibles
+`MAX_COUNT` y `MAX_AGE_DAYS` de `.env` a `MAXCOUNT` y `MAXAGEDAYS` del contenedor.
+No se utiliza `env_file` con `format: raw`; si un valor de `.env` contiene un `$`
+literal, enciérralo entre comillas simples para evitar su interpolación por Compose.
+Las listas de trackers y tags usan comas; un valor vacío elimina la lista.
 
 Tras modificar las variables transmitidas, ejecuta `docker compose up -d` para
-recrear el contenedor. No cambies `SERVER_PORT` si mantienes el mapeo de puertos
+recrear el contenedor; añade `-f docker-compose-full.yml` si elegiste el completo. No cambies `SERVER_PORT` si mantienes el mapeo de puertos
 del Compose incluido.
 
 `localhost` dentro del contenedor es EPLsync. Para qBittorrent usa:
@@ -118,7 +141,7 @@ ni se empaquetan en la imagen Docker.
 
 ## Idioma de la interfaz
 
-En `.env` puedes definir `EPLSYNC_UI_LANGUAGE=es`; Compose transmite la variable.
+En `.env` puedes definir `EPLSYNC_UI_LANGUAGE=es`; el Compose completo transmite la variable.
 También puedes fijarla directamente en el bloque `environment` de tu servicio:
 
 ```yaml
@@ -166,6 +189,6 @@ vacío sin editar conserva la credencial; el botón «Borrar credencial» solici
 borrarla al guardar. Las credenciales guardadas forman parte de la base de datos
 y sus copias de seguridad; no se cifran por esta funcionalidad.
 
-El reinicio completo elimina también `app_settings` y recupera los valores de
-instalación. No incluye selección de tablas. La retención de eventos se aplica en la limpieza automática
+El reinicio conserva las cuentas y `app_settings` por defecto. La opción de borrar
+usuarios y toda la configuración elimina también esos datos y recupera los valores de instalación. La retención de eventos se aplica en la limpieza automática
 por lotes cada minuto; la conservación de un ZIP se fija cuando se descarga o carga.

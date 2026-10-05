@@ -1,3 +1,4 @@
+import { useAuth } from "../auth/Auth";
 import { EventSummary } from "./EventSummary";
 import { readEventNavigation, saveEventNavigation } from "./eventNavigation";
 import { useEventColumns } from "./EventColumns";
@@ -19,7 +20,6 @@ import { get } from "../../api/catalog";
 import { Failure, Loading } from "../../components/Feedback";
 import {
   dateBounds,
-  eventHref,
   operationOutcome,
   formatDuration,
   type OperationPage,
@@ -32,10 +32,22 @@ export function Events() {
 }
 
 function EventsView({ operationId }: { operationId?: string }) {
-  const [saved] = useState(() => operationId ? {
-    category: null, outcome: null, origin: null, from: "", to: "", page: 0,
-    expanded: [operationId], scroll: 0,
-  } : readEventNavigation());
+  const auth = useAuth();
+  const [saved] = useState(() =>
+    operationId
+      ? {
+          action: null,
+          category: null,
+          outcome: null,
+          origin: null,
+          from: "",
+          to: "",
+          page: 0,
+          expanded: [operationId],
+          scroll: 0,
+        }
+      : readEventNavigation(),
+  );
   const [visit] = useState(() => Math.random());
   const snapshot = useRef<number | undefined>(undefined);
   const restored = useRef(false);
@@ -50,6 +62,7 @@ function EventsView({ operationId }: { operationId?: string }) {
     return () => document.removeEventListener("visibilitychange", update);
   }, []);
   const { t, i18n } = useTranslation();
+  const [action, setAction] = useState<string | null>(saved.action);
   const [category, setCategory] = useState<string | null>(saved.category);
   const [outcome, setOutcome] = useState<string | null>(saved.outcome);
   const [origin, setOrigin] = useState<string | null>(saved.origin);
@@ -59,6 +72,7 @@ function EventsView({ operationId }: { operationId?: string }) {
   const [expanded, setExpanded] = useState(saved.expanded);
   const navigation = useRef(saved);
   navigation.current = {
+    action,
     category,
     outcome,
     origin,
@@ -70,7 +84,17 @@ function EventsView({ operationId }: { operationId?: string }) {
   };
   useEffect(() => {
     if (!operationId) saveEventNavigation(navigation.current);
-  }, [category, outcome, origin, from, to, page, expanded, operationId]);
+  }, [
+    action,
+    category,
+    outcome,
+    origin,
+    from,
+    to,
+    page,
+    expanded,
+    operationId,
+  ]);
   useEffect(() => {
     const storeScroll = () => {
       if (!restored.current) return;
@@ -87,6 +111,7 @@ function EventsView({ operationId }: { operationId?: string }) {
   });
   const params = new URLSearchParams({ page: String(page), size: "20" });
   if (operationId) params.set("operationId", operationId);
+  if (action) params.set("action", action);
   if (category) params.set("category", category);
   if (outcome) params.set("outcome", outcome);
   if (origin) params.set("origin", origin);
@@ -135,7 +160,9 @@ function EventsView({ operationId }: { operationId?: string }) {
     // lower the read cursor while this table deliberately retains its snapshot.
     if (visible && result.data && !result.isFetching) {
       if (operationId) {
-        const selected = result.data.items.find(item => item.latest.operationId === operationId);
+        const selected = result.data.items.find(
+          (item) => item.latest.operationId === operationId,
+        );
         if (selected) markOperationRead(selected.latest.id);
       } else markEventsRead(result.data.cursor);
     }
@@ -145,13 +172,13 @@ function EventsView({ operationId }: { operationId?: string }) {
       );
   }, [result.data, result.isFetching, visible, operationId]);
   const filterValue = (
-    field: "category" | "outcome" | "origin",
+    field: "action" | "category" | "outcome" | "origin",
     value: string,
     label: string,
     content = <>{label}</>,
   ) => {
     const help = t("catalog.filterByValue", {
-      field: t("events." + field),
+      field: t("events." + (field === "action" ? "event" : field)),
       value: label,
     });
     return (
@@ -161,9 +188,12 @@ function EventsView({ operationId }: { operationId?: string }) {
           className="catalog-value-filter"
           aria-label={help}
           onClick={() => {
-            ({ category: setCategory, outcome: setOutcome, origin: setOrigin })[
-              field
-            ](value);
+            ({
+              action: setAction,
+              category: setCategory,
+              outcome: setOutcome,
+              origin: setOrigin,
+            })[field](value);
             setPage(0);
           }}
         >
@@ -182,91 +212,122 @@ function EventsView({ operationId }: { operationId?: string }) {
         <Button component={Link} to="/events" variant="subtle" mb="md">
           {t("events.showAll")}
         </Button>
-      ) : <div className="filters">
-        <Select
-          label={t("events.category")}
-          clearable
-          value={category}
-          data={["CATALOG", "JOB", "COVERS", "TORRENT"].map((value) => ({
-            value,
-            label: t("events.categories." + value),
-          }))}
-          onChange={(value) => {
-            setCategory(value);
-            setPage(0);
-          }}
-        />
-        <Select
-          label={t("events.outcome")}
-          clearable
-          value={outcome}
-          data={[
-            "STARTED",
-            "SUCCEEDED",
-            "PARTIAL",
-            "FAILED",
-            "PAUSED",
-            "RETRY_WAIT",
-            "CANCELLED",
-          ].map((value) => ({
-            value,
-            label:
-              value === "STARTED"
-                ? t("events.running")
-                : t("events.outcomes." + value),
-          }))}
-          onChange={(value) => {
-            setOutcome(value);
-            setPage(0);
-          }}
-        />
-        <Select
-          label={t("events.origin")}
-          clearable
-          value={origin}
-          data={["MANUAL", "SCHEDULED", "SYSTEM"].map((value) => ({
-            value,
-            label: t("events.origins." + value),
-          }))}
-          onChange={(value) => {
-            setOrigin(value);
-            setPage(0);
-          }}
-        />
-        <TextInput
-          type="date"
-          label={t("filters.from")}
-          value={from}
-          max={to || undefined}
-          onChange={(e) => {
-            setFrom(e.currentTarget.value);
-            setPage(0);
-          }}
-        />
-        <TextInput
-          type="date"
-          label={t("filters.to")}
-          value={to}
-          min={from || undefined}
-          onChange={(e) => {
-            setTo(e.currentTarget.value);
-            setPage(0);
-          }}
-        />
-        <Button
-          variant="subtle"
-          onClick={() => {
-            setCategory(null);
-            setOutcome(null);
-            setOrigin(null);
-            setFrom("");
-            setTo("");
-            setPage(0);
-          }}
-        >
-          {t("catalog.clear")}
-        </Button>
-      </div>}
+      ) : (
+        <div className="filters">
+          <Select
+            label={t("events.event")}
+            clearable
+            searchable
+            value={action}
+            data={Object.entries(
+              t("events.actions", { returnObjects: true }) as Record<
+                string,
+                string
+              >,
+            )
+              .filter(
+                ([value]) =>
+                  auth.user?.role === "ADMIN" || !value.startsWith("USER_"),
+              )
+              .map(([value, label]) => ({ value, label }))}
+            onChange={(value) => {
+              setAction(value);
+              setPage(0);
+            }}
+          />
+
+          <Select
+            label={t("events.category")}
+            clearable
+            value={category}
+            data={[
+              "CATALOG",
+              "JOB",
+              "COVERS",
+              "TORRENT",
+              ...(auth.user?.role === "ADMIN" ? ["SECURITY"] : []),
+            ].map((value) => ({
+              value,
+              label: t("events.categories." + value),
+            }))}
+            onChange={(value) => {
+              setCategory(value);
+              setPage(0);
+            }}
+          />
+          <Select
+            label={t("events.outcome")}
+            clearable
+            value={outcome}
+            data={[
+              "STARTED",
+              "SUCCEEDED",
+              "PARTIAL",
+              "FAILED",
+              "PAUSED",
+              "RETRY_WAIT",
+              "CANCELLED",
+            ].map((value) => ({
+              value,
+              label:
+                value === "STARTED"
+                  ? t("events.running")
+                  : t("events.outcomes." + value),
+            }))}
+            onChange={(value) => {
+              setOutcome(value);
+              setPage(0);
+            }}
+          />
+          <Select
+            label={t("events.origin")}
+            clearable
+            value={origin}
+            data={["MANUAL", "SCHEDULED", "SYSTEM"].map((value) => ({
+              value,
+              label: t("events.origins." + value),
+            }))}
+            onChange={(value) => {
+              setOrigin(value);
+              setPage(0);
+            }}
+          />
+          <TextInput
+            type="date"
+            label={t("filters.from")}
+            value={from}
+            max={to || undefined}
+            onChange={(e) => {
+              setFrom(e.currentTarget.value);
+              setPage(0);
+            }}
+          />
+          <TextInput
+            type="date"
+            label={t("filters.to")}
+            value={to}
+            min={from || undefined}
+            onChange={(e) => {
+              setTo(e.currentTarget.value);
+              setPage(0);
+            }}
+          />
+          <Button
+            variant="subtle"
+            onClick={() => {
+              setAction(null);
+              setCategory(null);
+              setOutcome(null);
+              setOrigin(null);
+              setFrom("");
+              setTo("");
+              setPage(0);
+            }}
+          >
+            {t("catalog.clear")}
+          </Button>
+        </div>
+      )}
       {result.isPending ? (
         <Loading />
       ) : result.isError ? (
@@ -338,9 +399,11 @@ function EventsView({ operationId }: { operationId?: string }) {
                           )}
                         </td>
                         <td>
-                          <Link to={eventHref(event)}>
-                            {t("events.actions." + event.action)}
-                          </Link>
+                          {filterValue(
+                            "action",
+                            event.action,
+                            t("events.actions." + event.action),
+                          )}
                         </td>
                         <td>
                           {filterValue(
@@ -395,13 +458,15 @@ function EventsView({ operationId }: { operationId?: string }) {
               </table>
             </div>
           )}
-          {!operationId && <Group mt="md">
-            <Pagination
-              value={page + 1}
-              total={Math.max(1, Math.ceil(result.data.total / 20))}
-              onChange={(value) => setPage(value - 1)}
-            />
-          </Group>}
+          {!operationId && (
+            <Group mt="md">
+              <Pagination
+                value={page + 1}
+                total={Math.max(1, Math.ceil(result.data.total / 20))}
+                onChange={(value) => setPage(value - 1)}
+              />
+            </Group>
+          )}
         </section>
       )}
     </>

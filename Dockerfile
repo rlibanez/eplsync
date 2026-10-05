@@ -42,6 +42,8 @@ COPY --from=build \
     --chown=${PUID}:${PGID} \
     /build/app.jar /app/app.jar
 
+COPY --chmod=755 scripts/eplsync-admin /app/eplsync-admin
+
 USER ${PUID}:${PGID}
 
 EXPOSE 8088

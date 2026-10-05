@@ -1,3 +1,4 @@
+import { useAuth } from "../auth/Auth";
 import { Synopsis } from "./Synopsis";
 import { BookNavigation } from "./BookNavigation";
 import { CatalogValue, quickFilter } from "./CatalogValue";
@@ -13,6 +14,7 @@ import { catalogReturnUrl } from "./navigation";
 import { Loading, Failure } from "../../components/Feedback";
 export function BookDetail() {
   const { t } = useTranslation();
+  const auth = useAuth();
   const { number, date, status } = useLocale();
   const { id } = useParams();
   const location = useLocation();
@@ -24,11 +26,11 @@ export function BookDetail() {
   return (
     <>
       <div className="detail-navigation-row">
-      <Link className="back-link" to={catalogReturnUrl(location.state)}>
-        <ArrowLeft size={16} />
-        {t("detail.back")}{" "}
-      </Link>
-      {book && <BookNavigation id={book.eplId} />}
+        <Link className="back-link" to={catalogReturnUrl(location.state)}>
+          <ArrowLeft size={16} />
+          {t("detail.back")}{" "}
+        </Link>
+        {book && <BookNavigation id={book.eplId} />}
       </div>
       {result.isPending ? (
         <Loading />
@@ -40,8 +42,22 @@ export function BookDetail() {
             <div className="detail-header">
               <BookCover book={book} detail />
               <div className="detail-heading">
-                <h1><button className="catalog-value-filter" onClick={() => onFilter("title", book.title)}>{book.title}</button></h1>
-                <p className="author"><CatalogValue book={book} column="author" onFilter={onFilter} separator=" · " /></p>
+                <h1>
+                  <button
+                    className="catalog-value-filter"
+                    onClick={() => onFilter("title", book.title)}
+                  >
+                    {book.title}
+                  </button>
+                </h1>
+                <p className="author">
+                  <CatalogValue
+                    book={book}
+                    column="author"
+                    onFilter={onFilter}
+                    separator=" · "
+                  />
+                </p>
                 <div className="tags">
                   <span className="badge">EPL {book.eplId}</span>
                   <span className="badge">
@@ -63,18 +79,72 @@ export function BookDetail() {
                 <h2>{t("detail.info")} </h2>
                 <dl>
                   {Object.entries({
-                    collection: <CatalogValue book={book} column="collection" onFilter={onFilter} />,
+                    collection: (
+                      <CatalogValue
+                        book={book}
+                        column="collection"
+                        onFilter={onFilter}
+                      />
+                    ),
                     volume: number(book.volume),
-                    genres: <CatalogValue book={book} column="genres" onFilter={onFilter} />,
-                    pages: <CatalogValue book={book} column="pages" onFilter={onFilter} />,
-                    publicationYear: <CatalogValue book={book} column="publicationYear" onFilter={onFilter} />,
-                    language: <CatalogValue book={book} column="language" onFilter={onFilter} />,
-                    status: <CatalogValue book={book} column="status" onFilter={onFilter} />,
-                    publicationStatus: <CatalogValue book={book} column="publicationStatus" onFilter={onFilter} />,
+                    genres: (
+                      <CatalogValue
+                        book={book}
+                        column="genres"
+                        onFilter={onFilter}
+                      />
+                    ),
+                    pages: (
+                      <CatalogValue
+                        book={book}
+                        column="pages"
+                        onFilter={onFilter}
+                      />
+                    ),
+                    publicationYear: (
+                      <CatalogValue
+                        book={book}
+                        column="publicationYear"
+                        onFilter={onFilter}
+                      />
+                    ),
+                    language: (
+                      <CatalogValue
+                        book={book}
+                        column="language"
+                        onFilter={onFilter}
+                      />
+                    ),
+                    status: (
+                      <CatalogValue
+                        book={book}
+                        column="status"
+                        onFilter={onFilter}
+                      />
+                    ),
+                    publicationStatus: (
+                      <CatalogValue
+                        book={book}
+                        column="publicationStatus"
+                        onFilter={onFilter}
+                      />
+                    ),
                     rating: number(book.rating),
                     votesCount: number(book.votesCount),
-                    publicationDate: <CatalogValue book={book} column="publicationDate" onFilter={onFilter} />,
-                    insertDate: <CatalogValue book={book} column="insertDate" onFilter={onFilter} />,
+                    publicationDate: (
+                      <CatalogValue
+                        book={book}
+                        column="publicationDate"
+                        onFilter={onFilter}
+                      />
+                    ),
+                    insertDate: (
+                      <CatalogValue
+                        book={book}
+                        column="insertDate"
+                        onFilter={onFilter}
+                      />
+                    ),
                     lastModifiedDate: date(book.lastModifiedDate),
                   }).map(([label, value]) => (
                     <div key={label}>
@@ -85,27 +155,33 @@ export function BookDetail() {
                 </dl>
               </section>
             </div>
-            <section className="panel detail-section">
-              <h2>{t("detail.history")} </h2>
-              {book.download.items.length ? (
-                <ul className="download-list">
-                  {book.download.items.map((item) => (
-                    <li key={item.id}>
-                      <span>
-                        {t("detail.revision", {
-                          revision:
-                            item.revision == null ? "—" : String(item.revision),
-                        })}
-                      </span>
-                      <span className="badge">{status(item.status)}</span>
-                      {item.completed && <span>{t("detail.completed")} </span>}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>{t("detail.noDownloads")} </p>
-              )}
-            </section>
+            {auth.can("BOOK_HISTORY_READ") && (
+              <section className="panel detail-section">
+                <h2>{t("detail.history")} </h2>
+                {book.download.items.length ? (
+                  <ul className="download-list">
+                    {book.download.items.map((item) => (
+                      <li key={item.id}>
+                        <span>
+                          {t("detail.revision", {
+                            revision:
+                              item.revision == null
+                                ? "—"
+                                : String(item.revision),
+                          })}
+                        </span>
+                        <span className="badge">{status(item.status)}</span>
+                        {item.completed && (
+                          <span>{t("detail.completed")} </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{t("detail.noDownloads")} </p>
+                )}
+              </section>
+            )}
           </>
         )
       )}

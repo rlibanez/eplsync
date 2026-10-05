@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('SETTINGS_MANAGE')")
 @RestController
 @RequestMapping("/api/torrent/client")
 public class TorrentClientController {
@@ -15,6 +16,7 @@ public class TorrentClientController {
 
     public TorrentClientController(TorrentClientService client) { this.client = client; }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SEND')")
     @GetMapping("/categories")
     public ResponseEntity<java.util.List<String>> categories() {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(client.listCategories());

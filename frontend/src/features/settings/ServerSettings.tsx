@@ -1,6 +1,11 @@
+import { secureFetch } from "../auth/transport";
 import { SettingsList } from "./SettingsList";
 import { OptionLabel } from "../downloads/SendOptions";
-import { CoverParameter, durationMs, validCoverOptions } from "./CoverParameter";
+import {
+  CoverParameter,
+  durationMs,
+  validCoverOptions,
+} from "./CoverParameter";
 import { RotateCcw } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -71,7 +76,7 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
   const mutation = useMutation({
     meta: { silentSuccess: true, notice: { title: "serverSettings.title" } },
     mutationFn: async (restore: boolean) => {
-      const response = await fetch(`/api/settings/${view.section}`, {
+      const response = await secureFetch(`/api/settings/${view.section}`, {
         method: restore ? "DELETE" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: restore ? undefined : JSON.stringify(values),
@@ -119,15 +124,32 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
   const groups = [...new Set(view.fields.map(groupOf))];
   const currentValue = (key: string) =>
     values[key] ?? view.fields.find((f) => f.key === key)?.value;
-  const valid = view.section !== "covers" || validCoverOptions({
-    connectTimeoutMs: durationMs(String(currentValue("catalog.cover-check.connect-timeout"))),
-    requestTimeoutMs: durationMs(String(currentValue("catalog.cover-check.request-timeout"))),
-    batchTimeoutMs: durationMs(String(currentValue("catalog.cover-check.batch-timeout"))),
-    concurrency: Number(currentValue("catalog.cover-check.concurrency")),
-  });
+  const valid =
+    view.section !== "covers" ||
+    validCoverOptions({
+      connectTimeoutMs: durationMs(
+        String(currentValue("catalog.cover-check.connect-timeout")),
+      ),
+      requestTimeoutMs: durationMs(
+        String(currentValue("catalog.cover-check.request-timeout")),
+      ),
+      batchTimeoutMs: durationMs(
+        String(currentValue("catalog.cover-check.batch-timeout")),
+      ),
+      concurrency: Number(currentValue("catalog.cover-check.concurrency")),
+    });
   const dependentGroups = [
-    { name: "location", keys: ["torrent.qbittorrent.download.auto-management", "torrent.download.save-path"] },
-    { name: "naming", keys: ["torrent.rename.enabled", "torrent.rename.pattern"] },
+    {
+      name: "location",
+      keys: [
+        "torrent.qbittorrent.download.auto-management",
+        "torrent.download.save-path",
+      ],
+    },
+    {
+      name: "naming",
+      keys: ["torrent.rename.enabled", "torrent.rename.pattern"],
+    },
   ];
   function field(f: Field) {
     const value = values[f.key] ?? f.value;
@@ -146,7 +168,8 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
       disabled:
         mutation.isPending ||
         (f.key === "torrent.download.save-path" &&
-          currentValue("torrent.qbittorrent.download.auto-management") === true) ||
+          currentValue("torrent.qbittorrent.download.auto-management") ===
+            true) ||
         (f.key === "torrent.rename.pattern" &&
           currentValue("torrent.rename.enabled") === false),
       classNames: {
@@ -277,7 +300,9 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
     return (
       <div key={f.key} className={className}>
         {field(f)}
-        {view.section !== "covers" && f.overridden && <small className="muted">{t("serverSettings.customized")}</small>}
+        {view.section !== "covers" && f.overridden && (
+          <small className="muted">{t("serverSettings.customized")}</small>
+        )}
       </div>
     );
   }
@@ -312,29 +337,52 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
                   return order.indexOf(a.key) - order.indexOf(b.key);
                 })
                 .map((f) => {
-                  const related = group === "defaults"
-                    ? dependentGroups.find((entry) => entry.keys.includes(f.key))
-                    : undefined;
+                  const related =
+                    group === "defaults"
+                      ? dependentGroups.find((entry) =>
+                          entry.keys.includes(f.key),
+                        )
+                      : undefined;
                   if (related && f.key !== related.keys[0]) return null;
                   if (related) {
                     return (
-                      <fieldset className="server-settings-related server-settings-new-row" key={related.name}>
-                        <legend>{t(`serverSettings.groups.${related.name}`)}</legend>
+                      <fieldset
+                        className="server-settings-related"
+                        key={related.name}
+                      >
+                        <legend>
+                          {t(`serverSettings.groups.${related.name}`)}
+                        </legend>
                         {related.keys.map((key) => {
-                          const member = view.fields.find((entry) => entry.key === key);
+                          const member = view.fields.find(
+                            (entry) => entry.key === key,
+                          );
                           return member ? renderField(member) : null;
                         })}
                       </fieldset>
                     );
                   }
-                  return renderField(f, f.key === "torrent.enabled" || f.key === "torrent.download.start"
-                    ? "server-settings-wide"
-                    : group === "defaults" ? "server-settings-new-row" : undefined);
+                  return renderField(
+                    f,
+                    f.key === "torrent.enabled" ||
+                      f.key === "torrent.download.start"
+                      ? "server-settings-wide"
+                      : undefined,
+                  );
                 })}
             </div>
           </fieldset>
         ))}
-        {!valid && <Alert color="orange" variant="light" role="alert" className="cover-validation">{t("covers.invalidOptions")}</Alert>}
+        {!valid && (
+          <Alert
+            color="orange"
+            variant="light"
+            role="alert"
+            className="cover-validation"
+          >
+            {t("covers.invalidOptions")}
+          </Alert>
+        )}
         <div className="action-row">
           <Button
             type="submit"

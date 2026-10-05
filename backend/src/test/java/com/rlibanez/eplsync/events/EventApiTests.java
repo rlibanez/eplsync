@@ -14,6 +14,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.*;
 
+@org.springframework.security.test.context.support.WithMockUser(authorities={"ROLE_ADMIN","CATALOG_READ","BOOK_HISTORY_READ","DOWNLOADS_READ","TORRENT_SEND","TORRENT_SYNC","TORRENT_JOBS_MANAGE","TORRENT_CLEANUP","TORRENT_FILES_DELETE","CATALOG_IMPORT","CATALOG_DELETE","COVERS_MANAGE","EVENTS_MANAGE","SETTINGS_MANAGE"})
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.RANDOM_PORT, properties={
     "spring.datasource.url=jdbc:sqlite::memory:", "spring.jpa.hibernate.ddl-auto=create-drop",
     "eplsync.torrent.enabled=false", "eplsync.torrent.bulk.worker-enabled=false",
@@ -23,22 +24,55 @@ class EventApiTests {
     @Autowired EventJournal journal;
     @Autowired PlatformTransactionManager manager;
     final JsonMapper json = JsonMapper.builder().build();
-    final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    @Autowired com.rlibanez.eplsync.security.AccountStore accounts;
+    String csrfToken;
+    final HttpClient http = HttpClient.newBuilder().cookieHandler(new java.net.CookieManager(null,java.net.CookiePolicy.ACCEPT_ALL)).connectTimeout(Duration.ofSeconds(3)).build();
     URI uri(String path) { return URI.create("http://127.0.0.1:" + port + "/api/events" + path); }
     EventJournal.Entry record() {
         return journal.record(EventJournal.Category.TORRENT, "SYNC", EventJournal.Outcome.SUCCEEDED,
             EventContext.Origin.MANUAL, "api-operation", Map.of("checked", 3));
     }
     HttpResponse<String> request(String path, String body) throws Exception {
-        var builder = HttpRequest.newBuilder(uri(path)).timeout(Duration.ofSeconds(5));
+        var builder = authenticatedRequest(uri(path)).timeout(Duration.ofSeconds(5));
         if (body != null) builder.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body));
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
-    @BeforeEach void clear() { journal.delete(new EventJournal.Filter(null, null, null, null)); }
+    HttpRequest.Builder authenticatedRequest(URI uri) {
+        var builder=HttpRequest.newBuilder(uri);
+        if(csrfToken!=null) builder.header("X-CSRF-TOKEN",csrfToken);
+        return builder;
+    }
+    @BeforeEach void clear() throws Exception {
+        accounts.clear();
+        accounts.initialize("eventadmin","admin@example.org","a permanent event password","a permanent event password");
+        URI root=URI.create("http://127.0.0.1:"+port+"/api/auth/");
+        csrfToken=json.readTree(http.send(HttpRequest.newBuilder(root.resolve("csrf")).build(),HttpResponse.BodyHandlers.ofString()).body()).path("token").asString();
+        var login=http.send(authenticatedRequest(root.resolve("login")).header("Content-Type","application/json")
+            .POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"eventadmin\",\"password\":\"a permanent event password\"}")).build(),HttpResponse.BodyHandlers.ofString());
+        assertThat(login.statusCode()).isEqualTo(200);
+        csrfToken=json.readTree(http.send(HttpRequest.newBuilder(root.resolve("csrf")).build(),HttpResponse.BodyHandlers.ofString()).body()).path("token").asString();
+        journal.delete(new EventJournal.Filter(null, null, null, null));
+    }
     @AfterEach void close() { http.close(); }
+    @Test void actionFiltersIndividualEventsAndGroupedOperationsAndCombinesWithCategory() throws Exception {
+        journal.record(EventJournal.Category.SECURITY,"USER_CREATE",EventJournal.Outcome.SUCCEEDED,
+            EventContext.Origin.MANUAL,"create-one",Map.of("username","alice"));
+        journal.record(EventJournal.Category.SECURITY,"USER_UPDATE",EventJournal.Outcome.SUCCEEDED,
+            EventContext.Origin.MANUAL,"edit-one",Map.of("username","alice"));
+        record();
+        for(String path:List.of("?action=USER_CREATE","/operations?action=USER_CREATE&category=SECURITY&origin=MANUAL")) {
+            var response=request(path,null);
+            assertThat(response.statusCode()).isEqualTo(200);
+            var body=json.readTree(response.body());
+            assertThat(body.path("total").asInt()).isEqualTo(1);
+        }
+        assertThat(json.readTree(request("/operations?action=USER_CREATE&category=TORRENT",null).body()).path("total").asInt()).isZero();
+        assertThat(json.readTree(request("/operations?action=USER_CREATE%27%20OR%201%3D1--",null).body()).path("total").asInt()).isZero();
+    }
+
     @Test void disabledTorrentOperationsRecordReadableFailures() throws Exception {
         for (String path : List.of("/api/torrent/books/32", "/api/torrent/downloads/sync")) {
-            var response = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + path))
+            var response = http.send(authenticatedRequest(URI.create("http://127.0.0.1:" + port + path))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString("{\"dryRun\":false}")).build(),
                     HttpResponse.BodyHandlers.ofString());
@@ -62,7 +96,7 @@ class EventApiTests {
     }
 
     @Test void disabledSyncPreviewHasItsOwnPersistedOperation() throws Exception {
-        var response = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/torrent/downloads/sync"))
+        var response = http.send(authenticatedRequest(URI.create("http://127.0.0.1:" + port + "/api/torrent/downloads/sync"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString("{\"dryRun\":true}")).build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -118,7 +152,7 @@ class EventApiTests {
     }
     @Test @Timeout(15) void sseDeliversCommittedEventsAndReplaysFromLastEventId() throws Exception {
         var old = record();
-        var response = http.send(HttpRequest.newBuilder(uri("/stream")).build(), HttpResponse.BodyHandlers.ofInputStream());
+        var response = http.send(authenticatedRequest(uri("/stream")).build(), HttpResponse.BodyHandlers.ofInputStream());
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.headers().firstValue("Content-Type").orElse("")).contains("text/event-stream");
         long last;
@@ -131,15 +165,37 @@ class EventApiTests {
             assertThat(event).contains("id:" + last).contains("\"checked\":3");
         }
         var missed = record();
-        var reconnect = http.send(HttpRequest.newBuilder(uri("/stream")).header("Last-Event-ID", Long.toString(last)).build(), HttpResponse.BodyHandlers.ofInputStream());
+        var reconnect = http.send(authenticatedRequest(uri("/stream")).header("Last-Event-ID", Long.toString(last)).build(), HttpResponse.BodyHandlers.ofInputStream());
         try (var input = new BufferedReader(new InputStreamReader(reconnect.body()))) {
             assertThat(frame(input, "ready")).contains("id:" + last);
             assertThat(frame(input, "event")).contains("id:" + missed.id());
         }
     }
+    @Test @Timeout(15) void securityEventsNeverReachNonAdminStreamsOrReplay() throws Exception {
+        accounts.policy(new com.rlibanez.eplsync.security.AccountStore.Policy(true,false,30,12));
+        accounts.register("streamreader","reader@example.org","a permanent reader password");
+        var reader=accounts.users().stream().filter(user -> user.username().equals("streamreader")).findFirst().orElseThrow();
+        accounts.update(reader.id(),"USER","ACTIVE",Map.of("EVENTS_MANAGE","ALLOW"),null);
+        var login=http.send(authenticatedRequest(URI.create("http://127.0.0.1:"+port+"/api/auth/login"))
+            .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString("{\"username\":\"streamreader\",\"password\":\"a permanent reader password\"}")).build(),HttpResponse.BodyHandlers.ofString());
+        assertThat(login.statusCode()).isEqualTo(200);
+        var response=http.send(authenticatedRequest(uri("/stream")).build(),HttpResponse.BodyHandlers.ofInputStream());
+        EventJournal.Entry visible;
+        try(var input=new BufferedReader(new InputStreamReader(response.body()))) {
+            frame(input,"ready");
+            journal.record(EventJournal.Category.SECURITY,"USER_DELETE",EventJournal.Outcome.SUCCEEDED,EventContext.Origin.MANUAL,"private-operation",Map.of("username","private-user"));
+            visible=record();
+            assertThat(frame(input,"event")).contains("id:"+visible.id()).doesNotContain("private-user","SECURITY");
+        }
+        var replay=http.send(authenticatedRequest(uri("/stream")).header("Last-Event-ID","0").build(),HttpResponse.BodyHandlers.ofInputStream());
+        try(var input=new BufferedReader(new InputStreamReader(replay.body()))) {
+            frame(input,"ready");
+            assertThat(frame(input,"event")).contains("id:"+visible.id()).doesNotContain("private-user","SECURITY");
+        }
+    }
     @Test @Timeout(15) void fullResetInvalidatesConnectedBrowsersWithoutPersistingAnEvent() throws Exception {
         var old = record();
-        var response = http.send(HttpRequest.newBuilder(uri("/stream")).build(), HttpResponse.BodyHandlers.ofInputStream());
+        var response = http.send(authenticatedRequest(uri("/stream")).build(), HttpResponse.BodyHandlers.ofInputStream());
         try (var input = new BufferedReader(new InputStreamReader(response.body()))) {
             frame(input, "ready");
             new TransactionTemplate(manager).executeWithoutResult(tx -> journal.clearForReset());

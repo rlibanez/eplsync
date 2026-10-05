@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+cd /app
+exec java --enable-native-access=ALL-UNNAMED -jar /app/app.jar --admin "$@"

@@ -1,3 +1,4 @@
+import { useAuth } from "../auth/Auth";
 import { CoverParameter, coverKeys, validCoverOptions } from "./CoverParameter";
 import { ServerSettings } from "./ServerSettings";
 import { OptionLabel } from "../downloads/SendOptions";
@@ -15,6 +16,7 @@ import {
 } from "../catalog/coverApi";
 
 export function CoverSettings() {
+  const auth = useAuth();
   const defaults = useQuery({
     queryKey: ["cover-config"],
     queryFn: ({ signal }) =>
@@ -29,7 +31,7 @@ export function CoverSettings() {
         key={JSON.stringify(defaults.data)}
         defaults={defaults.data}
       />
-      <ServerSettings section="covers" />
+      {auth.can("SETTINGS_MANAGE") && <ServerSettings section="covers" />}
     </>
   );
 }
@@ -97,10 +99,24 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
             ))}
           </div>
         </fieldset>
-        {!valid && <Alert color="orange" variant="light" role="alert" className="cover-validation">{t("covers.invalidOptions")}</Alert>}
+        {!valid && (
+          <Alert
+            color="orange"
+            variant="light"
+            role="alert"
+            className="cover-validation"
+          >
+            {t("covers.invalidOptions")}
+          </Alert>
+        )}
         <Checkbox
           className="cover-scope"
-          label={<OptionLabel text={t("covers.includeReviewed")} help={t("covers.includeReviewedHelp")} />}
+          label={
+            <OptionLabel
+              text={t("covers.includeReviewed")}
+              help={t("covers.includeReviewedHelp")}
+            />
+          }
           checked={
             task?.state === "RUNNING" ? !task.onlyUnchecked : includeReviewed
           }

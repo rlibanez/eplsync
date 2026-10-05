@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@org.springframework.security.test.context.support.WithMockUser(authorities={"ROLE_ADMIN","CATALOG_READ","BOOK_HISTORY_READ","DOWNLOADS_READ","TORRENT_SEND","TORRENT_SYNC","TORRENT_JOBS_MANAGE","TORRENT_CLEANUP","TORRENT_FILES_DELETE","CATALOG_IMPORT","CATALOG_DELETE","COVERS_MANAGE","EVENTS_MANAGE","SETTINGS_MANAGE"})
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","spring.jpa.hibernate.ddl-auto=create-drop","spring.flyway.enabled=false","eplsync.torrent.enabled=false","eplsync.torrent.bulk.worker-enabled=false"})
 class ServerSettingsTests {
     @Autowired ServerSettings settings;
@@ -91,7 +92,7 @@ class ServerSettingsTests {
 
     @Test void fullResetDeletesOverridesAndRestoresEffectiveConfiguration() {
         settings.save("events", Map.of("events.retention.max-count", 25));
-        reset.reset();
+        reset.reset(true);
         assertThat(jdbc.queryForObject("select count(*) from app_settings", Integer.class)).isZero();
         assertThat(settings.snapshot().events().getRetention().getMaxCount()).isEqualTo(10000);
     }

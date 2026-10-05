@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.*;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('COVERS_MANAGE')")
 @RestController
 @RequestMapping("/api/catalog/covers")
 public class CoverAlternativeController {

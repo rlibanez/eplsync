@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('CATALOG_READ')")
 @RestController
 @RequestMapping("/api/catalog/books")
 public class CatalogBookController {

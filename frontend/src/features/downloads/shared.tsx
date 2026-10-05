@@ -1,3 +1,4 @@
+import { secureFetch } from "../auth/transport";
 import { PageJump } from "../../components/PageJump";
 import { Button, Select } from "@mantine/core";
 import { useTranslation } from "react-i18next";
@@ -25,7 +26,7 @@ export class ActionError extends Error {
 export async function post<T>(path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, {
+    response = await secureFetch(`/api${path}`, {
       method: "POST",
       headers: {
         Accept: "application/json",

@@ -9,19 +9,11 @@ services:
     image: rlibanez/eplsync:0.0.1
     container_name: eplsync
     ports:
-      - "${HOST_PORT:-8088}:8088"
+      - "${HOST_BIND:-127.0.0.1}:${HOST_PORT:-8088}:8088"
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - "${DATA_DIR:-./data}:/app/data"
+      - "${LOGS_DIR:-./logs}:/app/logs"
     environment:
-      TZ: Europe/Madrid
-      EPLSYNC_EVENTS_RETENTION_MAXCOUNT: "${EPLSYNC_EVENTS_RETENTION_MAX_COUNT:-10000}"
-      EPLSYNC_EVENTS_RETENTION_MAXAGEDAYS: "${EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS:-365}"
-      EPLSYNC_UI_LANGUAGE: "${EPLSYNC_UI_LANGUAGE:-auto}"
-      EPLSYNC_CATALOG_ZIPURL: "${EPLSYNC_CATALOG_ZIPURL}"
-      EPLSYNC_TORRENT_ENABLED: "${EPLSYNC_TORRENT_ENABLED}"
-      EPLSYNC_TORRENT_CLIENT: "${EPLSYNC_TORRENT_CLIENT}"
-      EPLSYNC_TORRENT_BASEURL: "${EPLSYNC_TORRENT_BASEURL}"
-      EPLSYNC_TORRENT_QBITTORRENT_AUTH_APIKEY: "${EPLSYNC_TORRENT_QBITTORRENT_AUTH_APIKEY}"  
+      TZ: "${TZ:-Europe/Madrid}"
     stop_grace_period: 30s
     restart: unless-stopped

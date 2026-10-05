@@ -1,3 +1,4 @@
+import { useAuth } from "../auth/Auth";
 import type { Book } from "../../api/catalog";
 import { RepairCover } from "./RepairCover";
 import { useState } from "react";
@@ -9,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
 export function BookActions({ book }: { book: Book }) {
   const { eplId } = book;
+  const auth = useAuth();
   const { t } = useTranslation();
   const [hash, setHash] = useState<string | null>(null);
   const magnets = useQuery({
@@ -34,12 +36,41 @@ export function BookActions({ book }: { book: Book }) {
   const pending = useIsMutating({ mutationKey: ["send-books"] }) > 0;
   return (
     <section className="book-actions" aria-label={t("detail.actions")}>
-      {hash && <SendSelection single={{ eplId, hash }} filters={{ eplId: [eplId] }} count={1} allResults={false} onClose={() => setHash(null)} />}
+      {hash && (
+        <SendSelection
+          single={{ eplId, hash }}
+          filters={{ eplId: [eplId] }}
+          count={1}
+          allResults={false}
+          onClose={() => setHash(null)}
+        />
+      )}
       <div className="action-row">
-        {hashes.length > 1 ? <Menu>
-          <Menu.Target><Button disabled={pending} leftSection={<Download size={17} />}>{t("send.fromBook")}</Button></Menu.Target>
-          <Menu.Dropdown>{hashes.map((value, index) => <Menu.Item key={value} onClick={() => setHash(value)}>{t("detail.magnetNumber", { number: index + 1 })} · {value}</Menu.Item>)}</Menu.Dropdown>
-        </Menu> : <Button leftSection={<Download size={17} />} disabled={pending || magnets.isPending || !hashes.length} onClick={() => setHash(hashes[0])}>{t("send.fromBook")}</Button>}
+        {auth.can("TORRENT_SEND") &&
+          (hashes.length > 1 ? (
+            <Menu>
+              <Menu.Target>
+                <Button disabled={pending} leftSection={<Download size={17} />}>
+                  {t("send.fromBook")}
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                {hashes.map((value, index) => (
+                  <Menu.Item key={value} onClick={() => setHash(value)}>
+                    {t("detail.magnetNumber", { number: index + 1 })} · {value}
+                  </Menu.Item>
+                ))}
+              </Menu.Dropdown>
+            </Menu>
+          ) : (
+            <Button
+              leftSection={<Download size={17} />}
+              disabled={pending || magnets.isPending || !hashes.length}
+              onClick={() => setHash(hashes[0])}
+            >
+              {t("send.fromBook")}
+            </Button>
+          ))}
         {links.length === 1 ? (
           <Button
             component="a"
@@ -82,7 +113,7 @@ export function BookActions({ book }: { book: Book }) {
         >
           {t("detail.epublibre")}
         </Button>
-        <RepairCover book={book} />
+        {auth.can("COVERS_MANAGE") && <RepairCover book={book} />}
       </div>
       {magnets.isError && (
         <Alert color="yellow">

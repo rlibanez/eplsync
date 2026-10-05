@@ -9,6 +9,13 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class CatalogDownloadViewTests {
+    @org.junit.jupiter.api.BeforeEach void authorizeHistory() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+            org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated("test",null,
+                java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("BOOK_HISTORY_READ"))));
+    }
+    @org.junit.jupiter.api.AfterEach void clearAuthentication() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
+
     @Test void groupsQueriesForLargeCatalogResultsAndOrdersHistory() {
         var repository = mock(DownloadRepository.class);
         var rows = List.of(row(1.0, "2026-01-01T00:00:00Z"), row(2.0, "2026-01-01T00:00:00Z"),

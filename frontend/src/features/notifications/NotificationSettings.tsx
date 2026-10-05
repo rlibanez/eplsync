@@ -88,7 +88,7 @@ export function NotificationSettings() {
     <section className="panel settings-section notification-settings">
       <h2>{t("notifications.title")}</h2>
       <p className="muted">{t("notifications.preferencesHint")}</p>
-      <div className="notification-preferences-grid">
+      <div className="notification-preferences-grid settings-fields-grid">
         <div className="notification-preference-block">
           <h3>
             <BellRing size={18} aria-hidden="true" />

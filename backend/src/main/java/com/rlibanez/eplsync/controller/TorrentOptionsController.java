@@ -7,6 +7,7 @@ import org.springframework.http.CacheControl;
 import org.springframework.web.bind.annotation.*;
 
 /** Explicit public projection: never expose connection credentials. */
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SEND')")
 @RestController
 @RequestMapping("/api/torrent/options")
 public class TorrentOptionsController {

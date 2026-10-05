@@ -13,7 +13,7 @@ test.beforeEach(async ({ page }) => {
     { id: 3, category: "TORRENT", outcome: "SUCCEEDED", origin: "MANUAL" },
   ].map((entry) => ({
     ...entry,
-    action: "UPDATE",
+    action: entry.id === 3 ? "SYNC" : "UPDATE",
     createdAt: "2026-10-01T10:00:00Z",
     operationId: "long-operation-".repeat(20) + entry.id,
     details: { message: "Un resumen muy largo ".repeat(100) },
@@ -109,4 +109,23 @@ test("summary does not shift columns and widths can be resized and persist", asy
   await page.reload();
   await expect(page.locator(".events-table tbody tr")).toHaveCount(3);
   expect((await geometry())[0].width).toBeCloseTo(before[0].width + 60, 0);
+});
+
+test("event cell filters its action without leaving events and clears with other filters", async ({
+  page,
+}) => {
+  await page
+    .getByRole("button", {
+      name: "Filtrar por Evento: Actualización del catálogo",
+      exact: true,
+    })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/events$/);
+  await expect(page.locator(".events-table tbody tr")).toHaveCount(2);
+  await expect(
+    page.getByRole("textbox", { name: "Evento", exact: true }),
+  ).toHaveValue("Actualización del catálogo");
+  await page.getByRole("button", { name: "Limpiar", exact: true }).click();
+  await expect(page.locator(".events-table tbody tr")).toHaveCount(3);
 });

@@ -1,3 +1,4 @@
+import { secureFetch } from "../auth/transport";
 import { useState } from "react";
 import { Button, Pagination } from "@mantine/core";
 import { Trash2 } from "lucide-react";
@@ -21,7 +22,7 @@ export function MissingBooks({ disabled }: { disabled: boolean }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function request(path: string, body?: object, method = "POST") {
-    const response = await fetch(`/api/catalog/import/missing/${path}`, {
+    const response = await secureFetch(`/api/catalog/import/missing/${path}`, {
       method,
       headers: {
         Accept: "application/json",

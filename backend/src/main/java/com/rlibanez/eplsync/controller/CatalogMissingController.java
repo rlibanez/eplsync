@@ -5,6 +5,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.web.bind.annotation.*;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('CATALOG_DELETE')")
 @RestController
 @RequestMapping("/api/catalog/import/missing")
 public class CatalogMissingController {

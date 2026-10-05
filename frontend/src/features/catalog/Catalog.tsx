@@ -1,3 +1,4 @@
+import { useAuth } from "../auth/Auth";
 import { CatalogCards } from "./CatalogCards";
 import { ImportWizard } from "../maintenance/ImportWizard";
 import { useImport } from "../maintenance/ImportProvider";
@@ -40,6 +41,7 @@ import {
 import { get, catalogParams, type BookPage } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 export function Catalog() {
+  const auth = useAuth();
   const { t } = useTranslation();
   const columns = useCatalogColumns();
   const navigate = useNavigate();
@@ -127,13 +129,15 @@ export function Catalog() {
         <div>
           <h1>{t("nav.catalog")} </h1>
         </div>
-        <Button
-          leftSection={<Download size={16} />}
-          onClick={() => setWizard(true)}
-          disabled={importer.restoring || !!importer.operation?.pending}
-        >
-          {t("import.wizardTitle")}
-        </Button>
+        {auth.can("CATALOG_IMPORT") && (
+          <Button
+            leftSection={<Download size={16} />}
+            onClick={() => setWizard(true)}
+            disabled={importer.restoring || !!importer.operation?.pending}
+          >
+            {t("import.wizardTitle")}
+          </Button>
+        )}
       </div>
       <CatalogFilters
         initiallyOpen={filtersOpen.current}
@@ -282,19 +286,21 @@ export function Catalog() {
                 >
                   {t("selection.export")}
                 </Button>
-                <Button
-                  leftSection={<Send size={16} />}
-                  onClick={() =>
-                    setAction({
-                      type: "send",
-                      filters: selection.filters,
-                      count,
-                      all: selection.all,
-                    })
-                  }
-                >
-                  {t("selection.send")}
-                </Button>
+                {auth.can("TORRENT_SEND") && (
+                  <Button
+                    leftSection={<Send size={16} />}
+                    onClick={() =>
+                      setAction({
+                        type: "send",
+                        filters: selection.filters,
+                        count,
+                        all: selection.all,
+                      })
+                    }
+                  >
+                    {t("selection.send")}
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -587,14 +593,16 @@ export function Catalog() {
           </Button>
         </div>
       </section>
-      <ImportWizard
-        opened={wizard}
-        onClose={() => setWizard(false)}
-        onStart={(mode, source) => {
-          void importer.run(mode, source);
-          navigate("/settings/database");
-        }}
-      />
+      {auth.can("CATALOG_IMPORT") && (
+        <ImportWizard
+          opened={wizard}
+          onClose={() => setWizard(false)}
+          onStart={(mode, source) => {
+            void importer.run(mode, source);
+            navigate("/settings/database");
+          }}
+        />
+      )}
       {action?.type === "send" && (
         <SendSelection
           filters={action.filters}

@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.net.URI;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SEND')")
 @RestController
 @RequestMapping("/api/torrent/updates")
 public class UpdateController {
@@ -23,8 +24,8 @@ public class UpdateController {
         log.info("Solicitud torrent: dryRun={}, filtros={}", input.dryRun(), SelectionQueries.safeLog(input.filters()));
         if (input.includeDetails() != null || input.selection() != null || input.all() != null || input.sort() != null)
             throw new IllegalArgumentException("selection, all y sort no se admiten en updates");
-        if (input.dryRun()) return ResponseEntity.ok(SelectionQueries.page(planner.preview(input.filter(),
-                Boolean.TRUE.equals(input.includeNotFound()), input.multipleHashes(), UpdatePlanner.Selection.UPDATES),
+        if (input.dryRun()) return ResponseEntity.ok(SelectionQueries.page(UpdatePlanner.visible(planner.preview(input.filter(),
+                Boolean.TRUE.equals(input.includeNotFound()), input.multipleHashes(), UpdatePlanner.Selection.UPDATES)),
                 input.pageNumber(), input.pageSize()));
         if (input.paginated()) throw new IllegalArgumentException("page y size solo paginan la previsualización");
         synchronized (bulk) {
@@ -33,12 +34,14 @@ public class UpdateController {
         }
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_JOBS_MANAGE')")
     @GetMapping("/{jobId}")
     public UpdateCleanupService.View view(@PathVariable String jobId,
             @RequestParam org.springframework.util.MultiValueMap<String, String> params) {
         validate(params); return cleanup.view(jobId);
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_CLEANUP')")
     @PostMapping("/cleanup")
     public UpdateCleanupService.GlobalResult cleanAll(
             @RequestParam(defaultValue = "false") boolean retryUnconfirmed,
@@ -50,6 +53,7 @@ public class UpdateController {
         }
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_CLEANUP')")
     @PostMapping("/{jobId}/cleanup")
     public UpdateCleanupService.View clean(@PathVariable String jobId,
             @RequestParam(defaultValue = "false") boolean retryUnconfirmed,

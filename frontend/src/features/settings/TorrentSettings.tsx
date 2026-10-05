@@ -1,3 +1,4 @@
+import { secureFetch } from "../auth/transport";
 import { ServerSettings } from "./ServerSettings";
 import { Button } from "@mantine/core";
 import { useMutation } from "@tanstack/react-query";
@@ -26,7 +27,7 @@ export function TorrentSettings() {
     meta: { notice: { title: "torrent.title", href: "/settings/torrent" } },
     retry: false,
     mutationFn: async (): Promise<Connection> => {
-      const response = await fetch("/api/torrent/client/connection", {
+      const response = await secureFetch("/api/torrent/client/connection", {
         cache: "no-store",
         headers: { Accept: "application/json" },
       });

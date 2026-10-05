@@ -14,6 +14,7 @@ import java.net.URI;
 /**
  * Controller REST para importar el catálogo de libros de ePubLibre.
  */
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('CATALOG_IMPORT')")
 @RestController
 @RequestMapping("/api/catalog/import")
 @Validated
@@ -27,6 +28,7 @@ public class CatalogImportController {
         this.catalogImportService = catalogImportService;
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('CATALOG_READ')")
     @GetMapping("/metadata")
     public ResponseEntity<?> metadata() {
         return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())

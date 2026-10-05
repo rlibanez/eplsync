@@ -5,6 +5,7 @@ import java.util.Objects;
 import com.rlibanez.eplsync.dto.PageResponse;
 import org.springframework.web.bind.annotation.*;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_JOBS_MANAGE')")
 @RestController
 @RequestMapping("/api/torrent")
 public class BulkController {

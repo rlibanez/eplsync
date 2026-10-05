@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.http.MediaType;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('EVENTS_MANAGE')")
 @RestController
 @RequestMapping("/api/events")
 public class EventController {
@@ -18,19 +19,21 @@ public class EventController {
     @GetMapping("/operations")
     public EventOperations.Page operations(@RequestParam(defaultValue="0") int page,
             @RequestParam(defaultValue="20") int size, @RequestParam(required=false) Long snapshot,
+            @RequestParam(required=false) String action,
             @RequestParam(required=false) EventJournal.Category category,
             @RequestParam(required=false) EventJournal.Outcome outcome,
             @RequestParam(required=false) EventContext.Origin origin,
             @RequestParam(required=false) String operationId,
             @RequestParam(required=false) Instant from, @RequestParam(required=false) Instant before) {
-        return operations.search(new EventJournal.Filter(category, outcome, origin, from, before), page, size, snapshot, operationId);
+        return operations.search(new EventJournal.Filter(category, outcome, origin, from, before, action), page, size, snapshot, operationId);
     }
     @GetMapping
     public EventJournal.Page search(@RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size,
+            @RequestParam(required=false) String action,
             @RequestParam(required=false) EventJournal.Category category, @RequestParam(required=false) EventJournal.Outcome outcome,
             @RequestParam(required=false) EventContext.Origin origin,
             @RequestParam(required=false) Instant from, @RequestParam(required=false) Instant before) {
-        return journal.search(new EventJournal.Filter(category, outcome, origin, from, before), page, size);
+        return journal.search(new EventJournal.Filter(category, outcome, origin, from, before, action), page, size);
     }
     public record UnreadRequest(long afterId, java.util.List<Long> readIds) {}
     /** Read-only query with browser-local read markers; no user state is stored on the server. */

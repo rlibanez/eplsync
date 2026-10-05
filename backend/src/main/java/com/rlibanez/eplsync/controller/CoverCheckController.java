@@ -5,6 +5,7 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('COVERS_MANAGE')")
 @RestController
 @RequestMapping("/api/catalog/covers/check")
 public class CoverCheckController {

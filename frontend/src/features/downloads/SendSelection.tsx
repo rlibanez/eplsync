@@ -1,3 +1,4 @@
+import { useAuth } from "../auth/Auth";
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { Send } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -28,6 +29,7 @@ export function SendSelection({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const auth = useAuth();
   const navigate = useNavigate();
   const cache = useQueryClient();
   const [start, setStart] = useState("inherit");
@@ -47,16 +49,20 @@ export function SendSelection({
   });
   const categories = useQuery({
     queryKey: ["torrent-categories"],
-    queryFn: ({ signal }) => get<string[]>("/torrent/client/categories", signal),
+    queryFn: ({ signal }) =>
+      get<string[]>("/torrent/client/categories", signal),
     staleTime: 0,
     refetchOnMount: "always",
     refetchOnWindowFocus: false,
     retry: false,
   });
-  const defaultCategory = categories.data?.includes(defaults.data?.category ?? "")
-    ? defaults.data?.category ?? ""
+  const defaultCategory = categories.data?.includes(
+    defaults.data?.category ?? "",
+  )
+    ? (defaults.data?.category ?? "")
     : "";
-  const ready = defaults.isSuccess && categories.isSuccess && !categories.isFetching;
+  const ready =
+    defaults.isSuccess && categories.isSuccess && !categories.isFetching;
   const initialized = useRef(false);
   function restoreDefaults(d: SendDefaults) {
     setStart(String(d.start));
@@ -64,7 +70,9 @@ export function SendSelection({
     setPath(d.savePath ?? "");
     setRename(String(d.rename.enabled));
     setPattern(d.rename.pattern ?? "");
-    setCategory(categories.data?.includes(d.category ?? "") ? d.category ?? "" : "");
+    setCategory(
+      categories.data?.includes(d.category ?? "") ? (d.category ?? "") : "",
+    );
     setTags(d.tags.join(", "));
     setConcurrency(String(d.concurrency));
     setBatchSize(String(d.batchSize));
@@ -82,9 +90,10 @@ export function SendSelection({
   }
   function modified(value: string, original: unknown) {
     return {
-      input: defaults.data && value.trim() !== String(original ?? "").trim()
-        ? "send-option-modified"
-        : undefined,
+      input:
+        defaults.data && value.trim() !== String(original ?? "").trim()
+          ? "send-option-modified"
+          : undefined,
     };
   }
   const active = useIsMutating({ mutationKey: ["send-books"] }) > 0;
@@ -107,7 +116,8 @@ export function SendSelection({
       void cache.invalidateQueries({ queryKey: ["book"] });
       void cache.invalidateQueries({ queryKey: ["jobs"] });
       onClose();
-      if ("jobId" in data) navigate(`/downloads/jobs/${data.jobId}`);
+      if ("jobId" in data && auth.can("TORRENT_JOBS_MANAGE"))
+        navigate(`/downloads/jobs/${data.jobId}`);
     },
   });
   function options() {
@@ -130,7 +140,14 @@ export function SendSelection({
       url: single ? `/torrent/books/${single.eplId}` : "/torrent/books",
       body: {
         dryRun: false,
-        ...(!single ? { filters, all: allResults, sort: ["title,asc", "eplId,asc"], multipleHashes } : {}),
+        ...(!single
+          ? {
+              filters,
+              all: allResults,
+              sort: ["title,asc", "eplId,asc"],
+              multipleHashes,
+            }
+          : {}),
         options: { ...options(), ...(single ? { hash: single.hash } : {}) },
         concurrency: Number(concurrency),
         batchSize: Number(batchSize),
@@ -154,7 +171,9 @@ export function SendSelection({
       <p>{t("selection.selected", { count })}</p>
       {allResults && <p className="muted">{t("send.liveSelection")}</p>}
       {(defaults.isPending || categories.isFetching) && <Loading />}
-      {categories.isError && <Failure error={categories.error} retry={() => categories.refetch()} />}
+      {categories.isError && (
+        <Failure error={categories.error} retry={() => categories.refetch()} />
+      )}
       {defaults.isError && (
         <Failure error={defaults.error} retry={() => defaults.refetch()} />
       )}
@@ -169,110 +188,118 @@ export function SendSelection({
           style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
         >
           <fieldset className="send-options-group">
-          <legend>{t("send.jobOptions")}</legend>
-          <div className="send-options-grid">
-            <TextInput
-              label={label("downloads.concurrency", "concurrency")}
-              type="number"
-              min={1}
-              max={16}
-              required
-              classNames={modified(concurrency, defaults.data?.concurrency)}
-              value={concurrency}
-              onChange={(e) => setConcurrency(e.currentTarget.value)}
-            />
-            <TextInput
-              label={label("downloads.batchSize", "batchSize")}
-              type="number"
-              min={1}
-              max={1000}
-              required
-              classNames={modified(batchSize, defaults.data?.batchSize)}
-              value={batchSize}
-              onChange={(e) => setBatchSize(e.currentTarget.value)}
-            />
-            <TextInput
-              label={label("send.interval", "interval")}
-              required
-              classNames={modified(interval, defaults.data?.interval)}
-              value={interval}
-              onChange={(e) => setInterval(e.currentTarget.value)}
-            />
-            {!single && <Select
-              label={label("send.multipleHashes", "multipleHashes")}
-              classNames={modified(multipleHashes, defaults.data?.multipleHashes)}
-              value={multipleHashes}
-              allowDeselect={false}
-              onChange={(v) => setMultipleHashes(v!)}
-              data={["all", "first", "skip"].map((value) => ({
-                value,
-                label: t(`send.${value}`),
-              }))}
-            />}
-          </div>
+            <legend>{t("send.jobOptions")}</legend>
+            <div className="send-options-grid">
+              <TextInput
+                label={label("downloads.concurrency", "concurrency")}
+                type="number"
+                min={1}
+                max={16}
+                required
+                classNames={modified(concurrency, defaults.data?.concurrency)}
+                value={concurrency}
+                onChange={(e) => setConcurrency(e.currentTarget.value)}
+              />
+              <TextInput
+                label={label("downloads.batchSize", "batchSize")}
+                type="number"
+                min={1}
+                max={1000}
+                required
+                classNames={modified(batchSize, defaults.data?.batchSize)}
+                value={batchSize}
+                onChange={(e) => setBatchSize(e.currentTarget.value)}
+              />
+              <TextInput
+                label={label("send.interval", "interval")}
+                required
+                classNames={modified(interval, defaults.data?.interval)}
+                value={interval}
+                onChange={(e) => setInterval(e.currentTarget.value)}
+              />
+              {!single && (
+                <Select
+                  label={label("send.multipleHashes", "multipleHashes")}
+                  classNames={modified(
+                    multipleHashes,
+                    defaults.data?.multipleHashes,
+                  )}
+                  value={multipleHashes}
+                  allowDeselect={false}
+                  onChange={(v) => setMultipleHashes(v!)}
+                  data={["all", "first", "skip"].map((value) => ({
+                    value,
+                    label: t(`send.${value}`),
+                  }))}
+                />
+              )}
+            </div>
           </fieldset>
           <fieldset className="send-options-group">
-          <legend>{t("send.clientOptions")}</legend>
-          <div className="send-options-grid">
-            <Select
-              label={label("send.start", "start")}
-              classNames={modified(start, defaults.data?.start)}
-              value={start}
-              data={choices}
-              allowDeselect={false}
-              onChange={(v) => setStart(v!)}
-            />
-            <Select
-              label={label("send.auto", "auto")}
-              classNames={modified(auto, defaults.data?.autoManagement)}
-              value={auto}
-              data={choices}
-              allowDeselect={false}
-              onChange={(v) => setAuto(v!)}
-            />
-            <TextInput
-              label={label("send.path", "path")}
-              classNames={modified(path, defaults.data?.savePath)}
-              value={path}
-              disabled={auto === "true"}
-              onChange={(e) => setPath(e.currentTarget.value)}
-            />
-            <Select
-              label={label("send.rename", "rename")}
-              classNames={modified(rename, defaults.data?.rename.enabled)}
-              value={rename}
-              data={choices}
-              allowDeselect={false}
-              onChange={(v) => setRename(v!)}
-            />
-            <TextInput
-              className="send-pattern-field"
-              label={label("send.pattern", "pattern")}
-              classNames={modified(pattern, defaults.data?.rename.pattern)}
-              value={pattern}
-              required={rename === "true"}
-              disabled={rename !== "true"}
-              onChange={(e) => setPattern(e.currentTarget.value)}
-            />
-            <Select
-              label={label("send.category", "category")}
-              classNames={modified(category, defaultCategory)}
-              value={category}
-              searchable
-              allowDeselect={false}
-              data={[
-                { value: "", label: t("send.noCategory") },
-                ...(categories.data ?? []).map(name => ({ value: name, label: name })),
-              ]}
-              onChange={value => setCategory(value ?? "")}
-            />
-            <TextInput
-              label={label("send.tags", "tags")}
-              classNames={modified(tags, defaults.data?.tags.join(", "))}
-              value={tags}
-              onChange={(e) => setTags(e.currentTarget.value)}
-            />
-          </div>
+            <legend>{t("send.clientOptions")}</legend>
+            <div className="send-options-grid">
+              <Select
+                label={label("send.start", "start")}
+                classNames={modified(start, defaults.data?.start)}
+                value={start}
+                data={choices}
+                allowDeselect={false}
+                onChange={(v) => setStart(v!)}
+              />
+              <Select
+                label={label("send.auto", "auto")}
+                classNames={modified(auto, defaults.data?.autoManagement)}
+                value={auto}
+                data={choices}
+                allowDeselect={false}
+                onChange={(v) => setAuto(v!)}
+              />
+              <TextInput
+                label={label("send.path", "path")}
+                classNames={modified(path, defaults.data?.savePath)}
+                value={path}
+                disabled={auto === "true"}
+                onChange={(e) => setPath(e.currentTarget.value)}
+              />
+              <Select
+                label={label("send.rename", "rename")}
+                classNames={modified(rename, defaults.data?.rename.enabled)}
+                value={rename}
+                data={choices}
+                allowDeselect={false}
+                onChange={(v) => setRename(v!)}
+              />
+              <TextInput
+                className="send-pattern-field"
+                label={label("send.pattern", "pattern")}
+                classNames={modified(pattern, defaults.data?.rename.pattern)}
+                value={pattern}
+                required={rename === "true"}
+                disabled={rename !== "true"}
+                onChange={(e) => setPattern(e.currentTarget.value)}
+              />
+              <Select
+                label={label("send.category", "category")}
+                classNames={modified(category, defaultCategory)}
+                value={category}
+                searchable
+                allowDeselect={false}
+                data={[
+                  { value: "", label: t("send.noCategory") },
+                  ...(categories.data ?? []).map((name) => ({
+                    value: name,
+                    label: name,
+                  })),
+                ]}
+                onChange={(value) => setCategory(value ?? "")}
+              />
+              <TextInput
+                label={label("send.tags", "tags")}
+                classNames={modified(tags, defaults.data?.tags.join(", "))}
+                value={tags}
+                onChange={(e) => setTags(e.currentTarget.value)}
+              />
+            </div>
           </fieldset>
           <Button
             variant="subtle"
@@ -289,9 +316,7 @@ export function SendSelection({
           <Button
             type="submit"
             loading={active}
-            disabled={
-              !ready || !initialized.current || count === 0
-            }
+            disabled={!ready || !initialized.current || count === 0}
           >
             {t("selection.createJob")}
           </Button>

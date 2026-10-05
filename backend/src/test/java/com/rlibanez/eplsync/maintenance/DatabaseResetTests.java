@@ -27,6 +27,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@org.springframework.security.test.context.support.WithMockUser(authorities={"ROLE_ADMIN","CATALOG_READ","BOOK_HISTORY_READ","DOWNLOADS_READ","TORRENT_SEND","TORRENT_SYNC","TORRENT_JOBS_MANAGE","TORRENT_CLEANUP","TORRENT_FILES_DELETE","CATALOG_IMPORT","CATALOG_DELETE","COVERS_MANAGE","EVENTS_MANAGE","SETTINGS_MANAGE"})
 @SpringBootTest(properties = {"spring.datasource.url=jdbc:sqlite::memory:",
         "spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false",
         "eplsync.torrent.enabled=false", "eplsync.torrent.bulk.worker-enabled=false"})
@@ -130,9 +131,9 @@ class DatabaseResetTests {
         for (String body : new String[]{"{}", "{\"confirm\":false}", "{\"confirm\":null}"})
             mvc.perform(post("/api/maintenance/reset").contentType("application/json").content(body)).andExpect(status().isBadRequest());
         verifyNoInteractions(mocked);
-        when(mocked.reset()).thenReturn(new DatabaseResetService.ResetResult(true,0,0,0,0,0,0,0,0, 0));
+        when(mocked.reset(false)).thenReturn(new DatabaseResetService.ResetResult(true,0,0,0,0,0,0,0,0, 0));
         mvc.perform(post("/api/maintenance/reset").contentType("application/json").content("{\"confirm\":true}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.success").value(true));
-        verify(mocked).reset();
+        verify(mocked).reset(false);
     }
 }

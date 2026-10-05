@@ -1,3 +1,5 @@
+import { SyncPage } from "../auth/SyncPage";
+import { useAuth } from "../auth/Auth";
 import { useSyncSession } from "./useSyncSession";
 import { SyncReport, type SyncResult } from "./SyncReport";
 import { useEffect, useState } from "react";
@@ -37,7 +39,12 @@ const initialFilters = {
 };
 
 export function DownloadState() {
+  const auth = useAuth();
+  return auth.can("DOWNLOADS_READ") ? <DownloadHistory /> : <SyncPage />;
+}
+function DownloadHistory() {
   const { t } = useTranslation();
+  const auth = useAuth();
   const { date, number, status } = useLocale();
   const cache = useQueryClient();
   const session = useSyncSession();
@@ -109,23 +116,25 @@ export function DownloadState() {
     <>
       <div className="page-heading">
         <h1>{t("downloads.stateTitle")}</h1>
-        <div className="action-row">
-          <Button
-            variant="default"
-            disabled={syncPending}
-            loading={sync.isPending && sync.variables === true}
-            onClick={() => sync.mutate(true)}
-          >
-            {t("syncReport.previewAction")}
-          </Button>
-          <Button
-            disabled={syncPending}
-            loading={sync.isPending && sync.variables === false}
-            onClick={() => sync.mutate(false)}
-          >
-            {t("downloads.sync")}
-          </Button>
-        </div>
+        {auth.can("TORRENT_SYNC") && (
+          <div className="action-row">
+            <Button
+              variant="default"
+              disabled={syncPending}
+              loading={sync.isPending && sync.variables === true}
+              onClick={() => sync.mutate(true)}
+            >
+              {t("syncReport.previewAction")}
+            </Button>
+            <Button
+              disabled={syncPending}
+              loading={sync.isPending && sync.variables === false}
+              onClick={() => sync.mutate(false)}
+            >
+              {t("downloads.sync")}
+            </Button>
+          </div>
+        )}
       </div>
       <p className="muted">{t("downloads.localNote")}</p>
       {session.report && (

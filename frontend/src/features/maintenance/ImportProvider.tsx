@@ -1,3 +1,5 @@
+import { useAuth } from "../auth/Auth";
+import { secureFetch } from "../auth/transport";
 import { useNotifications } from "../notifications/Notifications";
 import { useTranslation } from "react-i18next";
 import type { Metadata } from "./CatalogMetadata";
@@ -60,7 +62,7 @@ class PreviewError extends ApiError {
     super(status, operationId);
   }
 }
-const storedTokenKey = "eplsync.catalogPreview";
+
 const Context = createContext<{
   operation: Operation | null;
   preview: ImportResult | null;
@@ -72,6 +74,8 @@ const Context = createContext<{
   dismissReset: () => void;
 } | null>(null);
 export function ImportProvider({ children }: { children: ReactNode }) {
+  const auth = useAuth();
+  const storedTokenKey = "eplsync.catalogPreview:" + auth.user?.id;
   const client = useQueryClient();
   const { notify } = useNotifications();
   const { t } = useTranslation();
@@ -91,6 +95,10 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     }
   }
   useEffect(() => {
+    if (!auth.can("CATALOG_IMPORT")) {
+      setRestoring(false);
+      return;
+    }
     const abort = new AbortController();
     let token: string | null = null;
     try {
@@ -102,9 +110,12 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       setRestoring(false);
       return;
     }
-    void fetch(`/api/catalog/import/preview/${encodeURIComponent(token)}`, {
-      signal: abort.signal,
-    })
+    void secureFetch(
+      `/api/catalog/import/preview/${encodeURIComponent(token)}`,
+      {
+        signal: abort.signal,
+      },
+    )
       .then(async (response) => {
         if (response.ok) {
           const result: ImportResult = await response.json();
@@ -162,13 +173,13 @@ export function ImportProvider({ children }: { children: ReactNode }) {
                 type: "application/json",
               }),
             );
-            response = await fetch("/api/catalog/import/run", {
+            response = await secureFetch("/api/catalog/import/run", {
               method: "POST",
               headers: { Accept: "application/json" },
               body,
             });
           } else {
-            response = await fetch("/api/catalog/import/run", {
+            response = await secureFetch("/api/catalog/import/run", {
               method: "POST",
               headers: {
                 Accept: "application/json",
@@ -178,7 +189,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
             });
           }
         } else {
-          response = await fetch(
+          response = await secureFetch(
             mode === "reset"
               ? "/api/maintenance/reset"
               : retainedAction

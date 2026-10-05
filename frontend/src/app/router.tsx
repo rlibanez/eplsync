@@ -1,3 +1,5 @@
+import { AccountSettings } from "../features/auth/Auth";
+import { UserSettings } from "../features/auth/UserSettings";
 import { Events } from "../features/events/Events";
 import { useTranslation } from "react-i18next";
 import { createBrowserRouter, Link, Navigate } from "react-router-dom";
@@ -8,6 +10,10 @@ export const router = createBrowserRouter([
   {
     element: <Shell />,
     children: [
+      {
+        path: "/downloads/sync",
+        element: <Navigate to="/downloads" replace />,
+      },
       { path: "/events", element: <Events /> },
       {
         path: "/maintenance/catalog",
@@ -17,6 +23,16 @@ export const router = createBrowserRouter([
         path: "/settings",
         element: <SettingsLayout />,
         children: [
+          { path: "account", element: <AccountSettings /> },
+          { path: "users", element: <UserSettings /> },
+          {
+            path: "reset",
+            element: <Navigate to="/settings/database" replace />,
+          },
+          {
+            path: "missing",
+            element: <Navigate to="/settings/database" replace />,
+          },
           { index: true, element: <Navigate to="general" replace /> },
           {
             path: "general",
@@ -35,7 +51,8 @@ export const router = createBrowserRouter([
           {
             path: "events",
             lazy: async () => ({
-              Component: (await import("../features/settings/EventSettings")).EventSettings,
+              Component: (await import("../features/settings/EventSettings"))
+                .EventSettings,
             }),
           },
           {

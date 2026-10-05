@@ -1,3 +1,4 @@
+import { secureFetch } from "../features/auth/transport";
 export interface Book {
   eplId: number;
   title: string;
@@ -53,7 +54,7 @@ export class NetworkError extends Error {}
 export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`/api${path}`, {
+    response = await secureFetch(`/api${path}`, {
       signal,
       headers: { Accept: "application/json" },
     });
@@ -63,8 +64,11 @@ export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new ApiError(response.status, response.headers.get("X-EPLSync-Operation-Id"),
-      typeof body?.details === "string" ? body.details : undefined);
+    throw new ApiError(
+      response.status,
+      response.headers.get("X-EPLSync-Operation-Id"),
+      typeof body?.details === "string" ? body.details : undefined,
+    );
   }
   return response.json();
 }

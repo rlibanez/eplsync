@@ -5,6 +5,7 @@ import com.rlibanez.eplsync.service.TorrentClientService;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('DOWNLOADS_READ')")
 @RestController
 @RequestMapping("/api/torrent/downloads")
 public class DownloadController {
@@ -13,6 +14,7 @@ public class DownloadController {
     public DownloadController(TorrentClientService client, DownloadQueryService queries) {
         this.client = client; this.queries = queries;
     }
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")
     @PostMapping("/sync")
     public DownloadTrackingService.SyncResult sync(@RequestParam MultiValueMap<String, String> params,
             @RequestBody java.util.Map<String, Object> body) {
@@ -25,6 +27,7 @@ public class DownloadController {
             throw new IllegalArgumentException("includeDetails debe ser booleano");
         return client.syncDownloads(dryRun, Boolean.TRUE.equals(body.get("includeDetails")));
     }
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")
     @PostMapping("/link")
     public DownloadRecord link(@RequestBody DownloadTrackingService.LinkRequest request) {
         return client.linkDownload(request);

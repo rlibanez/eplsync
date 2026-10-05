@@ -1,3 +1,4 @@
+import { secureFetch } from "../auth/transport";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNotifications } from "../notifications/Notifications";
@@ -129,7 +130,7 @@ export function useMagnetExport() {
       const handle = picker
         ? await picker.call(window, { suggestedName: "magnets.txt" })
         : undefined;
-      const response = await fetch("/api/catalog/magnets/export", {
+      const response = await secureFetch("/api/catalog/magnets/export", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/plain" },
         body: JSON.stringify({ filters }),
@@ -152,13 +153,13 @@ export function useMagnetExport() {
         link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
-
     } catch (error) {
       if (writable) await writable.abort().catch(() => {});
       if (!(error instanceof DOMException && error.name === "AbortError"))
         notify({
           title: t("selection.export"),
-          message: error instanceof Error ? error.message : t("selection.exportError"),
+          message:
+            error instanceof Error ? error.message : t("selection.exportError"),
           tone: "error",
         });
     } finally {

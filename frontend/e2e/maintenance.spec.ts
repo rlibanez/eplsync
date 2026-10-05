@@ -240,7 +240,11 @@ test("full reset requires the red confirmation and clears cached catalog after s
   );
   await page.route("**/api/maintenance/reset", (route) => {
     expect(route.request().method()).toBe("POST");
-    expect(route.request().postDataJSON()).toEqual({ confirm: true });
+    expect(route.request().postDataJSON()).toEqual({
+      confirm: true,
+      eraseUsersAndSettings: false,
+      fullResetConfirmation: "",
+    });
     resets++;
     return route.fulfill({
       json: {
@@ -262,7 +266,10 @@ test("full reset requires the red confirmation and clears cached catalog after s
     .locator("#sidebar")
     .getByRole("link", { name: "Settings" })
     .click();
-  await page.getByRole("main").getByRole("link", { name: "Database" }).click();
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: "Database", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Reset database", exact: true })
     .click();
@@ -283,7 +290,7 @@ test("full reset requires the red confirmation and clears cached catalog after s
   await expect(
     page
       .locator(".notification-toasts")
-      .getByText("Database reset. All tables are empty.", { exact: true }),
+      .getByText("Database reset completed.", { exact: true }),
   ).toBeVisible();
   expect(resets).toBe(1);
   const resetPanel = page.locator(".danger-panel");
@@ -313,7 +320,7 @@ test("busy reset preserves the database and does not retry automatically", async
     resets++;
     return route.fulfill({ status: 409, json: { code: "MAINTENANCE_BUSY" } });
   });
-  await page.goto("/maintenance/catalog");
+  await page.goto("/settings/database");
   await page
     .getByRole("button", { name: "Reset database", exact: true })
     .click();
