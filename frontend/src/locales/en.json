@@ -149,6 +149,13 @@
     "cover": "Cover of {{title}}",
     "openCover": "Open cover of {{title}} in a new tab"
   },
+  "routeError": {
+    "loadTitle": "This page could not be loaded",
+    "loadMessage": "The application may have been updated or the server is unavailable. Check your connection and reload the application to try again.",
+    "title": "This page could not be displayed",
+    "message": "An unexpected error occurred. Reload the application to try again.",
+    "reload": "Reload application"
+  },
   "feedback": {
     "loading": "Loading catalog…",
     "title": "Could not load information",

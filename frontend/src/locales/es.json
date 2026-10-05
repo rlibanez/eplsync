@@ -149,6 +149,13 @@
     "cover": "Portada de {{title}}",
     "openCover": "Abrir portada de {{title}} en una nueva pestaña"
   },
+  "routeError": {
+    "loadTitle": "No se ha podido cargar esta página",
+    "loadMessage": "La aplicación puede haberse actualizado o el servidor no está disponible. Comprueba tu conexión y recarga la aplicación para volver a intentarlo.",
+    "title": "No se ha podido mostrar esta página",
+    "message": "Se ha producido un error inesperado. Recarga la aplicación para volver a intentarlo.",
+    "reload": "Recargar aplicación"
+  },
   "feedback": {
     "loading": "Cargando catálogo…",
     "title": "No se pudo cargar la información",

@@ -1,3 +1,4 @@
+import { RouteError } from "../components/RouteError";
 import { AccountSettings } from "../features/auth/Auth";
 import { UserSettings } from "../features/auth/UserSettings";
 import { Events } from "../features/events/Events";
@@ -9,6 +10,7 @@ import { Home } from "../features/home/Home";
 export const router = createBrowserRouter([
   {
     element: <Shell />,
+    errorElement: <RouteError />,
     children: [
       {
         path: "/downloads/sync",
