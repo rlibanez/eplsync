@@ -195,5 +195,34 @@ normalización Unicode y la ordenación española. Para magnets se recorre una
 proyección mediante un cursor y se deduplica en una tabla temporal de SQLite;
 solo la página se materializa en Java. La tabla se elimina también ante fallos.
 Este recorrido sigue necesitando examinar los libros filtrados y ocupar la
-conexión durante la consulta. Las exportaciones y los límites de concurrencia
-quedan para la siguiente intervención.
+conexión durante la consulta. Las consultas y previsualizaciones costosas admiten como máximo cuatro solicitudes
+simultáneas por instalación. El exceso se rechaza con HTTP 429 y `Retry-After`,
+sin una cola adicional de trabajo.
+
+### Exportaciones de magnets
+
+GET y POST `/api/catalog/magnets/export` generan un archivo temporal UTF-8 antes
+de comenzar la respuesta. La lectura usa proyecciones de hasta 250 libros por
+transacción, liberando la conexión del catálogo entre lotes y antes de descargar.
+Un índice SQLite independiente en disco elimina hashes repetidos conservando
+el primer libro según la ordenación solicitada. Un cambio de versión del catálogo
+importado durante la preparación cancela el resultado con HTTP 409.
+
+Límites por instalación: una exportación activa (incluida su transferencia),
+128 MiB de texto, 128 MiB de índice y dos minutos para preparar el archivo.
+Los límites de tamaño producen HTTP 413, el tiempo de preparación HTTP 408 y una
+segunda exportación HTTP 429. Se rechazan las solicitudes excedentes sin encolarlas.
+Los fallos de almacenamiento muestran un mensaje claro; nunca se envía un archivo
+parcial si la preparación falla.
+
+La transferencia usa bloques de 8 KiB, un único hilo y ninguna cola de tareas,
+con un tiempo máximo asíncrono de dos minutos. Éxito, desconexión y cancelación
+cierran y eliminan los temporales. Si una escritura de red sigue bloqueada después
+de cancelar, mantiene el turno de exportación hasta salir; así no se acumulan hilos.
+Una respuesta ya iniciada se interrumpe ante un fallo, sin añadir JSON al archivo.
+Los temporales se limpian durante el funcionamiento normal; una terminación abrupta
+del proceso puede dejar archivos para la limpieza del directorio temporal del sistema.
+
+La interfaz muestra el detalle de rechazo del servidor. Cuando el navegador ofrece
+la API de escritura de archivos, guarda los bloques progresivamente con control de
+flujo; en otros navegadores utiliza un Blob, acotado por el máximo de 128 MiB del servidor.

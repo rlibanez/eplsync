@@ -1,3 +1,4 @@
+import { copyExportStream } from "./exportTransfer";
 import { secureFetch } from "../auth/transport";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -104,7 +105,7 @@ export function useCatalogSelection(query: URLSearchParams) {
   };
 }
 interface WritableFile {
-  write(data: Blob): Promise<void>;
+  write(data: Blob | Uint8Array): Promise<void>;
   close(): Promise<void>;
   abort(): Promise<void>;
 }
@@ -135,15 +136,19 @@ export function useMagnetExport() {
         headers: { "Content-Type": "application/json", Accept: "text/plain" },
         body: JSON.stringify({ filters }),
       });
-      if (!response.ok) throw new Error(t("selection.exportError"));
-      const blob = await response.blob();
-      if (!blob.size) throw new Error(t("selection.noMagnets"));
+      if (!response.ok) {
+        const error = await response.json().catch(() => undefined);
+        throw new Error(typeof error?.details === "string" ? error.details : t("selection.exportError"));
+      }
+      if (response.headers.get("Content-Length") === "0") throw new Error(t("selection.noMagnets"));
       if (handle) {
         writable = await handle.createWritable();
-        await writable.write(blob);
+        await copyExportStream(response, writable, t("selection.noMagnets"));
         await writable.close();
         writable = undefined;
       } else {
+        const blob = await response.blob();
+        if (!blob.size) throw new Error(t("selection.noMagnets"));
         const url = URL.createObjectURL(blob),
           link = document.createElement("a");
         link.href = url;

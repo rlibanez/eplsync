@@ -38,7 +38,7 @@ public class GlobalExceptionHandler {
         log.warn("Error de validación: {}", details);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida", details, request));
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida", details, request));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -54,7 +54,7 @@ public class GlobalExceptionHandler {
         log.warn("Error de validación: {}", details);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida", details, request));
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida", details, request));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -66,14 +66,14 @@ public class GlobalExceptionHandler {
         log.warn("Solicitud inválida: {}", details);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida", details, request));
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida", details, request));
     }
 
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableBody(
             org.springframework.http.converter.HttpMessageNotReadableException ex, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida",
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida",
                         "El cuerpo JSON contiene un formato o valor inválido", request));
     }
 
@@ -82,7 +82,7 @@ public class GlobalExceptionHandler {
             MethodArgumentTypeMismatchException ex,
             HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida",
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(buildError(HttpStatus.BAD_REQUEST, "Solicitud inválida",
                         "El parámetro '" + ex.getName() + "' tiene un formato incorrecto", request));
     }
 
@@ -177,8 +177,29 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
     public ResponseEntity<?> handleStatus(org.springframework.web.server.ResponseStatusException ex) {
-        return ResponseEntity.status(ex.getStatusCode()).body(java.util.Map.of("details", ex.getReason() == null ? "Solicitud rechazada" : ex.getReason()));
+        return ResponseEntity.status(ex.getStatusCode()).contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(java.util.Map.of("details", ex.getReason() == null ? "Solicitud rechazada" : ex.getReason()));
     }
+    @ExceptionHandler({java.io.IOException.class, org.springframework.web.context.request.async.AsyncRequestTimeoutException.class})
+    public ResponseEntity<?> handleTransferFailure(Exception ex, HttpServletRequest request,
+            jakarta.servlet.http.HttpServletResponse response) {
+        if (response.isCommitted()) {
+            log.debug("Transferencia interrumpida: {}", ex.getClass().getSimpleName());
+            return null;
+        }
+        if (!request.getRequestURI().equals("/api/catalog/magnets/export")) return handleGenericException(ex, request);
+        resetDownloadResponse(response);
+        return ResponseEntity.status(503).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .body(java.util.Map.of("details", "La transferencia de la exportación se ha interrumpido o ha superado el tiempo máximo. Inténtalo de nuevo."));
+    }
+
+    @ExceptionHandler(org.springframework.core.task.TaskRejectedException.class)
+    public ResponseEntity<?> handleBusyExport(jakarta.servlet.http.HttpServletResponse response) {
+        if (response.isCommitted()) return null;
+        resetDownloadResponse(response);
+        return ResponseEntity.status(503).header("Retry-After", "1").contentType(org.springframework.http.MediaType.APPLICATION_JSON).body(java.util.Map.of("details",
+                "El servicio de exportación está ocupado. Inténtalo de nuevo en unos segundos."));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(
             Exception ex,
@@ -189,6 +210,17 @@ public class GlobalExceptionHandler {
         String details = "Ha ocurrido un error inesperado";
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(buildError(HttpStatus.INTERNAL_SERVER_ERROR, "Error inesperado", details, request));
+    }
+
+    private void resetDownloadResponse(jakarta.servlet.http.HttpServletResponse response) {
+        var headers = new java.util.LinkedHashMap<String, java.util.List<String>>();
+        for (String name : response.getHeaderNames()) {
+            if (!name.equalsIgnoreCase("Content-Length") && !name.equalsIgnoreCase("Content-Disposition")
+                    && !name.equalsIgnoreCase("Content-Type"))
+                headers.put(name, java.util.List.copyOf(response.getHeaders(name)));
+        }
+        response.reset();
+        headers.forEach((name, values) -> values.forEach(value -> response.addHeader(name, value)));
     }
 
     private ErrorResponse buildError(HttpStatus status, String message, String details, HttpServletRequest request) {

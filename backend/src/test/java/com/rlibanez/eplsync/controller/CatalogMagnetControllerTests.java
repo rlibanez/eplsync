@@ -23,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @Transactional
 class CatalogMagnetControllerTests {
+    @Autowired com.rlibanez.eplsync.service.MagnetExportService exports;
     @Autowired CatalogBookRepository repository;
     @Autowired CatalogMagnetService service;
     private MockMvc mvc;
@@ -38,19 +39,19 @@ class CatalogMagnetControllerTests {
                 .links("a".repeat(40) + ",invalid").build());
         repository.save(CatalogBook.builder().eplId(3L).revision(1.0).author("Otro").title("Tres").build());
         repository.flush();
-        mvc = MockMvcBuilders.standaloneSetup(new CatalogMagnetController(service))
+        mvc = MockMvcBuilders.standaloneSetup(new CatalogMagnetController(service, exports))
                 .setCustomArgumentResolvers(new SortHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
     @Test void selectedExportIncludesAllHashesAndDeduplicatesWithoutRequiringAnExtension() throws Exception {
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/catalog/magnets/export")
+        export(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/catalog/magnets/export")
             .contentType("application/json").content("{\"filters\":{\"selectedIds\":[1,2]}}"))
             .andExpect(status().isOk()).andExpect(content().string(first + "\n" + second + "\n"));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/catalog/magnets/export")
+        export(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/catalog/magnets/export")
             .contentType("application/json").content("{\"filters\":{\"selectedIds\":[]}}"))
             .andExpect(status().isOk()).andExpect(content().string(""));
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/catalog/magnets/export")
+        export(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/catalog/magnets/export")
             .contentType("application/json").content("{\"filters\":{\"author\":[\"Autor\"],\"excludedIds\":[1]}}"))
             .andExpect(status().isOk()).andExpect(content().string(""));
     }
@@ -119,13 +120,60 @@ class CatalogMagnetControllerTests {
                 .andExpect(jsonPath("$.items.length()").value(0));
     }
 
+    @Test void busyExportReturnsReadableJsonEvenWhenTheClientRequestsPlainText() throws Exception {
+        try (var prepared=exports.prepare(new com.rlibanez.eplsync.filter.CatalogBookFilter(), org.springframework.data.domain.Sort.unsorted())) {
+            mvc.perform(get("/api/catalog/magnets/export").accept("text/plain"))
+                    .andExpect(status().isTooManyRequests())
+                    .andExpect(content().contentTypeCompatibleWith("application/json"))
+                    .andExpect(jsonPath("$.details").value("Ya hay una exportación en curso. Espera a que termine e inténtalo de nuevo."));
+        }
+    }
+    @Test void invalidExportInputsRemainReadableWithPlainTextAccept() throws Exception {
+        mvc.perform(get("/api/catalog/magnets/export").param("sort","unknown,asc").accept("text/plain"))
+                .andExpect(status().isBadRequest()).andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.details").value("Campo de ordenación del catálogo inválido"));
+    }
+    @Autowired org.springframework.web.context.WebApplicationContext webContext;
+    @Test void configuredExecutorStreamsThroughTheApplicationContext() throws Exception {
+        var realMvc=MockMvcBuilders.webAppContextSetup(webContext).build();
+        var result=realMvc.perform(get("/api/catalog/magnets/export").param("author","Autor"))
+                .andExpect(request().asyncStarted()).andReturn();
+        realMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch(result))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
+                .andExpect(content().string(first+"\n"+second+"\n"));
+    }
+
+    @Autowired com.rlibanez.eplsync.config.QueryConcurrencyConfiguration concurrency;
+    @Test void applicationRejectsExcessQueriesAndRecoversAfterSlotsAreReleased() throws Exception {
+        var gate=concurrency.boundedQueries();
+        var requests=new java.util.ArrayList<org.springframework.mock.web.MockHttpServletRequest>();
+        var response=new org.springframework.mock.web.MockHttpServletResponse();
+        var realMvc=MockMvcBuilders.webAppContextSetup(webContext).build();
+        try {
+            for(int i=0;i<4;i++) {
+                var request=new org.springframework.mock.web.MockHttpServletRequest(); requests.add(request);
+                gate.preHandle(request,response,new Object());
+            }
+            realMvc.perform(get("/api/catalog/books")).andExpect(status().isTooManyRequests())
+                    .andExpect(header().string("Retry-After","1"))
+                    .andExpect(jsonPath("$.details").value("Hay demasiadas consultas en curso. Inténtalo de nuevo en unos segundos."));
+        } finally { for(var request:requests) gate.afterCompletion(request,response,new Object(),null); }
+        realMvc.perform(get("/api/catalog/books")).andExpect(status().isOk());
+    }
+
+    private org.springframework.test.web.servlet.ResultActions export(
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request) throws Exception {
+        var result = mvc.perform(request).andExpect(request().asyncStarted()).andReturn();
+        return mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch(result));
+    }
+
     @Test
     void exportsFilteredNewlineSeparatedMagnetsAsPlainText() throws Exception {
-        mvc.perform(get("/api/catalog/magnets/export").param("author", "Autor"))
+        export(get("/api/catalog/magnets/export").param("author", "Autor"))
                 .andExpect(status().isOk()).andExpect(content().contentType("text/plain;charset=UTF-8"))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"magnets.txt\""))
                 .andExpect(content().string(first + "\n" + second + "\n"));
-        mvc.perform(get("/api/catalog/magnets/export").param("title", "missing"))
+        export(get("/api/catalog/magnets/export").param("title", "missing"))
                 .andExpect(status().isOk()).andExpect(content().string(""));
     }
 }

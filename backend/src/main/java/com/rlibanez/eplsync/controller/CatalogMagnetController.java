@@ -15,9 +15,10 @@ import java.util.List;
 @RequestMapping("/api/catalog")
 public class CatalogMagnetController {
     private final CatalogMagnetService service;
+    private final com.rlibanez.eplsync.service.MagnetExportService exports;
 
-    public CatalogMagnetController(CatalogMagnetService service) {
-        this.service = service;
+    public CatalogMagnetController(CatalogMagnetService service, com.rlibanez.eplsync.service.MagnetExportService exports) {
+        this.service = service; this.exports = exports;
     }
 
     @GetMapping(value = "/books/{eplId}/magnets", produces = "application/json")
@@ -42,17 +43,35 @@ public class CatalogMagnetController {
 
     public record ExportSelection(@jakarta.validation.constraints.NotNull @Valid CatalogBookFilter filters) {}
 
-    /** Read-only export with a body, so large explicit selections do not exceed URL limits. */
+    /** Prepare before committing the response so preparation errors remain readable JSON. */
     @PostMapping(value = "/magnets/export", produces = "text/plain;charset=UTF-8")
-    public ResponseEntity<String> exportSelection(@Valid @RequestBody ExportSelection selection) {
-        var magnets = service.search(selection.filters(), Sort.by("eplId"));
-        return ResponseEntity.ok().body(magnets.isEmpty() ? "" : String.join("\n", magnets) + "\n");
+    public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> exportSelection(
+            @Valid @RequestBody ExportSelection selection, jakarta.servlet.http.HttpServletRequest request) {
+        return exportResponse(selection.filters(), Sort.by("eplId"), request);
     }
 
     @GetMapping(value = "/magnets/export", produces = "text/plain;charset=UTF-8")
-    public ResponseEntity<String> export(@Valid @ModelAttribute CatalogBookFilter filter, Sort sort) {
-        var magnets = service.search(filter, sort);
-        return ResponseEntity.ok().header("Content-Disposition", "attachment; filename=\"magnets.txt\"")
-                .body(magnets.isEmpty() ? "" : String.join("\n", magnets) + "\n");
+    public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> export(
+            @Valid @ModelAttribute CatalogBookFilter filter, Sort sort, jakarta.servlet.http.HttpServletRequest request) {
+        return exportResponse(filter, sort, request);
+    }
+    private ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> exportResponse(
+            CatalogBookFilter filter, Sort sort, jakarta.servlet.http.HttpServletRequest request) {
+        var file = exports.prepare(filter, sort);
+        try {
+            var async = org.springframework.web.context.request.async.WebAsyncUtils.getAsyncManager(request);
+            async.getAsyncWebRequest().setTimeout(com.rlibanez.eplsync.service.MagnetExportService.TRANSFER_TIME.toMillis());
+            async.getAsyncWebRequest().addCompletionHandler(file::close);
+            async.registerCallableInterceptor(file, new org.springframework.web.context.request.async.CallableProcessingInterceptor() {
+                @Override public <T> void afterCompletion(org.springframework.web.context.request.NativeWebRequest ignored,
+                        java.util.concurrent.Callable<T> task) { file.close(); }
+                @Override public <T> Object handleTimeout(org.springframework.web.context.request.NativeWebRequest ignored,
+                        java.util.concurrent.Callable<T> task) { file.close(); return RESULT_NONE; }
+                @Override public <T> Object handleError(org.springframework.web.context.request.NativeWebRequest ignored,
+                        java.util.concurrent.Callable<T> task, Throwable error) { file.close(); return RESULT_NONE; }
+            });
+            return ResponseEntity.ok().contentType(org.springframework.http.MediaType.parseMediaType("text/plain;charset=UTF-8")).header("Content-Disposition", "attachment; filename=\"magnets.txt\"")
+                    .header("Cache-Control", "no-store").contentLength(file.size()).body(file::writeTo);
+        } catch (RuntimeException | java.io.IOException ex) { file.close(); throw new IllegalStateException("No se pudo iniciar la exportación", ex); }
     }
 }

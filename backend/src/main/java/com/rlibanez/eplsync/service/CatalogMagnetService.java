@@ -2,14 +2,12 @@ package com.rlibanez.eplsync.service;
 
 import com.rlibanez.eplsync.filter.CatalogBookFilter;
 import com.rlibanez.eplsync.repository.CatalogBookRepository;
-import com.rlibanez.eplsync.repository.CatalogMagnetSource;
 import com.rlibanez.eplsync.specification.CatalogBookSpecifications;
 import com.rlibanez.eplsync.torrent.MagnetLinkBuilder;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
 
@@ -78,17 +76,4 @@ public class CatalogMagnetService {
         });
     }
 
-    public List<String> search(CatalogBookFilter filter, Sort sort) {
-        // Desempate estable: si varios libros comparten hash, se conserva el primero.
-        Sort stableSort = CatalogOrdering.normalize(sort);
-        var books = repository.findBy(CatalogBookSpecifications.fromFilter(filter),
-                query -> query.as(CatalogMagnetSource.class).sortBy(stableSort).all());
-        var magnets = new LinkedHashMap<String, String>();
-        for (var book : books) {
-            for (String hash : builder.hashes(book.getLinks())) {
-                magnets.computeIfAbsent(hash, key -> builder.build(key, book.getEplId(), book.getTitle()));
-            }
-        }
-        return List.copyOf(magnets.values());
-    }
 }

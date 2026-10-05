@@ -1618,3 +1618,19 @@ autenticación. Los ajustes se aplican al servidor, no al navegador que los guar
 
 `POST /api/maintenance/reset` conserva cuentas y ajustes por defecto. Para eliminarlos exige `eraseUsersAndSettings=true` y `fullResetConfirmation="BORRAR TODO"`; su resultado incluye
 `settingsRecords` con el número de personalizaciones eliminadas.
+
+## Límites de exportación de magnets
+
+GET y POST `/api/catalog/magnets/export` conservan los filtros, la ordenación y
+la deduplicación por hash. Devuelven `magnets.txt` como UTF-8, con un enlace por
+línea, `Content-Length` y `Cache-Control: no-store`. Un resultado sin enlaces es
+un archivo vacío. La respuesta se prepara en disco y se transmite por bloques.
+
+Solo se permite una exportación simultánea por instalación. La preparación y
+la transferencia tienen un máximo de dos minutos cada una; el texto y el índice
+temporal tienen un máximo de 128 MiB cada uno. Los rechazos incluyen un mensaje
+JSON en `details`: HTTP 429 si hay otra exportación, 413 si se supera un tamaño,
+408 si caduca la preparación y 409 si cambia la versión del catálogo importado.
+La transferencia libera la conexión SQLite del catálogo antes de enviar el archivo.
+Los listados y previsualizaciones costosas admiten cuatro solicitudes simultáneas;
+el exceso devuelve HTTP 429 con `Retry-After`.
