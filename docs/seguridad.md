@@ -226,3 +226,18 @@ del proceso puede dejar archivos para la limpieza del directorio temporal del si
 La interfaz muestra el detalle de rechazo del servidor. Cuando el navegador ofrece
 la API de escritura de archivos, guarda los bloques progresivamente con control de
 flujo; en otros navegadores utiliza un Blob, acotado por el máximo de 128 MiB del servidor.
+
+## Comprobación de portadas y destinos de red
+
+Las portadas admiten HTTP y HTTPS hacia direcciones públicas. La clasificación de
+IPv4 e IPv6 se comparte con la importación y excluye redes internas y rangos
+especiales, incluido `100.64.0.0/10`. Se rechazan respuestas DNS con alguna
+dirección no pública. Cada conexión utiliza exclusivamente las IP validadas,
+conservando el dominio de la URL para Host, SNI y la verificación del certificado.
+Cada redirección se valida de nuevo, con un máximo de tres saltos; DNS y las
+peticiones comparten el tiempo máximo configurado. No se descarga el cuerpo de
+la imagen ni se siguen redirecciones automáticamente. Un rechazo deja el estado
+de disponibilidad indeterminado, sin marcar la portada como ausente.
+
+La importación conserva su política independiente: permite destinos locales
+introducidos directamente, como un WebDAV de la red doméstica.
