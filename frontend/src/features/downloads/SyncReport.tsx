@@ -142,7 +142,17 @@ export function SyncReport({
                     </Tooltip>
                   }
                 </dt>
-                <dd>{number(value)}</dd>
+                <dd>
+                  <Tooltip
+                    label={t(`syncReport.explanations.${key}`)}
+                    multiline
+                    w={300}
+                  >
+                    <span tabIndex={0} className="sync-count-help">
+                      {number(value)}
+                    </span>
+                  </Tooltip>
+                </dd>
               </div>
             ))}
           </dl>

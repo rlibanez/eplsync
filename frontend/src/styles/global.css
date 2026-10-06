@@ -1433,7 +1433,7 @@ summary {
 .sync-hash { overflow-wrap: anywhere; }
 
 .sync-report-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.sync-count-help { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+.sync-count-help { cursor: help; }
 
 .catalog-value-filter {
   appearance: none;
