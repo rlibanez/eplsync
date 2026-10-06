@@ -567,3 +567,23 @@ test("pending account can be approved directly and the approval action then disa
   ).toHaveCount(0);
   await expect(page.locator(".users-table")).toContainText("Activo");
 });
+
+
+test("settings tabs wrap and database stays immediately before about", async ({ page }) => {
+  await page.goto("/settings/general");
+  const tabs = page.locator(".settings-tabs");
+  await expect(tabs.locator("a").nth(-2)).toHaveAttribute("href", "/settings/database");
+  await expect(tabs.locator("a").last()).toHaveAttribute("href", "/settings/about");
+  await expect(tabs.locator("a[href='/settings/catalog']")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 900 });
+  const layout = await tabs.evaluate((nav) => ({
+    scroll: nav.scrollWidth,
+    width: nav.clientWidth,
+    rows: new Set(Array.from(nav.querySelectorAll("a"), (a) => Math.round(a.getBoundingClientRect().top))).size,
+  }));
+  expect(layout.scroll).toBeLessThanOrEqual(layout.width);
+  expect(layout.rows).toBeGreaterThan(1);
+  await tabs.locator("a[href='/settings/database']").click();
+  await expect(page.getByRole("button", { name: "Reiniciar base de datos", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Configuración de importación" })).toHaveCount(0);
+});

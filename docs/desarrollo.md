@@ -109,9 +109,10 @@ solo ejecuta Java y sirve interfaz y API en el puerto 8088:
 - El envío se inicia desde la selección de `/catalog`; no existe una pantalla independiente de envío.
 - `/downloads/jobs` y `/downloads/jobs/{id}`: seguimiento y control de trabajos.
 - `/settings/general`: idioma, paleta de colores y modo claro/oscuro.
-- `/settings/database`: previsualización, actualización y reinicio completo.
+- `/settings/catalog`: importación, previsualización, actualización y limpieza del catálogo.
+- `/settings/database`: reinicio completo de la base de datos (administradores).
 - `/settings/torrent`: comprobación manual de conexión con el cliente torrent.
-- `/settings` y `/maintenance/catalog`: redirigen a General y Base de datos.
+- `/settings` y `/maintenance/catalog`: redirigen a General y Catálogo.
 - `/api/**`: API existente y configuración pública de interfaz.
 
 El controlador de navegación solo reenvía las rutas conocidas de la interfaz a

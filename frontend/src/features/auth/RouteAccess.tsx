@@ -16,15 +16,19 @@ export function RouteAccess({ children }: { children: ReactNode }) {
     permission = "DOWNLOADS_READ";
   else if (pathname === "/events") permission = "EVENTS_MANAGE";
   else if (
-    pathname === "/settings/database" &&
+    pathname === "/settings/catalog" &&
     !auth.can("CATALOG_DELETE") &&
+    !auth.can("SETTINGS_MANAGE") &&
     auth.user?.role !== "ADMIN"
   )
     permission = "CATALOG_IMPORT";
   else if (pathname === "/settings/covers") permission = "COVERS_MANAGE";
   else if (pathname === "/settings/torrent") permission = "SETTINGS_MANAGE";
   else if (pathname === "/settings/events") permission = "EVENTS_MANAGE";
-  else if (pathname === "/settings/users" && auth.user?.role !== "ADMIN")
+  else if (
+    ["/settings/users", "/settings/database"].includes(pathname) &&
+    auth.user?.role !== "ADMIN"
+  )
     return <Alert color="red">{t("auth.forbidden")}</Alert>;
   return permission && !auth.can(permission) ? (
     <Alert color="red">{t("auth.forbidden")}</Alert>

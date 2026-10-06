@@ -1,3 +1,4 @@
+import { DatabaseReset } from "../features/auth/DatabaseReset";
 import { RouteError } from "../components/RouteError";
 import { AccountSettings } from "../features/auth/Auth";
 import { UserSettings } from "../features/auth/UserSettings";
@@ -19,12 +20,13 @@ export const router = createBrowserRouter([
       { path: "/events", element: <Events /> },
       {
         path: "/maintenance/catalog",
-        element: <Navigate to="/settings/database" replace />,
+        element: <Navigate to="/settings/catalog" replace />,
       },
       {
         path: "/settings",
         element: <SettingsLayout />,
         children: [
+          { path: "database", element: <DatabaseReset /> },
           { path: "account", element: <AccountSettings /> },
           { path: "users", element: <UserSettings /> },
           {
@@ -33,7 +35,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "missing",
-            element: <Navigate to="/settings/database" replace />,
+            element: <Navigate to="/settings/catalog" replace />,
           },
           { index: true, element: <Navigate to="general" replace /> },
           {
@@ -44,7 +46,7 @@ export const router = createBrowserRouter([
             }),
           },
           {
-            path: "database",
+            path: "catalog",
             lazy: async () => ({
               Component: (await import("../features/maintenance/ImportCatalog"))
                 .ImportCatalog,

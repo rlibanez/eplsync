@@ -150,7 +150,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
             ? "import.discard"
             : "import.update",
     );
-    const href = "/settings/database";
+    const href = "/settings/catalog";
     try {
       let response: Response;
       try {

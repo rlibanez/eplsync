@@ -111,7 +111,7 @@ export function Home() {
               className="primary-link"
               to={
                 empty && auth.can("CATALOG_IMPORT")
-                  ? "/settings/database"
+                  ? "/settings/catalog"
                   : auth.can("CATALOG_READ")
                     ? "/catalog"
                     : "/settings/account"

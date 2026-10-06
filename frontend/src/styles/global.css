@@ -967,6 +967,10 @@ main {
   border-bottom: 1px solid var(--line);
   margin: 0 0 28px;
 }
+.settings-tabs {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
 .section-tabs a,
 .section-tabs button {
   padding: 12px 18px;

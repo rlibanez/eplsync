@@ -7,23 +7,29 @@ export function SettingsLayout() {
   return (
     <>
       <h1>{t("nav.settings")}</h1>
-      <nav className="section-tabs" aria-label={t("nav.settings")}>
+      <nav
+        className="section-tabs settings-tabs"
+        aria-label={t("nav.settings")}
+      >
         {[
           "general",
           "account",
-          "database",
+          "catalog",
           "events",
           "covers",
           "torrent",
           "users",
+          "database",
           "about",
         ]
           .filter((key) => {
             if (key === "users") return auth.user?.role === "ADMIN";
-            if (key === "database")
+            if (key === "database") return auth.user?.role === "ADMIN";
+            if (key === "catalog")
               return (
                 auth.can("CATALOG_IMPORT") ||
                 auth.can("CATALOG_DELETE") ||
+                auth.can("SETTINGS_MANAGE") ||
                 auth.user?.role === "ADMIN"
               );
             if (key === "events") return auth.can("EVENTS_MANAGE");

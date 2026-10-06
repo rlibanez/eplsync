@@ -244,6 +244,7 @@
     "language": "Interface language",
     "languageDescription": "Choose your interface language. Your choice is saved in this browser and does not change the language of books.",
     "general": "General",
+    "catalog": "Catalog",
     "database": "Database",
     "torrent": "Torrent",
     "palette": "Color palette",

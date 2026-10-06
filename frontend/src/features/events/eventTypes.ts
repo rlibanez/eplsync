@@ -19,7 +19,7 @@ export const eventHref = (event: AppEvent) =>
   event.action === "SEND_BOOK" && typeof event.details.eplId === "number"
     ? "/catalog/" + event.details.eplId
     : event.category === "CATALOG"
-      ? "/settings/database"
+      ? "/settings/catalog"
       : event.category === "COVERS"
         ? "/settings/covers"
         : event.category === "JOB"

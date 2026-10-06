@@ -244,6 +244,7 @@
     "language": "Idioma de la interfaz",
     "languageDescription": "Elige el idioma de la interfaz. Tu elección se guarda en este navegador y no cambia el idioma de los libros.",
     "general": "General",
+    "catalog": "Catálogo",
     "database": "Base de datos",
     "torrent": "Torrent",
     "palette": "Paleta de colores",

@@ -120,7 +120,7 @@ test("empty home offers import without an empty book shelf", async ({
   await page.goto("/");
   await expect(
     page.getByRole("link", { name: "Importar catálogo" }),
-  ).toHaveAttribute("href", "/settings/database");
+  ).toHaveAttribute("href", "/settings/catalog");
   await expect(page.getByText("No hay trabajos activos.")).toBeVisible();
   await expect(
     page.getByText("Todavía no hay eventos registrados."),

@@ -599,7 +599,7 @@ export function Catalog() {
           onClose={() => setWizard(false)}
           onStart={(mode, source) => {
             void importer.run(mode, source);
-            navigate("/settings/database");
+            navigate("/settings/catalog");
           }}
         />
       )}

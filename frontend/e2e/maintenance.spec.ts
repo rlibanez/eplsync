@@ -72,7 +72,7 @@ test("editable URL wizard closes while importing and result survives navigation"
     await route.fulfill({ json: { ...summary, preview: null } });
     await emitEvent(page, {});
   });
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   await page
     .getByRole("button", { name: "Import catalog", exact: true })
     .click();
@@ -362,7 +362,7 @@ test("applied import has a single metadata summary and dismissible notice", asyn
     await route.fulfill({ json: { ...summary, metadata } });
     await emitEvent(page, {});
   });
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   const current = page.locator("section").filter({
     has: page.getByRole("heading", { name: "Current catalog", exact: true }),
   });
@@ -424,7 +424,7 @@ test("absent books are reviewed inside a scrollable dialog and deleted only afte
     });
     return route.fulfill({ json: { deleted: 51 } });
   });
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   await page
     .getByRole("button", { name: "Delete absent books", exact: true })
     .click();
@@ -457,7 +457,7 @@ test("preview summary fits its content and reports absent books", async ({
   await page.route("**/api/catalog/import/run", (route) =>
     route.fulfill({ json: summary }),
   );
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   await previewUrl(page);
   const preview = page.locator(".import-preview-result");
   await expect(preview).toContainText("Absent from CSV");
@@ -486,7 +486,7 @@ test("catalog preview uses server events without duplicate notifications and sho
       json: summary,
     });
   });
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   await previewUrl(page);
   const toasts = page.locator(".notification-toasts");
   await expect(
@@ -523,7 +523,7 @@ test("retained preview survives reload, applies without download and X discards"
     expect(route.request().postDataJSON()).toEqual({ token: "saved-preview" });
     return route.fulfill({ status: 204 });
   });
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   await previewUrl(page);
   const box = page.locator(
     ".import-preview-result[aria-labelledby=import-preview-heading]",
@@ -571,7 +571,7 @@ test("stale preview is recalculated from the retained ZIP before applying", asyn
     recalculated = true;
     return route.fulfill({ json: { ...summary, recordsUpdated: 3 } });
   });
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   await previewUrl(page);
   const box = page.locator(
     ".import-preview-result[aria-labelledby=import-preview-heading]",
@@ -604,7 +604,7 @@ test("failed discard retains the summary and expired apply requests a new previe
   await page.route("**/api/catalog/import/preview/apply", (route) =>
     route.fulfill({ status: 410, json: { code: "PREVIEW_EXPIRED" } }),
   );
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   await previewUrl(page);
   const box = page.locator(
     ".import-preview-result[aria-labelledby=import-preview-heading]",
@@ -652,7 +652,7 @@ test("saved ZIP details, reuse and dismissing a preview retain the archive", asy
     });
     return route.fulfill({ json: summary });
   });
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   await page
     .getByRole("button", { name: "Import catalog", exact: true })
     .click();
@@ -698,7 +698,7 @@ test("local ZIP is uploaded as multipart and invalid file cannot advance", async
     expect(body).toContain('"dryRun":false');
     return route.fulfill({ json: { ...summary, preview: null } });
   });
-  await page.goto("/settings/database");
+  await page.goto("/settings/catalog");
   await page
     .getByRole("button", { name: "Import catalog", exact: true })
     .click();
