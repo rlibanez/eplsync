@@ -1934,3 +1934,7 @@ summary {
 .home-section-grip { cursor: grab; display: inline-flex; color: var(--muted); }
 .home-section-grip:active { cursor: grabbing; }
 .home-section-move { margin-left: auto; }
+
+.book-history-toolbar h2 { margin: 0; color: var(--mantine-color-text); }
+.book-history-empty { padding-inline: 22px; }
+@media (max-width: 700px) { .book-history-empty { padding-inline: 15px; } }

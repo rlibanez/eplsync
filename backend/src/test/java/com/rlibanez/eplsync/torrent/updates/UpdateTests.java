@@ -107,6 +107,34 @@ class UpdateTests {
         assertThat(cleaner.view(job.jobId(),2,7).updates()).hasSize(7);
     }
 
+    @Test void detailedHistorySortsBeforePaginationAndRejectsUnsupportedFields() throws Exception {
+        var earliest=history(1L,2.0,"D".repeat(40),DownloadStatus.DOWNLOADED);
+        earliest.setLastCheckedAt(Instant.parse("2026-10-01T12:00:00Z"));
+        earliest.setCompletedAt(Instant.parse("2026-09-29T12:00:00Z"));
+        earliest.setClient("qbittorrent"); earliest.setOrigin(DownloadRecord.Origin.DISCOVERED);
+        downloads.save(earliest);
+        var latest=history(1L,3.0,"E".repeat(40),DownloadStatus.ERROR);
+        latest.setLastCheckedAt(Instant.parse("2026-10-06T12:00:00Z")); latest.setLastError("Error de conexión"); downloads.save(latest);
+        var view=new CatalogDownloadViewService(downloads);
+        var newest=view.history(1L,0,1,"lastCheckedAt,desc").items().getFirst();
+        assertThat(newest.hash()).isEqualTo(latest.getHash());
+        assertThat(newest.lastCheckedAt()).isEqualTo(latest.getLastCheckedAt());
+        assertThat(newest.lastError()).isEqualTo("Error de conexión");
+        var discovered=view.history(1L,1,1,"lastCheckedAt,desc").items().getFirst();
+        assertThat(discovered.client()).isEqualTo("qbittorrent");
+        assertThat(discovered.clientInstanceId()).isEqualTo(earliest.getClientInstanceId());
+        assertThat(discovered.origin()).isEqualTo(DownloadRecord.Origin.DISCOVERED);
+        assertThat(discovered.completedAt()).isEqualTo(earliest.getCompletedAt());
+        assertThat(view.history(1L,0,1,"revision,asc").items().getFirst().revision()).isEqualTo(1.0);
+        assertThat(view.history(1L,0,1,"revision,desc").items().getFirst().revision()).isEqualTo(3.0);
+        assertThat(view.history(1L,0,1).items().getFirst().revision()).isEqualTo(3.0);
+        for(String invalid:java.util.List.of("password,asc","revision,sideways","hash,asc,client"))
+            assertThatThrownBy(() -> view.history(1L,0,20,invalid)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/catalog/books/1/history").param("size","1").param("sort","revision,desc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].hash").value(latest.getHash()))
+            .andExpect(jsonPath("$.items[0].lastError").value("Error de conexión"));
+    }
+
     @Test void catalogHistoryIsBoundedButCompleteHistoryRemainsPaged() {
         for (int index=0;index<45;index++) history(1L,2.0+index,String.format("%040X",1000+index),DownloadStatus.ERROR);
         var view=new CatalogDownloadViewService(downloads);

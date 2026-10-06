@@ -31,14 +31,27 @@ public class CatalogDownloadViewService {
         return books.stream().map(book -> CatalogBookResponse.from(book,new CatalogBookResponse.Download(
                 grouped.getOrDefault(book.getEplId(),List.of()),totals.getOrDefault(book.getEplId(),0L),statuses.getOrDefault(book.getEplId(),List.of())))).toList();
     }
+    public record HistoryItem(String id, Double revision, DownloadStatus status, boolean completed,
+            String hash, String client, String clientInstanceId, DownloadRecord.Origin origin,
+            java.time.Instant lastCheckedAt, java.time.Instant completedAt, String lastError) {}
     @Transactional(readOnly=true)
-    public com.rlibanez.eplsync.dto.PageResponse<CatalogBookResponse.DownloadItem> history(Long id,int page,int size) {
+    public com.rlibanez.eplsync.dto.PageResponse<HistoryItem> history(Long id,int page,int size) {
+        return history(id,page,size,"revision,desc");
+    }
+    @Transactional(readOnly=true)
+    public com.rlibanez.eplsync.dto.PageResponse<HistoryItem> history(Long id,int page,int size,String sort) {
         com.rlibanez.eplsync.config.QueryLimits.page(page,size);
-        var result=repository.findByEplId(id,org.springframework.data.domain.PageRequest.of(page,size,
-                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.desc("revision"),
-                        org.springframework.data.domain.Sort.Order.desc("createdAt"),org.springframework.data.domain.Sort.Order.asc("id"))));
-        return new com.rlibanez.eplsync.dto.PageResponse<>(result.getContent().stream().map(row -> new CatalogBookResponse.DownloadItem(
-                row.getId(),row.getRevision(),row.getStatus(),row.getCompletedAt()!=null)).toList(),
+        var fields=Set.of("hash","revision","status","client","lastCheckedAt","completedAt","lastError");
+        var parts=sort==null ? new String[0] : sort.split(",",-1);
+        if(parts.length!=2 || !fields.contains(parts[0]) || !(parts[1].equalsIgnoreCase("asc") || parts[1].equalsIgnoreCase("desc")))
+            throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación del historial inválida");
+        var ordering=org.springframework.data.domain.Sort.by(
+            new org.springframework.data.domain.Sort.Order(org.springframework.data.domain.Sort.Direction.fromString(parts[1]),parts[0]),
+            org.springframework.data.domain.Sort.Order.desc("createdAt"),org.springframework.data.domain.Sort.Order.asc("id"));
+        var result=repository.findByEplId(id,org.springframework.data.domain.PageRequest.of(page,size,ordering));
+        return new com.rlibanez.eplsync.dto.PageResponse<>(result.getContent().stream().map(row -> new HistoryItem(
+                row.getId(),row.getRevision(),row.getStatus(),row.getCompletedAt()!=null,row.getHash(),row.getClient(),
+                row.getClientInstanceId(),row.getOrigin(),row.getLastCheckedAt(),row.getCompletedAt(),row.getLastError())).toList(),
                 new com.rlibanez.eplsync.dto.PageResponse.PageMeta(page,size,result.getTotalElements(),result.getTotalPages(),
                         result.isFirst(),result.isLast(),result.hasNext(),result.hasPrevious()));
     }

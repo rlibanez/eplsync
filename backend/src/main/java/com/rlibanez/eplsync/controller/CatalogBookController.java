@@ -41,10 +41,11 @@ public class CatalogBookController {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('BOOK_HISTORY_READ')")
     @GetMapping("/{eplId}/history")
     public ResponseEntity<?> history(@PathVariable Long eplId,@RequestParam(defaultValue="0") int page,
-            @RequestParam(defaultValue="20") int size) {
+            @RequestParam(defaultValue="20") int size,
+            @RequestParam(defaultValue="revision,desc") String sort) {
         com.rlibanez.eplsync.config.QueryLimits.page(page,size);
         if (catalogBookService.getByEplId(eplId).isEmpty()) return ResponseEntity.notFound().build();
-        return ResponseEntity.ok(downloads.history(eplId,page,size));
+        return ResponseEntity.ok(downloads.history(eplId,page,size,sort));
     }
 
     /**

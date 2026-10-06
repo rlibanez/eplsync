@@ -16,7 +16,7 @@ import { get } from "../../api/catalog";
 import { useLocale } from "../../locales/useLocale";
 import { Loading, Failure } from "../../components/Feedback";
 import { Paging, post, downloadStates, type Page } from "./shared";
-interface Download {
+export interface Download {
   id: string;
   eplId: number;
   revision: number;

@@ -1672,3 +1672,16 @@ Por defecto todas las secciones están activadas, con 10 libros por sección y 1
 y se conservan al cerrar sesión, cambiar de navegador o reiniciar la aplicación.
 Eliminar la cuenta o reiniciar los datos incluyendo usuarios elimina también sus
 preferencias. Activar una sección no concede permisos sobre su contenido.
+
+### Historial completo de un libro
+
+`GET /api/catalog/books/{eplId}/history` requiere `CATALOG_READ` y
+`BOOK_HISTORY_READ`. Devuelve registros paginados de ese libro, con `id`, `hash`,
+`revision`, `status`, `client`, `clientInstanceId`, `origin`, `lastCheckedAt`,
+`completedAt`, `lastError` y el indicador `completed`.
+
+Admite `page` (0 por defecto), `size` (20 por defecto, con el límite general de
+paginación) y `sort=campo,asc|desc`. Los campos permitidos son `hash`, `revision`,
+`status`, `client`, `lastCheckedAt`, `completedAt` y `lastError`. Por defecto se
+ordena por `revision,desc`, de mayor a menor revisión, con fecha de creación e identificador como
+desempate estable. La ordenación se aplica antes de paginar; no admite filtros.
