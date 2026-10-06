@@ -1924,3 +1924,13 @@ summary {
 .connection-error-card h1 { margin: 0 0 16px; font-size: 26px; line-height: 1.25; }
 .connection-error-card p { margin: 0 0 28px; line-height: 1.65; color: var(--mantine-color-dimmed); }
 @media (max-width: 480px) { .connection-error-card { padding: 28px 24px; } .connection-error-card h1 { font-size: 23px; } }
+
+.home-section-settings { list-style: none; padding: 0; margin: 0; display: grid; grid-auto-rows: 1fr; gap: 12px; width: 100%; max-width: 760px; }
+.home-section-settings > li { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+.home-section-settings > li > .mantine-Checkbox-root { flex: 1 1 200px; }
+.home-section-settings .mantine-NumberInput-root { display: flex; align-items: center; gap: 12px; width: 240px; max-width: 100%; }
+.home-section-settings .mantine-NumberInput-label { margin: 0; white-space: nowrap; }
+.home-section-settings .mantine-NumberInput-wrapper { flex: 1; min-width: 70px; }
+.home-section-grip { cursor: grab; display: inline-flex; color: var(--muted); }
+.home-section-grip:active { cursor: grabbing; }
+.home-section-move { margin-left: auto; }

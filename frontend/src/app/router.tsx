@@ -27,6 +27,13 @@ export const router = createBrowserRouter([
         element: <SettingsLayout />,
         children: [
           { path: "database", element: <DatabaseReset /> },
+          {
+            path: "home",
+            lazy: async () => ({
+              Component: (await import("../features/settings/HomeSettings"))
+                .HomeSettings,
+            }),
+          },
           { path: "account", element: <AccountSettings /> },
           { path: "users", element: <UserSettings /> },
           {

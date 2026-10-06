@@ -42,6 +42,20 @@
     "backToTop": "Back to top",
     "foldShort": "Collapse"
   },
+  "homeSettings": {
+    "sections": "Sections",
+    "header": "Header",
+    "overview": "EPL Sync status",
+    "help": "Enable sections and drag them to change their order. These settings only affect your account.",
+    "drag": "Drag to reorder",
+    "eventCount": "Number of events",
+    "bookCount": "Number of books",
+    "moveUp": "Move {{section}} up",
+    "moveDown": "Move {{section}} down",
+    "save": "Save",
+    "restore": "Restore defaults",
+    "saved": "Changes saved."
+  },
   "home": {
     "welcome": "WELCOME TO YOUR LIBRARY",
     "title": "All your books.",
@@ -64,6 +78,9 @@
     "activeJobs": "pending or ongoing jobs",
     "noJobs": "No active jobs.",
     "recentBooks": "Recently added books",
+    "newReleases": "New releases",
+    "recentUpdates": "Recent updates",
+    "noRecentBooks": "No books to display.",
     "recentEvents": "Recent events",
     "noEvents": "No events recorded yet.",
     "seeAll": "View all",
@@ -240,6 +257,7 @@
     "FAILED": "Failed"
   },
   "settings": {
+    "home": "Home screen",
     "description": "Interface preferences for this browser.",
     "language": "Interface language",
     "languageDescription": "Choose your interface language. Your choice is saved in this browser and does not change the language of books.",
@@ -1125,8 +1143,10 @@
       "REJECTED": "Rejected"
     },
     "setupTitle": "Create the first administrator",
+    "initialAdminKey": "Initial setup key",
+    "initialAdminKeyHelp": "Enter the EPLSYNC_INITIAL_ADMIN_KEY value configured for this installation.",
     "setupAction": "Create administrator",
-    "passwordRules": "{{minimum}} to 256 characters",
+    "passwordRules": "{{minimum}} to 256 characters.",
     "passwordMatch": "Passwords match",
     "passwordMinimumLength": "Minimum password length",
     "passwordPolicyHelp": "From 8 to 128. Applies to new passwords; existing passwords remain valid.",
@@ -1156,7 +1176,7 @@
     "resetPasswordNamed": "Reset password for {{username}}",
     "resetPasswordWarning": "Reset the password for {{username}}? The current password will be replaced and all sessions will close. A temporary password valid for 24 hours will be generated and must be changed on the next sign-in.",
     "ownPasswordHelp": "Use My account to change your own password.",
-    "usernameHelp": "Username must contain 3 to 64 characters: letters, numbers, dots, hyphens or underscores",
+    "usernameHelp": "Username must contain 3 to 64 characters: letters, numbers, dots, hyphens or underscores.",
     "emailInvalid": "Invalid email",
     "copyPassword": "Copy password",
     "passwordCopied": "Password copied",

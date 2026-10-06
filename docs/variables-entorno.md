@@ -30,6 +30,7 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 | `DATA_DIR` | Carpeta del host para SQLite, historial y datos persistentes; excluye la clave de cifrado, suministrada mediante EPLSYNC_SECRET_KEY. | `./data` |
 | `LOGS_DIR` | Carpeta del host para los logs. | `./logs` |
 | `EPLSYNC_SECURITY_REQUIRE_HTTPS` | true rechaza HTTP y marca la cookie como Secure; false permite HTTP y HTTPS. No configura certificados ni el proxy. | `false` |
+| `EPLSYNC_INITIAL_ADMIN_KEY` | Clave opcional para autorizar la creación del primer administrador. Generar con `openssl rand -hex 16`. Vacía no exige clave; después de crear la primera cuenta deja de tener efecto. Solo el Compose completo la transmite. | Vacío |
 | `EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH` | Longitud mínima inicial de contraseña (8–128). Después se administra en Usuarios y seguridad. | `8` |
 | `EPLSYNC_CATALOG_ZIPURL` | URL del ZIP utilizado para importar el catálogo. | `https://epublibre.org/rssweb/csv/epub.zip` |
 | `EPLSYNC_CATALOG_IMPORT_RETENTION` | Tiempo de conservación del ZIP de importación guardado. | `24h` |

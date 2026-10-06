@@ -83,7 +83,7 @@ test("home presents local summaries, recent books and grouped event links", asyn
   await expect(
     page.getByText("2026-10-04 04:00:00", { exact: false }),
   ).toBeVisible();
-  await expect(page.locator(".home-book")).toHaveCount(10);
+  await expect(page.locator(".home-book")).toHaveCount(30);
   await expect(page.locator(".home-events a")).toHaveAttribute(
     "href",
     "/events?operationId=op-1",
@@ -127,7 +127,7 @@ test("empty home offers import without an empty book shelf", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Últimos libros añadidos" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 });
 
 test("a failed summary leaves the remaining home sections usable", async ({
@@ -144,6 +144,6 @@ test("a failed summary leaves the remaining home sections usable", async ({
       .nth(1)
       .getByRole("button", { name: "Reintentar" }),
   ).toBeVisible({ timeout: 15000 });
-  await expect(page.locator(".home-book")).toHaveCount(10);
+  await expect(page.locator(".home-book")).toHaveCount(30);
   await expect(page.locator(".home-events a")).toBeVisible();
 });

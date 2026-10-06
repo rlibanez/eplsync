@@ -42,6 +42,20 @@
     "backToTop": "Subir",
     "foldShort": "Plegar"
   },
+  "homeSettings": {
+    "sections": "Secciones",
+    "header": "Encabezado",
+    "overview": "Estado de EPL Sync",
+    "help": "Activa las secciones y arrástralas para cambiar su orden. Esta configuración solo afecta a tu cuenta.",
+    "drag": "Arrastrar para reordenar",
+    "eventCount": "Número de eventos",
+    "bookCount": "Número de libros",
+    "moveUp": "Subir {{section}}",
+    "moveDown": "Bajar {{section}}",
+    "save": "Guardar",
+    "restore": "Restaurar predeterminados",
+    "saved": "Cambios guardados."
+  },
   "home": {
     "welcome": "BIENVENIDO A TU BIBLIOTECA",
     "title": "Todos tus libros.",
@@ -64,6 +78,9 @@
     "activeJobs": "trabajos pendientes o en curso",
     "noJobs": "No hay trabajos activos.",
     "recentBooks": "Últimos libros añadidos",
+    "newReleases": "Novedades",
+    "recentUpdates": "Actualizaciones recientes",
+    "noRecentBooks": "No hay libros para mostrar.",
     "recentEvents": "Últimos eventos",
     "noEvents": "Todavía no hay eventos registrados.",
     "seeAll": "Ver todos",
@@ -240,6 +257,7 @@
     "FAILED": "Fallido"
   },
   "settings": {
+    "home": "Pantalla inicial",
     "description": "Preferencias de la interfaz para este navegador.",
     "language": "Idioma de la interfaz",
     "languageDescription": "Elige el idioma de la interfaz. Tu elección se guarda en este navegador y no cambia el idioma de los libros.",
@@ -1125,8 +1143,10 @@
       "REJECTED": "Rechazado"
     },
     "setupTitle": "Crear el primer administrador",
+    "initialAdminKey": "Clave de configuración inicial",
+    "initialAdminKeyHelp": "Introduce el valor de EPLSYNC_INITIAL_ADMIN_KEY configurado para esta instalación.",
     "setupAction": "Crear administrador",
-    "passwordRules": "Entre {{minimum}} y 256 caracteres",
+    "passwordRules": "Entre {{minimum}} y 256 caracteres.",
     "passwordMatch": "Las contraseñas coinciden",
     "passwordMinimumLength": "Longitud mínima de contraseña",
     "passwordPolicyHelp": "Entre 8 y 128. Se aplica a nuevas contraseñas, no modifica las existentes.",
@@ -1156,7 +1176,7 @@
     "resetPasswordNamed": "Reiniciar contraseña de {{username}}",
     "resetPasswordWarning": "¿Reiniciar la contraseña de {{username}}? Se sustituirá la contraseña actual y se cerrarán todas sus sesiones. Se generará una contraseña temporal válida durante 24 horas que deberá cambiar en su próximo acceso.",
     "ownPasswordHelp": "Para cambiar tu contraseña, utiliza Mi cuenta.",
-    "usernameHelp": "El usuario debe tener entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo",
+    "usernameHelp": "El usuario debe tener entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo.",
     "emailInvalid": "Email inválido",
     "copyPassword": "Copiar contraseña",
     "passwordCopied": "Contraseña copiada",

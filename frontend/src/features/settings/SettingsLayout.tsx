@@ -13,6 +13,7 @@ export function SettingsLayout() {
       >
         {[
           "general",
+          "home",
           "account",
           "catalog",
           "events",

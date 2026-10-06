@@ -17,15 +17,31 @@ public class AuthController {
     private final AccountStore accounts;
     private final SessionAccess sessions;
     private final LoginThrottle throttle;
-    public AuthController(AccountStore accounts,SessionAccess sessions,LoginThrottle throttle) {this.accounts=accounts;this.sessions=sessions;this.throttle=throttle;}
+    private final String initialAdminKey;
+    public AuthController(AccountStore accounts,SessionAccess sessions,LoginThrottle throttle,
+            @org.springframework.beans.factory.annotation.Value("${eplsync.security.initial-admin-key:}") String initialAdminKey) {
+        this.accounts=accounts;this.sessions=sessions;this.throttle=throttle;this.initialAdminKey=initialAdminKey;
+    }
+    private boolean initialKeyRequired() { return !initialAdminKey.isBlank(); }
+    private boolean initialKeyMatches(String supplied) {
+        try {
+            var digest=java.security.MessageDigest.getInstance("SHA-256");
+            return java.security.MessageDigest.isEqual(
+                digest.digest(initialAdminKey.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                digest.digest((supplied==null ? "" : supplied).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException("SHA-256 unavailable",ex); }
+    }
     @GetMapping("/csrf") public Map<String,String> csrf(CsrfToken token) { return Map.of("token",token.getToken(),"headerName",token.getHeaderName()); }
-    @GetMapping("/status") public Map<String,Object> status() {var p=accounts.policy();return Map.of("initialized",accounts.initialized(),"registrationEnabled",accounts.initialized()&&p.registrationEnabled(),"approvalRequired",p.approvalRequired(),"passwordMinimumLength",p.passwordMinimumLength());}
+    @GetMapping("/status") public Map<String,Object> status() {var p=accounts.policy();return Map.of("initialized",accounts.initialized(),"registrationEnabled",accounts.initialized()&&p.registrationEnabled(),"approvalRequired",p.approvalRequired(),"passwordMinimumLength",p.passwordMinimumLength(),"initialAdminKeyRequired",!accounts.initialized()&&initialKeyRequired());}
     public record Setup(@NotBlank @Size(min=3,max=64) String username,
             @NotBlank @jakarta.validation.constraints.Email @Size(max=254) String email,
             @NotBlank @Size(max=256) String password,
-            @NotBlank @Size(max=256) String passwordConfirmation) {}
+            @NotBlank @Size(max=256) String passwordConfirmation, String initialAdminKey) {}
     @PostMapping("/setup") public Account setup(@Valid @RequestBody Setup input,HttpServletRequest request,HttpServletResponse response) {
         throttle.check("setup:"+request.getRemoteAddr(),5);
+        if(accounts.initialized()) throw new ResponseStatusException(HttpStatus.CONFLICT,"La instalación ya está inicializada");
+        if(initialKeyRequired() && !initialKeyMatches(input.initialAdminKey()))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Clave de configuración inicial incorrecta");
         var account=accounts.initialize(input.username(),input.email(),input.password(),input.passwordConfirmation());
         sessions.login(request,response,account);
         return account;

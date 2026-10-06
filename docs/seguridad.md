@@ -314,3 +314,33 @@ preparadas por la aplicación; los errores internos de importación quedan ocult
 con una referencia. Eventos y trabajos tampoco publican mensajes arbitrarios de
 excepciones internas. Los logs son información técnica restringida: no los
 expongas públicamente.
+
+### Clave opcional de configuración inicial
+
+Para impedir que alguien cree el primer administrador antes que el responsable
+de la instalación, configura `EPLSYNC_INITIAL_ADMIN_KEY` antes del primer arranque.
+Puedes generar un valor aleatorio de 32 caracteres (128 bits) con:
+
+```bash
+openssl rand -hex 16
+```
+
+El asistente pide esta clave además de la contraseña elegida para la cuenta.
+El backend la exige y limita los intentos, pero nunca devuelve su valor al
+navegador ni lo guarda en SQLite. Una variable ausente, vacía o formada solo
+por espacios desactiva esta protección. Se admite cualquier otro valor sin
+un formato obligatorio. Tras crear la primera cuenta, la clave deja de tener
+efecto y el asistente permanece cerrado.
+
+Con Docker, usa `docker-compose-full.yml` para transmitir la variable desde
+`.env`, o añádela expresamente al entorno del servicio en tu configuración.
+
+### Preferencias personales de Home
+
+Cada usuario puede ordenar y activar secciones en **Ajustes → Pantalla inicial**
+sin permisos de administración. Los límites de 1 a 100 libros se validan en el
+backend. La API obtiene siempre la identidad de la sesión, sin permitir consultar
+o modificar preferencias ajenas. La configuración permanece en SQLite y los
+permisos existentes siguen limitando las consultas de catálogo, descargas y
+eventos. Cerrar el encabezado con su X desactiva esa sección para la cuenta; se
+puede recuperar desde la misma pestaña de Ajustes.

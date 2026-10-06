@@ -91,9 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setFailure("");
     } catch (error) {
       if (requestGeneration !== generation.current) return;
-      setFailure(
-        error instanceof TypeError ? "connection" : "server",
-      );
+      setFailure(error instanceof TypeError ? "connection" : "server");
     } finally {
       if (requestGeneration === generation.current) {
         setLoading(false);
@@ -144,12 +142,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         <p role="status">{t("auth.loading")}</p>
       ) : failure ? (
         <main className="connection-error-page">
-          <section className="connection-error-card" aria-labelledby="connection-error-title">
+          <section
+            className="connection-error-card"
+            aria-labelledby="connection-error-title"
+          >
             <div className="connection-error-brand">EPL Sync</div>
-            <div className="connection-error-icon" aria-hidden="true"><WifiOff size={28} /></div>
+            <div className="connection-error-icon" aria-hidden="true">
+              <WifiOff size={28} />
+            </div>
             <h1 id="connection-error-title">{t("auth.connectionTitle")}</h1>
-            <p role="alert">{t(failure === "connection" ? "auth.connectionMessage" : "auth.serverMessage")}</p>
-            <Button loading={refreshing} onClick={() => void refresh()}>{t("feedback.retry")}</Button>
+            <p role="alert">
+              {t(
+                failure === "connection"
+                  ? "auth.connectionMessage"
+                  : "auth.serverMessage",
+              )}
+            </p>
+            <Button loading={refreshing} onClick={() => void refresh()}>
+              {t("feedback.retry")}
+            </Button>
           </section>
         </main>
       ) : !user ? (
@@ -239,10 +250,12 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   const { t } = useTranslation();
   const [status, setStatus] = useState<{
     initialized: boolean;
+    initialAdminKeyRequired?: boolean;
     registrationEnabled: boolean;
     approvalRequired: boolean;
     passwordMinimumLength?: number;
   }>();
+  const [initialAdminKey, setInitialAdminKey] = useState("");
   const [register, setRegister] = useState(false);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -290,6 +303,9 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
           email,
           password,
           passwordConfirmation,
+          initialAdminKey: status.initialAdminKeyRequired
+            ? initialAdminKey
+            : undefined,
         });
         await onLogin();
       } else if (register) {
@@ -435,6 +451,21 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                     onChange={(e) => setConfirmation(e.currentTarget.value)}
                   />
                 </ValidationTip>
+              )}
+              {setup && status.initialAdminKeyRequired && (
+                <PasswordInput
+                  label={
+                    <OptionLabel
+                      text={t("auth.initialAdminKey")}
+                      help={t("auth.initialAdminKeyHelp")}
+                    />
+                  }
+                  required
+                  autoComplete="off"
+                  value={initialAdminKey}
+                  disabled={pending}
+                  onChange={(e) => setInitialAdminKey(e.currentTarget.value)}
+                />
               )}
               <Button
                 className="auth-submit"

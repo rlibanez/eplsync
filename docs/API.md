@@ -1642,3 +1642,33 @@ JSON en `details`: HTTP 429 si hay otra exportación, 413 si se supera un tamañ
 La transferencia libera la conexión SQLite del catálogo antes de enviar el archivo.
 Los listados y previsualizaciones costosas admiten cuatro solicitudes simultáneas;
 el exceso devuelve HTTP 429 con `Retry-After`.
+
+### Clave de configuración inicial
+
+`GET /api/auth/status` devuelve `initialAdminKeyRequired`, un booleano que es
+verdadero únicamente mientras la instalación no tiene cuentas y
+`EPLSYNC_INITIAL_ADMIN_KEY` está configurada con un valor no vacío. Nunca devuelve
+la clave. En ese caso, `POST /api/auth/setup` exige `initialAdminKey` junto a
+`username`, `email`, `password` y `passwordConfirmation`. Una clave ausente o
+incorrecta devuelve 403; los intentos están sujetos al límite del asistente.
+Tras crear la primera cuenta, el asistente devuelve 409 aunque la clave sea correcta.
+
+### Preferencias de la pantalla inicial
+
+`GET /api/auth/home` y `PUT /api/auth/home` consultan y guardan únicamente las
+preferencias de la cuenta autenticada. No requieren permisos de administración;
+la escritura exige CSRF. No aceptan seleccionar otra cuenta.
+
+El contrato es `{"sections": [...]}`. El orden del array es el orden de Home y
+debe contener exactamente una entrada por cada identificador: `header`,
+`overview`, `newReleases`, `recentUpdates`, `recentBooks` y `recentEvents`.
+Cada entrada contiene `id`, `enabled`, `bookCount` y `eventCount`. `bookCount`
+debe estar entre 1 y 100 para las tres secciones de libros y ser `null` para las
+demás. `eventCount` indica el número de eventos (1 a 100) de `recentEvents`; es
+`null` para las demás secciones. Si falta en preferencias anteriores, se utiliza
+10, conservando el orden y la activación guardados.
+
+Por defecto todas las secciones están activadas, con 10 libros por sección y 10 eventos. Las preferencias se guardan en SQLite junto a la cuenta
+y se conservan al cerrar sesión, cambiar de navegador o reiniciar la aplicación.
+Eliminar la cuenta o reiniciar los datos incluyendo usuarios elimina también sus
+preferencias. Activar una sección no concede permisos sobre su contenido.

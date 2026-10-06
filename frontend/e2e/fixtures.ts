@@ -40,6 +40,26 @@ export const test = base.extend<{ eventTransport: void }>({
           },
         }),
       );
+      let homePreferences = {
+        sections: [
+          { id: "header", enabled: true, bookCount: null },
+          { id: "overview", enabled: true, bookCount: null },
+          { id: "newReleases", enabled: true, bookCount: 10 },
+          { id: "recentUpdates", enabled: true, bookCount: 10 },
+          { id: "recentBooks", enabled: true, bookCount: 10 },
+          {
+            id: "recentEvents",
+            enabled: true,
+            bookCount: null,
+            eventCount: 10,
+          },
+        ],
+      };
+      await page.route("**/api/auth/home", (route) => {
+        if (route.request().method() === "PUT")
+          homePreferences = route.request().postDataJSON();
+        return route.fulfill({ json: homePreferences });
+      });
       await page.route("**/api/auth/csrf", (route) =>
         route.fulfill({
           json: { token: "test-csrf", headerName: "X-CSRF-TOKEN" },
