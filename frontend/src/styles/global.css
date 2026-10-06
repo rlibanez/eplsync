@@ -1318,9 +1318,6 @@ summary {
   padding: 12px 18px;
   margin-bottom: 16px;
 }
-.cover-repair-feedback {
-  flex-basis: 100%;
-}
 .detail-cover.has-image {
   width: fit-content;
   height: auto;

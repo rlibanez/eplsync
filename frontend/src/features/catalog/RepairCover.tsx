@@ -1,6 +1,6 @@
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { useState } from "react";
-import { Button } from "@mantine/core";
+import { Button, Tooltip } from "@mantine/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Wrench } from "lucide-react";
@@ -99,24 +99,30 @@ export function RepairCover({ book }: { book: Book }) {
   });
   return (
     <>
-      <Button
-        variant="light"
-        leftSection={<Wrench size={17} />}
-        loading={check.isPending}
-        disabled={pending || !book.coverUrl}
-        onClick={() => {
-          check.reset();
-          force.reset();
-          check.mutate();
-        }}
+      <Tooltip
+        label={t("covers.alreadyAlternative")}
+        disabled={!!book.coverUrl}
+        events={{ hover: true, focus: true, touch: true }}
       >
-        {t("covers.repair")}
-      </Button>
-      {!book.coverUrl && (
-        <p className="muted cover-repair-feedback">
-          {t("covers.alreadyAlternative")}
-        </p>
-      )}
+        <span
+          style={{ display: "inline-flex" }}
+          tabIndex={!book.coverUrl ? 0 : undefined}
+        >
+          <Button
+            variant="light"
+            leftSection={<Wrench size={17} />}
+            loading={check.isPending}
+            disabled={pending || !book.coverUrl}
+            onClick={() => {
+              check.reset();
+              force.reset();
+              check.mutate();
+            }}
+          >
+            {t("covers.repair")}
+          </Button>
+        </span>
+      </Tooltip>
       <Modal
         icon={Wrench}
         opened={decision !== null}
