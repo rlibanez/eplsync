@@ -382,6 +382,42 @@ class BulkTests {
         }
     }
 
+    @Test void sortsJobCountersAndPercentagesBeforePagination() throws Exception {
+        seedSortJob("low",10,4,0);
+        seedSortJob("high",2,1,0);
+        seedSortJob("errors",2,0,2);
+        seedSortJob("empty",0,0,0);
+        assertThat(store.list(0,1,null,"progress,desc").items().getFirst().jobId()).isEqualTo("errors");
+        assertThat(store.list(1,1,null,"progress,desc").items().getFirst().jobId()).isEqualTo("high");
+        assertThat(store.list(0,20,null,"progress,asc").items()).extracting(BulkStore.View::jobId)
+            .containsExactly("empty","low","high","errors");
+        assertThat(store.list(0,1,null,"accepted,desc").items().getFirst().jobId()).isEqualTo("low");
+        assertThat(store.list(0,1,null,"failed,desc").items().getFirst().jobId()).isEqualTo("errors");
+        assertThat(store.list(0,1,null,"selectedBooks,desc").items().getFirst().jobId()).isEqualTo("low");
+        var high=jobs.findById("high").orElseThrow();high.setState(BulkJob.State.RUNNING);jobs.save(high);
+        var filtered=store.list(0,20,List.of(BulkJob.State.RUNNING),"progress,desc");
+        assertThat(filtered.meta().totalItems()).isEqualTo(1);
+        assertThat(filtered.items()).extracting(BulkStore.View::jobId).containsExactly("high");
+        for(String invalid:List.of("eventActorUsername,asc","progress,sideways","accepted,asc,failed"))
+            assertThatThrownBy(() -> store.list(0,20,null,invalid)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+            .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs").param("sort","progress,desc").param("size","1"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].jobId").value("errors"));
+    }
+    private void seedSortJob(String id,int total,int accepted,int failed) {
+        var job=new BulkJob();job.setId(id);job.setState(BulkJob.State.QUEUED);job.setClient("qbittorrent");
+        job.setCreatedAt(Instant.parse("2026-10-06T12:00:00Z"));job.setUpdatedAt(job.getCreatedAt());job.setSelectedBooks(total);
+        jobs.save(job);
+        for(int index=0;index<total;index++) {
+            var item=new BulkItem();item.setId(java.util.UUID.randomUUID().toString());item.setJobId(id);item.setPosition(index);
+            item.setEplId((long)index+1);item.setHash(String.format("%040X",index+1));
+            item.setState(index<accepted ? BulkItem.State.ACCEPTED : index<accepted+failed ? BulkItem.State.FAILED : BulkItem.State.PENDING);
+            items.save(item);
+        }
+    }
+
     @Test void listingEmptyHistoryReturnsEmptyPage() {
         var result = store.list(0, 20, null);
         assertThat(result.items()).isEmpty();

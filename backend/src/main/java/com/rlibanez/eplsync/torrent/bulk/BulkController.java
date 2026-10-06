@@ -16,10 +16,11 @@ public class BulkController {
     @GetMapping("/jobs")
     public PageResponse<BulkStore.View> list(@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size, @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
             jakarta.servlet.http.HttpServletRequest request) {
-        var allowed = java.util.Set.of("page", "size", "status");
+        var allowed = java.util.Set.of("page", "size", "status", "sort");
         if (!allowed.containsAll(request.getParameterMap().keySet()))
-            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size y status");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size, status y sort");
         for (var values : request.getParameterMap().values())
             if (values.length != 1 || values[0].isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro vacío o repetido");
         java.util.List<BulkJob.State> states = null;
@@ -31,7 +32,7 @@ public class BulkController {
                 throw new com.rlibanez.eplsync.exception.UserInputException("status debe contener estados de job válidos separados por comas");
             }
         }
-        synchronized (store) { return store.list(page, size, states); }
+        synchronized (store) { return store.list(page, size, states, sort); }
     }
 
     @GetMapping("/jobs/{id}")

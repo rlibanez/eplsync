@@ -213,7 +213,6 @@ function DownloadHistory() {
       )}
       <section className="panel">
         <div className="table-toolbar">
-          <span>{t("downloads.recordsNote")}</span>
           <Select
             aria-label={t("downloads.sort")}
             value={filters.sort}

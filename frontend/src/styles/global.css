@@ -1938,3 +1938,9 @@ summary {
 .book-history-toolbar h2 { margin: 0; color: var(--mantine-color-text); }
 .book-history-empty { padding-inline: 22px; }
 @media (max-width: 700px) { .book-history-empty { padding-inline: 15px; } }
+
+.jobs-filters > div { flex: 0 1 360px; width: 100%; max-width: 360px; min-width: 0; }
+
+.job-controls-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.job-controls-heading h2 { margin: 0; }
+.job-controls-heading .action-row { margin: 0; }

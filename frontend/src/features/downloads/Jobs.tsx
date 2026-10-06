@@ -1,6 +1,6 @@
 import { useNotifications } from "../notifications/Notifications";
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
-import { CircleStop } from "lucide-react";
+import { ArrowUp, ArrowDown, CircleStop } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Select, Progress } from "@mantine/core";
@@ -24,6 +24,7 @@ export function Jobs() {
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
   const [filter, setFilter] = useState("");
+  const [sort, setSort] = useState("createdAt,desc");
   const [refresh, setRefresh] = useState<
     "idle" | "pending" | "success" | "error"
   >("idle");
@@ -34,12 +35,12 @@ export function Jobs() {
     return () => {
       refreshRequest.current++;
     };
-  }, [page, size, filter]);
+  }, [page, size, filter, sort]);
   const result = useQuery({
-    queryKey: ["jobs", page, size, filter],
+    queryKey: ["jobs", page, size, filter, sort],
     queryFn: ({ signal }) =>
       get<Page<Job>>(
-        `/torrent/jobs?page=${page}&size=${size}${filter ? `&status=${filter}` : ""}`,
+        `/torrent/jobs?page=${page}&size=${size}&sort=${encodeURIComponent(sort)}${filter ? `&status=${filter}` : ""}`,
         signal,
       ),
     refetchInterval: 5000,
@@ -90,10 +91,11 @@ export function Jobs() {
       </div>
 
       <p className="muted">{t("downloads.jobNote")}</p>
-      <div className="filters">
+      <div className="filters jobs-filters">
         <Select
           label={t("downloads.status")}
           clearable
+          value={filter || null}
           data={jobStates.map((value) => ({ value, label: status(value) }))}
           onChange={(v) => {
             setFilter(v ?? "");
@@ -125,10 +127,40 @@ export function Jobs() {
                       "failed",
                       "createdAt",
                     ].map((key) => (
-                      <th key={key}>
-                        {t(
-                          `downloads.${key === "failed" ? "failedCount" : key}`,
-                        )}
+                      <th
+                        key={key}
+                        scope="col"
+                        aria-sort={
+                          sort.startsWith(`${key === "job" ? "jobId" : key},`)
+                            ? sort.endsWith(",asc")
+                              ? "ascending"
+                              : "descending"
+                            : undefined
+                        }
+                      >
+                        <button
+                          type="button"
+                          className="catalog-sort-heading"
+                          onClick={() => {
+                            const field = key === "job" ? "jobId" : key;
+                            setSort(
+                              `${field},${sort === `${field},asc` ? "desc" : "asc"}`,
+                            );
+                            setPage(0);
+                          }}
+                        >
+                          {t(
+                            `downloads.${key === "failed" ? "failedCount" : key}`,
+                          )}
+                          {sort.startsWith(
+                            `${key === "job" ? "jobId" : key},`,
+                          ) &&
+                            (sort.endsWith(",asc") ? (
+                              <ArrowUp size={14} aria-hidden="true" />
+                            ) : (
+                              <ArrowDown size={14} aria-hidden="true" />
+                            ))}
+                        </button>
                       </th>
                     ))}
                   </tr>
@@ -215,7 +247,10 @@ export function JobDetail() {
       : 3000,
   });
   const control = useMutation({
-    meta: { backendEvents: true, notice: { title: "downloads.job", href: `/downloads/jobs/${id}` } },
+    meta: {
+      backendEvents: true,
+      notice: { title: "downloads.job", href: `/downloads/jobs/${id}` },
+    },
     mutationFn: (action: string) =>
       post<Job>(`/torrent/jobs/${encodeURIComponent(id!)}/${action}`),
     retry: false,
@@ -245,7 +280,37 @@ export function JobDetail() {
       ) : (
         data && (
           <section className="panel settings-section">
-            <h2>{status(data.status)}</h2>
+            <div className="job-controls-heading">
+              <h2>{status(data.status)}</h2>
+              <div className="action-row">
+                {["QUEUED", "RUNNING", "RETRY_WAIT"].includes(data.status) && (
+                  <Button
+                    disabled={control.isPending}
+                    onClick={() => control.mutate("pause")}
+                  >
+                    {t("downloads.pause")}
+                  </Button>
+                )}
+                {["PAUSED", "RETRY_WAIT"].includes(data.status) && (
+                  <Button
+                    disabled={control.isPending}
+                    onClick={() => control.mutate("resume")}
+                  >
+                    {t("downloads.resume")}
+                  </Button>
+                )}
+                {!["COMPLETED", "CANCELLED"].includes(data.status) && (
+                  <Button
+                    color="red"
+                    variant="light"
+                    disabled={control.isPending}
+                    onClick={() => setCancel(true)}
+                  >
+                    {t("downloads.cancelJob")}
+                  </Button>
+                )}
+              </div>
+            </div>
             <Progress
               aria-label={t("downloads.progress")}
               value={
@@ -302,40 +367,13 @@ export function JobDetail() {
               </div>
             </dl>
             {data.message && <Alert>{data.message}</Alert>}
-            <div className="action-row">
-              {["QUEUED", "RUNNING", "RETRY_WAIT"].includes(data.status) && (
-                <Button
-                  disabled={control.isPending}
-                  onClick={() => control.mutate("pause")}
-                >
-                  {t("downloads.pause")}
-                </Button>
-              )}
-              {["PAUSED", "RETRY_WAIT"].includes(data.status) && (
-                <Button
-                  disabled={control.isPending}
-                  onClick={() => control.mutate("resume")}
-                >
-                  {t("downloads.resume")}
-                </Button>
-              )}
-              {!["COMPLETED", "CANCELLED"].includes(data.status) && (
-                <Button
-                  color="red"
-                  variant="light"
-                  disabled={control.isPending}
-                  onClick={() => setCancel(true)}
-                >
-                  {t("downloads.cancelJob")}
-                </Button>
-              )}
-            </div>
           </section>
         )
       )}
-      <div className="filters">
+      <div className="filters jobs-filters">
         <Select
           label={t("downloads.itemStatus")}
+          value={filter || null}
           clearable
           data={itemStates.map((value) => ({ value, label: status(value) }))}
           onChange={(v) => {

@@ -1685,3 +1685,16 @@ paginación) y `sort=campo,asc|desc`. Los campos permitidos son `hash`, `revisio
 `status`, `client`, `lastCheckedAt`, `completedAt` y `lastError`. Por defecto se
 ordena por `revision,desc`, de mayor a menor revisión, con fecha de creación e identificador como
 desempate estable. La ordenación se aplica antes de paginar; no admite filtros.
+
+### Ordenación del listado de trabajos
+
+`GET /api/torrent/jobs` admite `sort=campo,asc|desc`, además de `page`, `size` y
+`status`. Los campos permitidos son `jobId`, `status`, `progress`, `selectedBooks`,
+`accepted`, `failed` y `createdAt`. El orden predeterminado sigue siendo
+`createdAt,desc`.
+
+`progress` compara la fracción `processedItems / selectedItems`: considera
+procesados los elementos aceptados, ya existentes, omitidos o fallidos. Un
+trabajo sin elementos tiene progreso 0. Los contadores y porcentajes se ordenan
+en SQLite antes de paginar, sin cargar todo el listado en memoria. Los empates
+se resuelven por fecha de creación e identificador.
