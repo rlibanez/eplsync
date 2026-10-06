@@ -143,6 +143,14 @@ public class ServerSettings {
         }).toList(), section.equals("torrent") ? credentialsError : null);
     }
     public synchronized View save(String section, Map<String, Object> values) {
+        publish(prepare(section, values));
+        return view(section);
+    }
+    /** Validate an ephemeral configuration without encrypting, persisting or publishing it. */
+    public synchronized Snapshot previewTorrent(Map<String, Object> values) {
+        return build(prepare("torrent", values));
+    }
+    private Map<String, Object> prepare(String section, Map<String, Object> values) {
         if(section.equals("torrent") && credentialsError != null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,credentialsError);
         var fields = section(section);
         Map<String, Object> next = new LinkedHashMap<>(overrides);
@@ -167,18 +175,11 @@ public class ServerSettings {
             if (changed) {
                 // Only credentials explicitly supplied in this request belong to the new endpoint.
                 CREDENTIALS.forEach(key -> next.put(key, values.get(key) instanceof String text ? text : ""));
-                next.put(ENABLED, false);
             }
             if (changed || CREDENTIALS.stream().anyMatch(values::containsKey)) next.put(DESTINATION, destination);
             maskInstallationCredentials(next);
-            if (changed && Boolean.TRUE.equals(values.get(ENABLED))) {
-                var candidate = build(next);
-                try { candidate.qbittorrent().validate(); next.put(ENABLED, true); }
-                catch (IllegalArgumentException ignored) { /* Keep disabled until complete credentials are configured. */ }
-            }
         }
-        publish(next);
-        return view(section);
+        return next;
     }
     public synchronized View restore(String section) {
         if(section.equals("torrent") && credentialsError != null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,credentialsError);

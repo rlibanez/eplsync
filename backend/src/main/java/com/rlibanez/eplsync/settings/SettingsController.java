@@ -13,6 +13,15 @@ public class SettingsController {
     @GetMapping("/{section}") public ResponseEntity<ServerSettings.View> view(@PathVariable String section) { return response(settings.view(section)); }
     @PutMapping("/{section}") public ResponseEntity<ServerSettings.View> save(@PathVariable String section, @RequestBody Map<String,Object> values) { requireConnectionAdmin(section, values.keySet()); return response(settings.save(section, values)); }
     @DeleteMapping("/{section}") public ResponseEntity<ServerSettings.View> restore(@PathVariable String section) { requireConnectionAdmin(section, java.util.Set.of("torrent.base-url")); return response(settings.restore(section)); }
+    @PostMapping("/torrent/connection")
+    public ResponseEntity<com.rlibanez.eplsync.dto.TorrentConnectionStatus> checkTorrent(
+            @RequestBody Map<String,Object> values) {
+        requireConnectionAdmin("torrent", values.keySet());
+        var candidate = settings.previewTorrent(values);
+        try (var client = new com.rlibanez.eplsync.qbittorrent.QBittorrentClient(candidate.torrent(), candidate.qbittorrent())) {
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(client.checkConnection());
+        }
+    }
     private void requireConnectionAdmin(String section, java.util.Set<String> keys) {
         if (!section.equals("torrent") || keys.stream().noneMatch(key -> key.equals("torrent.base-url") || key.startsWith("torrent.qbittorrent.auth."))) return;
         var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();

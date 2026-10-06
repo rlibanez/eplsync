@@ -562,9 +562,16 @@ curl -s 'http://192.168.2.2:8088/api/torrent/client/connection' | jq
 
 `GET /api/torrent/client/connection` no necesita parámetros ni cuerpo.
 Devuelve `enabled`, `connected`, `client`, `authMode`, `version` y `apiVersion`.
+La comprobación explícita también funciona con la integración deshabilitada: puede devolver `enabled=false` y `connected=true`. No activa la integración ni permite enviar descargas. Comprueba los ajustes guardados, no los cambios pendientes del formulario.
 
 La URL y las credenciales del cliente proceden de la configuración de EPLsync,
 no de esta petición.
+
+### Comprobar los valores del formulario sin guardarlos
+
+`POST /api/settings/torrent/connection` acepta un objeto JSON con los cambios del formulario, con las mismas claves y validación que `PUT /api/settings/torrent`. Requiere sesión, CSRF y `SETTINGS_MANAGE`; cambiar la URL o la autenticación para la prueba requiere además ADMIN.
+
+Los campos omitidos conservan su valor guardado. Si cambia la URL, solo se usan las credenciales proporcionadas expresamente para ese nuevo destino. La comprobación no guarda ajustes ni credenciales, no activa la integración y no necesita `EPLSYNC_SECRET_KEY` para probar credenciales sin persistirlas. El botón «Comprobar conexión» utiliza este endpoint.
 
 ### Categorías del cliente
 

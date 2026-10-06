@@ -370,7 +370,7 @@
   },
   "torrent": {
     "title": "Torrent client connection",
-    "description": "Check the connection using the server configuration. Does not add torrents or modify downloads.",
+    "description": "Check the connection using the current form values without saving them. Does not add torrents or modify downloads.",
     "check": "Check connection",
     "checking": "Checking…",
     "disabled": "Torrent integration is disabled on the server.",
@@ -937,7 +937,7 @@
     "noMagnets": "The selection contains no magnet links."
   },
   "serverSettings": {
-    "destinationChangeWarning": "Changing the server clears the previous credentials and disables the integration until the new destination is configured. You can enter the new credentials here and enable the integration before saving.",
+    "destinationChangeWarning": "When changing the torrent client URL, you must enter the credentials for the new server before saving.",
     "connectionAdminOnly": "Only an administrator can change the qBittorrent server and authentication or restore its installation settings.",
     "restoreDestinationHelp": "The qBittorrent server and its installation credentials will also be restored together.",
     "addRow": "Add row",

@@ -86,7 +86,20 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
     /** Serializa la renovación de sesión y solo realiza lecturas y login remoto. */
     public synchronized TorrentConnectionStatus checkConnection() {
         if (dynamic()) return configured(value -> Objects.requireNonNull(value).checkConnection());
-        if (!properties.isEnabled()) return new TorrentConnectionStatus(false, false, type(), null, null, null);
+        if (!properties.isEnabled()) {
+            // An explicit check may connect without enabling downloads or mutating the saved configuration.
+            var probe = new TorrentProperties();
+            probe.setBaseUrl(properties.getBaseUrl());
+            probe.setConnectTimeout(properties.getConnectTimeout());
+            probe.setRequestTimeout(properties.getRequestTimeout());
+            probe.setEnabled(true);
+            probe.validate();
+            try (var client = new QBittorrentClient(probe, qbittorrent)) {
+                var status = client.checkConnection();
+                return new TorrentConnectionStatus(false, status.connected(), status.client(),
+                        status.authMode(), status.version(), status.apiVersion());
+            }
+        }
         try {
             qbittorrent.validate();
         } catch (IllegalArgumentException ex) {

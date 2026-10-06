@@ -52,7 +52,7 @@ El registro público está deshabilitado y la aprobación obligatoria está habi
 
 Solo ADMIN puede modificar el destino y la autenticación de qBittorrent o restaurar sus ajustes de instalación. `SETTINGS_MANAGE` permite administrar las demás opciones operativas, pero no concede esas capacidades.
 
-Las credenciales quedan vinculadas al protocolo, host, puerto y ruta base del cliente. Se normalizan el uso de mayúsculas en el host, los puertos predeterminados y las barras finales. Cambiar el destino elimina las credenciales anteriores y desactiva la integración; volver al destino anterior no las recupera. Un administrador puede introducir credenciales nuevas completas y activar la integración en el mismo guardado.
+Las credenciales quedan vinculadas al protocolo, host, puerto y ruta base del cliente. Se normalizan el uso de mayúsculas en el host, los puertos predeterminados y las barras finales. Cambiar el destino elimina las credenciales anteriores sin modificar el interruptor de integración; volver al destino anterior no las recupera. Si la integración está habilitada, el administrador debe aportar credenciales nuevas completas en el mismo guardado. Si faltan, se rechaza el guardado y se conserva la configuración previa.
 
 Las credenciales de `.env` solo se utilizan para el destino de instalación correspondiente. Un destino personalizado sin credenciales nunca hereda las de instalación. La restauración recupera conjuntamente el destino y las credenciales de instalación. Esta vinculación se guarda en SQLite y se comprueba al arrancar. Las configuraciones antiguas con credenciales persistidas y un destino distinto al de instalación, sin una vinculación conocida, se desactivan y requieren configurar nuevamente las credenciales.
 

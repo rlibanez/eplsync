@@ -27,6 +27,9 @@ import { useNotifications } from "../notifications/Notifications";
 
 class SecretKeyRequiredError extends ApiError {}
 
+type SettingsActions =
+  ReactNode | ((values: Record<string, Field["value"]>) => ReactNode);
+
 type Field = {
   key: string;
   type: string;
@@ -45,7 +48,7 @@ export function ServerSettings({
   children,
 }: {
   section: "catalog" | "covers" | "torrent" | "events";
-  actions?: ReactNode;
+  actions?: SettingsActions;
   children?: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -73,7 +76,13 @@ export function ServerSettings({
     </section>
   );
 }
-function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
+function SettingsForm({
+  view,
+  actions,
+}: {
+  view: View;
+  actions?: SettingsActions;
+}) {
   const { t } = useTranslation();
   const cache = useQueryClient();
   const { user } = useAuth();
@@ -105,7 +114,6 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
         normalizeDestination(value) !==
           normalizeDestination(old[key] ?? originalDestination)
       ) {
-        next["torrent.enabled"] = false;
         next["torrent.qbittorrent.auth.username"] = "";
         delete next["torrent.qbittorrent.auth.password"];
         delete next["torrent.qbittorrent.auth.api-key"];
@@ -466,7 +474,7 @@ function SettingsForm({ view, actions }: { view: View; actions?: ReactNode }) {
           >
             {t("serverSettings.restore")}
           </Button>
-          {actions}
+          {typeof actions === "function" ? actions(values) : actions}
         </div>
       </form>
       {secretKeyDialog && (

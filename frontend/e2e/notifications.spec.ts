@@ -27,7 +27,7 @@ test("backend events survive reload, appear live once, and local feedback stays 
   await page.route("**/api/events/operations?**", (r) =>
     r.fulfill({ json: operationResponse(events, r.request().url()) }),
   );
-  await page.route("**/api/torrent/client/connection", (r) =>
+  await page.route("**/api/settings/torrent/connection", (r) =>
     r.fulfill({
       json: { enabled: true, connected: true, client: "qbittorrent" },
     }),

@@ -140,10 +140,14 @@ class QBittorrentClientTests {
         // The fake server may reject the replacement credential; it must nevertheless receive it.
         try { client.checkConnection(); } catch (RuntimeException ignored) { }
         assertThat(calls).anyMatch(call -> "Bearer replacement-key".equals(call.authorization()));
-        var next = new TorrentProperties(); next.setEnabled(false); active.set(next);
+        var next = new TorrentProperties(); next.setEnabled(false);
+        next.setBaseUrl(properties.getBaseUrl()); active.set(next); credentials.set(qbittorrent);
         calls.clear();
-        assertThat(client.checkConnection().enabled()).isFalse();
-        assertThat(calls).isEmpty();
+        var checked = client.checkConnection();
+        assertThat(checked.enabled()).isFalse();
+        assertThat(checked.connected()).isTrue();
+        assertThat(next.isEnabled()).isFalse();
+        assertThat(calls).hasSize(2).allMatch(call -> call.method().equals("GET"));
     }
 
     private QBittorrentClient client() {
@@ -569,11 +573,35 @@ class QBittorrentClientTests {
     }
 
     @Test
-    void disabledIntegrationMakesNoRequests() {
+    void explicitCheckConnectsWhileDisabledWithoutEnablingDownloads() throws Exception {
         properties.setEnabled(false);
-        var status = client().checkConnection();
-        assertThat(status.enabled()).isFalse();
-        assertThat(status.connected()).isFalse();
+        var qbit = client();
+        assertThat(calls).isEmpty(); // Construction never connects.
+        var service = new TorrentClientService(properties, List.of(qbit), tracking());
+        var mvc = MockMvcBuilders.standaloneSetup(new TorrentClientController(service))
+            .setControllerAdvice(new GlobalExceptionHandler()).build();
+        mvc.perform(get("/api/torrent/client/connection"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false))
+            .andExpect(jsonPath("$.connected").value(true)).andExpect(jsonPath("$.authMode").value("api-key"));
+        assertThat(properties.isEnabled()).isFalse();
+        assertThat(calls).hasSize(2).allMatch(call -> call.method().equals("GET"));
+        assertThatThrownBy(() -> service.addTorrent(command("A".repeat(40))))
+            .isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
+        assertThat(calls).hasSize(2);
+        calls.clear();
+        qbittorrent.getAuth().setMode(AuthMode.SESSION);
+        assertThat(qbit.checkConnection().connected()).isTrue();
+        assertThat(properties.isEnabled()).isFalse();
+        assertThat(calls).hasSize(3);
+    }
+
+    @Test void disabledCheckWithMissingCredentialsNeverContactsTheServer() {
+        properties.setEnabled(false);
+        qbittorrent.getAuth().setApiKey("");
+        qbittorrent.getAuth().setUsername("");
+        qbittorrent.getAuth().setPassword("");
+        assertThatThrownBy(() -> client().checkConnection())
+            .isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
         assertThat(calls).isEmpty();
     }
 

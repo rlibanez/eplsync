@@ -1,6 +1,6 @@
 import { secureFetch } from "../auth/transport";
 import { ServerSettings } from "./ServerSettings";
-import { Button } from "@mantine/core";
+import { Alert, Button } from "@mantine/core";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Network } from "lucide-react";
@@ -26,10 +26,17 @@ export function TorrentSettings() {
     mutationKey: ["connection-check"],
     meta: { notice: { title: "torrent.title", href: "/settings/torrent" } },
     retry: false,
-    mutationFn: async (): Promise<Connection> => {
-      const response = await secureFetch("/api/torrent/client/connection", {
+    mutationFn: async (
+      values: Record<string, unknown>,
+    ): Promise<Connection> => {
+      const response = await secureFetch("/api/settings/torrent/connection", {
+        method: "POST",
+        body: JSON.stringify(values),
         cache: "no-store",
-        headers: { Accept: "application/json" },
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -51,21 +58,34 @@ export function TorrentSettings() {
   return (
     <ServerSettings
       section="torrent"
-      actions={
+      actions={(values) => (
         <Button
           type="button"
           variant="light"
           title={t("torrent.description")}
           leftSection={<Network size={18} />}
           loading={check.isPending}
-          onClick={() => check.mutate()}
+          onClick={() => check.mutate(values)}
         >
           {t(check.isPending ? "torrent.checking" : "torrent.check")}
         </Button>
-      }
+      )}
     >
       <div className="connection-result" aria-live="polite">
-        {data && (
+        {check.isError && (
+          <Alert color="red" title={t("torrent.failed")} role="alert">
+            {check.error instanceof ConnectionError
+              ? check.error.details ||
+                t(
+                  check.error.status ? "torrent.httpError" : "torrent.upstream",
+                  {
+                    status: check.error.status,
+                  },
+                )
+              : t("torrent.network")}
+          </Alert>
+        )}
+        {check.isSuccess && data && (
           <>
             <dl className="import-summary">
               {(["client", "authMode", "version", "apiVersion"] as const).map(

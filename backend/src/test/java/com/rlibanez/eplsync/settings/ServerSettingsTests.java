@@ -199,7 +199,7 @@ class ServerSettingsTests {
         assertThat(target.snapshot().torrent().isEnabled()).isTrue();
         assertThat(target.snapshot().qbittorrent().getAuth().getApiKey()).isEqualTo("installation-key");
         for (String url : new String[]{"http://qbit.example/qbit", "http://qbit.example:8080/qbit", "http://other.example/qbit", "http://other.example/other"}) {
-            target.save("torrent",Map.of("torrent.base-url",url));
+            target.save("torrent",Map.of("torrent.base-url",url,"torrent.enabled",false));
             assertCredentialsCleared(target);
         }
         assertCredentialsCleared(withInstallationCredentials("https://qbit.example/qbit"));
@@ -217,11 +217,16 @@ class ServerSettingsTests {
     }
     @Test void onlyExplicitCredentialsCanEnableANewDestinationAndPartialCredentialsNeverInherit() {
         var target = withInstallationCredentials("http://original.example");
-        target.save("torrent",Map.of("torrent.base-url","http://new.example","torrent.enabled",true,
-            "torrent.qbittorrent.auth.mode","session","torrent.qbittorrent.auth.username","new-user"));
-        assertThat(target.snapshot().torrent().isEnabled()).isFalse();
-        assertThat(target.snapshot().qbittorrent().getAuth().getPassword()).isEmpty();
-        target.save("torrent",Map.of("torrent.qbittorrent.auth.password","new-password","torrent.enabled",true));
+        var before = jdbc.queryForList("select * from app_settings order by setting_key");
+        assertThatThrownBy(() -> target.save("torrent",Map.of("torrent.base-url","http://new.example",
+            "torrent.qbittorrent.auth.mode","session","torrent.qbittorrent.auth.username","new-user")))
+            .hasMessage("qBittorrent: introduce usuario y contraseña para activar la conexión.");
+        assertThat(target.snapshot().torrent().isEnabled()).isTrue();
+        assertThat(target.snapshot().torrent().getBaseUrl()).isEqualTo("http://original.example");
+        assertThat(jdbc.queryForList("select * from app_settings order by setting_key")).isEqualTo(before);
+        target.save("torrent",Map.of("torrent.base-url","http://new.example",
+            "torrent.qbittorrent.auth.mode","session","torrent.qbittorrent.auth.username","new-user",
+            "torrent.qbittorrent.auth.password","new-password"));
         assertThat(target.snapshot().torrent().isEnabled()).isTrue();
         var reloaded = withInstallationCredentials("http://original.example");
         assertThat(reloaded.snapshot().torrent().isEnabled()).isTrue();
@@ -258,10 +263,10 @@ class ServerSettingsTests {
                 assertThat(client.checkConnection().connected()).isTrue();
             }
             assertThat(originalCalls).allMatch(v -> v.equals("Bearer installation-key"));
-            target.save("torrent",Map.of("torrent.base-url",newUrl));
+            target.save("torrent",Map.of("torrent.base-url",newUrl,"torrent.enabled",false));
             var reloaded = withInstallationCredentials(oldUrl);
             try (var client = new QBittorrentClient(reloaded.snapshot().torrent(),reloaded.snapshot().qbittorrent())) {
-                assertThat(client.checkConnection().enabled()).isFalse();
+                assertThatThrownBy(client::checkConnection).isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
             }
             assertThat(newCalls).isEmpty();
             reloaded.save("torrent",Map.of("torrent.qbittorrent.auth.api-key","replacement-key","torrent.enabled",true));
@@ -276,6 +281,55 @@ class ServerSettingsTests {
             assertThat(originalCalls).hasSize(4).allMatch(v -> v.equals("Bearer installation-key"));
         } finally { original.stop(0); replacement.stop(0); }
     }
+    @Test void formConnectionCheckUsesUnsavedCredentialsWithoutPublishingOrPersisting() throws Exception {
+        var requests = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v2/", exchange -> {
+            String auth = exchange.getRequestHeaders().getFirst("Authorization");
+            requests.add(auth);
+            boolean allowed = "Bearer temporary-key".equals(auth);
+            byte[] body = (allowed ? (exchange.getRequestURI().getPath().endsWith("webapiVersion") ? "2.15.1" : "v5.2.4") : "Forbidden").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(allowed ? 200 : 403, body.length);
+            exchange.getResponseBody().write(body); exchange.close();
+        });
+        server.start();
+        try {
+            var target = reload(""); // A probe does not require an encryption key.
+            var snapshot = target.snapshot();
+            var before = jdbc.queryForList("select * from app_settings order by setting_key");
+            var mvc = MockMvcBuilders.standaloneSetup(new SettingsController(target))
+                .setControllerAdvice(new GlobalExceptionHandler()).build();
+            String url = "http://127.0.0.1:" + server.getAddress().getPort();
+            var values = new java.util.HashMap<String,Object>();
+            values.put("torrent.base-url", url); values.put("torrent.qbittorrent.auth.mode", "api-key");
+            values.put("torrent.qbittorrent.auth.api-key", "temporary-key");
+            mvc.perform(post("/api/settings/torrent/connection").contentType("application/json").content(tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(values)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.connected").value(true)).andExpect(jsonPath("$.version").value("v5.2.4"));
+            assertThat(requests).hasSize(2).containsOnly("Bearer temporary-key");
+            values.put("torrent.qbittorrent.auth.api-key", "incorrect-key");
+            mvc.perform(post("/api/settings/torrent/connection").contentType("application/json").content(tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(values)))
+                .andExpect(status().isBadGateway())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("incorrect-key"))));
+            values.remove("torrent.qbittorrent.auth.api-key"); requests.clear();
+            mvc.perform(post("/api/settings/torrent/connection").contentType("application/json").content(tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(values)))
+                .andExpect(status().isServiceUnavailable());
+            assertThat(requests).isEmpty();
+            assertThat(target.snapshot()).isSameAs(snapshot);
+            assertThat(jdbc.queryForList("select * from app_settings order by setting_key")).isEqualTo(before);
+        } finally { server.stop(0); }
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(authorities={"SETTINGS_MANAGE"})
+    void onlyAdminsCanProbeAnUnsavedDestinationOrCredentials() {
+        var controller = new SettingsController(reload(TEST_KEY));
+        assertThatThrownBy(() -> controller.checkTorrent(Map.of("torrent.base-url", "http://127.0.0.1:1234")))
+            .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.checkTorrent(Map.of("torrent.qbittorrent.auth.api-key", "private-key")))
+            .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
+
     private com.sun.net.httpserver.HttpServer fakeServer(java.util.List<String> calls) throws Exception {
         var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
         server.createContext("/", exchange -> {
@@ -302,8 +356,8 @@ class ServerSettingsTests {
             try (var client = new QBittorrentClient(t,q)) {
                 assertThat(client.checkConnection().connected()).isTrue();
                 assertThat(oldCalls).anyMatch(v -> v.contains("installation-password"));
-                target.save("torrent",Map.of("torrent.base-url",newUrl));
-                assertThat(client.checkConnection().enabled()).isFalse();
+                target.save("torrent",Map.of("torrent.base-url",newUrl,"torrent.enabled",false));
+                assertThatThrownBy(client::checkConnection).isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
                 assertThat(newCalls).isEmpty();
                 target.save("torrent",Map.of("torrent.qbittorrent.auth.username","new-user",
                     "torrent.qbittorrent.auth.password","new-password","torrent.enabled",true));

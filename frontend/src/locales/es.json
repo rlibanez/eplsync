@@ -370,7 +370,7 @@
   },
   "torrent": {
     "title": "Conexión con el cliente torrent",
-    "description": "Comprueba la conexión usando la configuración del servidor. No añade torrents ni modifica descargas.",
+    "description": "Comprueba la conexión con los valores actuales del formulario sin guardarlos. No añade torrents ni modifica descargas.",
     "check": "Comprobar conexión",
     "checking": "Comprobando…",
     "disabled": "La integración torrent está desactivada en el servidor.",
@@ -937,7 +937,7 @@
     "noMagnets": "La selección no contiene enlaces magnet."
   },
   "serverSettings": {
-    "destinationChangeWarning": "Al cambiar el servidor se eliminarán las credenciales anteriores y se desactivará la integración hasta configurar el nuevo destino. Puedes introducir aquí las nuevas credenciales y activar la integración antes de guardar.",
+    "destinationChangeWarning": "Al cambiar la URL del cliente torrent debes introducir las credenciales correspondientes al nuevo servidor antes de guardar.",
     "connectionAdminOnly": "Solo un administrador puede modificar el servidor y la autenticación de qBittorrent o restaurar sus ajustes de instalación.",
     "restoreDestinationHelp": "También se restaurarán conjuntamente el servidor y las credenciales de instalación de qBittorrent.",
     "addRow": "Añadir fila",

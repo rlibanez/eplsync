@@ -76,7 +76,7 @@ test("torrent connection is explicit and handles success, disabled and server fa
     version: "5.1.2",
     apiVersion: "2.11.4",
   };
-  await page.route("**/api/torrent/client/connection", (r) => {
+  await page.route("**/api/settings/torrent/connection", (r) => {
     calls++;
     return r.fulfill({ status, json: body });
   });

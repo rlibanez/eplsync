@@ -28,9 +28,8 @@ public class TorrentClientService {
     }
 
     public TorrentConnectionStatus checkConnection() {
-        if (!properties.isEnabled()) {
-            return new TorrentConnectionStatus(false, false, properties.getClient(), null, null, null);
-        }
+        if (selectedClient == null) throw new TorrentOperationException(HttpStatus.CONFLICT,
+                "No hay un adaptador disponible para el cliente torrent configurado");
         return selectedClient.checkConnection();
     }
 
