@@ -1,3 +1,4 @@
+import { eventActorLabel } from "./eventTypes";
 import { useAuth } from "../auth/Auth";
 import { EventSummary } from "./EventSummary";
 import { readEventNavigation, saveEventNavigation } from "./eventNavigation";
@@ -37,6 +38,7 @@ function EventsView({ operationId }: { operationId?: string }) {
     operationId
       ? {
           action: null,
+          username: "",
           category: null,
           outcome: null,
           origin: null,
@@ -66,6 +68,7 @@ function EventsView({ operationId }: { operationId?: string }) {
   const [category, setCategory] = useState<string | null>(saved.category);
   const [outcome, setOutcome] = useState<string | null>(saved.outcome);
   const [origin, setOrigin] = useState<string | null>(saved.origin);
+  const [username, setUsername] = useState(saved.username);
   const [from, setFrom] = useState(saved.from);
   const [to, setTo] = useState(saved.to);
   const [page, setPage] = useState(saved.page);
@@ -76,6 +79,7 @@ function EventsView({ operationId }: { operationId?: string }) {
     category,
     outcome,
     origin,
+    username,
     from,
     to,
     page,
@@ -89,6 +93,7 @@ function EventsView({ operationId }: { operationId?: string }) {
     category,
     outcome,
     origin,
+    username,
     from,
     to,
     page,
@@ -115,6 +120,7 @@ function EventsView({ operationId }: { operationId?: string }) {
   if (category) params.set("category", category);
   if (outcome) params.set("outcome", outcome);
   if (origin) params.set("origin", origin);
+  if (username.trim()) params.set("username", username.trim());
   const bounds = dateBounds(from, to);
   if (bounds.from) params.set("from", bounds.from);
   if (bounds.before) params.set("before", bounds.before);
@@ -214,6 +220,45 @@ function EventsView({ operationId }: { operationId?: string }) {
         </Button>
       ) : (
         <div className="filters">
+          <TextInput
+            type="date"
+            label={t("filters.from")}
+            value={from}
+            max={to || undefined}
+            onChange={(e) => {
+              setFrom(e.currentTarget.value);
+              setPage(0);
+            }}
+          />
+          <TextInput
+            type="date"
+            label={t("filters.to")}
+            value={to}
+            min={from || undefined}
+            onChange={(e) => {
+              setTo(e.currentTarget.value);
+              setPage(0);
+            }}
+          />
+          <Select
+            label={t("events.category")}
+            clearable
+            value={category}
+            data={[
+              "CATALOG",
+              "JOB",
+              "COVERS",
+              "TORRENT",
+              ...(auth.user?.role === "ADMIN" ? ["SECURITY"] : []),
+            ].map((value) => ({
+              value,
+              label: t("events.categories." + value),
+            }))}
+            onChange={(value) => {
+              setCategory(value);
+              setPage(0);
+            }}
+          />
           <Select
             label={t("events.event")}
             clearable
@@ -236,25 +281,6 @@ function EventsView({ operationId }: { operationId?: string }) {
             }}
           />
 
-          <Select
-            label={t("events.category")}
-            clearable
-            value={category}
-            data={[
-              "CATALOG",
-              "JOB",
-              "COVERS",
-              "TORRENT",
-              ...(auth.user?.role === "ADMIN" ? ["SECURITY"] : []),
-            ].map((value) => ({
-              value,
-              label: t("events.categories." + value),
-            }))}
-            onChange={(value) => {
-              setCategory(value);
-              setPage(0);
-            }}
-          />
           <Select
             label={t("events.outcome")}
             clearable
@@ -293,22 +319,10 @@ function EventsView({ operationId }: { operationId?: string }) {
             }}
           />
           <TextInput
-            type="date"
-            label={t("filters.from")}
-            value={from}
-            max={to || undefined}
+            label={t("events.user")}
+            value={username}
             onChange={(e) => {
-              setFrom(e.currentTarget.value);
-              setPage(0);
-            }}
-          />
-          <TextInput
-            type="date"
-            label={t("filters.to")}
-            value={to}
-            min={from || undefined}
-            onChange={(e) => {
-              setTo(e.currentTarget.value);
+              setUsername(e.currentTarget.value);
               setPage(0);
             }}
           />
@@ -319,6 +333,7 @@ function EventsView({ operationId }: { operationId?: string }) {
               setCategory(null);
               setOutcome(null);
               setOrigin(null);
+              setUsername("");
               setFrom("");
               setTo("");
               setPage(0);
@@ -431,6 +446,7 @@ function EventsView({ operationId }: { operationId?: string }) {
                             t("events.origins." + event.origin),
                           )}
                         </td>
+                        <td>{eventActorLabel(event, t)}</td>
                         <td>
                           <details
                             open={expanded.includes(event.operationId)}

@@ -169,8 +169,9 @@ public class BulkWorker {
             var future = new CompletableFuture<Outcome>();
             inFlight.put(item.getId(), new PendingSend(item, future));
             var runSettings = activeSettings;
+            var actor = job.eventActor();
             executor.execute(() -> {
-                try (var scope = settings == null ? null : settings.pin(runSettings)) { future.complete(send(item, context)); }
+                try (var scope = settings == null ? null : settings.pin(runSettings)) { future.complete(com.rlibanez.eplsync.events.EventContext.withActor(actor, () -> send(item, context))); }
                 catch (Throwable ex) { future.completeExceptionally(ex); }
                 finally {
                     synchronized (store) { store.notifyAll(); }

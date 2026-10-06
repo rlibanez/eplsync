@@ -33,6 +33,7 @@ public class CoverTaskService {
                          CoverCheckService.Report summary, String error) {}
     private static class Task {
         final com.rlibanez.eplsync.events.EventContext.Origin origin = com.rlibanez.eplsync.events.EventContext.origin();
+        final com.rlibanez.eplsync.events.EventContext.Actor actor = com.rlibanez.eplsync.events.EventContext.actor();
         final String id = UUID.randomUUID().toString();
         final boolean dryRun;
         final boolean onlyUnchecked;
@@ -68,7 +69,7 @@ public class CoverTaskService {
         if ((current != null && current.state.equals("RUNNING")) || checks.isBusy()) throw new CoverCheckService.BusyException();
         var task = new Task(dryRun, onlyUnchecked, effective);
         current = task;
-        executor.submit(() -> com.rlibanez.eplsync.events.EventContext.withOrigin(task.origin, () -> { run(task, properties); return null; }));
+        executor.submit(() -> com.rlibanez.eplsync.events.EventContext.withOrigin(task.origin, () -> com.rlibanez.eplsync.events.EventContext.withActor(task.actor, () -> { run(task, properties); return null; })));
         return task.status();
     }
 

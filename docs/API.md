@@ -1520,6 +1520,17 @@ Los eventos borrados por retención o mantenimiento no se pueden recuperar.
 Las transacciones fallidas no emiten eventos de éxito. El canal transmite eventos
 ya confirmados; desconectar un navegador no cancela operaciones del backend.
 
+Los listados aceptan `username` para filtrar por una parte del nombre registrado,
+sin distinguir mayúsculas y minúsculas. Este filtro mantiene la restricción de
+los eventos de seguridad a administradores. Las acciones puntuales de seguridad
+muestran la misma fecha en Inicio y Fin, sin una duración medida.
+
+Cada evento incluye `actor`, con `id`, `username` y `kind` (`USER`, `SYSTEM`
+o `UNKNOWN`). El nombre se conserva como instantánea, incluso si la cuenta se
+renombra o elimina. Los trabajos en segundo plano mantienen al usuario que los
+inició; las operaciones automáticas se identifican como sistema. Los eventos
+anteriores sin atribución tienen `kind: "UNKNOWN"`.
+
 ### Conservación y borrado
 
 `GET /api/events/retention` devuelve `{ "maxCount": 10000, "maxAgeDays": 365 }`

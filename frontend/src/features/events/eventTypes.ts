@@ -1,5 +1,10 @@
 export interface AppEvent {
   id: number;
+  actor?: {
+    id: string | null;
+    username: string | null;
+    kind: "USER" | "SYSTEM" | "UNKNOWN";
+  };
   createdAt: string;
   category: "CATALOG" | "JOB" | "COVERS" | "TORRENT" | "SECURITY";
   action: string;
@@ -72,4 +77,12 @@ export function formatDuration(ms: number, locale?: string) {
     (seconds % 60) +
     " s"
   );
+}
+
+export function eventActorLabel(
+  event: AppEvent,
+  t: (key: string) => string,
+): string {
+  if (event.actor?.kind === "SYSTEM") return t("events.systemUser");
+  return event.actor?.username || t("events.unknownUser");
 }

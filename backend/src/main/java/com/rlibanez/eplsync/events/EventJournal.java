@@ -15,8 +15,16 @@ public class EventJournal {
     public enum Category { CATALOG, JOB, COVERS, TORRENT, SECURITY }
     public enum Outcome { STARTED, SUCCEEDED, PARTIAL, FAILED, PAUSED, RETRY_WAIT, RESUMED, CANCELLED, RECOVERED }
     public record Entry(long id, Instant createdAt, Category category, String action, Outcome outcome,
-                        EventContext.Origin origin, String operationId, Map<String, Object> details) {}
-    public record Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before, String action) {
+                        EventContext.Origin origin, String operationId, Map<String, Object> details, EventContext.Actor actor) {
+        public Entry(long id, Instant createdAt, Category category, String action, Outcome outcome,
+                     EventContext.Origin origin, String operationId, Map<String,Object> details) {
+            this(id, createdAt, category, action, outcome, origin, operationId, details, EventContext.Actor.unknown());
+        }
+    }
+    public record Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before, String action, String username) {
+        public Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before, String action) {
+            this(category, outcome, origin, from, before, action, null);
+        }
         public Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before) {
             this(category, outcome, origin, from, before, null);
         }
@@ -57,6 +65,10 @@ public class EventJournal {
               outcome TEXT NOT NULL, origin TEXT NOT NULL, operation_id TEXT NOT NULL, details TEXT NOT NULL
             )
             """);
+        var columns = jdbc.queryForList("PRAGMA table_info(app_events)").stream()
+            .map(row -> String.valueOf(row.get("name"))).collect(java.util.stream.Collectors.toSet());
+        for (String column : List.of("actor_id", "actor_username", "actor_kind"))
+            if (!columns.contains(column)) jdbc.execute("ALTER TABLE app_events ADD COLUMN " + column + " TEXT");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_events_date ON app_events(created_at)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_events_category_id ON app_events(category, id)");
         jdbc.execute("CREATE INDEX IF NOT EXISTS idx_events_operation ON app_events(operation_id)");
@@ -89,20 +101,26 @@ public class EventJournal {
         return recordAt(category, action, outcome, origin, operationId, details, Instant.now());
     }
 
+    public Entry recordAs(EventContext.Actor actor, Category category, String action, Outcome outcome,
+                          EventContext.Origin origin, String operationId, Map<String,?> details) {
+        return EventContext.withActor(actor, () -> record(category, action, outcome, origin, operationId, details));
+    }
+
     private Entry recordAt(Category category, String action, Outcome outcome, EventContext.Origin origin,
                            String operationId, Map<String, ?> details, Instant timestamp) {
+        var actor = EventContext.actorFor(origin);
         return transactions.execute(tx -> {
             long now = timestamp.toEpochMilli();
             var json = mapper.writeValueAsString(details);
             if (json.length() > 16384) throw new com.rlibanez.eplsync.exception.UserInputException("Resumen del evento demasiado grande");
             long id = jdbc.queryForObject("""
-                INSERT INTO app_events(created_at, category, action, outcome, origin, operation_id, details)
-                VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id
-                """, Long.class, now, category.name(), action, outcome.name(), origin.name(), operationId, json);
+                INSERT INTO app_events(created_at, category, action, outcome, origin, operation_id, details, actor_id, actor_username, actor_kind)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id
+                """, Long.class, now, category.name(), action, outcome.name(), origin.name(), operationId, json, actor.id(), actor.username(), actor.kind());
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() { signal(); }
             });
-            return new Entry(id, Instant.ofEpochMilli(now), category, action, outcome, origin, operationId, new LinkedHashMap<>(details));
+            return new Entry(id, Instant.ofEpochMilli(now), category, action, outcome, origin, operationId, new LinkedHashMap<>(details), actor);
         });
     }
 
@@ -136,6 +154,9 @@ public class EventJournal {
         return run(category, action, Map.of(), work, summary);
     }
     public <T> T run(Category category, String action, Map<String, ?> context, Supplier<T> work, Function<T, Map<String, ?>> summary) {
+        return EventContext.withActor(EventContext.actor(), () -> runCaptured(category, action, context, work, summary));
+    }
+    private <T> T runCaptured(Category category, String action, Map<String, ?> context, Supplier<T> work, Function<T, Map<String, ?>> summary) {
         if (capturing.get() != null) return work.get();
         String operationId = UUID.randomUUID().toString();
         record(category, action, Outcome.STARTED, EventContext.origin(), operationId, context);
@@ -176,7 +197,9 @@ public class EventJournal {
         @SuppressWarnings("unchecked") Map<String, Object> details = mapper.readValue(rs.getString("details"), Map.class);
         return new Entry(rs.getLong("id"), Instant.ofEpochMilli(rs.getLong("created_at")),
                 Category.valueOf(rs.getString("category")), rs.getString("action"), Outcome.valueOf(rs.getString("outcome")),
-                EventContext.Origin.valueOf(rs.getString("origin")), rs.getString("operation_id"), details);
+                EventContext.Origin.valueOf(rs.getString("origin")), rs.getString("operation_id"), details,
+                new EventContext.Actor(rs.getString("actor_id"), rs.getString("actor_username"),
+                    rs.getString("actor_kind") == null ? "UNKNOWN" : rs.getString("actor_kind")));
     }
     public long cursor() {
         var value = jdbc.queryForObject("SELECT COALESCE((SELECT seq FROM sqlite_sequence WHERE name='app_events'),0)", Long.class);
@@ -207,6 +230,7 @@ public class EventJournal {
     }
     private String where(Filter filter, List<Object> args) {
         String sql = " WHERE 1=1" + visibilitySql();
+        if (filter.username() != null && !filter.username().isBlank()) { sql += " AND instr(lower(actor_username),lower(?))>0"; args.add(filter.username().strip()); }
         if (filter.action() != null) { sql += " AND action=?"; args.add(filter.action()); }
         if (filter.category() != null) { sql += " AND category=?"; args.add(filter.category().name()); }
         if (filter.origin() != null) { sql += " AND origin=?"; args.add(filter.origin().name()); }

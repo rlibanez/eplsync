@@ -784,6 +784,9 @@
     "durationHint": "Puedes cerrar los avisos antes con la X."
   },
   "events": {
+    "user": "Usuario",
+    "systemUser": "Sistema",
+    "unknownUser": "No disponible",
     "showAll": "Ver todos los eventos",
     "missingOperation": "Este evento ya no está disponible. Puede haberse eliminado por mantenimiento o antigüedad.",
     "title": "Eventos",

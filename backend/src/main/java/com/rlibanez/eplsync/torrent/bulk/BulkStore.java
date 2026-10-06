@@ -32,7 +32,9 @@ public class BulkStore {
         var summary = view(job);
         var origin = job.getEventOrigin() == null ? com.rlibanez.eplsync.events.EventContext.Origin.MANUAL
             : com.rlibanez.eplsync.events.EventContext.Origin.valueOf(job.getEventOrigin());
-        events.record(com.rlibanez.eplsync.events.EventJournal.Category.JOB, "DOWNLOAD", outcome, origin, job.getId(),
+        var currentActor = com.rlibanez.eplsync.events.EventContext.actor();
+        var actor = "USER".equals(currentActor.kind()) ? currentActor : job.eventActor();
+        events.recordAs(actor, com.rlibanez.eplsync.events.EventJournal.Category.JOB, "DOWNLOAD", outcome, origin, job.getId(),
             Map.of("selected", summary.selectedItems(), "processed", summary.processedItems(), "accepted", summary.accepted(),
                 "alreadyExists", summary.alreadyExists(), "failed", summary.failed(), "skipped", summary.skipped()));
     }
@@ -219,6 +221,8 @@ public class BulkStore {
         if (interval < 0 || interval > 60_000) throw new com.rlibanez.eplsync.exception.UserInputException("interval debe estar entre 0ms y 60s");
         var job = new BulkJob();
         job.setEventOrigin(com.rlibanez.eplsync.events.EventContext.origin().name());
+        var actor = com.rlibanez.eplsync.events.EventContext.actor();
+        job.setEventActorId(actor.id()); job.setEventActorUsername(actor.username()); job.setEventActorKind(actor.kind());
         job.setId(UUID.randomUUID().toString()); job.setState(BulkJob.State.QUEUED);
         job.setMultipleHashes(policy);
         job.setClient(properties.getClient()); job.setTargetFingerprint(fingerprint());

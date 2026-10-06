@@ -9,9 +9,10 @@ const columns = [
   "event",
   "outcome",
   "origin",
+  "user",
   "summary",
 ] as const;
-const defaults = [195, 195, 110, 140, 195, 170, 120, 480];
+const defaults = [195, 195, 110, 140, 195, 170, 120, 170, 480];
 const storageKey = "eplsync.events.columnWidths";
 const clamp = (width: number) => Math.min(1200, Math.max(90, width));
 
@@ -22,6 +23,14 @@ export function useEventColumns() {
       const saved: unknown = JSON.parse(
         localStorage.getItem(storageKey) || "null",
       );
+      if (
+        Array.isArray(saved) &&
+        saved.length === columns.length - 1 &&
+        saved.every(
+          (value) => typeof value === "number" && Number.isFinite(value),
+        )
+      )
+        return [...saved.slice(0, 7), 170, ...saved.slice(7)].map(clamp);
       if (
         Array.isArray(saved) &&
         saved.length === columns.length &&

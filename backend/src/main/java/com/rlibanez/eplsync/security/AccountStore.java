@@ -65,7 +65,14 @@ public class AccountStore {
             if(authentication!=null && authentication.getPrincipal() instanceof Account account) actor=account.id();
         }
         if(actor!=null) details.put("actorId",actor);
-        journal.record(com.rlibanez.eplsync.events.EventJournal.Category.SECURITY,action,
+        var eventActor = com.rlibanez.eplsync.events.EventContext.actor();
+        if (actor != null && !"USER".equals(eventActor.kind())) {
+            var names = jdbc.queryForList("SELECT username FROM users WHERE id=?", String.class, actor);
+            eventActor = new com.rlibanez.eplsync.events.EventContext.Actor(actor, names.isEmpty() ? null : names.getFirst(), "USER");
+        } else if (actor == null && action.equals("USER_CREATE") && !"USER".equals(eventActor.kind())) {
+            eventActor = new com.rlibanez.eplsync.events.EventContext.Actor(id, username, "USER");
+        }
+        journal.recordAs(eventActor, com.rlibanez.eplsync.events.EventJournal.Category.SECURITY,action,
             com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED,com.rlibanez.eplsync.events.EventContext.origin(),UUID.randomUUID().toString(),details);
     }
     public boolean initialized() { return jdbc.queryForObject("SELECT count(*) FROM users", Long.class) > 0; }

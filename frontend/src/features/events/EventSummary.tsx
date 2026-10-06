@@ -2,7 +2,11 @@ import { copyDetails } from "./copyDetails";
 import { useState } from "react";
 import { Button } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { type EventOperation, formatDuration } from "./eventTypes";
+import {
+  type EventOperation,
+  formatDuration,
+  eventActorLabel,
+} from "./eventTypes";
 
 export function EventSummary({ operation }: { operation: EventOperation }) {
   const { t, i18n } = useTranslation();
@@ -30,6 +34,7 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
       t("events.operation") + ": " + operation.latest.operationId,
       ...operation.events.flatMap((event) => [
         date(event.createdAt) + " — " + t("events.outcomes." + event.outcome),
+        t("events.user") + ": " + eventActorLabel(event, t),
         ...Object.entries(event.details).map(
           ([key, value]) =>
             t("events.fields." + key, { defaultValue: key }) +
@@ -58,6 +63,9 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
           <li key={event.id}>
             <strong>{t("events.outcomes." + event.outcome)}</strong>
             <time dateTime={event.createdAt}>{date(event.createdAt)}</time>
+            <p className="muted">
+              {t("events.user")}: {eventActorLabel(event, t)}
+            </p>
             {!!Object.keys(event.details).length && (
               <dl className="event-details">
                 {Object.entries(event.details).map(([key, value]) => (

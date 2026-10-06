@@ -139,6 +139,18 @@ class BulkTests {
         synchronized (store) { assertThat(condition.getAsBoolean()).isTrue(); }
     }
 
+    @Test void persistsInitiatorAndAttributesBackgroundCompletion() throws Exception {
+        var actor = new com.rlibanez.eplsync.events.EventContext.Actor("creator-id", "alice", "USER");
+        long cursor = events.cursor();
+        var job = com.rlibanez.eplsync.events.EventContext.withActor(actor, () -> create(null));
+        assertThat(jobs.findById(job.jobId()).orElseThrow().eventActor()).isEqualTo(actor);
+        worker = new BulkWorker(store, client, properties);
+        worker.start();
+        awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+        assertThat(events.after(cursor, 20)).hasSize(2)
+            .allSatisfy(event -> assertThat(event.actor()).isEqualTo(actor));
+    }
+
     @Test void automaticCoordinatorHonorsGlobalIntervalAndCompletesWithoutTicks() throws Exception {
         var starts = new CopyOnWriteArrayList<Long>();
         when(client.addTorrent(any())).thenAnswer(invocation -> {

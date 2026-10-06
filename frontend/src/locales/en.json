@@ -784,6 +784,9 @@
     "durationHint": "You can dismiss notifications earlier with the X."
   },
   "events": {
+    "user": "User",
+    "systemUser": "System",
+    "unknownUser": "Unavailable",
     "showAll": "View all events",
     "missingOperation": "This event is no longer available. It may have been deleted by maintenance or retention.",
     "title": "Events",

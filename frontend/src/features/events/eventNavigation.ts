@@ -1,6 +1,7 @@
 const key = "eplsync.events.navigation";
 export interface EventNavigation {
   action: string | null;
+  username: string;
   category: string | null;
   outcome: string | null;
   origin: string | null;
@@ -12,6 +13,7 @@ export interface EventNavigation {
 }
 const defaults: EventNavigation = {
   action: null,
+  username: "",
   category: null,
   outcome: null,
   origin: null,

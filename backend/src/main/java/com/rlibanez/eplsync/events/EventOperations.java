@@ -40,6 +40,7 @@ public class EventOperations {
             var args = new ArrayList<Object>(); args.add(cursor);
             String where = " WHERE 1=1" + EventJournal.visibilitySql();
             if (operationId != null) { where += " AND operation_id=?"; args.add(operationId); }
+            if (filter.username() != null && !filter.username().isBlank()) { where += " AND instr(lower(actor_username),lower(?))>0"; args.add(filter.username().strip()); }
             if (filter.action() != null) { where += " AND action=?"; args.add(filter.action()); }
             if (filter.category() != null) { where += " AND category=?"; args.add(filter.category().name()); }
             if (filter.origin() != null) { where += " AND origin=?"; args.add(filter.origin().name()); }
@@ -68,8 +69,10 @@ public class EventOperations {
                     case SUCCEEDED, PARTIAL, FAILED, CANCELLED -> latest.createdAt();
                     default -> null;
                 };
+                boolean audit = events.size() == 1 && latest.category() == EventJournal.Category.SECURITY;
+                if (audit) start = latest.createdAt();
                 // Retention may have removed the beginning: never invent a start or duration.
-                Long duration = start == null || end == null ? null : Math.max(0, Duration.between(start, end).toMillis());
+                Long duration = audit || start == null || end == null ? null : Math.max(0, Duration.between(start, end).toMillis());
                 return new Operation(latest, start, end, events.getFirst().createdAt(), duration, events);
             }).toList();
             return new Page(operations, total, page, size, cursor);

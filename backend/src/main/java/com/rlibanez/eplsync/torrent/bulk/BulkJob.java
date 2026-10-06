@@ -9,6 +9,13 @@ import java.time.Instant;
 @Table(name = "torrent_bulk_jobs")
 @Getter @Setter
 public class BulkJob {
+    private String eventActorId;
+    private String eventActorUsername;
+    private String eventActorKind;
+    public com.rlibanez.eplsync.events.EventContext.Actor eventActor() {
+        return new com.rlibanez.eplsync.events.EventContext.Actor(eventActorId, eventActorUsername,
+            eventActorKind == null ? "UNKNOWN" : eventActorKind);
+    }
     private String eventOrigin = "MANUAL";
     @Id private String id;
     @Enumerated(EnumType.STRING) private State state;

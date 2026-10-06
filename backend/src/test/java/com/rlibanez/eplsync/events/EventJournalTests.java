@@ -44,6 +44,76 @@ class EventJournalTests {
         jdbc.update("UPDATE app_events SET created_at=? WHERE id=?", Instant.parse("2026-10-02T" + time + "Z").toEpochMilli(), event.id());
         return event;
     }
+    @Test void recordsAuthenticatedIdentityAndKeepsTheHistoricalUsername() {
+        var previous = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        var account = new com.rlibanez.eplsync.security.Account("user-id", "alice", "private@example.org", "USER", "ACTIVE", false, null, 1, java.util.Set.of(), Instant.now());
+        try {
+            org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(account, null, java.util.List.of()));
+            var event = record();
+            assertThat(event.actor()).isEqualTo(new EventContext.Actor("user-id", "alice", "USER"));
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+            var historical = journal.search(all, 0, 20).items().getFirst();
+            assertThat(historical.actor()).isEqualTo(event.actor());
+            assertThat(historical.actor().toString()).doesNotContain("private@example.org");
+        } finally { org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(previous); }
+    }
+
+    @Test void preservesIdentityInBackgroundAndRestoresThreadContextAfterFailure() throws Exception {
+        var actor = new EventContext.Actor("creator", "original-name", "USER");
+        try (var executor = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var event = executor.submit(() -> EventContext.withActor(actor, this::record)).get();
+            assertThat(event.actor()).isEqualTo(actor);
+            executor.submit(() -> {
+                assertThatThrownBy(() -> EventContext.withActor(actor, () -> { throw new IllegalStateException(); }))
+                    .isInstanceOf(IllegalStateException.class);
+                assertThat(EventContext.actor()).isEqualTo(EventContext.Actor.system());
+            }).get();
+        }
+    }
+
+    @Test void filtersHistoricalUsernamesAndDatesPointInTimeAudits() {
+        var actor = new EventContext.Actor("id", "Robert", "USER");
+        var event = journal.recordAs(actor, Category.SECURITY, "USER_UPDATE", Outcome.SUCCEEDED,
+            EventContext.Origin.MANUAL, "audit", Map.of());
+        var filter = new Filter(null, null, null, null, null, null, " ROB ");
+        assertThat(journal.search(filter, 0, 20).items()).hasSize(1);
+        var operation = operations.search(filter, 0, 20, null).items().getFirst();
+        assertThat(operation.startedAt()).isEqualTo(event.createdAt());
+        assertThat(operation.finishedAt()).isEqualTo(event.createdAt());
+        assertThat(operation.durationMs()).isNull();
+        assertThat(operations.search(new Filter(null, null, null, null, null, null, "other"), 0, 20, null).total()).isZero();
+        var previous = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        try {
+            org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("reader", null,
+                    java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("EVENTS_MANAGE"))));
+            assertThat(journal.search(filter, 0, 20).total()).isZero();
+            assertThat(operations.search(filter, 0, 20, null).total()).isZero();
+        } finally { org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(previous); }
+    }
+
+    @Test void keepsInitiatorWhenOperationClearsAuthentication() {
+        var previous = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        var actor = EventContext.actor();
+        try {
+            journal.run(Category.CATALOG, "RESET", () -> {
+                org.springframework.security.core.context.SecurityContextHolder.clearContext();
+                return true;
+            }, ignored -> Map.of());
+            assertThat(journal.search(all, 0, 20).items()).hasSize(2)
+                .allSatisfy(event -> assertThat(event.actor()).isEqualTo(actor));
+        } finally { org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(previous); }
+    }
+
+    @Test void marksSystemOperationsAndLegacyEventsWithoutInventingAnOwner() {
+        var system = journal.record(Category.CATALOG, "UPDATE", Outcome.SUCCEEDED, EventContext.Origin.SYSTEM,
+            "system-operation", Map.of());
+        assertThat(system.actor()).isEqualTo(EventContext.Actor.system());
+        jdbc.update("UPDATE app_events SET actor_id=NULL,actor_username=NULL,actor_kind=NULL WHERE id=?", system.id());
+        assertThat(journal.search(all, 0, 20).items().getFirst().actor()).isEqualTo(EventContext.Actor.unknown());
+    }
+
     @Test void groupedOperationsSortByStartAndFreezeBothResultsAndPagination() {
         at("catalog1", Outcome.STARTED, "16:11:00");
         at("catalog1", Outcome.SUCCEEDED, "16:12:15");
