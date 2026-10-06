@@ -1036,15 +1036,15 @@
     },
     "secretKey": {
       "title": "Configurar clave de cifrado",
-      "help": "Para guardar contraseñas o API keys, configura EPLSYNC_SECRET_KEY en .env o Docker Compose y recrea el contenedor. Después vuelve a guardar los ajustes.",
+      "help": "Para guardar contraseñas o API keys, define la variable de entorno EPLSYNC_SECRET_KEY con la clave generada en la configuración de tu instalación. Vuelve a iniciar EPL Sync con la nueva configuración y guarda los ajustes de nuevo.",
       "label": "EPLSYNC_SECRET_KEY",
       "generate": "Generar",
       "copy": "Copiar",
       "copied": "Copiado",
       "close": "Cerrar",
-      "instructions": "Copia la línea generada en tu configuración. Generar la clave no la activa ni la guarda en la base de datos. Conserva su valor; no lo cambies después de guardar credenciales.",
+      "instructions": "Copia la clave generada como valor de EPLSYNC_SECRET_KEY en tu configuración. Generar la clave no la activa ni la guarda en la base de datos. Conserva su valor; no lo cambies después de guardar credenciales.",
       "generationError": "No se ha podido generar una clave segura en este navegador. Puedes usar: openssl rand -base64 32.",
-      "copyError": "No se ha podido copiar. Selecciona el valor y cópialo manualmente como EPLSYNC_SECRET_KEY=valor."
+      "copyError": "No se ha podido copiar. Selecciona la clave y cópiala manualmente."
     }
   },
   "auth": {

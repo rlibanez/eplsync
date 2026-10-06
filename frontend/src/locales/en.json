@@ -1036,15 +1036,15 @@
     },
     "secretKey": {
       "title": "Configure encryption key",
-      "help": "To save passwords or API keys, configure EPLSYNC_SECRET_KEY in .env or Docker Compose and recreate the container. Then save the settings again.",
+      "help": "To save passwords or API keys, set the EPLSYNC_SECRET_KEY environment variable to the generated key in your installation configuration. Start EPL Sync again with the new configuration, then save the settings again.",
       "label": "EPLSYNC_SECRET_KEY",
       "generate": "Generate",
       "copy": "Copy",
       "copied": "Copied",
       "close": "Close",
-      "instructions": "Copy the generated line into your configuration. Generating the key does not activate it or save it in the database. Keep its value; do not change it after saving credentials.",
+      "instructions": "Copy the generated key as the value of EPLSYNC_SECRET_KEY in your configuration. Generating the key does not activate it or save it in the database. Keep its value; do not change it after saving credentials.",
       "generationError": "This browser could not generate a secure key. You can use: openssl rand -base64 32.",
-      "copyError": "Could not copy. Select the value and copy it manually as EPLSYNC_SECRET_KEY=value."
+      "copyError": "Could not copy. Select the key and copy it manually."
     }
   },
   "auth": {

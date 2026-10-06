@@ -7,9 +7,15 @@ import { generateSecretKey } from "./secretKey";
 
 export function SecretKeyDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
-  const [key, setKey] = useState("");
+  const [key, setKey] = useState(() => {
+    try {
+      return generateSecretKey();
+    } catch {
+      return "";
+    }
+  });
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(key ? "" : "generationError");
   function generate() {
     setError("");
     setCopied(false);
@@ -22,7 +28,7 @@ export function SecretKeyDialog({ onClose }: { onClose: () => void }) {
   }
   async function copy() {
     setError("");
-    const text = `EPLSYNC_SECRET_KEY=${key}`;
+    const text = key;
     try {
       if (navigator.clipboard?.writeText)
         await navigator.clipboard.writeText(text);
