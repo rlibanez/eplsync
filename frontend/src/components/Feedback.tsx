@@ -1,6 +1,7 @@
 import { ApiError, NetworkError } from "../api/catalog";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Loader } from "@mantine/core";
+import type { ReactNode } from "react";
+import { Alert, Button, Group, Loader } from "@mantine/core";
 export function Loading() {
   const { t } = useTranslation();
   return (
@@ -14,28 +15,43 @@ export function Failure({
   error,
   retry,
   notFoundKey = "errors.notFound",
+  actions,
 }: {
   error: Error;
   retry: () => void;
   notFoundKey?: string;
+  actions?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
-    <Alert color="red" title={error instanceof ApiError && error.details ? undefined : t("feedback.title")} role="alert">
+    <Alert
+      color="red"
+      title={
+        error instanceof ApiError && error.details
+          ? undefined
+          : t("feedback.title")
+      }
+      role="alert"
+    >
       <p>
-        {error instanceof ApiError && error.details ? error.details : error instanceof ApiError
-          ? t(error.status === 404 ? notFoundKey : "errors.http", {
-              status: error.status,
-            })
-          : t(
-              error instanceof NetworkError
-                ? "errors.network"
-                : "errors.unexpected",
-            )}
+        {error instanceof ApiError && error.details
+          ? error.details
+          : error instanceof ApiError
+            ? t(error.status === 404 ? notFoundKey : "errors.http", {
+                status: error.status,
+              })
+            : t(
+                error instanceof NetworkError
+                  ? "errors.network"
+                  : "errors.unexpected",
+              )}
       </p>
-      <Button variant="light" color="red" onClick={retry}>
-        {t("feedback.retry")}{" "}
-      </Button>
+      <Group gap="sm">
+        <Button variant="light" color="red" onClick={retry}>
+          {t("feedback.retry")}{" "}
+        </Button>
+        {actions}
+      </Group>
     </Alert>
   );
 }

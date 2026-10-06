@@ -9,7 +9,7 @@ import {
   useIsMutating,
 } from "@tanstack/react-query";
 import { Button, TextInput, Select } from "@mantine/core";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
@@ -160,6 +160,16 @@ export function SendSelection({
     { value: "true", label: t("downloads.yes") },
     { value: "false", label: t("downloads.no") },
   ];
+  const settingsAction = auth.can("SETTINGS_MANAGE") ? (
+    <Button
+      component={Link}
+      to="/settings/torrent"
+      variant="light"
+      onClick={onClose}
+    >
+      {t("send.openTorrentSettings")}
+    </Button>
+  ) : undefined;
   return (
     <Modal
       opened
@@ -173,10 +183,18 @@ export function SendSelection({
       {allResults && <p className="muted">{t("send.liveSelection")}</p>}
       {(defaults.isPending || categories.isFetching) && <Loading />}
       {categories.isError && (
-        <Failure error={categories.error} retry={() => categories.refetch()} />
+        <Failure
+          error={categories.error}
+          retry={() => categories.refetch()}
+          actions={settingsAction}
+        />
       )}
       {defaults.isError && (
-        <Failure error={defaults.error} retry={() => defaults.refetch()} />
+        <Failure
+          error={defaults.error}
+          retry={() => defaults.refetch()}
+          actions={settingsAction}
+        />
       )}
       <form
         onSubmit={(e) => {

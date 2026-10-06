@@ -75,6 +75,41 @@ class ServerSettingsTests {
 
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+        "api-key,qBittorrent: introduce una API key para activar la conexión.",
+        "session,qBittorrent: introduce usuario y contraseña para activar la conexión.",
+        "auto,qBittorrent: introduce una API key o usuario y contraseña para activar la conexión."
+    })
+    void reportsMissingCredentialsWithoutChangingSettings(String mode, String message) throws Exception {
+        var target = reload(TEST_KEY);
+        var before = jdbc.queryForList("select * from app_settings order by setting_key");
+        var mvc = MockMvcBuilders.standaloneSetup(new SettingsController(target))
+            .setControllerAdvice(new GlobalExceptionHandler()).build();
+        mvc.perform(put("/api/settings/torrent").contentType("application/json")
+            .content("{\"torrent.enabled\":true,\"torrent.qbittorrent.auth.mode\":\"" + mode + "\"}"))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.details").value(message));
+        assertThat(target.snapshot().torrent().isEnabled()).isFalse();
+        assertThat(jdbc.queryForList("select * from app_settings order by setting_key")).isEqualTo(before);
+    }
+
+    @Test void reportsCoverLimitsAndSafeBindingErrors() throws Exception {
+        var target = reload(TEST_KEY);
+        assertThatThrownBy(() -> target.save("covers", Map.of("catalog.cover-check.connect-timeout", "5s",
+            "catalog.cover-check.request-timeout", "2s")))
+            .hasMessage("Portadas: los tiempos deben estar entre 1 ms y 5 minutos y cumplir conexión <= petición <= lote.");
+        assertThatThrownBy(() -> target.save("covers", Map.of("catalog.cover-check.concurrency", 33)))
+            .hasMessage("Portadas: la concurrencia debe estar entre 1 y 32.");
+        var mvc = MockMvcBuilders.standaloneSetup(new SettingsController(target))
+            .setControllerAdvice(new GlobalExceptionHandler()).build();
+        mvc.perform(put("/api/settings/torrent").contentType("application/json")
+            .content("{\"torrent.qbittorrent.auth.mode\":\"private-invalid-value\",\"torrent.qbittorrent.auth.password\":\"private-password\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.details").value("Formato inválido en el ajuste torrent.qbittorrent.auth.mode. Revisa el tipo y formato del campo."))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("private-invalid-value"))))
+            .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("private-password"))));
+    }
+
     @Test void preservesConfiguredAndSavedDurationText() {
         assertThat(settings.view("catalog").fields().stream().filter(f -> f.key().equals("catalog.import.retention")).findFirst().orElseThrow().value()).isEqualTo("24h");
         settings.save("catalog", Map.of("catalog.import.retention", "600s"));

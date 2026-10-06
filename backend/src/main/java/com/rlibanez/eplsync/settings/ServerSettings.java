@@ -240,18 +240,43 @@ public class ServerSettings {
             com.rlibanez.eplsync.importer.FileDownloader.validateUrl(url);
             // Validate even while disabled, so enabling later cannot publish invalid options.
             boolean enabled = t.isEnabled(); t.setEnabled(true); t.validate(); t.setEnabled(enabled);
-            if (!t.getClient().equals(installation.get("torrent.client"))) throw new com.rlibanez.eplsync.exception.UserInputException();
-            if (enabled && t.getClient().equals("qbittorrent")) q.validate();
-            if (q.getDownload().getCategory().chars().anyMatch(Character::isISOControl)) throw new com.rlibanez.eplsync.exception.UserInputException();
+            if (!t.getClient().equals(installation.get("torrent.client"))) throw new com.rlibanez.eplsync.exception.UserInputException("El tipo de cliente torrent debe coincidir con el configurado en la instalación.");
+            if (enabled && t.getClient().equals("qbittorrent")) {
+                var auth = q.getAuth();
+                if (auth.getMode() == null) throw new com.rlibanez.eplsync.exception.UserInputException("qBittorrent: selecciona un método de autenticación válido.");
+                boolean complete = switch (auth.getMode()) {
+                    case API_KEY -> auth.hasApiKey();
+                    case SESSION -> auth.hasSessionCredentials();
+                    case AUTO -> auth.hasApiKey() || auth.hasSessionCredentials();
+                };
+                if (!complete) throw new com.rlibanez.eplsync.exception.UserInputException(switch (auth.getMode()) {
+                    case API_KEY -> "qBittorrent: introduce una API key para activar la conexión.";
+                    case SESSION -> "qBittorrent: introduce usuario y contraseña para activar la conexión.";
+                    case AUTO -> "qBittorrent: introduce una API key o usuario y contraseña para activar la conexión.";
+                });
+                q.validate();
+            }
+            if (q.getDownload().getCategory().chars().anyMatch(Character::isISOControl)) throw new com.rlibanez.eplsync.exception.UserInputException("qBittorrent: la categoría no puede contener caracteres de control.");
             new com.rlibanez.eplsync.torrent.TorrentNameResolver().resolveTags(q.getDownload().getTags(), new com.rlibanez.eplsync.model.CatalogBook());
-            if (!i.isRetentionValid() || !c.isTimeoutConfigurationValid() || c.getConcurrency() < 1 || c.getConcurrency() > 32) throw new com.rlibanez.eplsync.exception.UserInputException();
+            if (!i.isRetentionValid()) throw new com.rlibanez.eplsync.exception.UserInputException("Importación: la retención debe ser positiva y no superar 7 días.");
+            if (!c.isTimeoutConfigurationValid()) throw new com.rlibanez.eplsync.exception.UserInputException("Portadas: los tiempos deben estar entre 1 ms y 5 minutos y cumplir conexión <= petición <= lote.");
+            if (c.getConcurrency() < 1 || c.getConcurrency() > 32) throw new com.rlibanez.eplsync.exception.UserInputException("Portadas: la concurrencia debe estar entre 1 y 32.");
             var b = t.getBulk();
-            if (b.getBatchSize() < 1 || b.getBatchSize() > 1000 || b.getConcurrency() < 1 || b.getConcurrency() > 16 || b.getMultipleHashes() == null
-                || b.getInterval().isNegative() || b.getInterval().compareTo(Duration.ofSeconds(60)) > 0) throw new com.rlibanez.eplsync.exception.UserInputException();
-            if (t.getConnectTimeout().compareTo(Duration.ofMinutes(5)) > 0 || t.getRequestTimeout().compareTo(Duration.ofMinutes(5)) > 0) throw new com.rlibanez.eplsync.exception.UserInputException();
-            if (e.getRetention().getMaxCount() < 1 || e.getRetention().getMaxAgeDays() < 1) throw new com.rlibanez.eplsync.exception.UserInputException();
+            if (b.getBatchSize() < 1 || b.getBatchSize() > 1000) throw new com.rlibanez.eplsync.exception.UserInputException("Envíos torrent: el tamaño del lote debe estar entre 1 y 1000.");
+            if (b.getConcurrency() < 1 || b.getConcurrency() > 16) throw new com.rlibanez.eplsync.exception.UserInputException("Envíos torrent: la concurrencia debe estar entre 1 y 16.");
+            if (b.getMultipleHashes() == null) throw new com.rlibanez.eplsync.exception.UserInputException("Envíos torrent: selecciona una política válida para hashes múltiples.");
+            if (b.getInterval().isNegative() || b.getInterval().compareTo(Duration.ofSeconds(60)) > 0) throw new com.rlibanez.eplsync.exception.UserInputException("Envíos torrent: el intervalo debe estar entre 0 y 60 segundos.");
+            if (t.getConnectTimeout().compareTo(Duration.ofMinutes(5)) > 0 || t.getRequestTimeout().compareTo(Duration.ofMinutes(5)) > 0) throw new com.rlibanez.eplsync.exception.UserInputException("Conexión torrent: los tiempos de espera no pueden superar 5 minutos.");
+            if (e.getRetention().getMaxCount() < 1 || e.getRetention().getMaxAgeDays() < 1) throw new com.rlibanez.eplsync.exception.UserInputException("Eventos: el máximo de registros y los días de retención deben ser mayores que cero.");
             com.rlibanez.eplsync.torrent.TorrentNameResolver.validatePattern(t.getRename().getPattern());
             return new Snapshot(t,q,i,c,e,url);
+        } catch (com.rlibanez.eplsync.exception.UserInputException ex) {
+            throw ex;
+        } catch (org.springframework.boot.context.properties.bind.BindException ex) {
+            String key = ex.getName().toString().replaceFirst("^eplsync[.]", "");
+            var field = definitions.stream().filter(f -> f.key().equals(key)).findFirst();
+            if (field.isPresent()) throw new com.rlibanez.eplsync.exception.UserInputException("Formato inválido en el ajuste " + field.get().key() + ". Revisa el tipo y formato del campo.");
+            throw new com.rlibanez.eplsync.exception.UserInputException("No se pudo interpretar la configuración. Revisa el formato de los campos.");
         } catch (RuntimeException ex) {
             // Binding exceptions may contain the rejected credential. Never expose their cause or value.
             throw new com.rlibanez.eplsync.exception.UserInputException("Configuración inválida. Revisa las URL, credenciales, patrones, límites y tiempos de espera (portadas: conexión <= petición <= lote). ");

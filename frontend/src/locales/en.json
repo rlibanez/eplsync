@@ -469,6 +469,7 @@
     "refreshError": "Could not refresh the view. Check your connection and try again."
   },
   "send": {
+    "openTorrentSettings": "Torrent settings",
     "noCategory": "No category",
     "individual": "Individual",
     "multiple": "Multiple",

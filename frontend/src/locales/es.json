@@ -469,6 +469,7 @@
     "refreshError": "No se pudo actualizar la vista. Revisa la conexión y vuelve a intentarlo."
   },
   "send": {
+    "openTorrentSettings": "Ajustes de torrent",
     "noCategory": "Sin categoría",
     "individual": "Individual",
     "multiple": "Múltiple",
