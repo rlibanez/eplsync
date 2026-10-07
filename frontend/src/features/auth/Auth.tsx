@@ -20,6 +20,7 @@ export type Permission =
   | "CATALOG_READ"
   | "BOOK_HISTORY_READ"
   | "DOWNLOADS_READ"
+  | "DOWNLOADS_DELETE"
   | "TORRENT_SEND"
   | "TORRENT_SYNC"
   | "TORRENT_JOBS_MANAGE"

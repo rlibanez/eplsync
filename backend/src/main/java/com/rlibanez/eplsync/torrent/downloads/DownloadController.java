@@ -47,6 +47,19 @@ public class DownloadController {
             @RequestBody com.rlibanez.eplsync.torrent.updates.HistoryActions.Selection selection) {
         return actions.remove(selection,retryUnconfirmed);
     }
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('BOOK_HISTORY_READ') and hasAuthority('DOWNLOADS_DELETE')")
+    @PostMapping("/delete-history")
+    public com.rlibanez.eplsync.torrent.updates.HistoryActions.DeletionResult deleteHistory(
+            @RequestParam(defaultValue="false") boolean preview,
+            @RequestBody com.rlibanez.eplsync.torrent.updates.HistoryActions.HistoryDeletion request) {
+        return actions.deleteHistory(request,preview);
+    }
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('BOOK_HISTORY_READ')")
+    @PostMapping("/remove-records")
+    public com.rlibanez.eplsync.torrent.updates.HistoryActions.RemovalResult removeRecords(
+            @RequestBody com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal request) {
+        return actions.removeRecords(request);
+    }
     @GetMapping("/summary")
     public DownloadQueryService.Summary summary(@RequestParam MultiValueMap<String, String> params) {
         return queries.summary(params);

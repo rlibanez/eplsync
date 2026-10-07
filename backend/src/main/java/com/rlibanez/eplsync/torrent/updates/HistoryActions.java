@@ -29,7 +29,8 @@ public class HistoryActions {
     private void requireBook(Selection selection) {
         if (selection==null || selection.eplId()==null || selection.eplId()<1) throw new UserInputException("EPL ID inválido");
     }
-    private List<DownloadRecord> validate(Selection selection) {
+    private List<DownloadRecord> validate(Selection selection) { return validate(selection,true); }
+    private List<DownloadRecord> validate(Selection selection,boolean requireCurrentClient) {
         if (selection==null || selection.eplId()==null || selection.eplId()<1 || selection.ids()==null
                 || selection.ids().isEmpty() || selection.ids().size()>1000
                 || selection.ids().stream().anyMatch(id -> id==null || id.isBlank() || id.length()>64)
@@ -38,9 +39,58 @@ public class HistoryActions {
         var rows=downloads.findAllById(selection.ids());
         if (rows.size()!=selection.ids().size() || rows.stream().anyMatch(r -> !r.getEplId().equals(selection.eplId())))
             throw new UserInputException("Los registros seleccionados no pertenecen al libro");
-        if (rows.stream().anyMatch(r -> !r.getClientInstanceId().equals(tracking.instanceId())))
+        if (requireCurrentClient && rows.stream().anyMatch(r -> !r.getClientInstanceId().equals(tracking.instanceId())))
             throw new TorrentOperationException(HttpStatus.CONFLICT,"Los registros pertenecen a otro cliente; restaura su destino antes de actuar");
         return rows;
+    }
+    public record HistoryDeletion(Long eplId,List<String> ids,Boolean confirm) {}
+    public record DeletionResult(int deleted,long pendingCleanup) {}
+    public DeletionResult deleteHistory(HistoryDeletion request,boolean preview) {
+        Permission.require(Permission.BOOK_HISTORY_READ);
+        Permission.require(Permission.DOWNLOADS_DELETE);
+        if(request==null) throw new UserInputException("Selecciona registros del historial");
+        if(!preview && !Boolean.TRUE.equals(request.confirm())) throw new UserInputException("Confirma la eliminación irreversible del historial");
+        var selection=new Selection(request.eplId(),request.ids(),null,null);
+        java.util.function.Supplier<DeletionResult> operation=() -> tx.execute(status -> {
+            var rows=validate(selection,false);
+            long pending=entries.countByDownloadIdInAndStateIn(request.ids(),CleanupQueue.PENDING);
+            if(!preview) { downloads.deleteAll(rows);downloads.flush(); }
+            return new DeletionResult(preview ? 0 : rows.size(),pending);
+        });
+        if(preview) return operation.get();
+        return events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOAD_HISTORY",Map.of("eplId",request.eplId()),
+            operation,r -> Map.of("historyDeleted",r.deleted(),"pendingCleanup",r.pendingCleanup()));
+    }
+    public record Removal(Long eplId,List<String> ids,Boolean deleteHistory,String clientAction,Boolean confirm,Boolean confirmFiles) {}
+    public record RemovalItem(String id,DownloadStatus status,String cleanupState,String message,boolean historyDeleted) {}
+    public record RemovalResult(List<RemovalItem> items) {}
+    public RemovalResult removeRecords(Removal request) {
+        Permission.require(Permission.BOOK_HISTORY_READ);
+        if(request==null || !Set.of("keep","torrent","files").contains(request.clientAction()==null ? "" : request.clientAction()))
+            throw new UserInputException("Acción de eliminación inválida");
+        boolean history=Boolean.TRUE.equals(request.deleteHistory());
+        boolean clientRemoval=!request.clientAction().equals("keep");
+        boolean files=request.clientAction().equals("files");
+        if(!history && !clientRemoval) throw new UserInputException("Selecciona qué deseas eliminar");
+        if(history) Permission.require(Permission.DOWNLOADS_DELETE);
+        if(clientRemoval) Permission.require(Permission.TORRENT_CLEANUP);
+        if(files) {
+            Permission.require(Permission.TORRENT_FILES_DELETE);
+            if(!Boolean.TRUE.equals(request.confirmFiles())) throw new UserInputException("Confirma la eliminación irreversible de los archivos");
+        }
+        if(!Boolean.TRUE.equals(request.confirm())) throw new UserInputException("Confirma la eliminación");
+        var selection=new Selection(request.eplId(),request.ids(),files,request.confirmFiles());
+        var rows=validate(selection,clientRemoval);
+        var outcomes=clientRemoval ? remove(selection).items() : rows.stream().map(r -> new Item(r.getId(),r.getStatus(),null,null)).toList();
+        var deleted=new HashSet<String>();
+        if(history) {
+            var confirmed=outcomes.stream().filter(r -> !clientRemoval || "REMOVED".equals(r.cleanupState())).map(Item::id).toList();
+            if(!confirmed.isEmpty()) {
+                deleteHistory(new HistoryDeletion(request.eplId(),confirmed,true),false);
+                deleted.addAll(confirmed);
+            }
+        }
+        return new RemovalResult(outcomes.stream().map(r -> new RemovalItem(r.id(),r.status(),r.cleanupState(),r.message(),deleted.contains(r.id()))).toList());
     }
     public Result refresh(Selection selection) {
         Permission.require(Permission.TORRENT_SYNC);

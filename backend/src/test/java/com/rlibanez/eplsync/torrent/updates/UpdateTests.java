@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@org.springframework.security.test.context.support.WithMockUser(authorities={"ROLE_ADMIN","CATALOG_READ","BOOK_HISTORY_READ","DOWNLOADS_READ","TORRENT_SEND","TORRENT_SYNC","TORRENT_JOBS_MANAGE","TORRENT_CLEANUP","TORRENT_FILES_DELETE","CATALOG_IMPORT","CATALOG_DELETE","COVERS_MANAGE","EVENTS_MANAGE","SETTINGS_MANAGE"})
+@org.springframework.security.test.context.support.WithMockUser(authorities={"ROLE_ADMIN","CATALOG_READ","BOOK_HISTORY_READ","DOWNLOADS_READ","DOWNLOADS_DELETE","TORRENT_SEND","TORRENT_SYNC","TORRENT_JOBS_MANAGE","TORRENT_CLEANUP","TORRENT_FILES_DELETE","CATALOG_IMPORT","CATALOG_DELETE","COVERS_MANAGE","EVENTS_MANAGE","SETTINGS_MANAGE"})
 @SpringBootTest(properties = {"spring.datasource.url=jdbc:sqlite::memory:", "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.flyway.enabled=false", "eplsync.torrent.client=stub", "eplsync.torrent.enabled=false",
         "eplsync.torrent.bulk.worker-enabled=false"})
@@ -274,6 +274,86 @@ class UpdateTests {
         queue.runAutomatic(100);verify(stubClient,never()).listTorrents();
     }
 
+    @Test void deletingHistoryPreservesCleanupAndItsExecutionWithoutCallingClient() {
+        var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        var send=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        var row=downloads.findAll().getFirst();
+        var selection=new HistoryActions.HistoryDeletion(1L,List.of(row.getId()),true);
+        clearInvocations(stubClient);
+        assertThat(historyActions.deleteHistory(selection,true).pendingCleanup()).isEqualTo(1);
+        assertThat(downloads.existsById(row.getId())).isTrue();
+        var result=historyActions.deleteHistory(selection,false);
+        assertThat(result.deleted()).isEqualTo(1);
+        assertThat(downloads.existsById(row.getId())).isFalse();
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
+        verifyNoInteractions(stubClient);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old.epub"),remote(NEW,DownloadStatus.DOWNLOADING,"/new.epub")),List.of(remote(NEW,DownloadStatus.DOWNLOADING,"/new.epub")));
+        queue.runImmediate(100,Instant.now());
+        verify(stubClient).deleteTorrent(OLD,true);
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"DELETE_DOWNLOAD_HISTORY",null),0,20).items().getFirst();
+        assertThat(event.details()).containsEntry("historyDeleted",1);
+    }
+    @Test void combinedRemovalDeletesOnlyConfirmedHistoryAndPreservesBlockedRecords() {
+        var old=downloads.findAll().getFirst();
+        var blocked=history(1,1.0,OTHER,DownloadStatus.DOWNLOADED);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old"),remote(OTHER,DownloadStatus.DOWNLOADED,"/shared"),remote(NEW,DownloadStatus.DOWNLOADED,"/shared")),
+            List.of(remote(OTHER,DownloadStatus.DOWNLOADED,"/shared"),remote(NEW,DownloadStatus.DOWNLOADED,"/shared")));
+        var result=historyActions.removeRecords(new HistoryActions.Removal(1L,List.of(old.getId(),blocked.getId()),true,"files",true,true));
+        assertThat(result.items()).filteredOn(r -> r.id().equals(old.getId())).singleElement().satisfies(r -> assertThat(r.historyDeleted()).isTrue());
+        assertThat(result.items()).filteredOn(r -> r.id().equals(blocked.getId())).singleElement().satisfies(r -> {assertThat(r.historyDeleted()).isFalse();assertThat(r.cleanupState()).isEqualTo("BLOCKED");});
+        assertThat(downloads.existsById(old.getId())).isFalse();
+        assertThat(downloads.existsById(blocked.getId())).isTrue();
+        verify(stubClient).deleteTorrent(OLD,true);
+        verify(stubClient,never()).deleteTorrent(OTHER,true);
+    }
+    @Test void combinedRemovalRetainsHistoryWhenAbsenceIsUnconfirmed() {
+        var old=downloads.findAll().getFirst();
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old")));
+        var result=historyActions.removeRecords(new HistoryActions.Removal(1L,List.of(old.getId()),true,"torrent",true,false));
+        assertThat(result.items()).singleElement().satisfies(r -> {assertThat(r.historyDeleted()).isFalse();assertThat(r.cleanupState()).isEqualTo("REQUESTED");});
+        assertThat(downloads.existsById(old.getId())).isTrue();
+    }
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"BOOK_HISTORY_READ","TORRENT_CLEANUP"})
+    void combinedRemovalChecksHistoryPermissionBeforeContactingClient() {
+        var old=downloads.findAll().getFirst();clearInvocations(stubClient);
+        assertThatThrownBy(() -> historyActions.removeRecords(new HistoryActions.Removal(1L,List.of(old.getId()),true,"torrent",true,false)))
+            .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        verifyNoInteractions(stubClient);
+        assertThat(downloads.existsById(old.getId())).isTrue();
+    }
+    @Test void synchronizationRediscoversCurrentHashButDoesNotRestoreOldHistory() {
+        var current=history(1,1.2,NEW,DownloadStatus.SUBMITTED);
+        var ids=downloads.findAll().stream().map(DownloadRecord::getId).toList();
+        historyActions.deleteHistory(new HistoryActions.HistoryDeletion(1L,ids,true),false);
+        assertThat(downloads.count()).isZero();
+        tracking.sync(() -> List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old"),remote(NEW,DownloadStatus.DOWNLOADED,"/new")),false,false);
+        assertThat(downloads.findAll()).singleElement().satisfies(row -> {
+            assertThat(row.getHash()).isEqualTo(NEW);
+            assertThat(row.getId()).isNotEqualTo(current.getId());
+            assertThat(row.getOrigin()).isEqualTo(DownloadRecord.Origin.DISCOVERED);
+            assertThat(row.getRequestedAt()).isNull();
+            assertThat(row.getSubmittedAt()).isNull();
+        });
+    }
+    @Test void historyDeletionValidatesAllRecordsAndRequiresConfirmation() {
+        var row=downloads.findAll().getFirst();
+        assertThatThrownBy(() -> historyActions.deleteHistory(new HistoryActions.HistoryDeletion(1L,List.of(row.getId()),false),false)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        assertThatThrownBy(() -> historyActions.deleteHistory(new HistoryActions.HistoryDeletion(1L,List.of(row.getId(),"missing"),true),false)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        assertThatThrownBy(() -> historyActions.deleteHistory(new HistoryActions.HistoryDeletion(2L,List.of(row.getId()),true),false)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        assertThat(downloads.existsById(row.getId())).isTrue();
+        // History may be deleted even after changing the configured client destination.
+        row.setClientInstanceId("previous-client");downloads.save(row);
+        assertThat(historyActions.deleteHistory(new HistoryActions.HistoryDeletion(1L,List.of(row.getId()),true),false).deleted()).isEqualTo(1);
+    }
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"BOOK_HISTORY_READ"})
+    void historyDeletionRequiresDedicatedPermission() throws Exception {
+        var row=downloads.findAll().getFirst();
+        mvc.perform(post("/api/torrent/downloads/delete-history").contentType("application/json").content("{\"eplId\":1,\"ids\":[\""+row.getId()+"\"],\"confirm\":true}"))
+            .andExpect(status().isForbidden());
+        assertThat(downloads.existsById(row.getId())).isTrue();
+    }
     @Test void selectedRefreshOnlyObservesSelectedHashesAndConfirmsAbsenceWithoutDeleting() {
         var first=create(PreviousVersions.REMOVE_TORRENT);
         var row=downloads.findAll().getFirst();var untouched=history(1,1.2,NEW,DownloadStatus.SUBMITTED);

@@ -648,7 +648,7 @@ function UserEditor({
       name: "torrent",
       icon: Download,
       values: permissions.filter(
-        (p) => p === "DOWNLOADS_READ" || p.startsWith("TORRENT_"),
+        (p) => p.startsWith("DOWNLOADS_") || p.startsWith("TORRENT_"),
       ),
     },
     {

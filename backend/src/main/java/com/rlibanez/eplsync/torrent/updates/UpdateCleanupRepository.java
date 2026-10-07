@@ -1,6 +1,7 @@
 package com.rlibanez.eplsync.torrent.updates;
 
 public interface UpdateCleanupRepository extends org.springframework.data.jpa.repository.JpaRepository<UpdateCleanup, String> {
+    long countByDownloadIdInAndStateIn(java.util.Collection<String> ids,java.util.Collection<UpdateCleanup.State> states);
     java.util.List<UpdateCleanup> findByJobIdOrderByEplIdAsc(String jobId);
     org.springframework.data.domain.Page<UpdateCleanup> findByJobIdOrderByEplIdAsc(String jobId,org.springframework.data.domain.Pageable pageable);
     java.util.List<UpdateCleanup> findByClientInstanceIdAndHashInAndStateIn(String client, java.util.Collection<String> hashes, java.util.Collection<UpdateCleanup.State> states);

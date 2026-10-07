@@ -892,10 +892,13 @@
       "USER_DELETE": "Borrar usuario",
       "USER_PASSWORD_RESET": "Reiniciar contraseña",
       "REFRESH_DOWNLOADS": "Actualizar estados de descargas",
+      "DELETE_DOWNLOAD_HISTORY": "Eliminar historial de descargas",
       "DELETE_DOWNLOADS": "Eliminar del cliente",
       "CLEANUP": "Limpiar revisiones anteriores"
     },
     "fields": {
+      "historyDeleted": "Registros del historial eliminados",
+      "pendingCleanup": "Solicitudes de limpieza pendientes",
       "processed": "Procesados",
       "created": "Nuevos",
       "updated": "Actualizados",
@@ -1147,6 +1150,7 @@
     "permissionLabels": {
       "CATALOG_READ": "Consultar catálogo y magnets",
       "BOOK_HISTORY_READ": "Ver historial de un libro",
+      "DOWNLOADS_DELETE": "Eliminar registros del historial de descargas",
       "DOWNLOADS_READ": "Ver historial global de descargas",
       "TORRENT_SEND": "Enviar y renombrar torrents",
       "TORRENT_SYNC": "Sincronizar y vincular descargas",
@@ -1233,6 +1237,16 @@
     "lastSearch": "Última búsqueda: {{date}}"
   },
   "historyActions": {
+    "delete": "Eliminar",
+    "inApp": "En EPL Sync",
+    "inClient": "En el cliente torrent",
+    "historyRecord": "Eliminar el registro del historial",
+    "combinedHelp": "Solo se eliminarán del historial los registros cuyo borrado en el cliente quede confirmado.",
+    "historyRemoved": "Registro eliminado del historial",
+    "deleteHistory": "Eliminar del historial",
+    "confirmHistory": "Se eliminarán {{count}} registros de EPL Sync de forma irreversible. No se borrarán torrents ni archivos del cliente.",
+    "rediscovery": "La sincronización puede volver a crear registros cuyos hashes sigan en el cliente y en el catálogo. No recuperará sus datos históricos.",
+    "pendingCleanup": "Algunos registros tienen solicitudes de limpieza pendientes. Eliminar estos registros no cancela esas solicitudes.",
     "selected": "{{count}} registros seleccionados",
     "refresh": "Actualizar estado",
     "remove": "Eliminar del cliente",

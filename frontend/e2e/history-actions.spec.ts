@@ -69,7 +69,7 @@ test("history refreshes selected records and removes through a confirmed dropdow
       },
     });
   });
-  await page.route("**/api/torrent/downloads/remove-selected", (r) => {
+  await page.route("**/api/torrent/downloads/remove-records", (r) => {
     removed = r.request().postDataJSON();
     return r.fulfill({
       json: {
@@ -123,24 +123,24 @@ test("history refreshes selected records and removes through a confirmed dropdow
   await section
     .getByRole("checkbox", { name: "Seleccionar registros de esta página" })
     .check();
-  await section
-    .getByRole("button", { name: "Eliminar del cliente", exact: true })
+  await section.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("textbox", { name: "Acción", exact: true })
     .click();
   await page
-    .getByRole("menuitem", { name: "Torrent y archivos", exact: true })
+    .getByRole("option", { name: "Torrent y archivos", exact: true })
     .click();
   const confirm = page.getByRole("dialog");
   await expect(
-    confirm.getByRole("button", { name: "Eliminar del cliente", exact: true }),
+    confirm.getByRole("button", { name: "Eliminar", exact: true }),
   ).toBeDisabled();
   await confirm
     .getByRole("checkbox", {
       name: "Entiendo que el borrado de archivos es irreversible.",
     })
     .check();
-  await confirm
-    .getByRole("button", { name: "Eliminar del cliente", exact: true })
-    .click();
+  await confirm.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(
     result.getByText("Eliminado del cliente", { exact: true }),
   ).toBeVisible();
@@ -150,7 +150,9 @@ test("history refreshes selected records and removes through a confirmed dropdow
   expect(removed).toEqual({
     eplId: 1,
     ids: ["r1", "r2"],
-    deleteFiles: true,
+    clientAction: "files",
+    deleteHistory: false,
+    confirm: true,
     confirmFiles: true,
   });
 });
@@ -171,7 +173,7 @@ test("history actions respect permissions and show errors inside the confirmatio
       },
     }),
   );
-  await page.route("**/api/torrent/downloads/remove-selected", (r) =>
+  await page.route("**/api/torrent/downloads/remove-records", (r) =>
     r.fulfill({
       status: 409,
       json: { details: "Los registros pertenecen a otro cliente" },
@@ -185,19 +187,17 @@ test("history actions respect permissions and show errors inside the confirmatio
   await expect(
     section.getByRole("button", { name: "Actualizar estado", exact: true }),
   ).toHaveCount(0);
-  await section
-    .getByRole("button", { name: "Eliminar del cliente", exact: true })
+  await section.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("textbox", { name: "Acción", exact: true })
     .click();
   await expect(
-    page.getByRole("menuitem", { name: "Torrent y archivos", exact: true }),
+    page.getByRole("option", { name: "Torrent y archivos", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("menuitem", { name: "Solo torrent", exact: true })
-    .click();
+  await page.getByRole("option", { name: "Solo torrent", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await dialog
-    .getByRole("button", { name: "Eliminar del cliente", exact: true })
-    .click();
+  await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText(
     "Los registros pertenecen a otro cliente",
   );
@@ -267,4 +267,75 @@ test("job detail identifies updates and explains cleanup policy and pending coun
     .locator(".import-summary > div")
     .filter({ has: page.getByText("Limpiezas pendientes", { exact: true }) });
   await expect(pending.locator("dd")).toHaveText("3");
+});
+
+test("history deletion confirms pending cleanup and removes only selected database records", async ({
+  page,
+}) => {
+  const data = await history(page);
+  let deleted: any;
+  await page.route("**/api/torrent/downloads/delete-history**", (r) =>
+    r.fulfill({ json: { deleted: 0, pendingCleanup: 1 } }),
+  );
+  await page.route("**/api/torrent/downloads/remove-records", (r) => {
+    deleted = r.request().postDataJSON();
+    data.setRows(data.rows.filter((row) => !deleted.ids.includes(row.id)));
+    return r.fulfill({
+      json: {
+        items: [
+          {
+            id: "r1",
+            status: "SUBMITTED",
+            cleanupState: null,
+            message: null,
+            historyDeleted: true,
+          },
+        ],
+      },
+    });
+  });
+  await page.goto("/catalog/1");
+  const section = page.locator(".book-history");
+  await section
+    .getByRole("checkbox", { name: "Seleccionar revisión 1", exact: true })
+    .check();
+  await section.getByRole("button", { name: "Eliminar", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("checkbox", {
+      name: "Eliminar el registro del historial",
+      exact: true,
+    })
+    .check();
+  await expect(
+    dialog.getByText(
+      "Algunos registros tienen solicitudes de limpieza pendientes. Eliminar estos registros no cancela esas solicitudes.",
+    ),
+  ).toBeVisible();
+  expect(deleted).toBeUndefined();
+  await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await expect(
+    dialog.getByText("Registro eliminado del historial", { exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  expect(deleted).toEqual({
+    eplId: 1,
+    ids: ["r1"],
+    confirm: true,
+    confirmFiles: false,
+    deleteHistory: true,
+    clientAction: "keep",
+  });
+  await expect(
+    section.getByRole("checkbox", {
+      name: "Seleccionar revisión 1",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    section.getByRole("checkbox", {
+      name: "Seleccionar revisión 2",
+      exact: true,
+    }),
+  ).toBeVisible();
 });

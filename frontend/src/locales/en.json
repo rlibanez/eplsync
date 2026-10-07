@@ -892,10 +892,13 @@
       "USER_DELETE": "Delete user",
       "USER_PASSWORD_RESET": "Reset password",
       "REFRESH_DOWNLOADS": "Refresh download statuses",
+      "DELETE_DOWNLOAD_HISTORY": "Delete download history",
       "DELETE_DOWNLOADS": "Remove from client",
       "CLEANUP": "Clean up previous revisions"
     },
     "fields": {
+      "historyDeleted": "History records deleted",
+      "pendingCleanup": "Pending cleanup requests",
       "processed": "Processed",
       "created": "Created",
       "updated": "Updated",
@@ -1147,6 +1150,7 @@
     "permissionLabels": {
       "CATALOG_READ": "Read catalog and magnets",
       "BOOK_HISTORY_READ": "Read book history",
+      "DOWNLOADS_DELETE": "Delete download history records",
       "DOWNLOADS_READ": "Read global download history",
       "TORRENT_SEND": "Send and rename torrents",
       "TORRENT_SYNC": "Synchronize and link downloads",
@@ -1233,6 +1237,16 @@
     "lastSearch": "Last search: {{date}}"
   },
   "historyActions": {
+    "delete": "Delete",
+    "inApp": "In EPL Sync",
+    "inClient": "In the torrent client",
+    "historyRecord": "Delete the history record",
+    "combinedHelp": "Only records whose removal from the client is confirmed will be deleted from history.",
+    "historyRemoved": "History record deleted",
+    "deleteHistory": "Delete from history",
+    "confirmHistory": "This permanently deletes {{count}} EPL Sync records. Client torrents and files will remain untouched.",
+    "rediscovery": "Synchronization may recreate records whose hashes remain in the client and catalog. Their original history will not be restored.",
+    "pendingCleanup": "Some records have pending cleanup requests. Deleting these records does not cancel those requests.",
     "selected": "{{count}} selected records",
     "refresh": "Refresh status",
     "remove": "Remove from client",

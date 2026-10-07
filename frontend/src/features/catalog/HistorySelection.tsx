@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Alert, Button, Checkbox, Menu } from "@mantine/core";
-import { ChevronDown, RefreshCw, Trash2 } from "lucide-react";
+import { Alert, Button, Checkbox, Select } from "@mantine/core";
+import { RefreshCw, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/Auth";
@@ -14,6 +14,8 @@ type Outcome = {
   status: string;
   cleanupState: string | null;
   message: string | null;
+  historyDeleted?: boolean;
+  revision?: number;
 };
 export function HistorySelection({
   eplId,
@@ -30,27 +32,47 @@ export function HistorySelection({
   const { can } = useAuth();
   const { status, number } = useLocale();
   const cache = useQueryClient();
-  const [removal, setRemoval] = useState<boolean | null>(null);
+  const [removal, setRemoval] = useState(false);
+  const [clientAction, setClientAction] = useState("keep");
+  const [deleteHistory, setDeleteHistory] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [outcomes, setOutcomes] = useState<Outcome[] | null>(null);
+  const preview = useMutation({
+    mutationFn: () =>
+      post<{ pendingCleanup: number }>(
+        "/torrent/downloads/delete-history?preview=true",
+        { eplId, ids: selected },
+      ),
+    retry: false,
+  });
   const action = useMutation({
     meta: { backendEvents: true },
     mutationFn: (operation: "refresh" | "remove") =>
       post<{ items: Outcome[] }>(
-        `/torrent/downloads/${operation === "refresh" ? "refresh-selected" : "remove-selected"}`,
+        `/torrent/downloads/${operation === "refresh" ? "refresh-selected" : "remove-records"}`,
         {
           eplId,
           ids: selected,
           ...(operation === "remove"
-            ? { deleteFiles: removal, confirmFiles: confirmed }
+            ? {
+                clientAction,
+                deleteHistory,
+                confirm: true,
+                confirmFiles: confirmed,
+              }
             : {}),
         },
       ),
     retry: false,
     onSuccess: (data) => {
-      setRemoval(null);
+      setRemoval(false);
       setConfirmed(false);
-      setOutcomes(data.items);
+      setOutcomes(
+        data.items.map((item) => ({
+          ...item,
+          revision: rows.find((row) => row.id === item.id)?.revision,
+        })),
+      );
       for (const key of [
         "book-history",
         "downloads",
@@ -65,10 +87,14 @@ export function HistorySelection({
       onDone();
     },
   });
-  function openRemoval(files: boolean) {
+  function openRemoval() {
     action.reset();
+    preview.reset();
     setConfirmed(false);
-    setRemoval(files);
+    setDeleteHistory(false);
+    setClientAction("keep");
+    setRemoval(true);
+    if (can("DOWNLOADS_DELETE")) preview.mutate();
   }
   return (
     <>
@@ -89,35 +115,21 @@ export function HistorySelection({
                 {t("historyActions.refresh")}
               </Button>
             )}
-            {can("TORRENT_CLEANUP") && (
-              <Menu>
-                <Menu.Target>
-                  <Button
-                    color="red"
-                    variant="light"
-                    disabled={action.isPending}
-                    leftSection={<Trash2 size={16} />}
-                    rightSection={<ChevronDown size={16} />}
-                  >
-                    {t("historyActions.remove")}
-                  </Button>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Menu.Item onClick={() => openRemoval(false)}>
-                    {t("historyActions.torrentOnly")}
-                  </Menu.Item>
-                  {can("TORRENT_FILES_DELETE") && (
-                    <Menu.Item color="red" onClick={() => openRemoval(true)}>
-                      {t("historyActions.torrentAndFiles")}
-                    </Menu.Item>
-                  )}
-                </Menu.Dropdown>
-              </Menu>
+            {(can("DOWNLOADS_DELETE") || can("TORRENT_CLEANUP")) && (
+              <Button
+                color="red"
+                variant="light"
+                disabled={action.isPending}
+                leftSection={<Trash2 size={16} />}
+                onClick={openRemoval}
+              >
+                {t("historyActions.delete")}
+              </Button>
             )}
           </div>
         </div>
       )}
-      {action.isError && removal === null && (
+      {action.isError && !removal && (
         <Alert color="red" role="alert">
           {(action.error instanceof ActionError && action.error.details) ||
             t("historyActions.failed")}
@@ -125,59 +137,110 @@ export function HistorySelection({
       )}
       <AppModal
         icon={Trash2}
-        opened={removal !== null}
+        opened={removal}
         onClose={() => {
-          if (!action.isPending) setRemoval(null);
+          if (!action.isPending) setRemoval(false);
         }}
-        title={t("historyActions.remove")}
+        title={t("historyActions.delete")}
         centered
       >
-        <p>
-          {t(
-            removal
-              ? "historyActions.confirmFiles"
-              : "historyActions.confirmTorrent",
-            { count: selected.length },
+        <fieldset className="send-options-group">
+          <legend>{t("historyActions.inApp")}</legend>
+          <Checkbox
+            label={t("historyActions.historyRecord")}
+            checked={deleteHistory}
+            disabled={!can("DOWNLOADS_DELETE") || action.isPending}
+            onChange={(e) => setDeleteHistory(e.currentTarget.checked)}
+          />
+          {deleteHistory && (
+            <>
+              <p>
+                {t("historyActions.confirmHistory", { count: selected.length })}
+              </p>
+              <p className="muted">{t("historyActions.rediscovery")}</p>
+              {preview.data && preview.data.pendingCleanup > 0 && (
+                <Alert color="yellow">
+                  {t("historyActions.pendingCleanup")}
+                </Alert>
+              )}
+              {preview.isError && (
+                <Alert color="red">{preview.error.message}</Alert>
+              )}
+            </>
           )}
-        </p>
+        </fieldset>
+        <fieldset className="send-options-group">
+          <legend>{t("historyActions.inClient")}</legend>
+          <Select
+            label={t("send.previousAction")}
+            value={clientAction}
+            allowDeselect={false}
+            disabled={action.isPending}
+            data={[
+              { value: "keep", label: t("send.keepPrevious") },
+              ...(can("TORRENT_CLEANUP")
+                ? [{ value: "torrent", label: t("historyActions.torrentOnly") }]
+                : []),
+              ...(can("TORRENT_CLEANUP") && can("TORRENT_FILES_DELETE")
+                ? [
+                    {
+                      value: "files",
+                      label: t("historyActions.torrentAndFiles"),
+                    },
+                  ]
+                : []),
+            ]}
+            onChange={(value) => {
+              setClientAction(value ?? "keep");
+              setConfirmed(false);
+            }}
+          />
+          {clientAction === "files" && (
+            <Checkbox
+              mt="md"
+              checked={confirmed}
+              onChange={(e) => setConfirmed(e.currentTarget.checked)}
+              label={t("historyActions.irreversible")}
+            />
+          )}
+        </fieldset>
+        {deleteHistory && clientAction !== "keep" && (
+          <p className="muted">{t("historyActions.combinedHelp")}</p>
+        )}
         <ul className="history-action-records">
           {rows
-            .filter((r) => selected.includes(r.id))
-            .map((r) => (
-              <li key={r.id}>
-                {t("downloads.revision")} {number(r.revision)}{" "}
-                <small className="hash-text">{r.hash}</small>
+            .filter((row) => selected.includes(row.id))
+            .map((row) => (
+              <li key={row.id}>
+                {t("downloads.revision")} {number(row.revision)}{" "}
+                <small className="hash-text">{row.hash}</small>
               </li>
             ))}
         </ul>
-        {removal && (
-          <Checkbox
-            checked={confirmed}
-            onChange={(e) => setConfirmed(e.currentTarget.checked)}
-            label={t("historyActions.irreversible")}
-          />
-        )}
         {action.isError && (
-          <Alert color="red" role="alert" mt="md">
-            {(action.error instanceof ActionError && action.error.details) ||
-              t("historyActions.failed")}
+          <Alert color="red" role="alert">
+            {action.error.message || t("historyActions.failed")}
           </Alert>
         )}
         <ModalActions>
           <Button
             variant="default"
             disabled={action.isPending}
-            onClick={() => setRemoval(null)}
+            onClick={() => setRemoval(false)}
           >
             {t("import.cancel")}
           </Button>
           <Button
             color="red"
             loading={action.isPending}
-            disabled={removal === true && !confirmed}
+            disabled={
+              (!deleteHistory && clientAction === "keep") ||
+              (deleteHistory && !preview.isSuccess) ||
+              (clientAction === "files" && !confirmed)
+            }
             onClick={() => action.mutate("remove")}
           >
-            {t("historyActions.remove")}
+            {t("historyActions.delete")}
           </Button>
         </ModalActions>
       </AppModal>
@@ -192,14 +255,15 @@ export function HistorySelection({
           {outcomes?.map((item) => (
             <li key={item.id}>
               <span>
-                {t("downloads.revision")}{" "}
-                {number(rows.find((r) => r.id === item.id)?.revision ?? null)}
+                {t("downloads.revision")} {number(item.revision ?? null)}
               </span>
               {" · "}
               <strong>
-                {item.cleanupState
-                  ? t(`historyActions.states.${item.cleanupState}`)
-                  : status(item.status)}
+                {item.historyDeleted
+                  ? t("historyActions.historyRemoved")
+                  : item.cleanupState
+                    ? t(`historyActions.states.${item.cleanupState}`)
+                    : status(item.status)}
               </strong>
               {item.message && <p className="muted">{item.message}</p>}
             </li>

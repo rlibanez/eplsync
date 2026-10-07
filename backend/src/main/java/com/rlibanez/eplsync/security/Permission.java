@@ -2,7 +2,7 @@ package com.rlibanez.eplsync.security;
 
 /** Stable capabilities checked by operations, independently of role membership. */
 public enum Permission {
-    CATALOG_READ, BOOK_HISTORY_READ, DOWNLOADS_READ, TORRENT_SEND, TORRENT_SYNC,
+    CATALOG_READ, BOOK_HISTORY_READ, DOWNLOADS_READ, DOWNLOADS_DELETE, TORRENT_SEND, TORRENT_SYNC,
     TORRENT_JOBS_MANAGE, TORRENT_CLEANUP, TORRENT_FILES_DELETE,
     CATALOG_IMPORT, CATALOG_DELETE, COVERS_MANAGE, EVENTS_MANAGE, SETTINGS_MANAGE;
     public static java.util.Set<Permission> defaults(String role) {

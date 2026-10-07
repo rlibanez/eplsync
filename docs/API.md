@@ -1869,3 +1869,59 @@ solicitudes anteriores mantienen el comportamiento de esperar a la descarga.
 
 Aceptar un envío no garantiza que la nueva revisión llegue a descargarse:
 con `immediate` puede haber un intervalo sin ninguna revisión descargada.
+
+### Eliminar registros del historial de descargas
+
+`POST /api/torrent/downloads/delete-history` exige `BOOK_HISTORY_READ` y
+`DOWNLOADS_DELETE`. Este último se concede por defecto a ADMIN y puede asignarse
+individualmente a USER. Cuerpo JSON:
+
+```json
+{"eplId": 123, "ids": ["id-del-registro"], "confirm": true}
+```
+
+Admite entre 1 y 1000 IDs distintos del mismo libro. Valida la selección completa
+antes de eliminarla en una transacción; también permite registros de destinos
+anteriores y no requiere tener habilitado el cliente torrent. `confirm=true` es
+obligatorio para borrar. La respuesta contiene `deleted` y `pendingCleanup`.
+
+Con `?preview=true` valida sin borrar ni exigir confirmación y devuelve el número
+actual de solicitudes de limpieza pendientes asociadas. La interfaz utiliza este
+resultado para advertir antes del borrado. El borrado genera el evento
+`DELETE_DOWNLOAD_HISTORY`, con el usuario responsable y el número de registros.
+
+Solo elimina registros de `torrent_downloads`: no contacta con qBittorrent, no
+elimina torrents ni archivos y conserva trabajos, eventos y solicitudes de limpieza.
+Las limpiezas siguen usando sus hashes y condiciones persistidos aunque desaparezca
+el registro original. Eliminarlo no cancela una limpieza.
+
+La sincronización puede recrear como `DISCOVERED` los hashes que sigan en el cliente
+y en el catálogo actual; no recupera los datos históricos del envío. Los hashes
+antiguos ausentes del catálogo no se redescubren automáticamente. Borrar todas las
+referencias de un libro puede hacer que deje de aparecer en futuras búsquedas de
+actualizaciones hasta que se vuelva a registrar una revisión.
+
+El botón único «Eliminar» del historial abre un popup con un checkbox para eliminar
+el registro de EPL Sync y un selector para conservar el cliente, eliminar solo el
+torrent o eliminar torrent y archivos. El borrado de archivos requiere confirmación
+adicional. Las opciones se ofrecen según los permisos disponibles.
+
+`POST /api/torrent/downloads/remove-records` combina ambas acciones:
+
+```json
+{"eplId":123,"ids":["id-del-registro"],"deleteHistory":true,"clientAction":"files","confirm":true,"confirmFiles":true}
+```
+
+`clientAction` admite `keep`, `torrent` o `files`. Exige `BOOK_HISTORY_READ` y, según
+las opciones, `DOWNLOADS_DELETE`, `TORRENT_CLEANUP` y `TORRENT_FILES_DELETE`.
+Todos los permisos y la selección se validan antes de actuar. Debe elegirse al menos
+una eliminación y confirmarla. La respuesta contiene `items`, con `id`, `status`,
+`cleanupState`, `message` y `historyDeleted` por registro.
+
+Al combinar ambas acciones, primero intenta el borrado en el cliente con las
+comprobaciones de seguridad habituales y confirma su ausencia. Solo elimina del
+historial los registros con `cleanupState=REMOVED`; conserva los bloqueados o con
+borrado sin confirmar. El borrado confirmado resuelve las solicitudes de limpieza
+asociadas al mismo torrent y destino. Los eventos del cliente y del historial se
+registran por separado. Una operación puede terminar con resultados distintos
+para cada registro seleccionado.

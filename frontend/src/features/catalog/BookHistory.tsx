@@ -29,7 +29,8 @@ type HistoryItem = Pick<
 export function BookHistory({ id }: { id: number }) {
   const { t } = useTranslation();
   const { can } = useAuth();
-  const selectable = can("TORRENT_SYNC") || can("TORRENT_CLEANUP");
+  const selectable =
+    can("TORRENT_SYNC") || can("TORRENT_CLEANUP") || can("DOWNLOADS_DELETE");
   const [selected, setSelected] = useState<string[]>([]);
   const { status, number, date } = useLocale();
   const [sort, setSort] = useState("revision,desc");
@@ -62,6 +63,12 @@ export function BookHistory({ id }: { id: number }) {
       ),
   });
   useEffect(() => setSelected([]), [page, size, sort, id]);
+  useEffect(() => {
+    if (result.data)
+      setPage((current) =>
+        Math.min(current, Math.max(0, result.data.meta.totalPages - 1)),
+      );
+  }, [result.data]);
   return (
     <section className="panel book-history">
       <div className="table-toolbar book-history-toolbar">
