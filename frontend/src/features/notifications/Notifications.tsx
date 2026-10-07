@@ -51,7 +51,7 @@ function Toast({ notice, dismiss }: { notice: Notice; dismiss: () => void }) {
     if (paused) return;
     const timer = window.setTimeout(
       () => dismissRef.current(),
-      notice.durationMs ?? 6000,
+      notice.durationMs ?? 5000,
     );
     return () => window.clearTimeout(timer);
   }, [paused, notice.durationMs]);

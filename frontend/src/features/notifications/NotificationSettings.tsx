@@ -17,7 +17,7 @@ export const notificationDefaults = {
   success: true,
   warning: true,
   error: true,
-  seconds: 6,
+  seconds: 5,
 };
 export type NotificationPreferences = typeof notificationDefaults;
 const key = "eplsync.notificationPreferences";

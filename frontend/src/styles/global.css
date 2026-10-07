@@ -1475,7 +1475,7 @@ summary {
   position: fixed;
   z-index: 400;
   right: 20px;
-  top: 24px;
+  bottom: 24px;
   width: min(390px, calc(100vw - 32px));
   display: grid;
   gap: 12px;
@@ -1485,7 +1485,7 @@ summary {
 .sidebar-bottom .settings-link { position: relative; }
 
 @media (max-width: 700px) {
-  .notification-toasts { top: 68px; max-height: calc(100dvh - 92px); right: 16px; }
+  .notification-toasts { bottom: 16px; max-height: calc(100dvh - 92px); right: 16px; }
 }
 
 .events-table { table-layout: fixed; min-width: 100%; }
