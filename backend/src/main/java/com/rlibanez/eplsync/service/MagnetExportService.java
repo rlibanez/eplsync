@@ -84,7 +84,7 @@ public class MagnetExportService {
                             var cb = em.getCriteriaBuilder();
                             var query = cb.createTupleQuery();
                             var root = query.from(CatalogBook.class);
-                            query.multiselect(root.get("eplId"), root.get("title"), root.get("links"));
+                            query.select(cb.tuple(root.get("eplId"), root.get("title"), root.get("links")));
                             query.where(spec.toPredicate(root, query, cb));
                             query.orderBy(sort.stream().map(order -> order.isAscending()
                                     ? cb.asc(root.get(order.getProperty())) : cb.desc(root.get(order.getProperty()))).toList());
@@ -127,7 +127,7 @@ public class MagnetExportService {
             clean(directory); active.release(); throw ex;
         }
     }
-    private static ResponseStatusException limit(String reason) { return new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, reason); }
+    private static ResponseStatusException limit(String reason) { return new ResponseStatusException(HttpStatus.CONTENT_TOO_LARGE, reason); }
     private int remainingMillis(long deadline) {
         checkDeadline(deadline);
         return (int) Math.max(1, Math.min(Integer.MAX_VALUE, (deadline - nanos.getAsLong()) / 1_000_000));

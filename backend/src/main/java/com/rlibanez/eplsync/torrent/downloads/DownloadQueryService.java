@@ -61,7 +61,7 @@ public class DownloadQueryService {
         if (orders.stream().noneMatch(order -> order.getProperty().equals("id"))) orders.add(Sort.Order.asc("id"));
         var spec = filters(params);
         var result = repository.findAll(spec, PageRequest.of(page, size, Sort.by(orders)));
-        var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager, result.getContent().stream().map(DownloadRecord::getEplId).toList());
+        var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager, result.getContent().stream().map((DownloadRecord entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).toList());
         result.forEach(row -> {
             var book = metadata.get(row.getEplId());
             if (book != null) { row.setTitle(book.title()); row.setCoverUrl(book.coverUrl()); row.setCoverAvailable(book.coverAvailable()); }

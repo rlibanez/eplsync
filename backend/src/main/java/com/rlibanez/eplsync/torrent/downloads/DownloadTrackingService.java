@@ -257,7 +257,7 @@ public class DownloadTrackingService {
             }
         }
         if (items != null) {
-            var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager,items.stream().map(SyncItem::eplId).toList());
+            var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager,items.stream().map((SyncItem entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).toList());
             for (int index=0; index<items.size(); index++) {
                 var item=items.get(index);var book=metadata.get(item.eplId());
                 if(book!=null) items.set(index,new SyncItem(item.downloadId(),item.eplId(),item.title(),item.hash(),item.action(),

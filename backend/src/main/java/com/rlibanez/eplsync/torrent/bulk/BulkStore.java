@@ -345,7 +345,7 @@ public class BulkStore {
             query.setFirstResult(Math.toIntExact((long)page*size)); query.setMaxResults(size);
             List<?> ids = query.getResultList();
             var records = new HashMap<String,BulkJob>();
-            jobs.findAllById(ids.stream().map(Object::toString).toList()).forEach(job -> records.put(job.getId(),job));
+            jobs.findAllById(ids.stream().map((Object entryValue) -> java.util.Objects.requireNonNull(entryValue).toString()).toList()).forEach(job -> records.put(job.getId(),job));
             var selected = ids.stream().map(id -> records.get(id.toString())).toList();
             result = new org.springframework.data.domain.PageImpl<>(selected,PageRequest.of(page,size),states==null ? jobs.count() : jobs.countByStateIn(states));
         }
@@ -374,7 +374,7 @@ public class BulkStore {
         var pageable = PageRequest.of(page, size, Sort.by(orders));
         var result = states == null ? items.findByJobId(id, pageable)
                 : items.findByJobIdAndStateIn(id, states, pageable);
-        var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(em, result.getContent().stream().map(BulkItem::getEplId).toList());
+        var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(em, result.getContent().stream().map((BulkItem entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).toList());
         result.forEach(row -> {
             var book = metadata.get(row.getEplId());
             if (book != null) { row.setTitle(book.title()); row.setCoverUrl(book.coverUrl()); row.setCoverAvailable(book.coverAvailable()); }

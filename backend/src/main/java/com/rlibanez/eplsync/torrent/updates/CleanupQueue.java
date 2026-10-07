@@ -96,7 +96,7 @@ public class CleanupQueue {
         return entries.findByClientInstanceIdAndStateIn(tracking.instanceId(),PENDING).stream()
             .filter(e -> !Boolean.TRUE.equals(e.getImmediate()) || Boolean.TRUE.equals(e.getAutomatic()) || e.getState()==UpdateCleanup.State.REQUESTED)
             .filter(e -> e.getPreviousVersions()!=PreviousVersions.REMOVE_TORRENT_AND_FILES || Permission.has(Permission.TORRENT_FILES_DELETE))
-            .sorted(Comparator.comparing(UpdateCleanup::getCreatedAt).thenComparing(UpdateCleanup::getId)).toList();
+            .sorted(Comparator.comparing((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getCreatedAt()).thenComparing((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getId())).toList();
     }
     public List<Result> execute(List<UpdateCleanup> selected, TorrentClient adapter, List<RemoteTorrent> remote,
             boolean retryUnconfirmed, boolean automatic) {
@@ -205,7 +205,7 @@ public class CleanupQueue {
                 log.warn("Confirmación de borrado pendiente: tipo={}",ex.getClass().getSimpleName());
             }
         }
-        return entries.findAllById(selected.stream().map(UpdateCleanup::getId).toList()).stream()
+        return entries.findAllById(selected.stream().map((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getId()).toList()).stream()
             .map(e -> new Result(e.getId(),e.getDownloadId(),e.getState(),e.getMessage())).toList();
     }
     private List<String> targets(UpdateCleanup entry) {

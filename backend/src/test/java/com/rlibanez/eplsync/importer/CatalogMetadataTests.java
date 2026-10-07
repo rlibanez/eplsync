@@ -100,7 +100,7 @@ class CatalogMetadataTests {
         assertThat(books.findById(2L).orElseThrow()).usingRecursiveComparison().isEqualTo(originalBook);
         assertThat(metadata.findById(1L).orElseThrow()).usingRecursiveComparison().isEqualTo(originalMetadata);
         var recorded = events.after(cursor,10);
-        assertThat(recorded).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+        assertThat(recorded).extracting((com.rlibanez.eplsync.events.EventJournal.Entry entryValue) -> java.util.Objects.requireNonNull(entryValue).outcome())
             .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
         assertThat(recorded.getLast().details().get("reason")).isEqualTo("No se puede reemplazar el catálogo: el CSV contiene 1 registro con errores. El catálogo anterior se ha conservado.");
         var preview = service.previewCatalog(null,0,20);

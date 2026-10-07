@@ -77,8 +77,8 @@ class HomePreferencesTests {
         jdbc.update("UPDATE users SET home_preferences=? WHERE id=?",mapper.writeValueAsString(new HomePreferences.Preferences(legacy)),userId);
         var loaded=preferences.get(userId);
         assertThat(loaded.sections().getFirst()).isEqualTo(new HomePreferences.Section("recentEvents",false,null,10));
-        assertThat(loaded.sections()).extracting(HomePreferences.Section::id)
-            .containsExactlyElementsOf(legacy.stream().map(HomePreferences.Section::id).toList());
+        assertThat(loaded.sections()).extracting((HomePreferences.Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id())
+            .containsExactlyElementsOf(legacy.stream().map((HomePreferences.Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id()).toList());
         assertThat(loaded.sections()).allSatisfy(section -> assertThat(section.enabled()).isFalse());
         assertThat(loaded.sections().get(2).bookCount()).isEqualTo(20);
         var session=login("reader");

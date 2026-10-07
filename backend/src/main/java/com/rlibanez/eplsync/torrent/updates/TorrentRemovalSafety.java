@@ -23,7 +23,7 @@ final class TorrentRemovalSafety {
         for (var torrent : remote) {
             var path = normalize(torrent.contentPath());
             if (path == null) complete = false;
-            else counts.merge(path, 1, Integer::sum);
+            else counts.merge(path, 1, (left, right) -> java.util.Objects.requireNonNull(left) + java.util.Objects.requireNonNull(right));
         }
         return new Paths(counts, complete);
     }

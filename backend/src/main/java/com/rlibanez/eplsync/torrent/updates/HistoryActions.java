@@ -84,7 +84,7 @@ public class HistoryActions {
         var outcomes=clientRemoval ? remove(selection).items() : rows.stream().map(r -> new Item(r.getId(),r.getStatus(),null,null)).toList();
         var deleted=new HashSet<String>();
         if(history) {
-            var confirmed=outcomes.stream().filter(r -> !clientRemoval || "REMOVED".equals(r.cleanupState())).map(Item::id).toList();
+            var confirmed=outcomes.stream().filter(r -> !clientRemoval || "REMOVED".equals(r.cleanupState())).map((Item entryValue) -> java.util.Objects.requireNonNull(entryValue).id()).toList();
             if(!confirmed.isEmpty()) {
                 deleteHistory(new HistoryDeletion(request.eplId(),confirmed,true),false);
                 deleted.addAll(confirmed);
@@ -112,7 +112,8 @@ public class HistoryActions {
     public Result remove(Selection selection,boolean retryUnconfirmed) {
         Permission.require(Permission.TORRENT_CLEANUP);
         requireBook(selection);
-        boolean files=selection!=null && Boolean.TRUE.equals(selection.deleteFiles());
+        java.util.Objects.requireNonNull(selection);
+        boolean files=Boolean.TRUE.equals(selection.deleteFiles());
         if (files) {
             Permission.require(Permission.TORRENT_FILES_DELETE);
             if (!Boolean.TRUE.equals(selection.confirmFiles())) throw new UserInputException("Confirma la eliminación irreversible de los archivos");

@@ -115,8 +115,11 @@ public class CatalogDirectoryController {
             query.setParameter("search", normalize(q.strip())); query.setParameter("initial", initial);
         }
         long total = ((Number) count.getSingleResult()).longValue();
-        var items = rows.setFirstResult(page * size).setMaxResults(size).getResultList().stream()
-                .map(value -> new Entry((String) value, initial((String) value))).toList();
+        java.util.List<?> values = rows.setFirstResult(page * size).setMaxResults(size).getResultList();
+        var items = values.stream().map(value -> {
+            String name = (String) value;
+            return new Entry(name, initial(name));
+        }).toList();
         int pages = (int) ((total + size - 1) / size);
         return new PageResponse<>(items, new PageResponse.PageMeta(page, size, total, pages,
                 page == 0, page >= pages - 1, page < pages - 1, page > 0));

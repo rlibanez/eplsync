@@ -122,6 +122,7 @@ class CatalogMagnetControllerTests {
 
     @Test void busyExportReturnsReadableJsonEvenWhenTheClientRequestsPlainText() throws Exception {
         try (var prepared=exports.prepare(new com.rlibanez.eplsync.filter.CatalogBookFilter(), org.springframework.data.domain.Sort.unsorted())) {
+            org.assertj.core.api.Assertions.assertThat(prepared).isNotNull();
             mvc.perform(get("/api/catalog/magnets/export").accept("text/plain"))
                     .andExpect(status().isTooManyRequests())
                     .andExpect(content().contentTypeCompatibleWith("application/json"))

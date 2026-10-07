@@ -36,7 +36,7 @@ public class CatalogMagnetService {
         var cb = em.getCriteriaBuilder();
         var query = cb.createTupleQuery();
         var root = query.from(com.rlibanez.eplsync.model.CatalogBook.class);
-        query.multiselect(root.get("eplId"), root.get("title"), root.get("links"));
+        query.select(cb.tuple(root.get("eplId"), root.get("title"), root.get("links")));
         query.where(spec.toPredicate(root, query, cb));
         query.orderBy(ordering.stream().map(order -> order.isAscending()
                 ? cb.asc(root.get(order.getProperty())) : cb.desc(root.get(order.getProperty()))).toList());

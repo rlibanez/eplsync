@@ -53,12 +53,12 @@ class RevisionUpdatesTests {
         history(4,1.1,DownloadStatus.DOWNLOADED,true);history(4,1.2,DownloadStatus.ERROR,false);
         history(5,1.1,DownloadStatus.ERROR,false);
         var result=updates.search(UpdatePreferences.defaults(),0,20,"eplId,asc");
-        assertThat(result.items()).extracting(RevisionUpdates.Row::eplId).containsExactly(1L,2L,4L);
+        assertThat(result.items()).extracting((RevisionUpdates.Row entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).containsExactly(1L,2L,4L);
         assertThat(result.items().getFirst().registeredRevision()).isEqualTo(1.1);
         assertThat(result.items().getFirst().coverUrl()).isEqualTo("https://covers.example/1.jpg");
         assertThat(result.items().getFirst().coverAvailable()).isTrue();
         var completed=updates.search(new UpdatePreferences.Preferences(List.of(DownloadStatus.DOWNLOADED)),0,20,"eplId,asc");
-        assertThat(completed.items()).extracting(RevisionUpdates.Row::eplId).containsExactly(4L);
+        assertThat(completed.items()).extracting((RevisionUpdates.Row entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).containsExactly(4L);
     }
     @Test void filtersRegisteredStatusWithoutChangingReferenceRevisionBeforePagination() {
         book(1,2);history(1,1,DownloadStatus.SUBMITTED,true);history(1,1.5,DownloadStatus.DOWNLOADED,true);
@@ -66,9 +66,9 @@ class RevisionUpdatesTests {
         book(3,2);history(3,1,DownloadStatus.SUBMITTED,true);
         var result=updates.search(UpdatePreferences.defaults(),1,1,"eplId,asc",null,DownloadStatus.SUBMITTED);
         assertThat(result.meta().totalItems()).isEqualTo(2);
-        assertThat(result.items()).extracting(RevisionUpdates.Row::eplId).containsExactly(3L);
+        assertThat(result.items()).extracting((RevisionUpdates.Row entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).containsExactly(3L);
         assertThat(updates.search(UpdatePreferences.defaults(),0,20,"eplId,asc",null,DownloadStatus.DOWNLOADED).items())
-            .extracting(RevisionUpdates.Row::eplId).containsExactly(1L);
+            .extracting((RevisionUpdates.Row entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).containsExactly(1L);
     }
     @Test void selectsHighestMatchingRevisionOnceAndPaginatesBeforeReturningRows() {
         for(long id=1;id<=3;id++) {book(id,2);history(id,1,DownloadStatus.DOWNLOADED,true);history(id,1.1,DownloadStatus.DOWNLOADED,true);history(id,1.1,DownloadStatus.DOWNLOADED,true);}

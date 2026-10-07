@@ -26,15 +26,14 @@ public class UpdatePlanner {
     private final MagnetLinkBuilder magnets;
     private final TorrentDownloadService preparation;
     private final BulkStore bulk;
-    private final BulkItemRepository items;
     private final UpdatePlanRepository plans;
     private final UpdateCleanupRepository cleanup;
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
     public UpdatePlanner(DownloadRepository downloads, CatalogBookRepository books, DownloadTrackingService tracking,
             TorrentProperties properties, MagnetLinkBuilder magnets, TorrentDownloadService preparation, BulkStore bulk,
-            BulkItemRepository items, UpdatePlanRepository plans, UpdateCleanupRepository cleanup) {
+            UpdatePlanRepository plans, UpdateCleanupRepository cleanup) {
         this.downloads=downloads; this.books=books; this.tracking=tracking; this.properties=properties;
-        this.magnets=magnets; this.preparation=preparation; this.bulk=bulk; this.items=items; this.plans=plans; this.cleanup=cleanup;
+        this.magnets=magnets; this.preparation=preparation; this.bulk=bulk; this.plans=plans; this.cleanup=cleanup;
     }
     public record Existing(String id,double revision,String hash,DownloadStatus status) {}
     public record Candidate(Long eplId,String title,double catalogRevision,List<Existing> existingDownloads,

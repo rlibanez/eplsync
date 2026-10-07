@@ -33,7 +33,7 @@ public record CatalogBookResponse(
         Download download) {
     public record Download(List<DownloadItem> items,long totalItems,List<DownloadStatus> statuses) {
         public Download(List<DownloadItem> items) { this(items,items.size()); }
-        public Download(List<DownloadItem> items,long totalItems) { this(items,totalItems,items.stream().map(DownloadItem::status).distinct().toList()); }
+        public Download(List<DownloadItem> items,long totalItems) { this(items,totalItems,items.stream().map((DownloadItem entryValue) -> java.util.Objects.requireNonNull(entryValue).status()).distinct().toList()); }
         public boolean hasMore() { return totalItems > items.size(); }
     }
     public record DownloadItem(String id, Double revision, DownloadStatus status, boolean completed) {}

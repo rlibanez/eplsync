@@ -18,7 +18,7 @@ public class CatalogDownloadViewService {
         var grouped = new HashMap<Long, List<CatalogBookResponse.DownloadItem>>();
         var totals = new HashMap<Long, Long>();
         var statuses=new HashMap<Long,List<DownloadStatus>>();
-        var ids = books.stream().map(CatalogBook::getEplId).distinct().toList();
+        var ids = books.stream().map((CatalogBook entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).distinct().toList();
         for (int start = 0; start < ids.size(); start += 500) {
             for(var row:repository.historyStatuses(ids.subList(start,Math.min(start+500,ids.size()))))
                 statuses.computeIfAbsent(row.getEplId(),ignored -> new ArrayList<>()).add(DownloadStatus.valueOf(row.getStatus()));

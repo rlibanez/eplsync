@@ -14,6 +14,7 @@ import {
   ImportProvider,
   useImport,
 } from "../features/maintenance/ImportProvider";
+import { Tooltip, Menu as AccountMenu } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useTranslation } from "react-i18next";
 import { catalogParams } from "../api/catalog";
@@ -28,11 +29,12 @@ import {
   ListChecks,
   Menu,
   X,
-  PanelLeftClose,
-  PanelLeftOpen,
+  ChevronsLeft,
+  ChevronsRight,
   Settings,
   Bell,
   LogOut,
+  UserRound,
 } from "lucide-react";
 export function Shell() {
   return (
@@ -200,38 +202,79 @@ function ShellContent() {
               </span>
             )}
           </NavLink>
-          <button
-            className="settings-link"
-            aria-label={t("auth.logout")}
-            title={t("auth.logout")}
-            onClick={() =>
-              void auth.logout().catch(() =>
-                notify({
-                  title: t("auth.logout"),
-                  message: t("auth.unavailable"),
-                  tone: "error",
-                }),
-              )
-            }
-          >
-            <LogOut size={20} />
-            <span className="nav-text">{t("auth.logout")}</span>
-          </button>
-          <button
-            className="sidebar-toggle"
-            aria-label={t(collapsed ? "nav.expand" : "nav.collapse")}
-            title={t(collapsed ? "nav.expand" : "nav.collapse")}
-            aria-expanded={!collapsed}
-            aria-controls="sidebar"
-            onClick={() => setCollapsed(!collapsed)}
-          >
-            {collapsed ? (
-              <PanelLeftOpen size={20} />
-            ) : (
-              <PanelLeftClose size={20} />
-            )}
-            <span className="nav-text">{t("nav.foldShort")}</span>
-          </button>
+          <div className="logout-section">
+            <AccountMenu
+              position="top-start"
+              width={200}
+              shadow="md"
+              withinPortal
+            >
+              <AccountMenu.Target>
+                <Tooltip
+                  label={auth.user?.username}
+                  disabled={!collapsed || mobile}
+                  position="right"
+                >
+                  <button
+                    className="settings-link account-link"
+                    aria-label={auth.user?.username}
+                    title={auth.user?.username}
+                  >
+                    <UserRound size={20} />
+                    <span className="nav-text">{auth.user?.username}</span>
+                  </button>
+                </Tooltip>
+              </AccountMenu.Target>
+              <AccountMenu.Dropdown>
+                <AccountMenu.Item
+                  component={Link}
+                  to="/settings/account"
+                  leftSection={<UserRound size={16} />}
+                  onClick={() => setOpen(false)}
+                >
+                  {t("auth.account")}
+                </AccountMenu.Item>
+                <AccountMenu.Divider />
+                <AccountMenu.Item
+                  leftSection={<LogOut size={16} />}
+                  onClick={() =>
+                    void auth
+                      .logout()
+                      .catch(() =>
+                        notify({
+                          title: t("auth.logout"),
+                          message: t("auth.unavailable"),
+                          tone: "error",
+                        }),
+                      )
+                  }
+                >
+                  {t("auth.logout")}
+                </AccountMenu.Item>
+              </AccountMenu.Dropdown>
+            </AccountMenu>
+          </div>
+          <div className="sidebar-fold-section">
+            <Tooltip
+              label={t(collapsed ? "nav.expand" : "nav.collapse")}
+              position="right"
+            >
+              <button
+                className="sidebar-toggle"
+                aria-label={t(collapsed ? "nav.expand" : "nav.collapse")}
+                aria-expanded={!collapsed}
+                aria-controls="sidebar"
+                onClick={() => setCollapsed(!collapsed)}
+              >
+                {collapsed ? (
+                  <ChevronsRight size={20} />
+                ) : (
+                  <ChevronsLeft size={20} />
+                )}
+                <span className="nav-text">{t("nav.foldShort")}</span>
+              </button>
+            </Tooltip>
+          </div>
         </div>
       </aside>
       <main id="main" tabIndex={-1}>

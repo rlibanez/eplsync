@@ -389,7 +389,7 @@ class BulkTests {
         seedSortJob("empty",0,0,0);
         assertThat(store.list(0,1,null,"progress,desc").items().getFirst().jobId()).isEqualTo("errors");
         assertThat(store.list(1,1,null,"progress,desc").items().getFirst().jobId()).isEqualTo("high");
-        assertThat(store.list(0,20,null,"progress,asc").items()).extracting(BulkStore.View::jobId)
+        assertThat(store.list(0,20,null,"progress,asc").items()).extracting((BulkStore.View entryValue) -> java.util.Objects.requireNonNull(entryValue).jobId())
             .containsExactly("empty","low","high","errors");
         assertThat(store.list(0,1,null,"accepted,desc").items().getFirst().jobId()).isEqualTo("low");
         assertThat(store.list(0,1,null,"failed,desc").items().getFirst().jobId()).isEqualTo("errors");
@@ -397,7 +397,7 @@ class BulkTests {
         var high=jobs.findById("high").orElseThrow();high.setState(BulkJob.State.RUNNING);jobs.save(high);
         var filtered=store.list(0,20,List.of(BulkJob.State.RUNNING),"progress,desc");
         assertThat(filtered.meta().totalItems()).isEqualTo(1);
-        assertThat(filtered.items()).extracting(BulkStore.View::jobId).containsExactly("high");
+        assertThat(filtered.items()).extracting((BulkStore.View entryValue) -> java.util.Objects.requireNonNull(entryValue).jobId()).containsExactly("high");
         for(String invalid:List.of("eventActorUsername,asc","progress,sideways","accepted,asc,failed"))
             assertThatThrownBy(() -> store.list(0,20,null,invalid)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
         var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))

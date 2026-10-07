@@ -305,8 +305,9 @@ test("first web load creates an administrator only after password confirmation",
       .getByRole("heading", { name: "Correo electrónico", exact: true }),
   ).toBeVisible();
   expect(submissions).toBe(1);
+  await page.locator(".account-link").click();
   await page
-    .getByRole("button", { name: "Cerrar sesión", exact: true })
+    .getByRole("menuitem", { name: "Cerrar sesión", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "Iniciar sesión", exact: true }),

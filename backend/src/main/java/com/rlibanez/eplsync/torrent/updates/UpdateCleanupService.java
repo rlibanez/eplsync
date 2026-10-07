@@ -120,7 +120,7 @@ public class UpdateCleanupService {
         var checked=new HashMap<String,Set<String>>();
         for (var plan:selected) {
             var rows=pending(plan.getJobId()); authorize(rows);
-            checked.put(plan.getJobId(),rows.stream().map(UpdateCleanup::getId).collect(java.util.stream.Collectors.toSet()));
+            checked.put(plan.getJobId(),rows.stream().map((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getId()).collect(java.util.stream.Collectors.toSet()));
             if (plan.getClientInstanceId().equals(tracking.instanceId())) requests.addAll(rows);
             else errors.put(plan.getJobId(),"El destino del trabajo ha cambiado; restaura su cliente y URL");
         }
@@ -134,14 +134,14 @@ public class UpdateCleanupService {
         for (var plan:selected) {
             var rows=entries.findByJobIdOrderByEplIdAsc(plan.getJobId()).stream().filter(e -> checked.get(plan.getJobId()).contains(e.getId())).toList();
             var counts=new EnumMap<UpdateCleanup.State,Long>(UpdateCleanup.State.class);
-            rows.forEach(e -> counts.merge(e.getState(),1L,Long::sum));
+            rows.forEach(e -> counts.merge(e.getState(),1L,(left, right) -> java.util.Objects.requireNonNull(left) + java.util.Objects.requireNonNull(right)));
             jobs.add(new JobResult(plan.getJobId(),rows.size(),counts.getOrDefault(UpdateCleanup.State.REMOVED,0L),
                 counts.getOrDefault(UpdateCleanup.State.WAITING,0L),counts.getOrDefault(UpdateCleanup.State.BLOCKED,0L),
                 counts.getOrDefault(UpdateCleanup.State.REQUESTED,0L),errors.get(plan.getJobId())));
         }
         return new GlobalResult(jobs.size(),jobs.stream().filter(j -> j.error()!=null).count(),
-            jobs.stream().mapToLong(JobResult::checked).sum(),jobs.stream().mapToLong(JobResult::removed).sum(),
-            jobs.stream().mapToLong(JobResult::waiting).sum(),jobs.stream().mapToLong(JobResult::blocked).sum(),
-            jobs.stream().mapToLong(JobResult::requested).sum(),List.copyOf(jobs));
+            jobs.stream().mapToLong((JobResult entryValue) -> java.util.Objects.requireNonNull(entryValue).checked()).sum(),jobs.stream().mapToLong((JobResult entryValue) -> java.util.Objects.requireNonNull(entryValue).removed()).sum(),
+            jobs.stream().mapToLong((JobResult entryValue) -> java.util.Objects.requireNonNull(entryValue).waiting()).sum(),jobs.stream().mapToLong((JobResult entryValue) -> java.util.Objects.requireNonNull(entryValue).blocked()).sum(),
+            jobs.stream().mapToLong((JobResult entryValue) -> java.util.Objects.requireNonNull(entryValue).requested()).sum(),List.copyOf(jobs));
     }
 }

@@ -1,6 +1,5 @@
 package com.rlibanez.eplsync.controller;
 
-import com.rlibanez.eplsync.dto.PageResponse;
 import com.rlibanez.eplsync.filter.CatalogBookFilter;
 import com.rlibanez.eplsync.service.CatalogMagnetService;
 import jakarta.validation.Valid;

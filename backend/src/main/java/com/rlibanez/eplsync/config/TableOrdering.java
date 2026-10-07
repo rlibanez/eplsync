@@ -28,7 +28,7 @@ public final class TableOrdering {
     }
     public static void validateParameters(jakarta.servlet.http.HttpServletRequest request) {
         request.getParameterMap().forEach((key, values) -> {
-            if ((!key.equals("sort") && values.length != 1) || Arrays.stream(values).anyMatch(String::isBlank))
+            if ((!key.equals("sort") && values.length != 1) || Arrays.stream(values).anyMatch((String entryValue) -> java.util.Objects.requireNonNull(entryValue).isBlank()))
                 throw new UserInputException("Parámetro vacío o repetido");
         });
     }

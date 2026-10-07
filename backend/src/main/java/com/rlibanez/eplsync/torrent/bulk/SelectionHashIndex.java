@@ -27,7 +27,7 @@ final class SelectionHashIndex implements AutoCloseable {
         catch(SQLException ex) { throw failure(ex); }
     }
     private TorrentOperationException failure(Exception ex) {
-        return new TorrentOperationException(ex instanceof SQLException sql && sql.getErrorCode()==13 ? HttpStatus.PAYLOAD_TOO_LARGE
+        return new TorrentOperationException(ex instanceof SQLException sql && sql.getErrorCode()==13 ? HttpStatus.CONTENT_TOO_LARGE
                 : HttpStatus.INSUFFICIENT_STORAGE,"No se pudo preparar el índice temporal de la selección (máximo 128 MiB). Reduce los filtros o comprueba el espacio disponible.");
     }
     @Override public void close() {

@@ -114,7 +114,8 @@ p {
   display: grid;
   gap: 7px;
 }
-.sidebar nav a {
+.sidebar nav a,
+.sidebar-bottom .settings-link {
   display: flex;
   align-items: center;
   gap: 13px;
@@ -123,10 +124,12 @@ p {
   border-radius: 8px;
   font-size: 14px;
 }
-.sidebar nav a:hover {
+.sidebar nav a:hover,
+.sidebar-bottom .settings-link:hover {
   background: var(--surface-hover);
 }
-.sidebar nav a.active {
+.sidebar nav a.active,
+.sidebar-bottom .settings-link.active {
   background: var(--selected);
   color: var(--accent);
 }
@@ -852,7 +855,8 @@ main {
 .sidebar nav {
   gap: 6px;
 }
-.sidebar nav a {
+.sidebar nav a,
+.sidebar-bottom .settings-link {
   height: 44px;
   min-height: 44px;
   white-space: nowrap;
@@ -993,7 +997,7 @@ main {
   align-items: center;
   gap: 13px;
   padding: 12px 14px;
-  margin-bottom: 16px;
+  margin-bottom: 6px;
   border-radius: 8px;
   height: 44px;
 }
@@ -1103,6 +1107,7 @@ summary {
 [data-mantine-color-scheme="light"]
   :is(
     .sidebar nav a,
+    .sidebar-bottom .settings-link,
     td,
     .book-title,
     .table-toolbar strong,
@@ -1204,7 +1209,7 @@ summary {
 }
 /* One icon axis at x=38px in either sidebar state. */
 .sidebar nav a,
-.settings-link {
+.sidebar-bottom .settings-link {
   padding-inline: 12px;
 }
 .sidebar nav a svg,
@@ -1867,7 +1872,8 @@ summary {
 
 .auth-panel { max-width: 480px; margin: 8vh auto; padding: 24px; }
 
-.sidebar-bottom button.settings-link { width: 100%; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; }
+.sidebar-bottom button.settings-link { width: 100%; border: 0; background: transparent; font-family: inherit; line-height: inherit; text-align: left; }
+.sidebar-bottom button.settings-link:hover { background: var(--surface-hover); }
 .sidebar-bottom button.settings-link .nav-text { white-space: nowrap; }
 
 /* Match settings fields and keep actions at their intrinsic width. */
@@ -1981,3 +1987,11 @@ summary {
 .sync-report:has(.report-collapse[open]) .report-close { top: 28px; transform: none; }
 
 .sync-report-groups { margin-bottom: 20px; }
+
+.sidebar-fold-section {
+  border-top: 1px solid var(--line);
+  margin-top: 20px;
+  padding-top: 16px;
+}
+.sidebar-bottom .account-link { margin-bottom: 0; }
+.sidebar-bottom .account-link .nav-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
