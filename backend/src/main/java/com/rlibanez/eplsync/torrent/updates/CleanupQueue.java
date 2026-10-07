@@ -9,9 +9,6 @@ import com.rlibanez.eplsync.torrent.downloads.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import tools.jackson.databind.json.JsonMapper;
 import java.time.Instant;
 import java.util.*;
@@ -28,7 +25,6 @@ public class CleanupQueue {
     private final TorrentClientService client;
     private final CatalogBookRepository books;
     private final MagnetLinkBuilder magnets;
-    private final AccountStore accounts;
     private final TransactionTemplate tx;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
@@ -37,9 +33,9 @@ public class CleanupQueue {
 
     public CleanupQueue(UpdateCleanupRepository entries, UpdatePlanRepository plans, DownloadRepository downloads,
             DownloadTrackingService tracking, TorrentClientService client, CatalogBookRepository books,
-            MagnetLinkBuilder magnets, AccountStore accounts, PlatformTransactionManager manager) {
+            MagnetLinkBuilder magnets, PlatformTransactionManager manager) {
         this.entries=entries; this.plans=plans; this.downloads=downloads; this.tracking=tracking;
-        this.client=client; this.books=books; this.magnets=magnets; this.accounts=accounts;
+        this.client=client; this.books=books; this.magnets=magnets;
         tx=new TransactionTemplate(manager);
     }
 
@@ -80,38 +76,21 @@ public class CleanupQueue {
         var eligible=new ArrayList<UpdateCleanup>();
         for(var entry:selected) {
             touch(entry);
-            if(entry.getClientInstanceId().equals(tracking.instanceId()) && authorized(entry,accounts)!=null) eligible.add(entry);
+            if(entry.getClientInstanceId().equals(tracking.instanceId())) eligible.add(entry);
         }
-        if(!eligible.isEmpty()) client.exclusiveClient(adapter -> {
-            var previous=SecurityContextHolder.getContext();
-            try {return perform(eligible,adapter,adapter.listTorrents(),false,true,accounts);}
-            finally {SecurityContextHolder.setContext(previous);}
-        });
+        if(!eligible.isEmpty()) client.exclusiveClient(adapter -> perform(eligible,adapter,adapter.listTorrents(),false,true));
         return selected.size();
     }
-    public void runAutomatic(int limit) { runAutomatic(limit,accounts); }
-    public void runAutomatic(int limit, AccountStore accountStore) {
+    public void runAutomatic(int limit) {
         var selected=entries.pendingAutomatic(PENDING,org.springframework.data.domain.PageRequest.of(0,limit));
         if (selected.isEmpty()) return;
-        // Advance fairness even when an account or destination can no longer be used.
+        // Advance fairness even when the destination can no longer be used.
         var eligible=new ArrayList<UpdateCleanup>();
         for (var entry:selected) {
-            if (entry.getClientInstanceId().equals(tracking.instanceId()) && authorized(entry,accountStore)!=null) eligible.add(entry);
+            if (entry.getClientInstanceId().equals(tracking.instanceId())) eligible.add(entry);
             else touch(entry);
         }
-        if (!eligible.isEmpty()) client.exclusiveClient(adapter -> {
-            var previous=SecurityContextHolder.getContext();
-            try { return perform(eligible,adapter,adapter.listTorrents(),false,true,accountStore); }
-            finally {SecurityContextHolder.setContext(previous);}
-        });
-    }
-    private Account authorized(UpdateCleanup entry,AccountStore accountStore) {
-        var account=entry.getActorId()==null ? null : accountStore.find(entry.getActorId());
-        if (account==null || !"ACTIVE".equals(account.status()) || account.mustChangePassword()
-                || !account.permissions().contains(Permission.TORRENT_CLEANUP)
-                || entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES
-                    && !account.permissions().contains(Permission.TORRENT_FILES_DELETE)) return null;
-        return account;
+        if (!eligible.isEmpty()) client.exclusiveClient(adapter -> perform(eligible,adapter,adapter.listTorrents(),false,true));
     }
     public List<UpdateCleanup> manualPending() {
         return entries.findByClientInstanceIdAndStateIn(tracking.instanceId(),PENDING).stream()
@@ -121,12 +100,10 @@ public class CleanupQueue {
     }
     public List<Result> execute(List<UpdateCleanup> selected, TorrentClient adapter, List<RemoteTorrent> remote,
             boolean retryUnconfirmed, boolean automatic) {
-        var before=SecurityContextHolder.getContext();
-        try { return perform(selected,adapter,remote,retryUnconfirmed,automatic,accounts); }
-        finally { SecurityContextHolder.setContext(before); }
+        return perform(selected,adapter,remote,retryUnconfirmed,automatic);
     }
     private List<Result> perform(List<UpdateCleanup> selected, TorrentClient adapter, List<RemoteTorrent> remote,
-            boolean retryUnconfirmed, boolean automatic, AccountStore accountStore) {
+            boolean retryUnconfirmed, boolean automatic) {
         hydrate(selected);
         var byHash=TorrentRemovalSafety.index(remote);
         var paths=TorrentRemovalSafety.paths(remote);
@@ -151,8 +128,7 @@ public class CleanupQueue {
             if (e.getState()==UpdateCleanup.State.REQUESTED) uncertain.add(hash);
         }
         var observedHashes=new HashSet<String>();
-        for (var entry:selected) if (entry.getClientInstanceId().equals(tracking.instanceId())
-                && (!automatic || authorized(entry,accountStore)!=null)) {
+        for (var entry:selected) if (entry.getClientInstanceId().equals(tracking.instanceId())) {
             observedHashes.add(entry.getHash()); observedHashes.addAll(targets(entry));
         }
         tracking.observeSelected(byHash,observedHashes);
@@ -163,16 +139,11 @@ public class CleanupQueue {
             entry.setState(fresh.getState());
             if (!PENDING.contains(entry.getState())) continue;
             if (!entry.getClientInstanceId().equals(tracking.instanceId())) continue;
-            if (automatic) {
-                var account=authorized(entry,accountStore);
-                if (account==null) { touch(entry); continue; }
-                var context=SecurityContextHolder.createEmptyContext();
-                context.setAuthentication(new UsernamePasswordAuthenticationToken(account,null,account.permissions().stream()
-                    .map(p -> new SimpleGrantedAuthority(p.name())).toList()));
-                SecurityContextHolder.setContext(context);
+            // Automatic requests were authorized when persisted. Manual actions still require current permissions.
+            if (!automatic) {
+                Permission.require(Permission.TORRENT_CLEANUP);
+                if (entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES) Permission.require(Permission.TORRENT_FILES_DELETE);
             }
-            Permission.require(Permission.TORRENT_CLEANUP);
-            if (entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES) Permission.require(Permission.TORRENT_FILES_DELETE);
             touch(entry);
             try {
                 var old=byHash.get(entry.getHash());
@@ -248,9 +219,12 @@ public class CleanupQueue {
         boolean newlyBlocked=state==UpdateCleanup.State.BLOCKED && (entry.getState()!=state || !Objects.equals(entry.getMessage(),message));
         entry.setState(state); entry.setMessage(message); entry.setUpdatedAt(Instant.now()); entries.saveAndFlush(entry);
         if(newlyBlocked && Boolean.TRUE.equals(entry.getAutomatic()))
-            events.rejected(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,"CLEANUP",
+            EventContext.withActor(new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()),() -> {
+                events.rejected(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,"CLEANUP",
                 Map.of("eplId",entry.getEplId(),"cleanupId",entry.getId(),"deleteFiles",entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES),
                 entry.getLastCheckedAt()==null ? Instant.now() : entry.getLastCheckedAt(),new com.rlibanez.eplsync.exception.UserInputException(message));
+                return null;
+            });
     }
     public void resolve(Set<String> aliases) {
         tx.executeWithoutResult(status -> {

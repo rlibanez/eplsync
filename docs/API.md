@@ -1763,7 +1763,12 @@ segundos. Prioriza las más antiguas no comprobadas y rota las ya comprobadas,
 incluidas las bloqueadas. Comparte una instantánea inicial del cliente y consulta
 de nuevo si se solicitaron borrados, para confirmar su ausencia.
 
-Se comprueban los permisos actuales del usuario. Cancelar un trabajo cancela sus
+Los permisos se comprueban al crear la solicitud. La ejecución automática conserva
+esa autorización para el destino, los hashes y la política registrados, aunque después
+se retiren permisos, se desactive o se elimine la cuenta. La identidad del solicitante
+queda guardada para los eventos; no se necesita consultar su cuenta al ejecutar.
+Las nuevas solicitudes y las acciones manuales requieren los permisos actuales.
+Cancelar un trabajo cancela sus
 limpiezas todavía no solicitadas; las `REQUESTED` conservan la confirmación pendiente.
 Los borrados inciertos nunca se repiten automáticamente. Los registros `REMOVED`,
 `KEPT` y `CANCELLED` no vuelven a seleccionarse. La ausencia confirmada resuelve
@@ -1855,7 +1860,7 @@ conservar el trabajo ni sus elementos.
 
 Los intentos se ejecutan en segundo plano después de confirmar la transacción,
 sin esperar al siguiente ciclo periódico. Se conserva la cola de limpieza,
-la autorización del usuario, la protección de torrents y rutas compartidos y
+la autorización concedida al crear la solicitud, la protección de torrents y rutas compartidos y
 la comprobación posterior al borrado. Los intentos y los nuevos bloqueos generan
 eventos; un bloqueo idéntico no produce eventos repetidos en cada ciclo.
 Los errores o bloqueos permanecen disponibles para las comprobaciones posteriores.

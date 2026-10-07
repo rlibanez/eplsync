@@ -236,14 +236,11 @@ class UpdateTests {
         history(1,0.9,"D".repeat(40),DownloadStatus.DOWNLOADED);
         var job=com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor("owner","owner","USER"),() ->
             selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),PreviousVersions.REMOVE_TORRENT,null,null,1,10,"0ms",MultipleHashes.ALL)));
-        var accounts=mock(com.rlibanez.eplsync.security.AccountStore.class);
-        when(accounts.find("owner")).thenReturn(new com.rlibanez.eplsync.security.Account("owner","owner","owner@example.org","ADMIN","ACTIVE",false,null,0,
-            java.util.EnumSet.allOf(com.rlibanez.eplsync.security.Permission.class),null));
         when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,null),remote(OTHER,DownloadStatus.DOWNLOADED,null),
             remote("D".repeat(40),DownloadStatus.DOWNLOADED,null),remote(NEW,DownloadStatus.DOWNLOADING,null)));
         // Frozen cleanup requests no longer need either the job or its commands for execution.
         items.deleteAll(); jobs.deleteById(job.jobId()); plans.deleteById(job.jobId());
-        for(int i=0;i<3;i++) queue.runAutomatic(1,accounts);
+        for(int i=0;i<3;i++) queue.runAutomatic(1);
         verify(stubClient,times(3)).listTorrents();
         assertThat(cleanup.findAll()).hasSize(3).allMatch(e -> e.getLastCheckedAt()!=null);
         verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
@@ -263,7 +260,7 @@ class UpdateTests {
         var first=create(PreviousVersions.REMOVE_TORRENT);
         var finished=jobs.findById(first.jobId()).orElseThrow();finished.setState(BulkJob.State.COMPLETED);jobs.save(finished);
         var second=create(PreviousVersions.REMOVE_TORRENT);
-        var automatic=new AutomaticUpdateCleanup(mock(com.rlibanez.eplsync.security.AccountStore.class),queue,bulk);
+        var automatic=new AutomaticUpdateCleanup(queue,bulk);
         org.springframework.test.util.ReflectionTestUtils.setField(automatic,"enabled",false);
         automatic.tick(); verify(stubClient,never()).listTorrents();
         var row=downloads.findAll().getFirst();
@@ -274,7 +271,7 @@ class UpdateTests {
         assertThat(only(first.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
         assertThat(only(second.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
         clearInvocations(stubClient);
-        queue.runAutomatic(100,mock(com.rlibanez.eplsync.security.AccountStore.class));verify(stubClient,never()).listTorrents();
+        queue.runAutomatic(100);verify(stubClient,never()).listTorrents();
     }
 
     @Test void selectedRefreshOnlyObservesSelectedHashesAndConfirmsAbsenceWithoutDeleting() {
@@ -339,15 +336,11 @@ class UpdateTests {
     }
 
     @Test void selectedUpdatesPersistPolicyAndAutomaticCleanupWaitsForCompletion() {
-        var accounts=mock(com.rlibanez.eplsync.security.AccountStore.class);
-        var account=new com.rlibanez.eplsync.security.Account("owner","owner","owner@example.org","ADMIN","ACTIVE",false,null,0,
-            java.util.EnumSet.allOf(com.rlibanez.eplsync.security.Permission.class),null);
-        when(accounts.find("owner")).thenReturn(account);
         var request=new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),PreviousVersions.REMOVE_TORRENT_AND_FILES,true,null,2,10,"0ms",MultipleHashes.ALL);
         var job=com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor("owner","owner","USER"),() -> selectedSender.create(request));
         assertThat(plans.findById(job.jobId()).orElseThrow().getAutomaticCleanup()).isTrue();
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
-        var automatic=new AutomaticUpdateCleanup(accounts,queue,bulk);
+        var automatic=new AutomaticUpdateCleanup(queue,bulk);
         when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/books/old.epub"),remote(NEW,DownloadStatus.DOWNLOADING,"/books/new.epub")));
         automatic.tick();verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
         // Finish dispatch and allow the downloaded replacement to trigger cleanup.
@@ -357,17 +350,42 @@ class UpdateTests {
         automatic.tick();verify(stubClient).deleteTorrent(OLD,true);
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
     }
-    @Test void selectedUpdatesValidateConfirmationAndAutomaticCleanupRechecksOwnerPermissions() {
+    @Test void selectedUpdatesValidateFileRemovalConfirmation() {
         var denied=new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),PreviousVersions.REMOVE_TORRENT_AND_FILES,false,null,2,10,"0ms",MultipleHashes.ALL);
         assertThatThrownBy(() -> selectedSender.create(denied)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
         assertThat(jobs.count()).isZero();
-        var request=new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),PreviousVersions.REMOVE_TORRENT,null,null,2,10,"0ms",MultipleHashes.ALL);
-        var job=com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor("owner","owner","USER"),() -> selectedSender.create(request));
-        var accounts=mock(com.rlibanez.eplsync.security.AccountStore.class);
-        when(accounts.find("owner")).thenReturn(new com.rlibanez.eplsync.security.Account("owner","owner","owner@example.org","USER","ACTIVE",false,null,0,Set.of(com.rlibanez.eplsync.security.Permission.CATALOG_READ),null));
-        new AutomaticUpdateCleanup(accounts,queue,bulk).tick();
-        verify(stubClient,never()).listTorrents();verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"IMMEDIATE,deleted", "IMMEDIATE,disabled", "IMMEDIATE,revoked", "AFTER_DOWNLOAD,deleted", "AFTER_DOWNLOAD,disabled", "AFTER_DOWNLOAD,revoked"})
+    void persistedCleanupSurvivesOwnerChanges(CleanupTiming timing,String change) {
+        ownerStore.clear();
+        var owner=ownerStore.initialize("cleanupowner","owner@example.org","a permanent cleanup password","a permanent cleanup password");
+        ownerStore.create("remainingadmin","remaining@example.org","ADMIN",owner.id());
+        var job=com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor(owner.id(),owner.username(),"USER"),
+            () -> selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),PreviousVersions.REMOVE_TORRENT_AND_FILES,true,null,2,10,"0ms",MultipleHashes.ALL,timing)));
+        var send=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        switch(change) {
+            case "deleted" -> ownerStore.delete(owner.id());
+            case "disabled" -> ownerStore.update(owner.id(),"ADMIN","DISABLED",Map.of(),owner.id());
+            case "revoked" -> ownerStore.update(owner.id(),"USER","ACTIVE",Map.of(),owner.id());
+            default -> throw new AssertionError(change);
+        }
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
+        // No logged-in user or current privileges are needed to execute an authorized queued request.
+        var context=org.springframework.security.core.context.SecurityContextHolder.getContext();
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        try {
+            var state=timing==CleanupTiming.IMMEDIATE ? DownloadStatus.DOWNLOADING : DownloadStatus.DOWNLOADED;
+            when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old.epub"),remote(NEW,state,"/new.epub")),List.of(remote(NEW,state,"/new.epub")));
+            if(timing==CleanupTiming.IMMEDIATE) queue.runImmediate(100,Instant.now());
+            else queue.runAutomatic(100);
+            verify(stubClient).deleteTorrent(OLD,true);
+            assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+            var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
+            assertThat(event.actor().id()).isEqualTo(owner.id());
+            assertThat(event.actor().username()).isEqualTo("cleanupowner");
+        } finally {org.springframework.security.core.context.SecurityContextHolder.setContext(context);}
     }
     @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_SEND","CATALOG_READ","DOWNLOADS_READ"})
     void selectedUpdatesCannotRequestCleanupWithoutPermission() throws Exception {

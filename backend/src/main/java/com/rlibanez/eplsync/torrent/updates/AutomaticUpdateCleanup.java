@@ -1,6 +1,5 @@
 package com.rlibanez.eplsync.torrent.updates;
 
-import com.rlibanez.eplsync.security.*;
 import com.rlibanez.eplsync.torrent.bulk.*;
 import org.springframework.stereotype.Component;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -11,14 +10,13 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 @ConditionalOnProperty(prefix="eplsync.torrent.bulk",name="worker-enabled",havingValue="true",matchIfMissing=true)
 public class AutomaticUpdateCleanup {
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(AutomaticUpdateCleanup.class);
-    private final AccountStore accounts;
     private final CleanupQueue queue;
     private final BulkStore bulk;
     @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.cleanup.enabled:true}") private boolean enabled=true;
     @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.cleanup.batch-size:100}") private int batchSize=100;
     @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.cleanup.interval:30s}") private String interval="30s";
-    public AutomaticUpdateCleanup(AccountStore accounts,CleanupQueue queue,BulkStore bulk) {
-        this.accounts=accounts;this.queue=queue;this.bulk=bulk;
+    public AutomaticUpdateCleanup(CleanupQueue queue,BulkStore bulk) {
+        this.queue=queue;this.bulk=bulk;
     }
     @jakarta.annotation.PostConstruct
     void validate() {
@@ -32,7 +30,7 @@ public class AutomaticUpdateCleanup {
         try {
             synchronized(bulk) {
                 com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,() -> {
-                    queue.runAutomatic(batchSize,accounts); return null;
+                    queue.runAutomatic(batchSize); return null;
                 });
             }
         } catch(RuntimeException ex) { log.warn("Limpieza automática pendiente: tipo={}",ex.getClass().getSimpleName()); }
