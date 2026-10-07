@@ -10,6 +10,9 @@ export function RouteAccess({ children }: { children: ReactNode }) {
   let permission: Permission | undefined;
   if (pathname.startsWith("/catalog") || pathname.startsWith("/directory"))
     permission = "CATALOG_READ";
+  else if (pathname === "/downloads/updates" && !auth.can("CATALOG_READ"))
+    permission = "CATALOG_READ";
+  else if (pathname === "/downloads/updates") permission = "DOWNLOADS_READ";
   else if (pathname.startsWith("/downloads/jobs"))
     permission = "TORRENT_JOBS_MANAGE";
   else if (pathname === "/downloads" && !auth.can("TORRENT_SYNC"))
@@ -17,11 +20,15 @@ export function RouteAccess({ children }: { children: ReactNode }) {
   else if (pathname === "/events") permission = "EVENTS_MANAGE";
   else if (
     pathname === "/settings/catalog" &&
+    !auth.can("COVERS_MANAGE") &&
     !auth.can("CATALOG_DELETE") &&
     !auth.can("SETTINGS_MANAGE") &&
     auth.user?.role !== "ADMIN"
   )
     permission = "CATALOG_IMPORT";
+  else if (pathname === "/settings/downloads" && !auth.can("CATALOG_READ"))
+    permission = "CATALOG_READ";
+  else if (pathname === "/settings/downloads") permission = "DOWNLOADS_READ";
   else if (pathname === "/settings/covers") permission = "COVERS_MANAGE";
   else if (pathname === "/settings/torrent") permission = "SETTINGS_MANAGE";
   else if (pathname === "/settings/events") permission = "EVENTS_MANAGE";

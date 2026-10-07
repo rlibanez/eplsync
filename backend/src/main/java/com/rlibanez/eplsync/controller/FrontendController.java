@@ -18,7 +18,7 @@ public class FrontendController {
         this.index = index;
     }
 
-    @GetMapping({"/", "/events", "/catalog", "/catalog/{id:[0-9]+}", "/maintenance/catalog", "/settings", "/settings/general", "/settings/home", "/settings/catalog", "/settings/database", "/settings/events", "/settings/torrent", "/settings/covers", "/settings/about", "/settings/account", "/settings/users", "/settings/reset", "/settings/missing", "/downloads/sync", "/directory", "/downloads", "/downloads/jobs", "/downloads/jobs/{id:[a-zA-Z0-9-]+}"})
+    @GetMapping({"/", "/events", "/catalog", "/catalog/{id:[0-9]+}", "/maintenance/catalog", "/settings", "/settings/general", "/settings/home", "/settings/downloads", "/settings/catalog", "/settings/database", "/settings/events", "/settings/torrent", "/settings/covers", "/settings/about", "/settings/account", "/settings/users", "/settings/reset", "/settings/missing", "/downloads/sync", "/directory", "/downloads", "/downloads/updates", "/downloads/jobs", "/downloads/jobs/{id:[a-zA-Z0-9-]+}"})
     public String frontend(HttpServletResponse response) {
         response.setHeader("Cache-Control", "no-cache");
         return "forward:/index.html";

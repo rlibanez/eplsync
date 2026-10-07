@@ -1737,8 +1737,8 @@ summary {
 .detail-navigation-row .book-navigation { gap: 24px; }
 .detail-navigation-row [aria-disabled="true"] { opacity: .45; cursor: default; }
 
-.catalog-table .catalog-title-cell { padding-top: 7px; padding-bottom: 7px; }
-.catalog-table .mini-book {
+:is(.catalog-table, .updates-table) .catalog-title-cell { padding-top: 7px; padding-bottom: 7px; }
+:is(.catalog-table, .updates-table) .mini-book {
   width: 44px;
   height: 59px;
   display: flex;
@@ -1746,8 +1746,8 @@ summary {
   justify-content: center;
   border-radius: 5px;
 }
-.catalog-table .mini-book.has-image { background: transparent; }
-.catalog-table .mini-book img {
+:is(.catalog-table, .updates-table) .mini-book.has-image { background: transparent; }
+:is(.catalog-table, .updates-table) .mini-book img {
   min-width: 0;
   min-height: 0;
   max-width: 100%;
@@ -1777,7 +1777,7 @@ summary {
 .server-settings-wide { grid-column: 1 / -1; }
 .server-settings-new-row { grid-column: 1; }
 .server-settings-related { min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--line); border-radius: 8px; display: grid; gap: 16px; }
-.server-settings-related legend { padding: 0 6px; font-size: 0.9rem; font-weight: 500; color: var(--muted); }
+.server-settings-related legend { padding: 0 8px; font-size: 15px; font-weight: 600; }
 .server-settings-grid small { display: block; margin-top: 4px; }
 
 .cover-parameters .mantine-NumberInput-root { display: flex; flex-direction: column; }
@@ -1944,3 +1944,8 @@ summary {
 .job-controls-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
 .job-controls-heading h2 { margin: 0; }
 .job-controls-heading .action-row { margin: 0; }
+
+.updates-table { table-layout: fixed; min-width: 100%; }
+.updates-table th { position: relative; }
+.updates-table td, .updates-table th { overflow-wrap: anywhere; }
+.updates-table .updates-selection { width: 44px; min-width: 44px; padding-inline: 10px; }

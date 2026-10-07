@@ -8,7 +8,7 @@ import {
   useQueryClient,
   useIsMutating,
 } from "@tanstack/react-query";
-import { Button, TextInput, Select } from "@mantine/core";
+import { Button, TextInput, Select, Checkbox } from "@mantine/core";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -17,11 +17,13 @@ import { post, type Job } from "./shared";
 import { OptionLabel, type SendDefaults } from "./SendOptions";
 export function SendSelection({
   filters,
+  revisionStates,
   single,
   count,
   allResults,
   onClose,
 }: {
+  revisionStates?: string[];
   single?: { eplId: number; hash: string };
   filters: Record<string, unknown>;
   count: number;
@@ -32,6 +34,8 @@ export function SendSelection({
   const auth = useAuth();
   const navigate = useNavigate();
   const cache = useQueryClient();
+  const [previousVersions, setPreviousVersions] = useState("keep");
+  const [confirmFiles, setConfirmFiles] = useState(false);
   const [start, setStart] = useState("inherit");
   const [auto, setAuto] = useState("inherit");
   const [rename, setRename] = useState("inherit");
@@ -65,6 +69,8 @@ export function SendSelection({
     defaults.isSuccess && categories.isSuccess && !categories.isFetching;
   const initialized = useRef(false);
   function restoreDefaults(d: SendDefaults) {
+    setPreviousVersions("keep");
+    setConfirmFiles(false);
     setStart(String(d.start));
     setAuto(String(d.autoManagement));
     setPath(d.savePath ?? "");
@@ -116,6 +122,7 @@ export function SendSelection({
       void cache.invalidateQueries({ queryKey: ["book"] });
       void cache.invalidateQueries({ queryKey: ["book-history"] });
       void cache.invalidateQueries({ queryKey: ["jobs"] });
+      void cache.invalidateQueries({ queryKey: ["revision-updates"] });
       onClose();
       if ("jobId" in data && auth.can("TORRENT_JOBS_MANAGE"))
         navigate(`/downloads/jobs/${data.jobId}`);
@@ -138,10 +145,22 @@ export function SendSelection({
   }
   function send() {
     mutation.mutate({
-      url: single ? `/torrent/books/${single.eplId}` : "/torrent/books",
+      url: revisionStates
+        ? "/torrent/revision-updates/send"
+        : single
+          ? `/torrent/books/${single.eplId}`
+          : "/torrent/books",
       body: {
         dryRun: false,
-        ...(!single
+        ...(revisionStates
+          ? {
+              ids: filters.eplId,
+              states: revisionStates,
+              previousVersions,
+              confirmFiles,
+            }
+          : {}),
+        ...(!single && !revisionStates
           ? {
               filters,
               all: allResults,
@@ -153,6 +172,7 @@ export function SendSelection({
         concurrency: Number(concurrency),
         batchSize: Number(batchSize),
         interval,
+        ...(revisionStates ? { multipleHashes } : {}),
       },
     });
   }
@@ -199,13 +219,65 @@ export function SendSelection({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!active && ready && initialized.current) send();
+          if (
+            !active &&
+            ready &&
+            initialized.current &&
+            (previousVersions !== "removeTorrentAndFiles" || confirmFiles)
+          )
+            send();
         }}
       >
         <fieldset
           disabled={!ready || !initialized.current}
           style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
         >
+          {revisionStates && (
+            <fieldset className="send-options-group">
+              <legend>{t("send.previousVersions")}</legend>
+              <Select
+                label={t("send.previousVersions")}
+                value={previousVersions}
+                allowDeselect={false}
+                data={[
+                  { value: "keep", label: t("send.keepPrevious") },
+                  ...(auth.can("TORRENT_CLEANUP")
+                    ? [
+                        {
+                          value: "removeTorrent",
+                          label: t("send.removePrevious"),
+                        },
+                      ]
+                    : []),
+                  ...(auth.can("TORRENT_CLEANUP") &&
+                  auth.can("TORRENT_FILES_DELETE")
+                    ? [
+                        {
+                          value: "removeTorrentAndFiles",
+                          label: t("send.removePreviousFiles"),
+                        },
+                      ]
+                    : []),
+                ]}
+                onChange={(value) => {
+                  setPreviousVersions(value ?? "keep");
+                  setConfirmFiles(false);
+                }}
+              />
+              {previousVersions !== "keep" && (
+                <p className="muted">{t("send.cleanupAfterCompletion")}</p>
+              )}
+              {previousVersions === "removeTorrentAndFiles" && (
+                <Checkbox
+                  label={t("send.confirmPreviousFiles")}
+                  checked={confirmFiles}
+                  onChange={(event) =>
+                    setConfirmFiles(event.currentTarget.checked)
+                  }
+                />
+              )}
+            </fieldset>
+          )}
           <fieldset className="send-options-group">
             <legend>{t("send.jobOptions")}</legend>
             <div className="send-options-grid">
@@ -335,7 +407,12 @@ export function SendSelection({
           <Button
             type="submit"
             loading={active}
-            disabled={!ready || !initialized.current || count === 0}
+            disabled={
+              !ready ||
+              !initialized.current ||
+              count === 0 ||
+              (previousVersions === "removeTorrentAndFiles" && !confirmFiles)
+            }
           >
             {t("selection.createJob")}
           </Button>

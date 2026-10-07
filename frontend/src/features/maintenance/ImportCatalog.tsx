@@ -1,3 +1,4 @@
+import { CoverSettings } from "../settings/CoverSettings";
 import { useAuth } from "../auth/Auth";
 import { ServerSettings } from "../settings/ServerSettings";
 import { ImportWizard } from "./ImportWizard";
@@ -198,6 +199,7 @@ export function ImportCatalog() {
         </section>
       )}
       {auth.can("SETTINGS_MANAGE") && <ServerSettings section="catalog" />}
+      {auth.can("COVERS_MANAGE") && <CoverSettings />}
       {auth.can("CATALOG_IMPORT") && (
         <ImportWizard
           opened={wizard}

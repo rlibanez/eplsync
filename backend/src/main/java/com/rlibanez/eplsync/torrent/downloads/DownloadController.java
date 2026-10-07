@@ -11,8 +11,9 @@ import org.springframework.web.bind.annotation.*;
 public class DownloadController {
     private final TorrentClientService client;
     private final DownloadQueryService queries;
-    public DownloadController(TorrentClientService client, DownloadQueryService queries) {
-        this.client = client; this.queries = queries;
+    private final com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup;
+    public DownloadController(TorrentClientService client, DownloadQueryService queries, com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup) {
+        this.client = client; this.queries = queries; this.cleanup = cleanup;
     }
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")
     @PostMapping("/sync")
@@ -25,7 +26,7 @@ public class DownloadController {
             throw new com.rlibanez.eplsync.exception.UserInputException("dryRun es obligatorio y debe ser booleano");
         if (body.containsKey("includeDetails") && !(body.get("includeDetails") instanceof Boolean))
             throw new com.rlibanez.eplsync.exception.UserInputException("includeDetails debe ser booleano");
-        return client.syncDownloads(dryRun, Boolean.TRUE.equals(body.get("includeDetails")));
+        return cleanup.synchronize(dryRun, Boolean.TRUE.equals(body.get("includeDetails")));
     }
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")
     @PostMapping("/link")

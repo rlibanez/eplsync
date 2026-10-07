@@ -8,11 +8,11 @@ export function CoverActivity() {
   const { data } = useCoverTask();
   const task = data?.task;
   useCoverTaskCompletion(task);
-  if (task?.state !== "RUNNING" || location.pathname === "/settings/covers")
+  if (task?.state !== "RUNNING" || location.pathname === "/settings/catalog")
     return null;
   return (
     <div className="panel cover-activity" role="status">
-      <Link to="/settings/covers">
+      <Link to="/settings/catalog">
         {t("covers.running")} · {task.checked} / {task.total || "…"}
       </Link>
     </div>

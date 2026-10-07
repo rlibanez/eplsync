@@ -26,7 +26,7 @@ export const eventHref = (event: AppEvent) =>
     : event.category === "CATALOG"
       ? "/settings/catalog"
       : event.category === "COVERS"
-        ? "/settings/covers"
+        ? "/settings/catalog"
         : event.category === "JOB"
           ? "/downloads/jobs/" + encodeURIComponent(event.operationId)
           : "/downloads";

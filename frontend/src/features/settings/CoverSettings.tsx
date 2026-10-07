@@ -51,7 +51,7 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
         title: "covers.title",
         success: "covers.running",
         error: "covers.startError",
-        href: "/settings/covers",
+        href: "/settings/catalog",
       },
     },
     retry: false,

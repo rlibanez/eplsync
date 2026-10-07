@@ -40,7 +40,8 @@
     "send": "Enviar",
     "jobs": "Trabajos",
     "backToTop": "Subir",
-    "foldShort": "Plegar"
+    "foldShort": "Plegar",
+    "updates": "Actualizaciones"
   },
   "homeSettings": {
     "sections": "Secciones",
@@ -286,7 +287,8 @@
     "covers": "Portadas",
     "about": "Acerca de",
     "repository": "Repositorio del proyecto",
-    "events": "Eventos"
+    "events": "Eventos",
+    "downloads": "Descargas"
   },
   "import": {
     "description": "Descarga el catálogo de ePubLibre y crea o actualiza tu biblioteca local.",
@@ -558,7 +560,13 @@
     },
     "restoreDefaults": "Restablecer valores predeterminados",
     "jobOptions": "Ejecución del envío",
-    "clientOptions": "Cliente torrent"
+    "clientOptions": "Cliente torrent",
+    "previousVersions": "Versiones anteriores",
+    "keepPrevious": "Conservar torrents y archivos",
+    "removePrevious": "Eliminar torrents y conservar archivos",
+    "removePreviousFiles": "Eliminar torrents y archivos",
+    "cleanupAfterCompletion": "La limpieza se realizará automáticamente cuando la nueva revisión esté completamente descargada.",
+    "confirmPreviousFiles": "Entiendo que se eliminarán los archivos de las versiones anteriores. Esta acción es irreversible."
   },
   "pagination": {
     "page": "Página",
@@ -1181,5 +1189,32 @@
     "copyPassword": "Copiar contraseña",
     "passwordCopied": "Contraseña copiada",
     "copyFailed": "No se ha podido copiar. Selecciona la contraseña y cópiala manualmente."
+  },
+  "updateSettings": {
+    "title": "Configuración de actualizaciones de revisión",
+    "description": "Estados de los registros que se comprobarán al buscar actualizaciones. Valores predeterminados de la aplicación.",
+    "states": "Estados que comprobar",
+    "save": "Guardar",
+    "reset": "Restablecer valores predeterminados",
+    "saved": "Configuración guardada."
+  },
+  "revisionUpdates": {
+    "search": "Buscar actualizaciones",
+    "description": "Se sincronizará con el cliente torrent antes de comparar el catálogo con el historial. Las opciones solo se aplican a esta búsqueda.",
+    "restore": "Restaurar configuración guardada",
+    "searching": "Sincronizando y buscando actualizaciones…",
+    "syncPermission": "Se requiere permiso para sincronizar con el cliente torrent antes de buscar actualizaciones.",
+    "start": "Busca actualizaciones para comprobar las revisiones disponibles de tus libros.",
+    "empty": "No hay actualizaciones pendientes.",
+    "count": "Actualizaciones pendientes: {{count}}",
+    "send": "Enviar actualizaciones ({{count}})",
+    "eplId": "EPL ID",
+    "title": "Libro",
+    "registeredRevision": "Revisión registrada",
+    "availableRevision": "Revisión disponible",
+    "status": "Estado registrado",
+    "view": "Ver actualizaciones",
+    "allStates": "Todos los estados",
+    "lastSearch": "Última búsqueda: {{date}}"
   }
 }

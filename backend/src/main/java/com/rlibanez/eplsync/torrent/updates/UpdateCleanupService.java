@@ -100,6 +100,30 @@ public class UpdateCleanupService {
         return view(jobId);
     }
 
+    /** One remote snapshot for the entire automatic batch, under the submission/sync lock. */
+    public void cleanAutomatic(List<UpdatePlan> selected, java.util.function.Consumer<UpdatePlan> beforePlan) {
+        var current = selected.stream().filter(p -> p.getClientInstanceId().equals(tracking.instanceId())).toList();
+        if (current.isEmpty()) return;
+        var work = pendingEntries(current);
+        client.exclusiveClient(adapter -> execute(current, work, adapter, false, adapter.listTorrents(), beforePlan));
+    }
+
+    public DownloadTrackingService.SyncResult synchronize(boolean dryRun, boolean details) {
+        return client.exclusiveClient(adapter -> {
+            var remote = adapter.listTorrents();
+            var result = tracking.sync(() -> remote, dryRun, details);
+            if (!dryRun && com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP)) {
+                var selected = plans.pending(PreviousVersions.KEEP, PENDING).stream()
+                    .filter(p -> p.getClientInstanceId().equals(tracking.instanceId()))
+                    .filter(p -> p.getPreviousVersions() != PreviousVersions.REMOVE_TORRENT_AND_FILES
+                        || com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE))
+                    .toList();
+                if (!selected.isEmpty()) execute(selected, pendingEntries(selected), adapter, false, remote, p -> {});
+            }
+            return result;
+        });
+    }
+
     private void authorizeFiles(List<UpdatePlan> selected) {
         if (selected.stream().anyMatch(plan -> plan.getPreviousVersions() == PreviousVersions.REMOVE_TORRENT_AND_FILES))
             com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
@@ -151,8 +175,13 @@ public class UpdateCleanupService {
 
     private Map<String, String> execute(List<UpdatePlan> selected, Map<String, List<UpdateCleanup>> work,
             com.rlibanez.eplsync.torrent.TorrentClient adapter, boolean retryUnconfirmed) {
+        return execute(selected, work, adapter, retryUnconfirmed, adapter.listTorrents(), p -> {});
+    }
+
+    private Map<String, String> execute(List<UpdatePlan> selected, Map<String, List<UpdateCleanup>> work,
+            com.rlibanez.eplsync.torrent.TorrentClient adapter, boolean retryUnconfirmed,
+            List<RemoteTorrent> remote, java.util.function.Consumer<UpdatePlan> beforePlan) {
         var errors = new HashMap<String, String>();
-        var remote = adapter.listTorrents();
         var byHash = index(remote);
         var snapshots = new HashMap<String, Map<Long, UpdatePlanner.Candidate>>();
         var protectedTargets = new HashSet<String>();
@@ -189,13 +218,21 @@ public class UpdateCleanupService {
         for (var plan : selected) {
             String jobId = plan.getJobId();
             try {
+                beforePlan.accept(plan);
+                var candidates = new HashMap<Long, UpdatePlanner.Candidate>();
+                for (var entry : work.get(jobId)) candidates.computeIfAbsent(entry.getEplId(), id ->
+                    plan.getSnapshot().equals("{\"items\":[]}") ? frozenCandidate(plan,id) : snapshots.get(jobId).get(id));
+                var hashes = new HashSet<String>();
+                candidates.values().forEach(c -> hashes.addAll(c.targetHashes()));
+                work.get(jobId).forEach(e -> hashes.add(e.getHash()));
+                tracking.observeSelected(byHash, hashes);
                 for (var entry : work.get(jobId)) {
 
                     var old = byHash.get(entry.getHash());
                     if (old == null) { removed(entry); continue; }
                     // Un POST incierto no se repite: una siguiente consulta confirma su ausencia.
                     if (entry.getState() == UpdateCleanup.State.REQUESTED && !retryUnconfirmed) continue;
-                    var candidate = plan.getSnapshot().equals("{\"items\":[]}") ? frozenCandidate(plan,entry.getEplId()) : snapshots.get(jobId).get(entry.getEplId());
+                    var candidate = candidates.get(entry.getEplId());
                     var targets = candidate.targetHashes().stream().map(byHash::get).toList();
                     if (targets.stream().anyMatch(target -> target == null || target.status() != DownloadStatus.DOWNLOADED)) {
                         postpone(entry, UpdateCleanup.State.WAITING, "La nueva revisión todavía no está completa en el cliente"); continue;

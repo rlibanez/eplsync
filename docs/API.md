@@ -1698,3 +1698,79 @@ procesados los elementos aceptados, ya existentes, omitidos o fallidos. Un
 trabajo sin elementos tiene progreso 0. Los contadores y porcentajes se ordenan
 en SQLite antes de paginar, sin cargar todo el listado en memoria. Los empates
 se resuelven por fecha de creación e identificador.
+
+### Preferencias de búsqueda de actualizaciones
+
+`GET/PUT /api/settings/downloads/updates` requiere `CATALOG_READ` y `DOWNLOADS_READ`.
+El cuerpo es `{"states":["DOWNLOADED","NOT_FOUND"]}`: al menos un estado de
+ descarga válido, sin duplicados. La lectura requiere ambos permisos; la escritura requiere `SETTINGS_MANAGE`.
+Se guarda como JSON compartido en `revision_update_settings`, para toda la aplicación.
+Por defecto se incluyen todos los estados.
+Estos valores constituyen la configuración base para las búsquedas de revisiones;
+la búsqueda y el envío de actualizaciones se implementarán por separado.
+
+Los apartados de portadas se encuentran en `/settings/catalog`;
+`/settings/covers` redirige allí para conservar enlaces antiguos.
+
+### Buscar actualizaciones de revisión
+
+`POST /api/torrent/revision-updates/search` requiere `CATALOG_READ` y
+`DOWNLOADS_READ`, y protección CSRF. Cuerpo: `{"states":["DOWNLOADED","NOT_FOUND"]}`.
+Parámetros: `page=0`, `size=20` (máximo 1000), `sort=title,asc` y
+`synchronize=false` y `status` opcional (estado registrado). El filtro `status`
+se aplica a las filas resultantes antes de paginar; no cambia los estados que
+determinan la revisión de referencia. `synchronize=true` requiere además `TORRENT_SYNC`:
+sincroniza primero con el cliente; cualquier fallo aborta la búsqueda.
+La paginación y ordenación posteriores no repiten la sincronización.
+
+Devuelve una página con `eplId`, `title`, `registeredRevision`,
+`availableRevision`, `status`, `coverUrl` y `coverAvailable`. Ordenación por EPL ID, título, revisiones y estado,
+salvo que el título se ordena como `title`, con dirección `asc` o `desc`.
+
+Los estados seleccionados determinan la revisión registrada más alta que se
+compara con el catálogo. Solo cuentan registros con evidencia de envío aceptado,
+observación en el cliente o finalización; un intento rechazado no cuenta.
+Si cualquier registro del historial acredita una revisión igual o superior a la
+ del catálogo, el libro se excluye, independientemente de su estado o del destino.
+Los trabajos activos con una revisión igual o superior pendiente de envío también
+lo excluyen. Se devuelve una sola fila por libro, ordenada antes de paginar.
+
+`/downloads/updates` carga los valores de Ajustes > Descargas, permite modificarlos
+para esa búsqueda y enviar los libros seleccionados mediante el asistente habitual.
+No modifica la configuración guardada ni elimina versiones anteriores.
+
+### Envío seleccionado y limpieza automática de revisiones
+
+`POST /api/torrent/revision-updates/send` requiere `CATALOG_READ`,
+`DOWNLOADS_READ` y `TORRENT_SEND`. Cuerpo: `ids` (1–10000 IDs únicos),
+`states` (estados de la búsqueda), opciones habituales de envío y
+`previousVersions`: `keep` (predeterminado), `removeTorrent` o
+`removeTorrentAndFiles`. Las políticas de eliminación requieren `TORRENT_CLEANUP`;
+la última también requiere `TORRENT_FILES_DELETE` y `confirmFiles=true`.
+
+La selección se comprueba de nuevo antes de crear el trabajo. Solo se planifica
+la limpieza de versiones anteriores del destino actual. Los trabajos creados
+por este endpoint guardan `automaticCleanup=true` si se solicita eliminación;
+los planes anteriores creados mediante la API conservan la ejecución manual.
+
+El coordinador revisa hasta 20 planes por ciclo, cada 30 segundos, y rota entre
+los pendientes. Comprueba la cuenta y sus permisos actuales antes de ejecutar.
+No actúa sobre trabajos cancelados ni cuentas desactivadas o sin permisos.
+Comparte una instantánea inicial del cliente entre todos los planes del ciclo y
+actualiza únicamente los registros de descargas implicados (incluida su finalización).
+Tras solicitar borrados consulta de nuevo para confirmar su ausencia.
+Conserva versiones anteriores hasta que la nueva esté
+completamente descargada. Mantiene las protecciones existentes de hashes y rutas
+compartidas. Una eliminación sin confirmar no se repite automáticamente.
+La política y los estados de limpieza se consultan en `/api/torrent/updates/{jobId}`.
+
+La sincronización manual de descargas aplicada comprueba también las limpiezas
+pendientes del destino actual, reutilizando la misma instantánea. Requiere
+`TORRENT_CLEANUP`; los planes con borrado de archivos requieren además
+`TORRENT_FILES_DELETE`. Los planes no autorizados se dejan pendientes.
+La previsualización y las sincronizaciones fallidas nunca ejecutan limpiezas.
+
+La vista conserva la última búsqueda, filtro, ordenación, tamaño y página en
+memoria durante la sesión. Volver a ella no sincroniza ni repite consultas
+automáticamente; muestra la fecha de la última búsqueda. El título reutiliza
+la portada del catálogo y su mismo componente visual.

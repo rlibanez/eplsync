@@ -24,6 +24,7 @@ import {
   Library,
   FolderOpen,
   Download,
+  RefreshCw,
   ListChecks,
   Menu,
   X,
@@ -58,6 +59,12 @@ function ShellContent() {
       label: "nav.downloadState",
       Icon: Download,
       visible: auth.can("DOWNLOADS_READ") || auth.can("TORRENT_SYNC"),
+    },
+    {
+      to: "/downloads/updates",
+      label: "nav.updates",
+      Icon: RefreshCw,
+      visible: auth.can("CATALOG_READ") && auth.can("DOWNLOADS_READ"),
     },
     {
       to: "/downloads/jobs",

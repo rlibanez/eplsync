@@ -252,6 +252,30 @@ public class DownloadTrackingService {
                 new Outcomes(completed, missing, newlyMissing), items, ignored);
     }
 
+    /** Observe existing cleanup-related records only; never discover unrelated catalog entries. */
+    public void observeSelected(Map<String, RemoteTorrent> remote, Set<String> hashes) {
+        synchronized (writes) {
+            transactions.executeWithoutResult(tx -> {
+                var now = Instant.now();
+                var selected = new ArrayList<>(hashes);
+                for (int start = 0; start < selected.size(); start += 250) {
+                    for (var row : downloads.findByClientInstanceIdAndHashIn(instanceId(),
+                            selected.subList(start, Math.min(start + 250, selected.size())))) {
+                        var torrent = remote.get(row.getHash());
+                        if (torrent != null) observe(row, torrent, now);
+                        else {
+                            if (row.getStatus() != DownloadStatus.ERROR && row.getStatus() != DownloadStatus.UNKNOWN
+                                    || row.getLastSeenAt() != null || row.getSubmittedAt() != null) {
+                                row.setStatus(DownloadStatus.NOT_FOUND); row.setLastError(null);
+                            }
+                            row.setLastCheckedAt(now);
+                        }
+                    }
+                }
+            });
+        }
+    }
+
     private void observe(DownloadRecord row, RemoteTorrent observed, Instant now) {
         row.setStatus(observed.status()); row.setLastCheckedAt(now); row.setLastSeenAt(now);
         row.setLastError(observed.status() == DownloadStatus.ERROR ? "El cliente informa de un error del torrent" : null);

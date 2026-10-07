@@ -68,9 +68,13 @@ export const router = createBrowserRouter([
           },
           {
             path: "covers",
+            element: <Navigate to="/settings/catalog" replace />,
+          },
+          {
+            path: "downloads",
             lazy: async () => ({
-              Component: (await import("../features/settings/CoverSettings"))
-                .CoverSettings,
+              Component: (await import("../features/settings/DownloadSettings"))
+                .DownloadSettings,
             }),
           },
           {
@@ -100,6 +104,13 @@ export const router = createBrowserRouter([
         lazy: async () => ({
           Component: (await import("../features/downloads/DownloadState"))
             .DownloadState,
+        }),
+      },
+      {
+        path: "/downloads/updates",
+        lazy: async () => ({
+          Component: (await import("../features/downloads/RevisionUpdates"))
+            .RevisionUpdates,
         }),
       },
       {

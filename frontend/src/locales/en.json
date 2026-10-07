@@ -40,7 +40,8 @@
     "send": "Send",
     "jobs": "Jobs",
     "backToTop": "Back to top",
-    "foldShort": "Collapse"
+    "foldShort": "Collapse",
+    "updates": "Updates"
   },
   "homeSettings": {
     "sections": "Sections",
@@ -286,7 +287,8 @@
     "covers": "Covers",
     "about": "About",
     "repository": "Project repository",
-    "events": "Events"
+    "events": "Events",
+    "downloads": "Downloads"
   },
   "import": {
     "description": "Download the ePubLibre catalog and create or update your local library.",
@@ -558,7 +560,13 @@
     },
     "restoreDefaults": "Restore defaults",
     "jobOptions": "Submission processing",
-    "clientOptions": "Torrent client"
+    "clientOptions": "Torrent client",
+    "previousVersions": "Previous versions",
+    "keepPrevious": "Keep torrents and files",
+    "removePrevious": "Remove torrents and keep files",
+    "removePreviousFiles": "Remove torrents and files",
+    "cleanupAfterCompletion": "Cleanup will run automatically once the new revision is fully downloaded.",
+    "confirmPreviousFiles": "I understand that files belonging to previous versions will be deleted. This action cannot be undone."
   },
   "pagination": {
     "page": "Page",
@@ -1181,5 +1189,32 @@
     "copyPassword": "Copy password",
     "passwordCopied": "Password copied",
     "copyFailed": "Unable to copy. Select the password and copy it manually."
+  },
+  "updateSettings": {
+    "title": "Revision update settings",
+    "description": "Record states to check when searching for updates. Application defaults.",
+    "states": "States to check",
+    "save": "Save",
+    "reset": "Restore defaults",
+    "saved": "Settings saved."
+  },
+  "revisionUpdates": {
+    "search": "Search for updates",
+    "description": "The torrent client will be synchronized before comparing the catalog with download history. These options apply only to this search.",
+    "restore": "Restore saved settings",
+    "searching": "Synchronizing and searching for updates…",
+    "syncPermission": "Permission to synchronize with the torrent client is required to search for updates.",
+    "start": "Search for updates to check available revisions of your books.",
+    "empty": "No pending updates.",
+    "count": "Pending updates: {{count}}",
+    "send": "Send updates ({{count}})",
+    "eplId": "EPL ID",
+    "title": "Book",
+    "registeredRevision": "Recorded revision",
+    "availableRevision": "Available revision",
+    "status": "Recorded status",
+    "view": "View updates",
+    "allStates": "All states",
+    "lastSearch": "Last search: {{date}}"
   }
 }

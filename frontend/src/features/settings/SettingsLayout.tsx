@@ -17,7 +17,7 @@ export function SettingsLayout() {
           "account",
           "catalog",
           "events",
-          "covers",
+          "downloads",
           "torrent",
           "users",
           "database",
@@ -28,13 +28,15 @@ export function SettingsLayout() {
             if (key === "database") return auth.user?.role === "ADMIN";
             if (key === "catalog")
               return (
+                auth.can("COVERS_MANAGE") ||
                 auth.can("CATALOG_IMPORT") ||
                 auth.can("CATALOG_DELETE") ||
                 auth.can("SETTINGS_MANAGE") ||
                 auth.user?.role === "ADMIN"
               );
             if (key === "events") return auth.can("EVENTS_MANAGE");
-            if (key === "covers") return auth.can("COVERS_MANAGE");
+            if (key === "downloads")
+              return auth.can("DOWNLOADS_READ") && auth.can("CATALOG_READ");
             if (key === "torrent") return auth.can("SETTINGS_MANAGE");
             return true;
           })

@@ -8,6 +8,7 @@ test('book selects a magnet then sends that hash with wizard options', async ({ 
   await page.route('**/api/torrent/client/categories', r => r.fulfill({ json: [] }));
   let body: any;
   await page.route('**/api/torrent/books/32', r => { body = r.request().postDataJSON(); return r.fulfill({ json: { jobId: 'test-job' } }); });
+  await page.route('**/api/catalog/books/32/history?**', r => r.fulfill({json: {items: [], meta: {page: 0, size: 20, totalItems: 0, totalPages: 0}}}));
   await page.goto('/catalog/32');
   await expect(page.locator('.book-hash-picker')).toHaveCount(0);
   await expect(page.locator('.tags button')).toHaveCount(0);

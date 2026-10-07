@@ -63,7 +63,10 @@ public class DatabaseResetService {
                     if (suggestions != null) suggestions.invalidateAfterCommit();
                     int metadata = delete("CatalogMetadata");
                     int settingsCount = eraseUsersAndSettings ? delete("StoredSetting") : 0;
-                    if (eraseUsersAndSettings) accounts.clear();
+                    if (eraseUsersAndSettings) {
+                        em.createNativeQuery("DELETE FROM revision_update_settings").executeUpdate();
+                        accounts.clear();
+                    }
                     int eventCount = events == null ? em.createNativeQuery("delete from app_events").executeUpdate() : events.clearForReset();
                     em.clear();
                     return new ResetResult(true, books, downloads, jobs, items, plans, cleanup, metadata, eventCount, settingsCount);
