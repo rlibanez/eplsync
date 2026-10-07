@@ -1529,7 +1529,6 @@ summary {
 
 
 .import-progress { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin: 12px 0 18px; background: var(--surface); border-left: 3px solid var(--accent); border-radius: 6px; }
-.events-table-heading { min-height: 54px; }
 .notification-preferences-grid { margin-top: 24px; }
 .notification-preference-block { min-width: 0; }
 .notification-preference-block + .notification-preference-block { border-left: 1px solid var(--line); padding-left: 28px; }

@@ -35,6 +35,7 @@ export function SendSelection({
   const navigate = useNavigate();
   const cache = useQueryClient();
   const [previousVersions, setPreviousVersions] = useState("keep");
+  const [cleanupTiming, setCleanupTiming] = useState("afterDownload");
   const [confirmFiles, setConfirmFiles] = useState(false);
   const [start, setStart] = useState("inherit");
   const [auto, setAuto] = useState("inherit");
@@ -157,6 +158,8 @@ export function SendSelection({
               ids: filters.eplId,
               states: revisionStates,
               previousVersions,
+              cleanupTiming:
+                previousVersions === "keep" ? "afterDownload" : cleanupTiming,
               confirmFiles,
             }
           : {}),
@@ -236,7 +239,7 @@ export function SendSelection({
             <fieldset className="send-options-group">
               <legend>{t("send.previousVersions")}</legend>
               <Select
-                label={t("send.previousVersions")}
+                label={t("send.previousAction")}
                 value={previousVersions}
                 allowDeselect={false}
                 data={[
@@ -265,7 +268,30 @@ export function SendSelection({
                 }}
               />
               {previousVersions !== "keep" && (
-                <p className="muted">{t("send.cleanupAfterCompletion")}</p>
+                <>
+                  <Select
+                    label={t("send.cleanupTiming")}
+                    value={cleanupTiming}
+                    allowDeselect={false}
+                    data={[
+                      { value: "immediate", label: t("send.cleanupImmediate") },
+                      {
+                        value: "afterDownload",
+                        label: t("send.cleanupAfterDownload"),
+                      },
+                    ]}
+                    onChange={(value) =>
+                      setCleanupTiming(value ?? "afterDownload")
+                    }
+                  />
+                  <p className="muted">
+                    {t(
+                      cleanupTiming === "immediate"
+                        ? "send.cleanupImmediateHelp"
+                        : "send.cleanupAfterCompletion",
+                    )}
+                  </p>
+                </>
               )}
               {previousVersions === "removeTorrentAndFiles" && (
                 <Checkbox

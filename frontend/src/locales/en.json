@@ -6,7 +6,11 @@
     "retry": "Retry",
     "more": "Load more"
   },
-  "tableControls": { "ascending": "Ascending", "descending": "Descending", "position": "Submission order" },
+  "tableControls": {
+    "ascending": "Ascending",
+    "descending": "Descending",
+    "position": "Submission order"
+  },
   "sorting": {
     "title": "Sort",
     "help": "Shift + click a column header to add a criterion.",
@@ -568,6 +572,11 @@
     "keepPrevious": "Keep torrents and files",
     "removePrevious": "Remove torrents and keep files",
     "removePreviousFiles": "Remove torrents and files",
+    "previousAction": "Action",
+    "cleanupTiming": "Removal timing",
+    "cleanupImmediate": "Immediately",
+    "cleanupAfterDownload": "When the new revision is downloaded",
+    "cleanupImmediateHelp": "Previous versions will be removed after the new revision submission is accepted, without waiting for its download to finish.",
     "cleanupAfterCompletion": "Cleanup will run automatically once the new revision is fully downloaded.",
     "confirmPreviousFiles": "I understand that files belonging to previous versions will be deleted. This action cannot be undone."
   },

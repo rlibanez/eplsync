@@ -6,6 +6,10 @@ public interface UpdateCleanupRepository extends org.springframework.data.jpa.re
     java.util.List<UpdateCleanup> findByClientInstanceIdAndHashInAndStateIn(String client, java.util.Collection<String> hashes, java.util.Collection<UpdateCleanup.State> states);
     java.util.List<UpdateCleanup> findByClientInstanceIdAndStateIn(String client, java.util.Collection<UpdateCleanup.State> states);
     java.util.List<UpdateCleanup> findByClientInstanceIdIsNull(org.springframework.data.domain.Pageable page);
+    @org.springframework.data.jpa.repository.Query("select e from UpdateCleanup e where e.immediate=true and e.automatic=true and e.state in :states "
+        + "and (e.lastCheckedAt is null or e.lastCheckedAt<:cycle) and e.replacementAccepted=true "
+        + "order by e.createdAt,e.id")
+    java.util.List<UpdateCleanup> readyImmediate(java.util.Collection<UpdateCleanup.State> states,java.time.Instant cycle,org.springframework.data.domain.Pageable page);
     @org.springframework.data.jpa.repository.Query("select e from UpdateCleanup e where (e.automatic=true or e.state=com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REQUESTED) and e.state in :states "
         + "order by coalesce(e.lastCheckedAt,e.createdAt),e.createdAt,e.id")
     java.util.List<UpdateCleanup> pendingAutomatic(java.util.Collection<UpdateCleanup.State> states, org.springframework.data.domain.Pageable page);

@@ -131,6 +131,7 @@ export const itemStates = [
 export interface Job {
   type?: "DOWNLOAD" | "UPDATE";
   previousVersions?: string | null;
+  cleanupTiming?: "immediate" | "afterDownload" | null;
   cleanup?: {
     waiting: number;
     blocked: number;

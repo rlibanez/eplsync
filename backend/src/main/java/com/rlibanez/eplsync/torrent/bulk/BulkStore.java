@@ -41,6 +41,7 @@ public class BulkStore {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkStore.class);
 
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.context.ApplicationEventPublisher publisher;
     private final BulkJobRepository jobs;
     private final BulkItemRepository items;
     private final TorrentDownloadService downloads;
@@ -60,7 +61,7 @@ public class BulkStore {
             long pending, long inFlight, long cancelled, int batchSize, int concurrency,
             String interval, Instant createdAt, Instant updatedAt, Instant retryAt, String message,
             MultipleHashes multipleHashes, long selectedTorrents, long processedTorrents,
-            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup) {}
+            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming) {}
     public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {}
     public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision) {
         public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null); }
@@ -231,7 +232,7 @@ public class BulkStore {
         job.setClient(properties.getClient()); job.setTargetFingerprint(fingerprint());
         job.setBatchSize(batchSize); job.setConcurrency(concurrency); job.setIntervalMillis(interval);
         job.setCreatedAt(Instant.now()); job.setUpdatedAt(job.getCreatedAt());
-        if (persist) jobs.saveAndFlush(job);
+        if (persist) return jobs.saveAndFlush(job);
         return job;
     }
 
@@ -308,7 +309,7 @@ public class BulkStore {
                 j.getMultipleHashes() == null ? MultipleHashes.SKIP : j.getMultipleHashes(),
                 items.selectedTorrents(id), items.processedTorrents(id, List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT, BulkItem.State.CANCELLED)),
                 items.countByJobId(id), accepted + existing + skipped + failed, plan==null ? BulkJob.Type.DOWNLOAD : BulkJob.Type.UPDATE,
-                plan==null ? null : plan.getPreviousVersions(),summary);
+                plan==null ? null : plan.getPreviousVersions(),summary, plan==null ? null : plan.getCleanupTiming()==null ? com.rlibanez.eplsync.torrent.updates.CleanupTiming.AFTER_DOWNLOAD : plan.getCleanupTiming());
     }
 
     @Transactional(readOnly = true)
@@ -484,6 +485,17 @@ public class BulkStore {
         item.setMessage(message); job.setUpdatedAt(Instant.now());
         items.saveAndFlush(item);
         complete(job);
+        if (job.getType()==BulkJob.Type.UPDATE && (item.getState()==BulkItem.State.ACCEPTED || item.getState()==BulkItem.State.ALREADY_EXISTS)) {
+            long outstanding=em.createQuery("select count(i) from BulkItem i where i.jobId=:job and i.eplId=:book and i.state not in :accepted",Long.class)
+                .setParameter("job",job.getId()).setParameter("book",item.getEplId())
+                .setParameter("accepted",List.of(BulkItem.State.ACCEPTED,BulkItem.State.ALREADY_EXISTS)).getSingleResult();
+            if(outstanding==0) {
+                int ready=em.createQuery("update UpdateCleanup e set e.replacementAccepted=true where e.jobId=:job and e.eplId=:book and e.immediate=true and e.automatic=true and e.state in :pending")
+                    .setParameter("job",job.getId()).setParameter("book",item.getEplId())
+                    .setParameter("pending",com.rlibanez.eplsync.torrent.updates.CleanupQueue.PENDING).executeUpdate();
+                if(ready>0) publisher.publishEvent(new com.rlibanez.eplsync.torrent.updates.ImmediateUpdateCleanup.SubmissionAccepted());
+            }
+        }
     }
 
     @Transactional

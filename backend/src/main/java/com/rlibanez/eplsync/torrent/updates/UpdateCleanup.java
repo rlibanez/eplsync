@@ -30,11 +30,12 @@ public class UpdateCleanup {
     private String actorKind;
     private Boolean automatic;
     private Boolean immediate;
+    private Boolean replacementAccepted = false;
 
     public void initialize(UpdatePlan plan, java.util.List<String> targets, com.rlibanez.eplsync.events.EventContext.Actor actor) {
         clientInstanceId = plan.getClientInstanceId(); previousVersions = plan.getPreviousVersions();
         targetHashes = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(targets);
-        createdAt = plan.getCreatedAt(); automatic = Boolean.TRUE.equals(plan.getAutomaticCleanup()); immediate = false;
+        createdAt = plan.getCreatedAt(); automatic = Boolean.TRUE.equals(plan.getAutomaticCleanup()); immediate = plan.getCleanupTiming()==CleanupTiming.IMMEDIATE;
         actorId = actor.id(); actorUsername = actor.username(); actorKind = actor.kind();
     }
 }

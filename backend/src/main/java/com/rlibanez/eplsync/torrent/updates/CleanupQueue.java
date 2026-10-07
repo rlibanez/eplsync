@@ -73,6 +73,22 @@ public class CleanupQueue {
             }
         });
     }
+    /** A bounded batch of accepted updates; blocked requests are attempted at most once per wake-up. */
+    public int runImmediate(int limit,Instant cycle) {
+        var selected=entries.readyImmediate(PENDING,cycle,org.springframework.data.domain.PageRequest.of(0,limit));
+        if(selected.isEmpty()) return 0;
+        var eligible=new ArrayList<UpdateCleanup>();
+        for(var entry:selected) {
+            touch(entry);
+            if(entry.getClientInstanceId().equals(tracking.instanceId()) && authorized(entry,accounts)!=null) eligible.add(entry);
+        }
+        if(!eligible.isEmpty()) client.exclusiveClient(adapter -> {
+            var previous=SecurityContextHolder.getContext();
+            try {return perform(eligible,adapter,adapter.listTorrents(),false,true,accounts);}
+            finally {SecurityContextHolder.setContext(previous);}
+        });
+        return selected.size();
+    }
     public void runAutomatic(int limit) { runAutomatic(limit,accounts); }
     public void runAutomatic(int limit, AccountStore accountStore) {
         var selected=entries.pendingAutomatic(PENDING,org.springframework.data.domain.PageRequest.of(0,limit));
@@ -99,7 +115,7 @@ public class CleanupQueue {
     }
     public List<UpdateCleanup> manualPending() {
         return entries.findByClientInstanceIdAndStateIn(tracking.instanceId(),PENDING).stream()
-            .filter(e -> !Boolean.TRUE.equals(e.getImmediate()) || e.getState()==UpdateCleanup.State.REQUESTED)
+            .filter(e -> !Boolean.TRUE.equals(e.getImmediate()) || Boolean.TRUE.equals(e.getAutomatic()) || e.getState()==UpdateCleanup.State.REQUESTED)
             .filter(e -> e.getPreviousVersions()!=PreviousVersions.REMOVE_TORRENT_AND_FILES || Permission.has(Permission.TORRENT_FILES_DELETE))
             .sorted(Comparator.comparing(UpdateCleanup::getCreatedAt).thenComparing(UpdateCleanup::getId)).toList();
     }
@@ -124,7 +140,7 @@ public class CleanupQueue {
         var policies=new HashMap<String,Set<PreviousVersions>>();
         var uncertain=new HashSet<String>();
         for (var e:pending) {
-            if (Boolean.TRUE.equals(e.getImmediate()) && e.getState()!=UpdateCleanup.State.REQUESTED) continue;
+            if (Boolean.TRUE.equals(e.getImmediate()) && !Boolean.TRUE.equals(e.getAutomatic()) && e.getState()!=UpdateCleanup.State.REQUESTED) continue;
             for (var hash:targets(e)) {
                 var torrent=byHash.get(hash);
                 protectedTargets.add(torrent==null ? hash : torrent.hash());
@@ -165,6 +181,11 @@ public class CleanupQueue {
                     save(entry,UpdateCleanup.State.REQUESTED,"Eliminación sin confirmar; no se repetirá automáticamente"); continue;
                 }
                 var targetHashes=targets(entry);
+                if (Boolean.TRUE.equals(entry.getImmediate()) && Boolean.TRUE.equals(entry.getAutomatic())) {
+                    if(targetHashes.isEmpty() || !Boolean.TRUE.equals(entry.getReplacementAccepted())) {
+                        save(entry,UpdateCleanup.State.WAITING,"El cliente todavía no ha aceptado todos los torrents de la nueva revisión");continue;
+                    }
+                }
                 if (!Boolean.TRUE.equals(entry.getImmediate()) && (targetHashes.isEmpty()
                         || targetHashes.stream().anyMatch(h -> byHash.get(h)==null || byHash.get(h).status()!=DownloadStatus.DOWNLOADED))) {
                     save(entry,UpdateCleanup.State.WAITING,"La nueva revisión todavía no está completa en el cliente"); continue;
@@ -175,7 +196,7 @@ public class CleanupQueue {
                 if (old.aliases().stream().anyMatch(h -> owners.getOrDefault(h,Set.of()).stream().anyMatch(id -> !id.equals(entry.getEplId())))) {
                     save(entry,UpdateCleanup.State.BLOCKED,"Torrent compartido con otro libro"); continue;
                 }
-                if (!Boolean.TRUE.equals(entry.getImmediate()) && policies.getOrDefault(old.hash(),Set.of()).size()>1) {
+                if ((!Boolean.TRUE.equals(entry.getImmediate()) || Boolean.TRUE.equals(entry.getAutomatic())) && policies.getOrDefault(old.hash(),Set.of()).size()>1) {
                     save(entry,UpdateCleanup.State.BLOCKED,"Políticas de borrado incompatibles para el mismo torrent"); continue;
                 }
                 boolean files=entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES;
@@ -224,7 +245,12 @@ public class CleanupQueue {
     private void save(UpdateCleanup entry,UpdateCleanup.State state,String message) {
         // Never forget an uncertain write until absence is confirmed.
         if (entry.getState()==UpdateCleanup.State.REQUESTED && state!=UpdateCleanup.State.REMOVED) state=UpdateCleanup.State.REQUESTED;
+        boolean newlyBlocked=state==UpdateCleanup.State.BLOCKED && (entry.getState()!=state || !Objects.equals(entry.getMessage(),message));
         entry.setState(state); entry.setMessage(message); entry.setUpdatedAt(Instant.now()); entries.saveAndFlush(entry);
+        if(newlyBlocked && Boolean.TRUE.equals(entry.getAutomatic()))
+            events.rejected(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,"CLEANUP",
+                Map.of("eplId",entry.getEplId(),"cleanupId",entry.getId(),"deleteFiles",entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES),
+                entry.getLastCheckedAt()==null ? Instant.now() : entry.getLastCheckedAt(),new com.rlibanez.eplsync.exception.UserInputException(message));
     }
     public void resolve(Set<String> aliases) {
         tx.executeWithoutResult(status -> {

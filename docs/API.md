@@ -1838,3 +1838,29 @@ eventos de seguridad se mantienen. El historial de un libro también acepta
 Cuando la sincronización incluye detalles, cada libro incorpora `coverUrl` y
 `coverAvailable` del catálogo. No se descargan ni almacenan las imágenes;
 se presentan mediante el mismo componente de portada que las demás tablas.
+
+### Momento del borrado de versiones anteriores
+
+El envío de actualizaciones admite `cleanupTiming`: `afterDownload`
+(predeterminado) o `immediate`. En el asistente, el apartado «Versiones anteriores»
+contiene «Acción» y, cuando se solicita eliminar, «Momento del borrado».
+El informe del trabajo muestra ambas elecciones.
+
+`immediate` intenta la limpieza después de que el cliente haya aceptado todos
+los hashes seleccionados de la nueva revisión de cada libro, incluidos los que
+ya existen en el cliente. No espera a que termine la descarga. Si hay un envío
+pendiente o fallido, no se eliminan sus versiones anteriores. La aceptación
+queda persistida en la solicitud de limpieza; una vez aceptada, no depende de
+conservar el trabajo ni sus elementos.
+
+Los intentos se ejecutan en segundo plano después de confirmar la transacción,
+sin esperar al siguiente ciclo periódico. Se conserva la cola de limpieza,
+la autorización del usuario, la protección de torrents y rutas compartidos y
+la comprobación posterior al borrado. Los intentos y los nuevos bloqueos generan
+eventos; un bloqueo idéntico no produce eventos repetidos en cada ciclo.
+Los errores o bloqueos permanecen disponibles para las comprobaciones posteriores.
+La opción de conservar ignora el momento del borrado. Las instalaciones y
+solicitudes anteriores mantienen el comportamiento de esperar a la descarga.
+
+Aceptar un envío no garantiza que la nueva revisión llegue a descargarse:
+con `immediate` puede haber un intervalo sin ninguna revisión descargada.

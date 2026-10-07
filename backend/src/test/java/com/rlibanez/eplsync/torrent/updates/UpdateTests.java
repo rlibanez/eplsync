@@ -39,6 +39,7 @@ class UpdateTests {
     @Autowired SelectedUpdateSender selectedSender;
     @Autowired UpdateCleanupService cleaner;
     @Autowired com.rlibanez.eplsync.events.EventJournal journal;
+    @Autowired com.rlibanez.eplsync.security.AccountStore ownerStore;
     @Autowired UpdateController controller;
     @Autowired UpdatePlanRepository plans;
     @Autowired UpdateCleanupRepository cleanup;
@@ -97,6 +98,55 @@ class UpdateTests {
         book(3, 1.0, "D".repeat(40)); language(3, com.rlibanez.eplsync.model.enums.Language.INGLES);
         history(4, 1.0, "E".repeat(40), DownloadStatus.DOWNLOADED);
         book(4, 2.0, "F".repeat(40)); language(4, com.rlibanez.eplsync.model.enums.Language.INGLES);
+    }
+
+    BulkStore.View immediateJob(String hashes,PreviousVersions policy) {
+        ownerStore.clear();
+        var owner=ownerStore.initialize("cleanupowner","owner@example.org","a permanent cleanup password","a permanent cleanup password");
+        book(1L,1.2,hashes);
+        return com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor(owner.id(),owner.username(),"USER"),
+            () -> selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),policy,true,null,2,10,"0ms",MultipleHashes.ALL,CleanupTiming.IMMEDIATE)));
+    }
+    @Test void immediateCleanupRequiresEveryAcceptedTargetAndSurvivesDeletionOfItsJob() {
+        var job=immediateJob(NEW+","+OTHER,PreviousVersions.REMOVE_TORRENT);
+        assertThat(job.cleanupTiming()).isEqualTo(CleanupTiming.IMMEDIATE);
+        var sends=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent();
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old.epub"),remote(NEW,DownloadStatus.DOWNLOADING,"/new.epub"),remote(OTHER,DownloadStatus.DOWNLOADING,"/other.epub")),
+            List.of(remote(NEW,DownloadStatus.DOWNLOADING,"/new.epub"),remote(OTHER,DownloadStatus.DOWNLOADING,"/other.epub")));
+        assertThat(queue.runImmediate(100,Instant.now())).isZero();
+        bulk.finish(sends.get(0).getId(),BulkItem.State.ACCEPTED,null,false,false);
+        assertThat(only(job.jobId()).getReplacementAccepted()).isFalse();
+        assertThat(queue.runImmediate(100,Instant.now())).isZero();
+        bulk.finish(sends.get(1).getId(),BulkItem.State.ALREADY_EXISTS,null,false,false);
+        assertThat(only(job.jobId()).getReplacementAccepted()).isTrue();
+        items.deleteAll();jobs.deleteById(job.jobId());plans.deleteById(job.jobId());
+        assertThat(queue.runImmediate(100,Instant.now())).isEqualTo(1);
+        verify(stubClient).deleteTorrent(OLD,false);
+        assertThat(cleanup.findByJobIdOrderByEplIdAsc(job.jobId()).getFirst().getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
+        assertThat(event.actor().username()).isEqualTo("cleanupowner");
+        assertThat(event.details()).containsEntry("deleteFiles",false);
+    }
+    @Test void failedReplacementNeverTriggersImmediateRemoval() {
+        var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT);
+        var send=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.FAILED,"rejected",false,false);
+        assertThat(queue.runImmediate(100,Instant.now())).isZero();
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old.epub"),remote(NEW,DownloadStatus.DOWNLOADING,"/new.epub")));
+        cleaner.synchronize(false,false);
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
+    }
+    @Test void immediateFileRemovalStillBlocksSharedPathsAndIsNotRetriedWithinTheSameCycle() {
+        var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        var send=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/shared.epub"),remote(NEW,DownloadStatus.DOWNLOADING,"/shared.epub")));
+        var cycle=Instant.ofEpochMilli(System.currentTimeMillis());
+        assertThat(queue.runImmediate(100,cycle)).isEqualTo(1);
+        assertThat(queue.runImmediate(100,cycle)).isZero();
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.BLOCKED);
     }
 
     @Test void synchronizationAuditsEarlyFailuresWithoutDuplicatingTrackingFailures() {

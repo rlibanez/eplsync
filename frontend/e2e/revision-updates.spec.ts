@@ -159,11 +159,18 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     .getByRole("button", { name: "Enviar actualizaciones (1)", exact: true })
     .click();
   const wizard = page.getByRole("dialog");
-  await wizard
-    .getByRole("textbox", { name: "Versiones anteriores", exact: true })
-    .click();
+  await wizard.getByRole("textbox", { name: "Acción", exact: true }).click();
   await page
     .getByRole("option", { name: "Eliminar torrents y archivos", exact: true })
+    .click();
+  await expect(
+    wizard.getByRole("textbox", { name: "Momento del borrado", exact: true }),
+  ).toHaveValue("Cuando la nueva revisión esté descargada");
+  await wizard
+    .getByRole("textbox", { name: "Momento del borrado", exact: true })
+    .click();
+  await page
+    .getByRole("option", { name: "Inmediatamente", exact: true })
     .click();
   await expect(
     wizard.getByRole("button", { name: /Crear trabajo/ }),
@@ -175,6 +182,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
   await expect.poll(() => submission?.ids).toEqual([123]);
   expect(submission.previousVersions).toBe("removeTorrentAndFiles");
   expect(submission.confirmFiles).toBe(true);
+  expect(submission.cleanupTiming).toBe("immediate");
   expect(submission.states).toContain("NOT_FOUND");
 });
 

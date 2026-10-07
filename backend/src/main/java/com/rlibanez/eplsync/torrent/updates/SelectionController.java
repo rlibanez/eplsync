@@ -25,11 +25,11 @@ public class SelectionController {
         log.info("Solicitud torrent: dryRun={}, filtros={}", input.dryRun(), SelectionQueries.safeLog(input.filters()));
         if (input.selection() != null) {
             if (!"new".equals(input.selection())) throw new com.rlibanez.eplsync.exception.UserInputException("selection debe ser new");
-            if (input.includeNotFound() != null || input.previousVersions() != null)
+            if (input.includeNotFound() != null || input.previousVersions() != null || input.cleanupTiming()!=null)
                 throw new com.rlibanez.eplsync.exception.UserInputException("Las novedades no admiten includeNotFound ni previousVersions");
             return selected(input, UpdatePlanner.Selection.NEW);
         }
-        if (input.includeNotFound() != null || input.previousVersions() != null)
+        if (input.includeNotFound() != null || input.previousVersions() != null || input.cleanupTiming()!=null)
             throw new com.rlibanez.eplsync.exception.UserInputException("El envío general no admite includeNotFound ni previousVersions");
         if ((input.detailPage()!=null || input.detailSize()!=null) && (!input.dryRun() || !Boolean.TRUE.equals(input.includeDetails())))
             throw new com.rlibanez.eplsync.exception.UserInputException("detailPage y detailSize requieren dryRun=true e includeDetails=true");

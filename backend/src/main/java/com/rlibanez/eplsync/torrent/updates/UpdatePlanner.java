@@ -150,7 +150,7 @@ public class UpdatePlanner {
         if(input.policy()==PreviousVersions.REMOVE_TORRENT_AND_FILES) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
         var job=bulk.beginPrepared(input.bulk()); job.setType(BulkJob.Type.UPDATE);job.setPreviousVersions(input.policy()); String jobId=job.getId();
         var plan=new UpdatePlan(); plan.setJobId(jobId); plan.setClientInstanceId(tracking.instanceId());
-        plan.setPreviousVersions(input.policy()); plan.setCreatedAt(Instant.now()); plan.setSnapshot("{\"items\":[]}"); plans.saveAndFlush(plan);
+        plan.setPreviousVersions(input.policy()); plan.setCleanupTiming(input.timing()); plan.setAutomaticCleanup(input.policy()!=PreviousVersions.KEEP && input.timing()==CleanupTiming.IMMEDIATE); plan.setCreatedAt(Instant.now()); plan.setSnapshot("{\"items\":[]}"); plans.saveAndFlush(plan);
         long[] counts={0,0};
         scan(filter,includeNotFound,input.multipleHashes()==null ? properties.getBulk().getMultipleHashes() : input.multipleHashes(),selection,c -> {
             var book=books.findById(c.eplId()).orElseThrow(); counts[0]++;

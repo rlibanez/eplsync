@@ -6,7 +6,11 @@
     "retry": "Reintentar",
     "more": "Cargar más"
   },
-  "tableControls": { "ascending": "Ascendente", "descending": "Descendente", "position": "Orden del envío" },
+  "tableControls": {
+    "ascending": "Ascendente",
+    "descending": "Descendente",
+    "position": "Orden del envío"
+  },
   "sorting": {
     "title": "Ordenar",
     "help": "Mayús + clic en una cabecera añade un criterio.",
@@ -568,6 +572,11 @@
     "keepPrevious": "Conservar torrents y archivos",
     "removePrevious": "Eliminar torrents y conservar archivos",
     "removePreviousFiles": "Eliminar torrents y archivos",
+    "previousAction": "Acción",
+    "cleanupTiming": "Momento del borrado",
+    "cleanupImmediate": "Inmediatamente",
+    "cleanupAfterDownload": "Cuando la nueva revisión esté descargada",
+    "cleanupImmediateHelp": "Las versiones anteriores se eliminarán tras aceptar el envío de la nueva revisión, sin esperar a que termine su descarga.",
     "cleanupAfterCompletion": "La limpieza se realizará automáticamente cuando la nueva revisión esté completamente descargada.",
     "confirmPreviousFiles": "Entiendo que se eliminarán los archivos de las versiones anteriores. Esta acción es irreversible."
   },

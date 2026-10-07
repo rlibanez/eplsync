@@ -11,6 +11,7 @@ public class UpdatePlan {
     @Id private String jobId;
     @Column(nullable = false) private String clientInstanceId;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private PreviousVersions previousVersions;
+    @Enumerated(EnumType.STRING) private CleanupTiming cleanupTiming;
     @Column(nullable = false) private Instant createdAt;
     @Column(nullable = false, columnDefinition = "TEXT") private String snapshot;
 }

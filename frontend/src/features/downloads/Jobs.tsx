@@ -410,9 +410,22 @@ export function JobDetail() {
                               ...(data.previousVersions
                                 ? [
                                     [
-                                      "send.previousVersions",
+                                      "send.previousAction",
                                       t(
                                         `historyActions.policies.${data.previousVersions}`,
+                                      ),
+                                    ],
+                                  ]
+                                : []),
+                              ...(data.previousVersions &&
+                              data.previousVersions !== "keep"
+                                ? [
+                                    [
+                                      "send.cleanupTiming",
+                                      t(
+                                        data.cleanupTiming === "immediate"
+                                          ? "send.cleanupImmediate"
+                                          : "send.cleanupAfterDownload",
                                       ),
                                     ],
                                   ]

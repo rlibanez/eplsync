@@ -176,7 +176,6 @@ export function RevisionUpdates() {
       <div className="filters jobs-filters">
         <Select
           label={t("revisionUpdates.status")}
-          placeholder={t("revisionUpdates.allStates")}
           clearable
           value={registeredStatus}
           disabled={!search || find.isPending}

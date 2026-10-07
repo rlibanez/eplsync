@@ -18,7 +18,9 @@ import com.rlibanez.eplsync.exception.UserInputException;
 @Service
 public class SelectedUpdateSender {
     public record Request(List<Long> ids,List<DownloadStatus> states,PreviousVersions previousVersions,Boolean confirmFiles,
-        TorrentDownloadRequest options,Integer concurrency,Integer batchSize,String interval,MultipleHashes multipleHashes) {}
+        TorrentDownloadRequest options,Integer concurrency,Integer batchSize,String interval,MultipleHashes multipleHashes,CleanupTiming cleanupTiming) {
+        public Request(List<Long> ids,List<DownloadStatus> states,PreviousVersions policy,Boolean confirmFiles,TorrentDownloadRequest options,Integer concurrency,Integer batchSize,String interval,MultipleHashes hashes) {this(ids,states,policy,confirmFiles,options,concurrency,batchSize,interval,hashes,null);}
+    }
     private final RevisionUpdates updates;
     private final BulkStore bulk;
     private final CatalogBookRepository books;
@@ -42,7 +44,7 @@ public class SelectedUpdateSender {
             || input.ids().stream().anyMatch(id -> id==null || id<1) || new HashSet<>(input.ids()).size()!=input.ids().size())
             throw new UserInputException("Selecciona entre 1 y 10000 libros, sin duplicados");
         var selection=new UpdatePreferences.Preferences(input.states());RevisionUpdates.validate(selection,0,1,"eplId,asc");
-        var request=new UpdateRequest(input.previousVersions(),input.options(),input.batchSize(),input.concurrency(),input.interval(),input.multipleHashes());
+        var request=new UpdateRequest(input.previousVersions(),input.options(),input.batchSize(),input.concurrency(),input.interval(),input.multipleHashes(),input.cleanupTiming());
         if(request.options()!=null && request.options().hash()!=null) throw new UserInputException("Las actualizaciones no admiten un hash específico");
         if(request.policy()!=PreviousVersions.KEEP) Permission.require(Permission.TORRENT_CLEANUP);
         if(request.policy()==PreviousVersions.REMOVE_TORRENT_AND_FILES) {
@@ -52,7 +54,7 @@ public class SelectedUpdateSender {
         var policy=input.multipleHashes()==null ? properties.getBulk().getMultipleHashes() : input.multipleHashes();
         var job=bulk.beginPrepared(request.bulk()); job.setType(BulkJob.Type.UPDATE);job.setPreviousVersions(request.policy());
         var plan=new UpdatePlan();plan.setJobId(job.getId());plan.setClientInstanceId(tracking.instanceId());plan.setPreviousVersions(request.policy());
-        plan.setAutomaticCleanup(request.policy()!=PreviousVersions.KEEP);plan.setSnapshot("{\"items\":[]}");plan.setCreatedAt(Instant.now());plans.saveAndFlush(plan);
+        plan.setCleanupTiming(request.timing());plan.setAutomaticCleanup(request.policy()!=PreviousVersions.KEEP);plan.setSnapshot("{\"items\":[]}");plan.setCreatedAt(Instant.now());plans.saveAndFlush(plan);
         long count=0,position=0,deadline=System.nanoTime()+java.time.Duration.ofMinutes(2).toNanos();
         for(var id:input.ids()) {
             if(System.nanoTime()>=deadline || Thread.currentThread().isInterrupted()) throw new UserInputException("La preparación superó el tiempo máximo; reduce la selección");

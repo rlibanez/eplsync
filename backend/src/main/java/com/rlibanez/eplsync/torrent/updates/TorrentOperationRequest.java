@@ -12,7 +12,7 @@ public record TorrentOperationRequest(boolean dryRun, @Valid CatalogBookFilter f
         Boolean includeNotFound, @Min(0) Integer page, @Min(1) @jakarta.validation.constraints.Max(com.rlibanez.eplsync.config.QueryLimits.MAX_SIZE) Integer size, List<String> sort, Boolean all,
         Boolean includeDetails, PreviousVersions previousVersions, TorrentDownloadRequest options,
         Integer batchSize, Integer concurrency, String interval, MultipleHashes multipleHashes,
-        @Min(0) Integer detailPage,@Min(1) @jakarta.validation.constraints.Max(1000) Integer detailSize) {
+        @Min(0) Integer detailPage,@Min(1) @jakarta.validation.constraints.Max(1000) Integer detailSize, CleanupTiming cleanupTiming) {
     public int detailPageNumber() { return detailPage==null ? 0 : detailPage; }
     public int detailPageSize() { return detailSize==null ? 20 : detailSize; }
     public CatalogBookFilter filter() { var f = filters == null ? new CatalogBookFilter() : filters; f.normalize(); return f; }
@@ -31,5 +31,5 @@ public record TorrentOperationRequest(boolean dryRun, @Valid CatalogBookFilter f
         return PageRequest.of(pageNumber(),size == null ? 20 : size,Sort.by(orders));
     }
     public BulkRequest bulk() { return new BulkRequest(options,batchSize,concurrency,interval,multipleHashes); }
-    public UpdateRequest update() { return new UpdateRequest(previousVersions,options,batchSize,concurrency,interval,multipleHashes); }
+    public UpdateRequest update() { return new UpdateRequest(previousVersions,options,batchSize,concurrency,interval,multipleHashes,cleanupTiming); }
 }

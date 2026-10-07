@@ -21,6 +21,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { Link, useSearchParams } from "react-router-dom";
+import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
 import { Failure, Loading } from "../../components/Feedback";
@@ -248,6 +249,16 @@ function EventsView({ operationId }: { operationId?: string }) {
     <>
       <div className="page-heading">
         <h1>{t("events.title")}</h1>
+        {pending && (
+          <Button
+            leftSection={<RefreshCw size={16} />}
+            onClick={refresh}
+            loading={result.isFetching}
+            title={t("events.newEvents")}
+          >
+            {t("events.refresh")}
+          </Button>
+        )}
       </div>
       <p className="muted">{t("events.description")}</p>
       {operationId ? (
@@ -385,28 +396,13 @@ function EventsView({ operationId }: { operationId?: string }) {
         <Failure error={result.error} retry={() => void result.refetch()} />
       ) : (
         <section className="panel events-panel">
-          <Group className="events-table-heading" justify="space-between">
-            <span>
+          <div className="table-toolbar">
+            <strong>
               {t("events.operationsTotal", { count: result.data.total })}
-            </span>
-            <Button
-              size="xs"
-              variant="light"
-              onClick={refresh}
-              loading={result.isFetching}
-              style={{ visibility: pending ? "visible" : "hidden" }}
-              disabled={!pending}
-              aria-hidden={!pending}
-              tabIndex={pending ? 0 : -1}
-              title={t("events.newEvents")}
-            >
-              {t("events.refresh")}
-            </Button>
+            </strong>
             <span className="sr-only" role="status">
               {pending ? t("events.newEvents") : ""}
             </span>
-          </Group>
-          <div className="table-toolbar">
             <div className="catalog-table-controls">{columns.controls}</div>
           </div>
           {!result.data.items.length ? (
