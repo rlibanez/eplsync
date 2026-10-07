@@ -21,7 +21,9 @@ export interface EventPage {
   cursor: number;
 }
 export const eventHref = (event: AppEvent) =>
-  event.action === "SEND_BOOK" && typeof event.details.eplId === "number"
+  ["SEND_BOOK", "REFRESH_DOWNLOADS", "DELETE_DOWNLOADS", "CLEANUP"].includes(
+    event.action,
+  ) && typeof event.details.eplId === "number"
     ? "/catalog/" + event.details.eplId
     : event.category === "CATALOG"
       ? "/settings/catalog"

@@ -50,7 +50,7 @@ public class SelectedUpdateSender {
             if(!Boolean.TRUE.equals(input.confirmFiles())) throw new UserInputException("Confirma la eliminación irreversible de los archivos anteriores");
         }
         var policy=input.multipleHashes()==null ? properties.getBulk().getMultipleHashes() : input.multipleHashes();
-        var job=bulk.beginPrepared(request.bulk());
+        var job=bulk.beginPrepared(request.bulk()); job.setType(BulkJob.Type.UPDATE);job.setPreviousVersions(request.policy());
         var plan=new UpdatePlan();plan.setJobId(job.getId());plan.setClientInstanceId(tracking.instanceId());plan.setPreviousVersions(request.policy());
         plan.setAutomaticCleanup(request.policy()!=PreviousVersions.KEEP);plan.setSnapshot("{\"items\":[]}");plan.setCreatedAt(Instant.now());plans.saveAndFlush(plan);
         long count=0,position=0,deadline=System.nanoTime()+java.time.Duration.ofMinutes(2).toNanos();
@@ -73,7 +73,7 @@ public class SelectedUpdateSender {
                     cb.equal(root.get("eplId"),id),cb.lessThan(root.get("revision"),book.getRevision())),PageRequest.of(page++,100,Sort.by("id")));
                 for(var old:history) {
                     var entry=new UpdateCleanup();entry.setJobId(job.getId());entry.setDownloadId(old.getId());entry.setEplId(id);entry.setHash(old.getHash());
-                    entry.setState(request.policy()==PreviousVersions.KEEP ? UpdateCleanup.State.KEPT : UpdateCleanup.State.WAITING);entry.setUpdatedAt(Instant.now());cleanup.save(entry);
+                    entry.setState(request.policy()==PreviousVersions.KEEP ? UpdateCleanup.State.KEPT : UpdateCleanup.State.WAITING);entry.setUpdatedAt(Instant.now());entry.initialize(plan, targets, com.rlibanez.eplsync.events.EventContext.actor()); cleanup.save(entry);
                 }
                 em.flush();em.clear();if(!history.hasNext()) break;
             }

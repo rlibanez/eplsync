@@ -120,6 +120,7 @@ export function Jobs() {
                   <tr>
                     {[
                       "job",
+                      "type",
                       "status",
                       "progress",
                       "selectedBooks",
@@ -175,6 +176,9 @@ export function Jobs() {
                         >
                           {job.jobId}
                         </Link>
+                      </td>
+                      <td>
+                        {t(`historyActions.jobTypes.${job.type ?? "DOWNLOAD"}`)}
                       </td>
                       <td>{status(job.status)}</td>
                       <td>
@@ -232,7 +236,13 @@ export function JobDetail() {
       get<Job>(`/torrent/jobs/${encodeURIComponent(id!)}`, signal),
     refetchInterval: (q) =>
       ["COMPLETED", "CANCELLED"].includes(q.state.data?.status ?? "")
-        ? false
+        ? q.state.data?.cleanup &&
+          q.state.data.cleanup.waiting +
+            q.state.data.cleanup.blocked +
+            q.state.data.cleanup.requested >
+            0
+          ? 30000
+          : false
         : 3000,
   });
   const items = useQuery({
@@ -320,6 +330,27 @@ export function JobDetail() {
               }
             />
             <dl className="import-summary">
+              <div>
+                <dt>{t("downloads.type")}</dt>
+                <dd>
+                  {t(`historyActions.jobTypes.${data.type ?? "DOWNLOAD"}`)}
+                </dd>
+              </div>
+              {data.previousVersions && (
+                <div>
+                  <dt>{t("send.previousVersions")}</dt>
+                  <dd>
+                    {t(`historyActions.policies.${data.previousVersions}`)}
+                  </dd>
+                </div>
+              )}
+              {data.cleanup &&
+                Object.entries(data.cleanup).map(([key, value]) => (
+                  <div key={`cleanup-${key}`}>
+                    <dt>{t(`historyActions.summary.${key}`)}</dt>
+                    <dd>{number(value)}</dd>
+                  </div>
+                ))}
               {(
                 [
                   "selectedBooks",

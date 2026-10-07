@@ -1,58 +1,40 @@
 package com.rlibanez.eplsync.torrent.updates;
 
-import java.util.List;
 import com.rlibanez.eplsync.security.*;
 import com.rlibanez.eplsync.torrent.bulk.*;
 import org.springframework.stereotype.Component;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
-/** Only frontend jobs explicitly opting into cleanup are processed automatically. */
+/** Temporary timer adapter; a future task scheduler can invoke the same record queue. */
 @Component
 @ConditionalOnProperty(prefix="eplsync.torrent.bulk",name="worker-enabled",havingValue="true",matchIfMissing=true)
 public class AutomaticUpdateCleanup {
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(AutomaticUpdateCleanup.class);
-    private final UpdatePlanRepository plans;
-    private final BulkJobRepository jobs;
     private final AccountStore accounts;
-    private final UpdateCleanupService cleanup;
+    private final CleanupQueue queue;
     private final BulkStore bulk;
-    private String after="";
-    public AutomaticUpdateCleanup(UpdatePlanRepository plans,BulkJobRepository jobs,AccountStore accounts,UpdateCleanupService cleanup,BulkStore bulk) {
-        this.plans=plans;this.jobs=jobs;this.accounts=accounts;this.cleanup=cleanup;this.bulk=bulk;
+    @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.cleanup.enabled:true}") private boolean enabled=true;
+    @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.cleanup.batch-size:100}") private int batchSize=100;
+    @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.cleanup.interval:30s}") private String interval="30s";
+    public AutomaticUpdateCleanup(AccountStore accounts,CleanupQueue queue,BulkStore bulk) {
+        this.accounts=accounts;this.queue=queue;this.bulk=bulk;
     }
-    @Scheduled(fixedDelay=30000,initialDelay=30000)
+    @jakarta.annotation.PostConstruct
+    void validate() {
+        var duration=org.springframework.boot.convert.DurationStyle.detectAndParse(interval);
+        if (duration.isZero() || duration.isNegative()) throw new IllegalArgumentException("cleanup.interval debe ser positivo");
+        if (batchSize<1 || batchSize>1000) throw new IllegalArgumentException("cleanup.batch-size debe estar entre 1 y 1000");
+    }
+    @Scheduled(fixedDelayString="${eplsync.torrent.cleanup.interval:30s}",initialDelayString="${eplsync.torrent.cleanup.interval:30s}")
     public void tick() {
-        var pending=plans.automatic(after,List.of(UpdateCleanup.State.WAITING,UpdateCleanup.State.BLOCKED,UpdateCleanup.State.REQUESTED),
-            org.springframework.data.domain.PageRequest.of(0,20));
-        if(pending.isEmpty()) {after="";return;}
-        var previous=SecurityContextHolder.getContext();
+        if (!enabled) return;
         try {
             synchronized(bulk) {
-                var contexts=new java.util.HashMap<String,org.springframework.security.core.context.SecurityContext>();
-                var eligible=new java.util.ArrayList<UpdatePlan>();
-                for(var plan:pending) {
-                    after=plan.getJobId();
-                    var job=jobs.findById(plan.getJobId()).orElse(null);
-                    if(job==null || job.getState()==BulkJob.State.CANCELLED || job.getEventActorId()==null) continue;
-                    var account=accounts.find(job.getEventActorId());
-                    if(account==null || !"ACTIVE".equals(account.status()) || account.mustChangePassword()
-                        || !account.permissions().contains(Permission.TORRENT_CLEANUP)
-                        || plan.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES
-                            && !account.permissions().contains(Permission.TORRENT_FILES_DELETE)) continue;
-                    var context=SecurityContextHolder.createEmptyContext();
-                    context.setAuthentication(new UsernamePasswordAuthenticationToken(account,null,
-                        account.permissions().stream().map(p -> new SimpleGrantedAuthority(p.name())).toList()));
-                    contexts.put(plan.getJobId(),context);
-                    eligible.add(plan);
-                }
-                cleanup.cleanAutomatic(eligible,plan -> SecurityContextHolder.setContext(contexts.get(plan.getJobId())));
+                com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,() -> {
+                    queue.runAutomatic(batchSize,accounts); return null;
+                });
             }
-        } catch(RuntimeException ex) {
-            log.warn("Limpieza automática pendiente: tipo={}",ex.getClass().getSimpleName());
-        } finally {SecurityContextHolder.setContext(previous);}
+        } catch(RuntimeException ex) { log.warn("Limpieza automática pendiente: tipo={}",ex.getClass().getSimpleName()); }
     }
 }

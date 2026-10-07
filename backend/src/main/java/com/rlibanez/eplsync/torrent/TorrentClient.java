@@ -23,6 +23,11 @@ public interface TorrentClient {
                 "El cliente seleccionado no admite sincronización de descargas");
     }
 
+    default java.util.List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent> listTorrents(java.util.Set<String> hashes) {
+        if (hashes.isEmpty()) return java.util.List.of();
+        return listTorrents().stream().filter(t -> t.aliases().stream().anyMatch(hashes::contains)).toList();
+    }
+
     default void deleteTorrent(String remoteId, boolean deleteFiles) {
         throw new TorrentOperationException(HttpStatus.UNPROCESSABLE_CONTENT,
                 "El cliente seleccionado no admite eliminar torrents");

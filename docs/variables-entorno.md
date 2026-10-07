@@ -48,6 +48,9 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 | `EPLSYNC_TORRENT_QBITTORRENT_AUTH_PASSWORD` | Necesaria junto al usuario en autenticación por sesión. No es la contraseña de un usuario de EPL Sync. | Vacío |
 | `EPLSYNC_TORRENT_QBITTORRENT_AUTH_APIKEY` | Necesaria con la integración activa y auth.mode=api-key, o con auto si eliges API key. | Vacío |
 | `EPLSYNC_TORRENT_TRACKERS` | Lista de trackers adicionales separada por comas. Vacío elimina la lista. | [Lista de trackers](#trackers-predeterminados) |
+| `EPLSYNC_TORRENT_CLEANUP_ENABLED` | Activa las comprobaciones periódicas de limpieza. Desactivarla conserva los pendientes y permite acciones manuales. | `true` |
+| `EPLSYNC_TORRENT_CLEANUP_INTERVAL` | Espera entre ciclos de limpieza, positiva; por ejemplo `30s` o `1m`. | `30s` |
+| `EPLSYNC_TORRENT_CLEANUP_BATCH_SIZE` | Solicitudes de limpieza por ciclo, entre 1 y 1000. El límite se aplica a registros, no a trabajos. | `100` |
 | `EPLSYNC_TORRENT_BULK_MULTIPLEHASHES` | Tratamiento de libros con varios hashes: all, first o skip. | `all` |
 | `EPLSYNC_TORRENT_BULK_BATCHSIZE` | Número de libros procesados por lote en los trabajos de descargas. | `100` |
 | `EPLSYNC_TORRENT_BULK_CONCURRENCY` | Número máximo de envíos simultáneos en un trabajo de descargas. | `1` |

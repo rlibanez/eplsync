@@ -10,10 +10,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/torrent/downloads")
 public class DownloadController {
     private final TorrentClientService client;
+    private final com.rlibanez.eplsync.torrent.updates.HistoryActions actions;
     private final DownloadQueryService queries;
     private final com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup;
-    public DownloadController(TorrentClientService client, DownloadQueryService queries, com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup) {
-        this.client = client; this.queries = queries; this.cleanup = cleanup;
+    public DownloadController(TorrentClientService client, DownloadQueryService queries, com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup, com.rlibanez.eplsync.torrent.updates.HistoryActions actions) {
+        this.client = client; this.queries = queries; this.cleanup = cleanup; this.actions=actions;
     }
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")
     @PostMapping("/sync")
@@ -32,6 +33,19 @@ public class DownloadController {
     @PostMapping("/link")
     public DownloadRecord link(@RequestBody DownloadTrackingService.LinkRequest request) {
         return client.linkDownload(request);
+    }
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('BOOK_HISTORY_READ') and hasAuthority('TORRENT_SYNC')")
+    @PostMapping("/refresh-selected")
+    public com.rlibanez.eplsync.torrent.updates.HistoryActions.Result refreshSelected(
+            @RequestBody com.rlibanez.eplsync.torrent.updates.HistoryActions.Selection selection) {
+        return actions.refresh(selection);
+    }
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('BOOK_HISTORY_READ') and hasAuthority('TORRENT_CLEANUP')")
+    @PostMapping("/remove-selected")
+    public com.rlibanez.eplsync.torrent.updates.HistoryActions.Result removeSelected(
+            @RequestParam(defaultValue="false") boolean retryUnconfirmed,
+            @RequestBody com.rlibanez.eplsync.torrent.updates.HistoryActions.Selection selection) {
+        return actions.remove(selection,retryUnconfirmed);
     }
     @GetMapping("/summary")
     public DownloadQueryService.Summary summary(@RequestParam MultiValueMap<String, String> params) {

@@ -129,6 +129,15 @@ export const itemStates = [
   "CANCELLED",
 ];
 export interface Job {
+  type?: "DOWNLOAD" | "UPDATE";
+  previousVersions?: string | null;
+  cleanup?: {
+    waiting: number;
+    blocked: number;
+    requested: number;
+    removed: number;
+    cancelled: number;
+  } | null;
   jobId: string;
   status: string;
   client: string;

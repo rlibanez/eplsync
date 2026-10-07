@@ -144,7 +144,7 @@ el borrado de datos. Esta comprobación no inspecciona enlaces simbólicos o har
 links del sistema de archivos remoto, ni puede evitar cambios simultáneos hechos
 fuera de EPLsync. `REMOVED` confirma la ausencia del torrent, no una verificación
 física del borrado del archivo; el tratamiento final de los datos depende de
-qBittorrent. No hay limpieza automática ni cambios de política implícitos.
+qBittorrent. Los envíos desde Actualizaciones pueden activar limpieza periódica; las políticas de las solicitudes quedan fijadas al crearlas.
 
 ## Limpieza global de actualizaciones
 
@@ -190,3 +190,35 @@ envío en el trabajo, evitando construir un snapshot de toda la selección en me
 Las simulaciones conservan únicamente la página solicitada. El detalle de
 `GET /api/torrent/updates/JOB_ID` admite `page` y `size` (0 y 20 por defecto,
 máximo 1000), con `updatesMeta` e `itemsMeta` para recorrer candidatos y limpieza.
+
+## Limpieza por revisiones y acciones del historial
+
+Cada revisión antigua tiene su propia solicitud de limpieza, con destino, política,
+usuario y hashes de sustitución persistidos. El trabajo sirve de referencia de origen.
+El temporizador provisional comprueba hasta 100 registros cada 30 segundos; prioriza
+las solicitudes antiguas y rota las comprobadas para no bloquear las siguientes.
+No exige que finalice todo el trabajo: cada libro se evalúa con sus hashes nuevos.
+
+Se puede desactivar mediante `EPLSYNC_TORRENT_CLEANUP_ENABLED=false`, cambiar el
+intervalo con `EPLSYNC_TORRENT_CLEANUP_INTERVAL` y el límite con
+`EPLSYNC_TORRENT_CLEANUP_BATCH_SIZE`. No se crea aún una pestaña de tareas programadas.
+Cancelar el trabajo cancela las limpiezas no solicitadas; un intento incierto
+conserva la confirmación pendiente y no se repite automáticamente.
+
+En **Historial asociado** se pueden seleccionar registros de una página y:
+
+- Actualizar su estado, consultando únicamente los hashes seleccionados.
+- Eliminar del cliente mediante un desplegable: solo torrent o torrent y archivos.
+  Se pide confirmación; los archivos requieren permiso y aceptación explícita.
+
+Las acciones mantienen las comprobaciones de destinos, identidades y rutas compartidas.
+La configuración y la identidad del cliente quedan fijadas durante cada operación;
+cambiar ajustes no redirige un borrado ya iniciado a otro servidor.
+Eliminar desde el historial no espera a completar otra revisión. Una operación
+bloqueada informa de su motivo y no programa un borrado futuro. La ausencia confirmada
+marca las solicitudes pendientes relacionadas como `REMOVED` y conserva las descargas
+como `NOT_FOUND`. No elimina su historial ni sus fechas de finalización.
+
+La sincronización manual también procesa limpiezas pendientes autorizadas. La
+previsualización no solicita borrados. Trabajos muestra el tipo de envío; su detalle
+incluye política y contadores de limpieza.

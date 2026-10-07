@@ -111,14 +111,14 @@ test("book history shares catalog pagination spacing and aligns heading with pag
     await paging
       .getByRole("button", { name: "Siguiente", exact: true })
       .click();
-    await expect(history.locator("tbody tr td").nth(1)).toHaveText("2");
+    await expect(history.locator("tbody tr td").nth(2)).toHaveText("2");
     await paging.getByRole("button", { name: "Anterior", exact: true }).click();
-    await expect(history.locator("tbody tr td").nth(1)).toHaveText("1");
-    await expect(history.getByRole("columnheader")).toHaveCount(7);
+    await expect(history.locator("tbody tr td").nth(2)).toHaveText("1");
+    await expect(history.getByRole("columnheader")).toHaveCount(8);
     await expect(
       history.getByRole("columnheader", { name: "Revisión", exact: true }),
     ).toHaveAttribute("aria-sort", "descending");
-    await expect(history.locator("tbody tr td").first()).toHaveText(
+    await expect(history.locator("tbody tr td").nth(1)).toHaveText(
       "A".repeat(40),
     );
     await expect(

@@ -66,6 +66,15 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
         finally { synchronized (this) { if (--selected.users == 0 && selected.retired) selected.client.close(); } }
     }
 
+    /** Hold one immutable runtime configuration for a multi-request operation. */
+    public <T> T withSnapshot(java.util.function.Function<QBittorrentClient,T> action) {
+        if (dynamic()) return configured(value -> value.withSnapshot(action));
+        if (!properties.isEnabled()) throw new com.rlibanez.eplsync.exception.TorrentOperationException(
+            org.springframework.http.HttpStatus.CONFLICT,"La conexión torrent está deshabilitada");
+        return action.apply(this);
+    }
+    public String snapshotBaseUrl() { return properties.getBaseUrl(); }
+
     public QBittorrentClient(TorrentProperties properties, QBittorrentProperties qbittorrent) {
         this.properties = properties;
         this.qbittorrent = qbittorrent;
@@ -254,7 +263,26 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
     @Override
     public java.util.List<RemoteTorrent> listTorrents() {
         if (dynamic()) return configured(value -> Objects.requireNonNull(value).listTorrents());
-        var response = readAuthenticatedJson("torrents/info");
+        return parseTorrents(readAuthenticatedJson("torrents/info"));
+    }
+
+    @Override
+    public java.util.List<RemoteTorrent> listTorrents(java.util.Set<String> requested) {
+        if (dynamic()) return configured(value -> Objects.requireNonNull(value).listTorrents(requested));
+        if (requested.isEmpty()) return java.util.List.of();
+        if (requested.stream().anyMatch(h -> !h.matches("[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64}")))
+            throw new IllegalArgumentException("Hash de torrent inválido");
+        var normalized = requested.stream().map(h -> h.toUpperCase(java.util.Locale.ROOT)).collect(java.util.stream.Collectors.toSet());
+        var ordered = normalized.stream().sorted().toList();
+        var result = new java.util.ArrayList<RemoteTorrent>();
+        for (int start=0;start<ordered.size();start+=50) {
+            var hashes=ordered.subList(start,Math.min(start+50,ordered.size()));
+            result.addAll(parseTorrents(readAuthenticatedJson("torrents/info?hashes=" + encode(String.join("|",hashes)))));
+        }
+        return result.stream().filter(t -> t.aliases().stream().anyMatch(normalized::contains)).distinct().toList();
+    }
+
+    private java.util.List<RemoteTorrent> parseTorrents(tools.jackson.databind.JsonNode response) {
         if (!response.isArray()) throw new QBittorrentConnectionException(UPSTREAM);
         var result = new java.util.ArrayList<RemoteTorrent>();
         var hashes = new java.util.HashSet<String>();

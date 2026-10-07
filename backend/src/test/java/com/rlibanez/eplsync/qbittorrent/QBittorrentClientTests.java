@@ -35,6 +35,7 @@ class QBittorrentClientTests {
     private TorrentProperties properties;
     private QBittorrentProperties qbittorrent;
     private final CopyOnWriteArrayList<Call> calls = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<String> torrentQueries = new CopyOnWriteArrayList<>();
     private volatile String torrentInfo = "[]";
     private volatile String categories = "{\"Libros\":{},\"Personal\":{}}";
     private volatile int addStatus = 200;
@@ -62,6 +63,15 @@ class QBittorrentClientTests {
         qbit.deleteTorrent(remoteId, true);
         assertThat(calls.getLast().body()).isEqualTo("hashes=" + remoteId + "&deleteFiles=true");
         assertThatThrownBy(() -> qbit.deleteTorrent("all", true)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test void selectedSnapshotUsesHashFilterAndDiscardsUnrequestedTorrents() {
+        String hash="A".repeat(40), other="B".repeat(40);
+        torrentInfo="[{\"hash\":\""+hash+"\",\"state\":\"uploading\",\"progress\":1,\"amount_left\":0},"
+            +"{\"hash\":\""+other+"\",\"state\":\"uploading\",\"progress\":1,\"amount_left\":0}]";
+        var result=client().listTorrents(java.util.Set.of(hash.toLowerCase(java.util.Locale.ROOT)));
+        assertThat(result).singleElement().satisfies(t -> assertThat(t.hash()).isEqualTo(hash));
+        assertThat(torrentQueries).contains("hashes="+hash);
     }
 
     @Test void readsHybridHashesAndRejectsMalformedAliases() {
@@ -121,6 +131,26 @@ class QBittorrentClientTests {
         qbittorrent.getAuth().setPassword(" p&+=ss ");
     }
 
+    @Test void multiRequestSnapshotKeepsOriginalDestinationAndCredentials() {
+        var shell=new TorrentProperties();var authShell=new QBittorrentProperties();
+        var active=new java.util.concurrent.atomic.AtomicReference<>(properties);
+        var credentials=new java.util.concurrent.atomic.AtomicReference<>(qbittorrent);
+        shell.useEffective(active::get);authShell.useEffective(credentials::get);
+        client=new QBittorrentClient(shell,authShell);
+        String hash="A".repeat(40);
+        torrentInfo="[{\"hash\":\""+hash+"\",\"state\":\"uploading\",\"progress\":1,\"amount_left\":0}]";
+        client.withSnapshot(snapshot -> {
+            snapshot.listTorrents();
+            var next=new TorrentProperties();next.setEnabled(true);next.setBaseUrl("http://127.0.0.1:1/new-destination");active.set(next);
+            var nextAuth=new QBittorrentProperties();nextAuth.getAuth().setMode(AuthMode.API_KEY);nextAuth.getAuth().setApiKey("other-key");credentials.set(nextAuth);
+            snapshot.deleteTorrent(hash,false);
+            assertThat(snapshot.snapshotBaseUrl()).isEqualTo(properties.getBaseUrl());
+            return true;
+        });
+        assertThat(calls).anyMatch(call -> call.path().endsWith("/torrents/delete") && "Bearer test-key".equals(call.authorization()));
+        assertThat(calls).noneMatch(call -> "Bearer other-key".equals(call.authorization()));
+    }
+
     @Test void dynamicSettingsEnableDisabledAdapterAndReplaceAuthenticationWithoutRestart() {
         var disabled = new TorrentProperties();
         disabled.setEnabled(false);
@@ -176,7 +206,7 @@ class QBittorrentClientTests {
                 } else if (rejectSession || call.cookie() == null || !call.cookie().contains(cookieName + "=" + cookieValue)) {
                     respond(exchange, 403, "Forbidden"); return;
                 }
-                if (call.path().endsWith("/torrents/info")) respond(exchange, 200, torrentInfo);
+                if (call.path().endsWith("/torrents/info")) { torrentQueries.add(String.valueOf(exchange.getRequestURI().getRawQuery())); respond(exchange, 200, torrentInfo); }
                 else if (call.path().endsWith("/torrents/categories")) respond(exchange, 200, categories);
                 else if (call.path().endsWith("/torrents/add")) respond(exchange, addStatus, addBody);
                 else if (call.path().endsWith("/torrents/rename")) respond(exchange, renameStatus, "");

@@ -487,7 +487,8 @@
     "jobNotFound": "This job could not be found. It may have been removed by a database reset.",
     "refreshing": "Refreshing…",
     "refreshed": "View refreshed successfully.",
-    "refreshError": "Could not refresh the view. Check your connection and try again."
+    "refreshError": "Could not refresh the view. Check your connection and try again.",
+    "type": "Type"
   },
   "send": {
     "openTorrentSettings": "Torrent settings",
@@ -878,7 +879,10 @@
       "USER_CREATE": "Create user",
       "USER_UPDATE": "Edit user",
       "USER_DELETE": "Delete user",
-      "USER_PASSWORD_RESET": "Reset password"
+      "USER_PASSWORD_RESET": "Reset password",
+      "REFRESH_DOWNLOADS": "Refresh download statuses",
+      "DELETE_DOWNLOADS": "Remove from client",
+      "CLEANUP": "Clean up previous revisions"
     },
     "fields": {
       "processed": "Processed",
@@ -1216,5 +1220,46 @@
     "view": "View updates",
     "allStates": "All states",
     "lastSearch": "Last search: {{date}}"
+  },
+  "historyActions": {
+    "selected": "{{count}} selected records",
+    "refresh": "Refresh status",
+    "remove": "Remove from client",
+    "torrentOnly": "Torrent only",
+    "torrentAndFiles": "Torrent and files",
+    "confirmTorrent": "The {{count}} selected records will be removed from the client. Files and history will be kept.",
+    "confirmFiles": "The {{count}} selected records and their files will be removed from the client. File deletion is irreversible; history will be kept.",
+    "irreversible": "I understand that file deletion is irreversible.",
+    "failed": "The operation could not be completed. Try again.",
+    "result": "Operation result",
+    "selectPage": "Select records on this page",
+    "selectRevision": "Select revision {{revision}}",
+    "states": {
+      "REMOVED": "Removed from client",
+      "REQUESTED": "Removal unconfirmed",
+      "BLOCKED": "Removal blocked",
+      "WAITING": "Pending",
+      "CANCELLED": "Cancelled",
+      "KEPT": "Kept"
+    },
+    "jobTypes": {
+      "DOWNLOAD": "Download",
+      "UPDATE": "Update"
+    },
+    "policies": {
+      "keep": "Keep",
+      "removeTorrent": "Remove torrents",
+      "removeTorrentAndFiles": "Remove torrents and files"
+    },
+    "summary": {
+      "waiting": "Pending cleanups",
+      "blocked": "Blocked cleanups",
+      "requested": "Unconfirmed removals",
+      "removed": "Confirmed removals",
+      "cancelled": "Cancelled cleanups"
+    }
+  },
+  "common": {
+    "close": "Close"
   }
 }

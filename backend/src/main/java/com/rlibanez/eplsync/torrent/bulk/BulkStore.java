@@ -60,7 +60,8 @@ public class BulkStore {
             long pending, long inFlight, long cancelled, int batchSize, int concurrency,
             String interval, Instant createdAt, Instant updatedAt, Instant retryAt, String message,
             MultipleHashes multipleHashes, long selectedTorrents, long processedTorrents,
-            long selectedItems, long processedItems) {}
+            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup) {}
+    public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {}
     public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) {}
 
     @Transactional(timeout=120)
@@ -291,13 +292,21 @@ public class BulkStore {
         String id = j.getId();
         long accepted = count(id, BulkItem.State.ACCEPTED), existing = count(id, BulkItem.State.ALREADY_EXISTS);
         long skipped = count(id, BulkItem.State.SKIPPED), failed = count(id, BulkItem.State.FAILED);
+        var plan=em.find(com.rlibanez.eplsync.torrent.updates.UpdatePlan.class,id);
+        var counts=new java.util.EnumMap<com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State,Long>(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.class);
+        if (plan!=null) for (var row:em.createQuery("select e.state,count(e) from UpdateCleanup e where e.jobId=:job group by e.state",Object[].class).setParameter("job",id).getResultList())
+            counts.put((com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State)row[0],(Long)row[1]);
+        var summary=plan==null ? null : new CleanupSummary(counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.WAITING,0L),
+            counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.BLOCKED,0L),counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REQUESTED,0L),
+            counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REMOVED,0L),counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.CANCELLED,0L));
         return new View(id, j.getState(), j.getClient(), j.getSelectedBooks(), items.processedBooks(id, List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT, BulkItem.State.CANCELLED)),
                 accepted, existing, skipped, failed, count(id, BulkItem.State.PENDING), count(id, BulkItem.State.IN_FLIGHT),
                 count(id, BulkItem.State.CANCELLED), j.getBatchSize(), j.getConcurrency(), j.getIntervalMillis() + "ms",
                 j.getCreatedAt(), j.getUpdatedAt(), j.getRetryAt(), j.getMessage(),
                 j.getMultipleHashes() == null ? MultipleHashes.SKIP : j.getMultipleHashes(),
                 items.selectedTorrents(id), items.processedTorrents(id, List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT, BulkItem.State.CANCELLED)),
-                items.countByJobId(id), accepted + existing + skipped + failed);
+                items.countByJobId(id), accepted + existing + skipped + failed, plan==null ? BulkJob.Type.DOWNLOAD : BulkJob.Type.UPDATE,
+                plan==null ? null : plan.getPreviousVersions(),summary);
     }
 
     @Transactional(readOnly = true)
@@ -307,7 +316,7 @@ public class BulkStore {
     @Transactional(readOnly = true)
     public PageResponse<View> list(int page, int size, List<BulkJob.State> states, String sort) {
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
-        var fields=Map.of("jobId","id","status","state","selectedBooks","selectedBooks","createdAt","createdAt");
+        var fields=Map.of("jobId","id","status","state","type","type","selectedBooks","selectedBooks","createdAt","createdAt");
         var parts=sort==null ? new String[0] : sort.split(",",-1);
         if(parts.length!=2 || !(fields.containsKey(parts[0]) || Set.of("progress","accepted","failed").contains(parts[0]))
             || !(parts[1].equalsIgnoreCase("asc") || parts[1].equalsIgnoreCase("desc")))
@@ -379,6 +388,9 @@ public class BulkStore {
             case "cancel" -> {
                 job.setState(BulkJob.State.CANCELLED);
                 items.transition(id, BulkItem.State.PENDING, BulkItem.State.CANCELLED);
+                em.createQuery("update UpdateCleanup e set e.state=:cancelled,e.updatedAt=:now where e.jobId=:job and e.state in :pending")
+                    .setParameter("cancelled",com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.CANCELLED).setParameter("now",Instant.now())
+                    .setParameter("job",id).setParameter("pending",List.of(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.WAITING,com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.BLOCKED)).executeUpdate();
             }
             default -> throw new com.rlibanez.eplsync.exception.UserInputException("Acción desconocida");
         }

@@ -1949,3 +1949,8 @@ summary {
 .updates-table th { position: relative; }
 .updates-table td, .updates-table th { overflow-wrap: anywhere; }
 .updates-table .updates-selection { width: 44px; min-width: 44px; padding-inline: 10px; }
+
+.book-history .history-selection { width: 44px; min-width: 44px; padding-inline: 10px; }
+.history-action-records { padding-left: 20px; overflow-wrap: anywhere; }
+.history-action-records li + li { margin-top: 12px; }
+.history-action-records p { margin: 6px 0 0; }

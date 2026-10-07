@@ -29,6 +29,7 @@ public class DownloadTrackingService {
     // Compartido por envíos y sync: una instantánea no puede pisar un envío posterior.
     private final ReentrantReadWriteLock coordination = new ReentrantReadWriteLock(true);
     private final Object writes = new Object();
+    private final ThreadLocal<String> operationInstance = new ThreadLocal<>();
 
     public DownloadTrackingService(DownloadRepository downloads, CatalogBookRepository books,
             TorrentProperties properties, MagnetLinkBuilder magnets, PlatformTransactionManager manager,
@@ -39,11 +40,22 @@ public class DownloadTrackingService {
     }
 
     public String instanceId() {
+        if (operationInstance.get()!=null) return operationInstance.get();
+        return identity(properties.getClient(),properties.getBaseUrl());
+    }
+    private String identity(String client,String baseUrl) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(
-                    (properties.getClient() + "\n" + properties.getBaseUrl().replaceAll("/+$", ""))
+                    (client + "\n" + baseUrl.replaceAll("/+$", ""))
                             .getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
+    }
+
+    /** Scoped to the pinned HTTP adapter, including reconciliation and deletion confirmation. */
+    public <T> T withInstance(String client,String baseUrl,Supplier<T> action) {
+        var previous=operationInstance.get();operationInstance.set(identity(client,baseUrl));
+        try {return action.get();}
+        finally {if(previous==null) operationInstance.remove();else operationInstance.set(previous);}
     }
 
     public TorrentDownloadResult.Status submit(TorrentDownload command, Supplier<TorrentDownloadResult.Status> action) {

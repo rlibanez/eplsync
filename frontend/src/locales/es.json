@@ -487,7 +487,8 @@
     "jobNotFound": "No se ha encontrado este trabajo. Puede haberse eliminado al reiniciar la base de datos.",
     "refreshing": "Actualizando…",
     "refreshed": "Vista actualizada correctamente.",
-    "refreshError": "No se pudo actualizar la vista. Revisa la conexión y vuelve a intentarlo."
+    "refreshError": "No se pudo actualizar la vista. Revisa la conexión y vuelve a intentarlo.",
+    "type": "Tipo"
   },
   "send": {
     "openTorrentSettings": "Ajustes de torrent",
@@ -878,7 +879,10 @@
       "USER_CREATE": "Crear usuario",
       "USER_UPDATE": "Editar usuario",
       "USER_DELETE": "Borrar usuario",
-      "USER_PASSWORD_RESET": "Reiniciar contraseña"
+      "USER_PASSWORD_RESET": "Reiniciar contraseña",
+      "REFRESH_DOWNLOADS": "Actualizar estados de descargas",
+      "DELETE_DOWNLOADS": "Eliminar del cliente",
+      "CLEANUP": "Limpiar revisiones anteriores"
     },
     "fields": {
       "processed": "Procesados",
@@ -1216,5 +1220,46 @@
     "view": "Ver actualizaciones",
     "allStates": "Todos los estados",
     "lastSearch": "Última búsqueda: {{date}}"
+  },
+  "historyActions": {
+    "selected": "{{count}} registros seleccionados",
+    "refresh": "Actualizar estado",
+    "remove": "Eliminar del cliente",
+    "torrentOnly": "Solo torrent",
+    "torrentAndFiles": "Torrent y archivos",
+    "confirmTorrent": "Se eliminarán del cliente los {{count}} registros seleccionados. Los archivos y el historial se conservarán.",
+    "confirmFiles": "Se eliminarán del cliente los {{count}} registros seleccionados y sus archivos. El borrado de archivos es irreversible; el historial se conservará.",
+    "irreversible": "Entiendo que el borrado de archivos es irreversible.",
+    "failed": "No se pudo completar la operación. Vuelve a intentarlo.",
+    "result": "Resultado de la operación",
+    "selectPage": "Seleccionar registros de esta página",
+    "selectRevision": "Seleccionar revisión {{revision}}",
+    "states": {
+      "REMOVED": "Eliminado del cliente",
+      "REQUESTED": "Eliminación sin confirmar",
+      "BLOCKED": "Eliminación bloqueada",
+      "WAITING": "Pendiente",
+      "CANCELLED": "Cancelado",
+      "KEPT": "Conservado"
+    },
+    "jobTypes": {
+      "DOWNLOAD": "Descarga",
+      "UPDATE": "Actualización"
+    },
+    "policies": {
+      "keep": "Conservar",
+      "removeTorrent": "Eliminar torrents",
+      "removeTorrentAndFiles": "Eliminar torrents y archivos"
+    },
+    "summary": {
+      "waiting": "Limpiezas pendientes",
+      "blocked": "Limpiezas bloqueadas",
+      "requested": "Eliminaciones sin confirmar",
+      "removed": "Eliminaciones confirmadas",
+      "cancelled": "Limpiezas canceladas"
+    }
+  },
+  "common": {
+    "close": "Cerrar"
   }
 }

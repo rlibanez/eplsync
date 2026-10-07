@@ -20,6 +20,9 @@ public class BulkJob {
     @Id private String id;
     @Enumerated(EnumType.STRING) private State state;
     public enum State { QUEUED, RUNNING, RETRY_WAIT, PAUSED, COMPLETED, CANCELLED }
+    public enum Type { DOWNLOAD, UPDATE }
+    @Enumerated(EnumType.STRING) private Type type = Type.DOWNLOAD;
+    @Enumerated(EnumType.STRING) private com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions;
     private String client;
     private String targetFingerprint;
     @Enumerated(EnumType.STRING) private MultipleHashes multipleHashes;

@@ -1124,7 +1124,7 @@ torrents únicos ni todo el historial. Un destino incompatible se informa por jo
 sin modificarlo. Los fallos iniciales de conexión impiden comenzar el borrado;
 los fallos de confirmación mantienen resultados inciertos.
 
-> No hay limpieza automática. Completar un job o ejecutar un sync no la activa.
+> Los planes creados mediante estas rutas se conservan para limpieza explícita. La sincronización manual también comprueba pendientes autorizados; los envíos desde Actualizaciones pueden habilitar la limpieza periódica.
 > Los envíos y el sync se coordinan con la limpieza; una operación incompatible
 > puede devolver `409`.
 
@@ -1753,22 +1753,54 @@ la limpieza de versiones anteriores del destino actual. Los trabajos creados
 por este endpoint guardan `automaticCleanup=true` si se solicita eliminación;
 los planes anteriores creados mediante la API conservan la ejecución manual.
 
-El coordinador revisa hasta 20 planes por ciclo, cada 30 segundos, y rota entre
-los pendientes. Comprueba la cuenta y sus permisos actuales antes de ejecutar.
-No actúa sobre trabajos cancelados ni cuentas desactivadas o sin permisos.
-Comparte una instantánea inicial del cliente entre todos los planes del ciclo y
-actualiza únicamente los registros de descargas implicados (incluida su finalización).
-Tras solicitar borrados consulta de nuevo para confirmar su ausencia.
-Conserva versiones anteriores hasta que la nueva esté
-completamente descargada. Mantiene las protecciones existentes de hashes y rutas
-compartidas. Una eliminación sin confirmar no se repite automáticamente.
-La política y los estados de limpieza se consultan en `/api/torrent/updates/{jobId}`.
+La limpieza utiliza solicitudes independientes por revisión: cada registro conserva
+su cliente, política, usuario, fecha de solicitud y hashes de sustitución. El trabajo
+es una referencia de origen; el ejecutor no necesita recorrer sus elementos.
+El temporizador provisional selecciona hasta 100 solicitudes por ciclo, cada 30
+segundos. Prioriza las más antiguas no comprobadas y rota las ya comprobadas,
+incluidas las bloqueadas. Comparte una instantánea inicial del cliente y consulta
+de nuevo si se solicitaron borrados, para confirmar su ausencia.
 
-La sincronización manual de descargas aplicada comprueba también las limpiezas
-pendientes del destino actual, reutilizando la misma instantánea. Requiere
-`TORRENT_CLEANUP`; los planes con borrado de archivos requieren además
-`TORRENT_FILES_DELETE`. Los planes no autorizados se dejan pendientes.
-La previsualización y las sincronizaciones fallidas nunca ejecutan limpiezas.
+Se comprueban los permisos actuales del usuario. Cancelar un trabajo cancela sus
+limpiezas todavía no solicitadas; las `REQUESTED` conservan la confirmación pendiente.
+Los borrados inciertos nunca se repiten automáticamente. Los registros `REMOVED`,
+`KEPT` y `CANCELLED` no vuelven a seleccionarse. La ausencia confirmada resuelve
+las solicitudes del mismo torrent y destino y conserva su historial como `NOT_FOUND`.
+
+Configuración provisional, sin pestaña de tareas programadas:
+`EPLSYNC_TORRENT_CLEANUP_ENABLED` (true), `EPLSYNC_TORRENT_CLEANUP_INTERVAL` (30s)
+y `EPLSYNC_TORRENT_CLEANUP_BATCH_SIZE` (100, entre 1 y 1000). Desactivar el temporizador
+no impide operaciones manuales. La programación está separada de `CleanupQueue`,
+que podrá invocarse desde el futuro planificador.
+
+La sincronización manual aplicada comprueba también las limpiezas pendientes
+del destino actual, reutilizando su respuesta y respetando `TORRENT_CLEANUP` y
+`TORRENT_FILES_DELETE`. La previsualización y una consulta fallida no ejecutan borrados.
+Las acciones manuales bloqueadas del historial no se convierten en borrados diferidos;
+los intentos `REQUESTED` solo se revisan para confirmar su ausencia.
+
+### Acciones sobre registros del historial
+
+`POST /api/torrent/downloads/refresh-selected` y
+`POST /api/torrent/downloads/remove-selected` reciben JSON:
+
+```json
+{"eplId":123,"ids":["id-del-registro"],"deleteFiles":false,"confirmFiles":false}
+```
+
+Se admiten entre 1 y 1000 IDs únicos del mismo libro y destino actual. Ambos requieren
+`BOOK_HISTORY_READ`; actualizar exige `TORRENT_SYNC`, eliminar `TORRENT_CLEANUP`,
+y borrar archivos también `TORRENT_FILES_DELETE` y `confirmFiles=true`.
+Actualizar consulta únicamente los hashes seleccionados en qBittorrent y guarda
+los estados; nunca solicita borrados. Eliminar es inmediato, conserva el historial
+y mantiene las protecciones de torrents compartidos, objetivos pendientes y rutas.
+Su respuesta `items` contiene `id`, `status`, `cleanupState` y `message`, con resultado
+por registro; una operación puede terminar parcialmente. Los resultados inciertos
+quedan `REQUESTED`. Un reintento explícito admite `remove-selected?retryUnconfirmed=true`;
+no se habilita implícitamente desde el formulario.
+
+Los trabajos exponen `type` (`DOWNLOAD` o `UPDATE`), `previousVersions` y un resumen
+`cleanup` con `waiting`, `blocked`, `requested`, `removed` y `cancelled`.
 
 La vista conserva la última búsqueda, filtro, ordenación, tamaño y página en
 memoria durante la sesión. Volver a ella no sincroniza ni repite consultas
