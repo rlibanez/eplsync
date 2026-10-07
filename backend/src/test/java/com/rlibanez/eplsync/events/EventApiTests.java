@@ -81,7 +81,7 @@ class EventApiTests {
                     .POST(HttpRequest.BodyPublishers.ofString("{\"dryRun\":false}")).build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(response.statusCode()).isEqualTo(409);
-            assertThat(response.headers().firstValue("X-EPLSync-Operation-Id")).isPresent();
+            assertThat(response.headers().firstValue("X-EPLSync-Operation-Id")).as(path).isPresent();
             assertThat(json.readTree(response.body()).path("details").asString()).isEqualTo("La conexión torrent está deshabilitada");
         }
         var failures = journal.search(new EventJournal.Filter(null, EventJournal.Outcome.FAILED, null, null), 0, 20).items();

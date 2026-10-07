@@ -38,6 +38,7 @@ class UpdateTests {
     @Autowired UpdatePlanner planner;
     @Autowired SelectedUpdateSender selectedSender;
     @Autowired UpdateCleanupService cleaner;
+    @Autowired com.rlibanez.eplsync.events.EventJournal journal;
     @Autowired UpdateController controller;
     @Autowired UpdatePlanRepository plans;
     @Autowired UpdateCleanupRepository cleanup;
@@ -96,6 +97,23 @@ class UpdateTests {
         book(3, 1.0, "D".repeat(40)); language(3, com.rlibanez.eplsync.model.enums.Language.INGLES);
         history(4, 1.0, "E".repeat(40), DownloadStatus.DOWNLOADED);
         book(4, 2.0, "F".repeat(40)); language(4, com.rlibanez.eplsync.model.enums.Language.INGLES);
+    }
+
+    @Test void synchronizationAuditsEarlyFailuresWithoutDuplicatingTrackingFailures() {
+        var filter=new com.rlibanez.eplsync.events.EventJournal.Filter(
+            com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,null,null,null,null,"SYNC_PREVIEW",null);
+        for (boolean early : List.of(true,false)) {
+            long before=journal.cursor();
+            if (early) when(stubClient.listTorrents()).thenThrow(new IllegalStateException("private network details"));
+            else { reset(stubClient); when(stubClient.listTorrents()).thenReturn(null); }
+            assertThatThrownBy(() -> cleaner.synchronize(true,false)).isInstanceOf(RuntimeException.class);
+            var entries=journal.search(filter,0,20).items().stream().filter(event -> event.id()>before).toList();
+            assertThat(entries).hasSize(2);
+            assertThat(entries).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::outcome)
+                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED,com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED);
+            assertThat(entries).extracting(com.rlibanez.eplsync.events.EventJournal.Entry::operationId).containsOnly(entries.getFirst().operationId());
+            assertThat(entries.getFirst().details()).containsEntry("dryRun",true).containsEntry("reason","Ha ocurrido un error inesperado");
+        }
     }
 
     @Test void automaticBatchSharesSnapshotAndObservesOnlyRelatedRecords() {

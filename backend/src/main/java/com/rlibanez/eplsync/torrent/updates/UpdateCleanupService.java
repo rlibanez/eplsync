@@ -16,11 +16,12 @@ public class UpdateCleanupService {
     private final TorrentClientService client;
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
     private final CleanupQueue queue;
+    private final com.rlibanez.eplsync.events.EventJournal events;
     private final JsonMapper mapper = JsonMapper.builder().build();
 
     public UpdateCleanupService(UpdatePlanRepository plans,UpdateCleanupRepository entries,
-            DownloadTrackingService tracking,TorrentClientService client,CleanupQueue queue) {
-        this.plans=plans;this.entries=entries;this.tracking=tracking;this.client=client;this.queue=queue;
+            DownloadTrackingService tracking,TorrentClientService client,CleanupQueue queue,com.rlibanez.eplsync.events.EventJournal events) {
+        this.plans=plans;this.entries=entries;this.tracking=tracking;this.client=client;this.queue=queue;this.events=events;
     }
 
     public record View(String jobId,PreviousVersions previousVersions,List<UpdatePlanner.Candidate> updates,List<UpdateCleanup> items,
@@ -90,15 +91,25 @@ public class UpdateCleanupService {
             com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
     }
     public DownloadTrackingService.SyncResult synchronize(boolean dryRun,boolean details) {
-        return client.exclusiveClient(adapter -> {
-            var remote=adapter.listTorrents();
-            var result=tracking.sync(() -> remote,dryRun,details);
-            if (!dryRun && com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP)) {
-                var selected=queue.manualPending();
-                if (!selected.isEmpty()) queue.execute(selected,adapter,remote,false,false);
-            }
-            return result;
-        });
+        var startedAt=java.time.Instant.now();
+        // The tracking service audits reconciliation; failures before entering it need their own event.
+        var trackingStarted=new java.util.concurrent.atomic.AtomicBoolean();
+        try {
+            return client.exclusiveClient(adapter -> {
+                var remote=adapter.listTorrents();
+                trackingStarted.set(true);
+                var result=tracking.sync(() -> remote,dryRun,details);
+                if (!dryRun && com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP)) {
+                    var selected=queue.manualPending();
+                    if (!selected.isEmpty()) queue.execute(selected,adapter,remote,false,false);
+                }
+                return result;
+            });
+        } catch (RuntimeException ex) {
+            if (!trackingStarted.get()) events.rejected(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,
+                dryRun ? "SYNC_PREVIEW" : "SYNC",Map.of("dryRun",dryRun),startedAt,ex);
+            throw ex;
+        }
     }
     public record JobResult(String jobId,long checked,long removed,long waiting,long blocked,long requested,String error) {}
     public record GlobalResult(int selectedJobs,long failedJobs,long checked,long removed,long waiting,long blocked,long requested,List<JobResult> jobs) {}
