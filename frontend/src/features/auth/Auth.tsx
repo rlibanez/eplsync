@@ -372,6 +372,7 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                   }
                   error={usernameInvalid}
                   required
+                  withAsterisk={setup || register}
                   minLength={3}
                   maxLength={64}
                   value={username}
@@ -416,6 +417,7 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                     )
                   }
                   required
+                  withAsterisk={setup || register}
                   minLength={setup || register ? minimum : undefined}
 
                   maxLength={256}

@@ -13,7 +13,7 @@ import java.util.*;
 @Service
 public class DownloadQueryService {
     private static final Set<String> DATE_FIELDS = Set.of("createdAt", "requestedAt", "submittedAt", "completedAt", "discoveredAt", "lastCheckedAt", "lastSeenAt");
-    private static final Set<String> SORT_FIELDS = Set.of("id", "eplId", "revision", "hash", "status", "origin", "client", "clientInstanceId",
+    private static final Set<String> SORT_FIELDS = Set.of("title", "lastError", "id", "eplId", "revision", "hash", "status", "origin", "client", "clientInstanceId",
             "createdAt", "requestedAt", "submittedAt", "completedAt", "discoveredAt", "lastCheckedAt", "lastSeenAt");
     private final DownloadRepository repository;
     private final jakarta.persistence.EntityManager entityManager;
@@ -55,12 +55,17 @@ public class DownloadQueryService {
         for (var value : params.getOrDefault("sort", List.of("createdAt,desc"))) {
             var parts = value.split(",", -1);
             if (parts.length > 2 || !SORT_FIELDS.contains(parts[0])) throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación de descargas inválida");
-            orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]), parts[0]));
+            orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]), parts[0].equals("title") ? "catalogBook.title" : parts[0]));
         }
         com.rlibanez.eplsync.config.QueryLimits.sort(Sort.by(orders));
         if (orders.stream().noneMatch(order -> order.getProperty().equals("id"))) orders.add(Sort.Order.asc("id"));
         var spec = filters(params);
         var result = repository.findAll(spec, PageRequest.of(page, size, Sort.by(orders)));
+        var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager, result.getContent().stream().map(DownloadRecord::getEplId).toList());
+        result.forEach(row -> {
+            var book = metadata.get(row.getEplId());
+            if (book != null) { row.setTitle(book.title()); row.setCoverUrl(book.coverUrl()); row.setCoverAvailable(book.coverAvailable()); }
+        });
         return new PageResponse<>(result.getContent(), new PageResponse.PageMeta(result.getNumber(), result.getSize(), result.getTotalElements(),
                 result.getTotalPages(), result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
     }

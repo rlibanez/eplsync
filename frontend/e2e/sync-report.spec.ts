@@ -78,6 +78,11 @@ test("preview and execution show local searchable detail without repeating sync"
     .getByRole("button", { name: "Previsualizar sincronización", exact: true })
     .click();
   const report = page.locator(".sync-report");
+  await expect(report.locator("details").first()).not.toHaveAttribute(
+    "open",
+    "",
+  );
+  await report.locator("summary").first().click();
   await expect(
     report.getByText("Simulación: sin cambios guardados", { exact: true }),
   ).toBeVisible();
@@ -116,6 +121,7 @@ test("preview and execution show local searchable detail without repeating sync"
   await expect(page).toHaveURL(/catalog\/1$/);
   await page.goBack();
   await expect(report).toBeVisible();
+  await report.locator("summary").first().click();
   expect(calls).toEqual([true]);
   await report.getByRole("button", { name: "Siguiente", exact: true }).click();
   await expect(report.locator("tbody tr")).toHaveCount(5);
@@ -146,6 +152,7 @@ test("preview and execution show local searchable detail without repeating sync"
     .locator("#sidebar")
     .getByRole("link", { name: "Estado", exact: true })
     .click();
+  await report.locator("summary").first().click();
   await expect(report.getByLabel("Buscar", { exact: true })).toHaveValue(
     "ajeno",
   );
@@ -241,6 +248,11 @@ test("ignored torrent can be linked with inferred editable identity", async ({
     .getByRole("button", { name: "Previsualizar sincronización", exact: true })
     .click();
   const report = page.locator(".sync-report");
+  await expect(report.locator("details").first()).not.toHaveAttribute(
+    "open",
+    "",
+  );
+  await report.locator("summary").first().click();
   await report
     .getByRole("button", { name: "Torrents ignorados", exact: true })
     .click();

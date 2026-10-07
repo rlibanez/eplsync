@@ -43,9 +43,9 @@ public class BulkController {
     @GetMapping("/jobs/{id}/items")
     public PageResponse<BulkStore.ItemView> items(@PathVariable String id,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
-            @RequestParam(required = false) String status, jakarta.servlet.http.HttpServletRequest request) {
-        if (!java.util.Set.of("page", "size", "status").containsAll(request.getParameterMap().keySet()))
-            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size y status");
+            @RequestParam(defaultValue = "position,asc") String sort, @RequestParam(required = false) String status, jakarta.servlet.http.HttpServletRequest request) {
+        if (!java.util.Set.of("page", "size", "status", "sort").containsAll(request.getParameterMap().keySet()))
+            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size, status y sort");
         for (var values : request.getParameterMap().values())
             if (values.length != 1 || values[0].isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro vacío o repetido");
         java.util.List<BulkItem.State> states = null;
@@ -57,7 +57,7 @@ public class BulkController {
                 throw new com.rlibanez.eplsync.exception.UserInputException("status debe contener estados de elemento válidos separados por comas");
             }
         }
-        synchronized (store) { return store.details(id, page, size, states); }
+        synchronized (store) { return store.details(id, page, size, states, sort); }
     }
 
     @PostMapping("/jobs/{id}/pause")

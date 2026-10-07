@@ -750,7 +750,7 @@ curl -s \
   'http://192.168.2.2:8088/api/torrent/jobs?status=RUNNING,PAUSED,RETRY_WAIT&page=0&size=50' | jq
 ```
 
-Se ordenan por creación descendente, con desempate por ID. No admite `sort`.
+Se ordenan por creación descendente, con desempate por ID. Véase la sección de ordenación del listado de trabajos para los campos de `sort`.
 
 ### Consultar elementos
 
@@ -758,6 +758,7 @@ Se ordenan por creación descendente, con desempate por ID. No admite `sort`.
 | --- | --- |
 | `page` | `0`. |
 | `size` | `50`. |
+| `sort` | `position,asc`; campos: `position`, `title`, `eplId`, `revision`, `hash`, `status`, `attempts`, `message`. Dirección: `asc` o `desc`. |
 | `status` | Uno o varios estados separados por comas; omitido: todos. |
 
 ```text
@@ -769,8 +770,8 @@ curl -s \
   'http://192.168.2.2:8088/api/torrent/jobs/JOB_ID/items?status=FAILED,SKIPPED&size=1000' | jq
 ```
 
-Cada elemento contiene `id`, `eplId`, `hash`, `status`, `attempts` y `message`.
-Se filtra antes de paginar; el orden es la posición del elemento en el job.
+Cada elemento contiene `id`, `eplId`, `hash`, `status`, `attempts`, `message`, `title`, `coverUrl`, `coverAvailable` y `revision`. La revisión se guarda al preparar el envío y no cambia al actualizar el catálogo; en registros anteriores sin revisión guardada puede ser nula. Los metadatos del libro corresponden al catálogo actual; si ya no existe, se conservan el elemento y su EPL ID.
+Se filtra y ordena antes de paginar; el orden predeterminado es la posición del elemento en el job.
 
 El resumen del job incluye contadores de libros, torrents y elementos, además de
 `accepted`, `alreadyExists`, `skipped`, `failed`, `pending`, `inFlight`,
@@ -843,7 +844,7 @@ usan UTC (`Z`).
 ### Campos de ordenación
 
 ```text
-id, eplId, revision, hash, status, origin, client, clientInstanceId,
+id, eplId, title, revision, hash, status, origin, client, clientInstanceId, lastError,
 createdAt, requestedAt, submittedAt, completedAt,
 discoveredAt, lastCheckedAt, lastSeenAt
 ```

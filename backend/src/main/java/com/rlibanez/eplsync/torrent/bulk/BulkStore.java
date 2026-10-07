@@ -62,7 +62,9 @@ public class BulkStore {
             MultipleHashes multipleHashes, long selectedTorrents, long processedTorrents,
             long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup) {}
     public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {}
-    public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) {}
+    public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision) {
+        public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null); }
+    }
 
     @Transactional(timeout=120)
     public View create(CatalogBookFilter filter, Pageable pageable, boolean paginated, boolean all, BulkRequest request) {
@@ -141,7 +143,7 @@ public class BulkStore {
                 selectedBooks++;
                 var hashes = magnets.hashes(book.getLinks());
                 if (hashes.isEmpty() || (hashes.size() > 1 && policy == MultipleHashes.SKIP)) {
-                    var item = newItem(job, book.getEplId(), position++);
+                    var item = newItem(job, book.getEplId(), book.getRevision(), position++);
                     item.setState(BulkItem.State.SKIPPED);
                     item.setMessage(hashes.isEmpty() ? "El libro no tiene hashes torrent válidos"
                             : "Libro omitido por multipleHashes=skip: tiene varios hashes");
@@ -152,7 +154,7 @@ public class BulkStore {
                 }
                 var selectedHashes = policy == MultipleHashes.ALL ? hashes : List.of(hashes.getFirst());
                 for (String hash : selectedHashes) {
-                    var item = newItem(job, book.getEplId(), position++);
+                    var item = newItem(job, book.getEplId(), book.getRevision(), position++);
                     item.setHash(hash);
                     if (!seen.add(hash)) {
                         item.setState(BulkItem.State.SKIPPED); item.setMessage("Hash duplicado en la selección");
@@ -237,7 +239,7 @@ public class BulkStore {
     @Transactional public BulkJob beginPrepared(BulkRequest input) { client.requireEnabled(); return newJob(input); }
     @Transactional public void appendPrepared(String id,TorrentDownload command,long position) {
         var item=new BulkItem(); item.setId(UUID.randomUUID().toString()); item.setJobId(id);
-        item.setEplId(command.book().getEplId()); item.setPosition(position); item.setState(BulkItem.State.PENDING);
+        item.setEplId(command.book().getEplId()); item.setRevision(command.book().getRevision()); item.setPosition(position); item.setState(BulkItem.State.PENDING);
         item.setHash(command.hash()); item.setCommandJson(mapper.writeValueAsString(command)); items.save(item);
     }
     @Transactional public View finishPrepared(String id,long selectedBooks) {
@@ -259,10 +261,10 @@ public class BulkStore {
         return finishPrepared(job.getId(),count);
     }
 
-    private BulkItem newItem(BulkJob job, Long eplId, long position) {
+    private BulkItem newItem(BulkJob job, Long eplId, Double revision, long position) {
         var item = new BulkItem();
         item.setId(UUID.randomUUID().toString()); item.setJobId(job.getId());
-        item.setPosition(position); item.setEplId(eplId); item.setState(BulkItem.State.PENDING);
+        item.setPosition(position); item.setEplId(eplId); item.setRevision(revision); item.setState(BulkItem.State.PENDING);
         return item;
     }
 
@@ -361,11 +363,26 @@ public class BulkStore {
 
     @Transactional(readOnly = true)
     public PageResponse<ItemView> details(String id, int page, int size, List<BulkItem.State> states) {
+        return details(id, page, size, states, "position,asc");
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ItemView> details(String id, int page, int size, List<BulkItem.State> states, String sort) {
         job(id);
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
-        var result = states == null ? items.findByJobIdOrderByPosition(id, PageRequest.of(page, size))
-                : items.findByJobIdAndStateInOrderByPosition(id, states, PageRequest.of(page, size));
-        return new PageResponse<>(result.map(i -> new ItemView(i.getId(), i.getEplId(), i.getHash(), i.getState(), i.getAttempts(), i.getMessage())).getContent(),
+        var parts = sort.split(",", -1);
+        if (parts.length != 2 || !Set.of("position", "title", "eplId", "revision", "hash", "status", "attempts", "message").contains(parts[0]) || !Set.of("asc", "desc").contains(parts[1]))
+            throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación de elementos inválida");
+        var field = parts[0].equals("title") ? "catalogBook.title" : parts[0].equals("status") ? "state" : parts[0];
+        var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.fromString(parts[1]), field).and(Sort.by("position")));
+        var result = states == null ? items.findByJobId(id, pageable)
+                : items.findByJobIdAndStateIn(id, states, pageable);
+        var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(em, result.getContent().stream().map(BulkItem::getEplId).toList());
+        result.forEach(row -> {
+            var book = metadata.get(row.getEplId());
+            if (book != null) { row.setTitle(book.title()); row.setCoverUrl(book.coverUrl()); row.setCoverAvailable(book.coverAvailable()); }
+        });
+        return new PageResponse<>(result.map(i -> new ItemView(i.getId(), i.getEplId(), i.getHash(), i.getState(), i.getAttempts(), i.getMessage(), i.getTitle(), i.getCoverUrl(), i.getCoverAvailable(), i.getRevision())).getContent(),
                 new PageResponse.PageMeta(page, size, result.getTotalElements(), result.getTotalPages(), result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
     }
 

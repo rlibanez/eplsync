@@ -258,6 +258,7 @@ test("job detail identifies updates and explains cleanup policy and pending coun
     }),
   );
   await page.goto("/downloads/jobs/example");
+  await page.locator(".report-collapse > summary").click();
   await expect(page.getByText("Actualización", { exact: true })).toBeVisible();
   await expect(
     page.getByText("Eliminar torrents y archivos", { exact: true }),

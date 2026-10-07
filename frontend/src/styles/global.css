@@ -1737,8 +1737,8 @@ summary {
 .detail-navigation-row .book-navigation { gap: 24px; }
 .detail-navigation-row [aria-disabled="true"] { opacity: .45; cursor: default; }
 
-:is(.catalog-table, .updates-table) .catalog-title-cell { padding-top: 7px; padding-bottom: 7px; }
-:is(.catalog-table, .updates-table) .mini-book {
+:is(.catalog-table, .updates-table, .download-record-table) .catalog-title-cell { padding-top: 7px; padding-bottom: 7px; }
+:is(.catalog-table, .updates-table, .download-record-table) .mini-book {
   width: 44px;
   height: 59px;
   display: flex;
@@ -1746,8 +1746,8 @@ summary {
   justify-content: center;
   border-radius: 5px;
 }
-:is(.catalog-table, .updates-table) .mini-book.has-image { background: transparent; }
-:is(.catalog-table, .updates-table) .mini-book img {
+:is(.catalog-table, .updates-table, .download-record-table) .mini-book.has-image { background: transparent; }
+:is(.catalog-table, .updates-table, .download-record-table) .mini-book img {
   min-width: 0;
   min-height: 0;
   max-width: 100%;
@@ -1954,3 +1954,31 @@ summary {
 .history-action-records { padding-left: 20px; overflow-wrap: anywhere; }
 .history-action-records li + li { margin-top: 12px; }
 .history-action-records p { margin: 6px 0 0; }
+
+.download-record-table { table-layout: fixed; min-width: 100%; }
+.download-record-table th { position: relative; }
+.download-record-table th, .download-record-table td { overflow-wrap: anywhere; }
+.job-report-groups { display: grid; gap: 16px; margin-top: 20px; max-width: 584px; }
+.job-report-group { border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-width: 0; }
+.job-report-group h3 { margin: 0 0 14px; }
+.job-report-group .import-summary { max-width: 550px; margin: 0; }
+
+.download-record-table .book-title span { min-width: 0; overflow-wrap: anywhere; }
+
+.download-record-table td.hash-text { display: table-cell; }
+
+.report-collapse > summary { cursor: pointer; font-weight: 600; }
+.report-collapse-body { margin-top: 20px; }
+.report-result { margin-left: 16px; font-size: 14px; color: var(--muted); }
+.sync-report { position: relative; }
+.sync-report .report-close { position: absolute; top: 20px; right: 20px; }
+.sync-report .report-collapse > summary { padding-right: 40px; }
+
+:is(.job-report-panel, .sync-report).settings-section { padding: 18px 22px; }
+.report-collapse { margin: 0; }
+.report-collapse > summary { min-height: 26px; }
+.job-report-panel .job-controls-heading:has(.action-row:empty) { display: none; }
+.sync-report .report-close { top: 50%; transform: translateY(-50%); }
+.sync-report:has(.report-collapse[open]) .report-close { top: 28px; transform: none; }
+
+.sync-report-groups { margin-bottom: 20px; }

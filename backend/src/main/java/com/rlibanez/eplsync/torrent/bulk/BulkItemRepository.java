@@ -11,6 +11,8 @@ public interface BulkItemRepository extends JpaRepository<BulkItem, String> {
     List<BulkItem> findByJobIdAndStateOrderByPosition(String jobId, BulkItem.State state, Pageable pageable);
     Page<BulkItem> findByJobIdOrderByPosition(String jobId, Pageable pageable);
     Page<BulkItem> findByJobIdAndStateInOrderByPosition(String jobId, List<BulkItem.State> states, Pageable pageable);
+    Page<BulkItem> findByJobId(String jobId, Pageable pageable);
+    Page<BulkItem> findByJobIdAndStateIn(String jobId, List<BulkItem.State> states, Pageable pageable);
     long countByJobIdAndState(String jobId, BulkItem.State state);
     long countByJobId(String jobId);
     @Query("select distinct i.eplId from BulkItem i, BulkJob j where i.jobId = j.id "

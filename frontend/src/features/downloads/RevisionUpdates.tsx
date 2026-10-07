@@ -143,6 +143,7 @@ export function RevisionUpdates() {
           {t("revisionUpdates.search")}
         </Button>
       </div>
+      {!search && <p className="muted">{t("revisionUpdates.start")}</p>}
       {!auth.can("TORRENT_SYNC") && (
         <p className="muted">{t("revisionUpdates.syncPermission")}</p>
       )}
@@ -174,9 +175,7 @@ export function RevisionUpdates() {
           }}
         />
       </div>
-      {!search ? (
-        <p className="muted">{t("revisionUpdates.start")}</p>
-      ) : (
+      {search && (
         <section className="panel">
           {result.isFetching ? (
             <Loading />
@@ -224,8 +223,8 @@ export function RevisionUpdates() {
                         </th>
                       )}
                       {[
-                        "title",
                         "eplId",
+                        "title",
                         "registeredRevision",
                         "availableRevision",
                         "status",
@@ -279,6 +278,9 @@ export function RevisionUpdates() {
                             />
                           </td>
                         )}
+                        <td>
+                          <Link to={`/catalog/${row.eplId}`}>{row.eplId}</Link>
+                        </td>
                         <td className="catalog-title-cell">
                           <Link
                             className="book-title"
@@ -287,9 +289,6 @@ export function RevisionUpdates() {
                             <BookCover book={row} />
                             <span>{row.title}</span>
                           </Link>
-                        </td>
-                        <td>
-                          <Link to={`/catalog/${row.eplId}`}>{row.eplId}</Link>
                         </td>
                         <td>{number(row.registeredRevision)}</td>
                         <td>{number(row.availableRevision)}</td>

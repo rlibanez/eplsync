@@ -15,11 +15,19 @@ public class BulkItem {
     @Id private String id;
     private String jobId;
     private long position;
-    private Long eplId;
+    @Column(name = "epl_id") private Long eplId;
     private String hash;
+    private Double revision;
     @Enumerated(EnumType.STRING) private State state;
     public enum State { PENDING, IN_FLIGHT, ACCEPTED, ALREADY_EXISTS, SKIPPED, FAILED, CANCELLED }
     private int attempts;
     private String message;
     @Column(columnDefinition = "TEXT") private String commandJson;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "epl_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private com.rlibanez.eplsync.model.CatalogBook catalogBook;
+    @Transient private String title;
+    @Transient private String coverUrl;
+    @Transient private Boolean coverAvailable;
 }

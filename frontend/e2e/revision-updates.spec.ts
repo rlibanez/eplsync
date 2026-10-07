@@ -32,7 +32,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
   await header.locator(".column-resizer").focus();
   await page.keyboard.press("ArrowRight");
   await expect.poll(async () => (await header.boundingBox())!.width).toBeGreaterThan(before+15);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("eplsync.updates.columnWidths.v2")||"[]").length)).toBe(5);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("eplsync.updates.columnWidths.v3")||"[]").length)).toBe(5);
   expect(queries[0].params.get("synchronize")).toBe("true");
   expect(queries[0].states).toContain("SUBMITTED");
   expect(writes).toBe(0);
@@ -83,6 +83,7 @@ test("last search, page, filter and ordering survive route changes and covers ma
   await page.goto("/downloads/updates");
   await page.getByRole("button",{name:"Buscar actualizaciones",exact:true}).click();
   await page.getByRole("dialog").getByRole("button",{name:"Buscar actualizaciones",exact:true}).click();
+  await expect(page.locator("th[data-update-column]").first()).toHaveAttribute("data-update-column","eplId");
   const title=page.getByRole("link",{name:"Test book",exact:true});
   await expect(title.locator(".mini-book img")).toHaveAttribute("src","https://covers.example/123.jpg");
   expect((await title.locator(".mini-book").boundingBox())!.width).toBe(44);

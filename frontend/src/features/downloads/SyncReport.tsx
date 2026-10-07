@@ -105,247 +105,262 @@ export function SyncReport({
           onLinked={() => markLinked(linking.hash)}
         />
       )}
-      <div className="sync-report-heading">
-        <h2>{t("syncReport.title")}</h2>
-        <Tooltip label={t("syncReport.close")}>
-          <ActionIcon
-            variant="subtle"
-            aria-label={t("syncReport.close")}
-            onClick={onClose}
-          >
-            <X size={20} />
-          </ActionIcon>
-        </Tooltip>
-      </div>
-      <p>
-        <strong>
-          {t(report.applied ? "syncReport.applied" : "syncReport.preview")}
-        </strong>{" "}
-        · {report.client} · {date(report.checkedAt)}
-      </p>
-      {(["remote", "records", "outcomes"] as const).map((group) => (
-        <div key={group}>
-          <h3>{t(`syncReport.${group}`)}</h3>
-          <dl className="import-summary">
-            {Object.entries(report[group]).map(([key, value]) => (
-              <div key={key}>
-                <dt>
-                  {
-                    <Tooltip
-                      label={t(`syncReport.explanations.${key}`)}
-                      multiline
-                      w={300}
-                    >
-                      <span tabIndex={0} className="sync-count-help">
-                        {t(`syncReport.counts.${key}`)}
-                      </span>
-                    </Tooltip>
-                  }
-                </dt>
-                <dd>
-                  <Tooltip
-                    label={t(`syncReport.explanations.${key}`)}
-                    multiline
-                    w={300}
-                  >
-                    <span tabIndex={0} className="sync-count-help">
-                      {number(value)}
-                    </span>
-                  </Tooltip>
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      ))}
-      <div
-        className="action-row"
-        role="group"
-        aria-label={t("syncReport.details")}
-      >
-        {["books", "ignored"].map((key) => (
-          <Button
-            key={key}
-            variant={tab === key ? "filled" : "default"}
-            aria-pressed={tab === key}
-            onClick={() => {
-              setTab(key);
-              setPage(0);
-              setSearch("");
-            }}
-          >
-            {t(`syncReport.${key}`)}
-          </Button>
-        ))}
-      </div>
-      <div className="filters">
-        <TextInput
-          label={t("catalog.search")}
-          value={searchText}
-          onCompositionStart={() => {
-            composing.current = true;
-          }}
-          onCompositionEnd={(event) => {
-            composing.current = false;
-            setSearch(event.currentTarget.value);
-          }}
-          onChange={(event) => {
-            const value = event.currentTarget.value;
-            setSearchText(value);
-            if (!composing.current) setView({ search: value, page: 0 });
-          }}
-        />
-        {tab === "books" && (
-          <>
-            <Select
-              label={t("syncReport.action")}
-              value={action}
-              allowDeselect={false}
-              onChange={(v) => {
-                setAction(v!);
-                setPage(0);
-              }}
-              data={["CHANGED", "ALL", "CREATE", "UPDATE", "UNCHANGED"].map(
-                (value) => ({ value, label: t(`syncReport.actions.${value}`) }),
-              )}
-            />
-            <Select
-              label={t("syncReport.outcome")}
-              value={outcome}
-              allowDeselect={false}
-              onChange={(v) => {
-                setOutcome(v!);
-                if (v !== "ALL") setAction("ALL");
-                setPage(0);
-              }}
-              data={["ALL", "newlyCompleted", "notFound", "newlyNotFound"].map(
-                (value) => ({
-                  value,
-                  label:
-                    value === "ALL"
-                      ? t("syncReport.actions.ALL")
-                      : t(`syncReport.counts.${value}`),
-                }),
-              )}
-            />
-          </>
-        )}
-        <Button
-          variant="default"
-          onClick={() => {
-            setSearchText("");
-            setView({ ...defaultSyncView, tab });
-          }}
+      <Tooltip label={t("syncReport.close")}>
+        <ActionIcon
+          className="report-close"
+          variant="subtle"
+          aria-label={t("syncReport.close")}
+          onClick={onClose}
         >
-          {t("catalog.clear")}
-        </Button>
-      </div>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              {(tab === "books"
-                ? ["book", "action", "previous", "result", "changes"]
-                : ["name", "hash", "reason"]
-              ).map((key) => (
-                <th key={key}>{t(`syncReport.${key}`)}</th>
-              ))}
-              {tab === "ignored" && <th>{t("torrentLink.actions")}</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {tab === "books"
-              ? items.slice(start, start + size).map((item) => (
-                  <tr key={`${item.eplId}:${item.hash}`}>
-                    <td>
-                      <Link
-                        className="book-title"
-                        to={`/catalog/${item.eplId}`}
-                      >
-                        {item.title || `EPL ${item.eplId}`}
-                      </Link>
-                      <small className="hash-text">
-                        EPL {item.eplId} · {item.hash}
-                      </small>
-                    </td>
-                    <td>{t(`syncReport.actions.${item.action}`)}</td>
-                    <td>
-                      {item.previousStatus ? status(item.previousStatus) : "—"}
-                    </td>
-                    <td>{status(item.resultingStatus)}</td>
-                    <td>
-                      {item.changedFields
-                        .map((field) => t(`syncReport.fields.${field}`))
-                        .join(", ")}
-                      {!item.changedFields.length &&
-                        !item.newlyCompleted &&
-                        !item.newlyNotFound &&
-                        "—"}
-                      {item.newlyCompleted && (
-                        <div>
-                          {t("syncReport.completionDetected")}:{" "}
-                          {date(item.resultingCompletedAt)}
-                        </div>
-                      )}
-                      {item.newlyNotFound && (
-                        <div>{t("syncReport.counts.newlyNotFound")}</div>
-                      )}
-                      {item.changedFields.includes("lastError") && (
-                        <div>
-                          {item.previousError || "—"} →{" "}
-                          {item.resultingError || "—"}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              : ignored.slice(start, start + size).map((item) => (
-                  <tr key={item.hash}>
-                    <td>{item.name || "—"}</td>
-                    <td className="sync-hash">{item.hash}</td>
-                    <td>
-                      {item.linked
-                        ? t("torrentLink.linked")
-                        : t(`syncReport.reasons.${item.reason}`, {
-                            defaultValue: item.reason,
-                          })}
-                    </td>
-                    <td>
-                      <Button
-                        variant="light"
-                        disabled={item.linked}
-                        onClick={() => setLinking(item)}
-                      >
-                        {t(
-                          item.linked
-                            ? "torrentLink.linked"
-                            : "torrentLink.link",
-                        )}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-          </tbody>
-        </table>
-      </div>
-      {total === 0 && <p className="empty-list">{t("syncReport.empty")}</p>}
-      <Paging
-        page={page}
-        size={size}
-        onPage={setPage}
-        onSize={(value) => {
-          setSize(value);
-          setPage(0);
-        }}
-        meta={{
-          page,
-          size,
-          totalItems: total,
-          totalPages,
-          hasNext: page + 1 < totalPages,
-          hasPrevious: page > 0,
-        }}
-      />
+          <X size={20} />
+        </ActionIcon>
+      </Tooltip>
+      <details className="report-collapse" key={report.checkedAt}>
+        <summary>
+          <span>{t("syncReport.title")}</span>
+          <strong className="report-result">
+            {t(report.applied ? "syncReport.applied" : "syncReport.preview")}
+          </strong>
+        </summary>
+        <div className="report-collapse-body">
+          <p>
+            {report.client} · {date(report.checkedAt)}
+          </p>
+          <div className="job-report-groups sync-report-groups">
+            {(["remote", "records", "outcomes"] as const).map((group) => (
+              <section className="job-report-group" key={group}>
+                <h3>{t(`syncReport.${group}`)}</h3>
+                <dl className="import-summary">
+                  {Object.entries(report[group]).map(([key, value]) => (
+                    <div key={key}>
+                      <dt>
+                        {
+                          <Tooltip
+                            label={t(`syncReport.explanations.${key}`)}
+                            multiline
+                            w={300}
+                          >
+                            <span tabIndex={0} className="sync-count-help">
+                              {t(`syncReport.counts.${key}`)}
+                            </span>
+                          </Tooltip>
+                        }
+                      </dt>
+                      <dd>
+                        <Tooltip
+                          label={t(`syncReport.explanations.${key}`)}
+                          multiline
+                          w={300}
+                        >
+                          <span tabIndex={0} className="sync-count-help">
+                            {number(value)}
+                          </span>
+                        </Tooltip>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ))}
+          </div>
+          <div
+            className="action-row"
+            role="group"
+            aria-label={t("syncReport.details")}
+          >
+            {["books", "ignored"].map((key) => (
+              <Button
+                key={key}
+                variant={tab === key ? "filled" : "default"}
+                aria-pressed={tab === key}
+                onClick={() => {
+                  setTab(key);
+                  setPage(0);
+                  setSearch("");
+                }}
+              >
+                {t(`syncReport.${key}`)}
+              </Button>
+            ))}
+          </div>
+          <div className="filters">
+            <TextInput
+              label={t("catalog.search")}
+              value={searchText}
+              onCompositionStart={() => {
+                composing.current = true;
+              }}
+              onCompositionEnd={(event) => {
+                composing.current = false;
+                setSearch(event.currentTarget.value);
+              }}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setSearchText(value);
+                if (!composing.current) setView({ search: value, page: 0 });
+              }}
+            />
+            {tab === "books" && (
+              <>
+                <Select
+                  label={t("syncReport.action")}
+                  value={action}
+                  allowDeselect={false}
+                  onChange={(v) => {
+                    setAction(v!);
+                    setPage(0);
+                  }}
+                  data={["CHANGED", "ALL", "CREATE", "UPDATE", "UNCHANGED"].map(
+                    (value) => ({
+                      value,
+                      label: t(`syncReport.actions.${value}`),
+                    }),
+                  )}
+                />
+                <Select
+                  label={t("syncReport.outcome")}
+                  value={outcome}
+                  allowDeselect={false}
+                  onChange={(v) => {
+                    setOutcome(v!);
+                    if (v !== "ALL") setAction("ALL");
+                    setPage(0);
+                  }}
+                  data={[
+                    "ALL",
+                    "newlyCompleted",
+                    "notFound",
+                    "newlyNotFound",
+                  ].map((value) => ({
+                    value,
+                    label:
+                      value === "ALL"
+                        ? t("syncReport.actions.ALL")
+                        : t(`syncReport.counts.${value}`),
+                  }))}
+                />
+              </>
+            )}
+            <Button
+              variant="default"
+              onClick={() => {
+                setSearchText("");
+                setView({ ...defaultSyncView, tab });
+              }}
+            >
+              {t("catalog.clear")}
+            </Button>
+          </div>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  {(tab === "books"
+                    ? ["book", "action", "previous", "result", "changes"]
+                    : ["name", "hash", "reason"]
+                  ).map((key) => (
+                    <th key={key}>{t(`syncReport.${key}`)}</th>
+                  ))}
+                  {tab === "ignored" && <th>{t("torrentLink.actions")}</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {tab === "books"
+                  ? items.slice(start, start + size).map((item) => (
+                      <tr key={`${item.eplId}:${item.hash}`}>
+                        <td>
+                          <Link
+                            className="book-title"
+                            to={`/catalog/${item.eplId}`}
+                          >
+                            {item.title || `EPL ${item.eplId}`}
+                          </Link>
+                          <small className="hash-text">
+                            EPL {item.eplId} · {item.hash}
+                          </small>
+                        </td>
+                        <td>{t(`syncReport.actions.${item.action}`)}</td>
+                        <td>
+                          {item.previousStatus
+                            ? status(item.previousStatus)
+                            : "—"}
+                        </td>
+                        <td>{status(item.resultingStatus)}</td>
+                        <td>
+                          {item.changedFields
+                            .map((field) => t(`syncReport.fields.${field}`))
+                            .join(", ")}
+                          {!item.changedFields.length &&
+                            !item.newlyCompleted &&
+                            !item.newlyNotFound &&
+                            "—"}
+                          {item.newlyCompleted && (
+                            <div>
+                              {t("syncReport.completionDetected")}:{" "}
+                              {date(item.resultingCompletedAt)}
+                            </div>
+                          )}
+                          {item.newlyNotFound && (
+                            <div>{t("syncReport.counts.newlyNotFound")}</div>
+                          )}
+                          {item.changedFields.includes("lastError") && (
+                            <div>
+                              {item.previousError || "—"} →{" "}
+                              {item.resultingError || "—"}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  : ignored.slice(start, start + size).map((item) => (
+                      <tr key={item.hash}>
+                        <td>{item.name || "—"}</td>
+                        <td className="sync-hash">{item.hash}</td>
+                        <td>
+                          {item.linked
+                            ? t("torrentLink.linked")
+                            : t(`syncReport.reasons.${item.reason}`, {
+                                defaultValue: item.reason,
+                              })}
+                        </td>
+                        <td>
+                          <Button
+                            variant="light"
+                            disabled={item.linked}
+                            onClick={() => setLinking(item)}
+                          >
+                            {t(
+                              item.linked
+                                ? "torrentLink.linked"
+                                : "torrentLink.link",
+                            )}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+              </tbody>
+            </table>
+          </div>
+          {total === 0 && <p className="empty-list">{t("syncReport.empty")}</p>}
+          <Paging
+            page={page}
+            size={size}
+            onPage={setPage}
+            onSize={(value) => {
+              setSize(value);
+              setPage(0);
+            }}
+            meta={{
+              page,
+              size,
+              totalItems: total,
+              totalPages,
+              hasNext: page + 1 < totalPages,
+              hasPrevious: page > 0,
+            }}
+          />
+        </div>
+      </details>
     </section>
   );
 }

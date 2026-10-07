@@ -406,6 +406,40 @@ class BulkTests {
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].jobId").value("errors"));
     }
+    @Test void jobItemsRetainThePreparedRevisionAfterCatalogUpdates() {
+        var book = books.findById(1L).orElseThrow(); book.setRevision(1.4); books.save(book);
+        var filter = new CatalogBookFilter(); filter.setEplId(1L);
+        var job = store.create(filter, PageRequest.of(0,20), false, false, null);
+        book.setRevision(2.0); books.save(book);
+        assertThat(store.details(job.jobId(),0,20,null,"revision,desc").items().getFirst().revision()).isEqualTo(1.4);
+    }
+
+    @Test void itemTableSortsBeforePaginationAndKeepsMissingCatalogBooks() throws Exception {
+        seedSortJob("table-job", 3, 1, 1);
+        var first = books.findById(1L).orElseThrow(); first.setTitle("Zebra"); books.save(first);
+        var second = books.findById(2L).orElseThrow(); second.setTitle("Alpha"); second.setCoverUrl("https://example.org/cover.jpg"); second.setCoverAvailable(true); books.save(second);
+        books.deleteById(3L);
+        var sorted = store.details("table-job", 0, 1, null, "title,asc");
+        assertThat(sorted.meta().totalItems()).isEqualTo(3);
+        assertThat(sorted.items().getFirst().eplId()).isEqualTo(3L);
+        assertThat(sorted.items().getFirst().title()).isNull();
+        var next = store.details("table-job", 1, 1, null, "title,asc").items().getFirst();
+        assertThat(next.eplId()).isEqualTo(2L); assertThat(next.title()).isEqualTo("Alpha");
+        assertThat(next.coverUrl()).isEqualTo("https://example.org/cover.jpg");
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+            .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/table-job/items")
+                .param("sort", "title,asc").param("size", "1").param("page", "1"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].title").value("Alpha"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/table-job/items")
+                .param("sort", "commandJson,asc"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        assertThat(store.details("table-job", 0, 1, List.of(BulkItem.State.FAILED), "attempts,desc").items().getFirst().eplId()).isEqualTo(2L);
+        assertThatThrownBy(() -> store.details("table-job", 0, 20, null, "commandJson,asc"))
+            .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+    }
+
     private void seedSortJob(String id,int total,int accepted,int failed) {
         var job=new BulkJob();job.setId(id);job.setState(BulkJob.State.QUEUED);job.setClient("qbittorrent");
         job.setCreatedAt(Instant.parse("2026-10-06T12:00:00Z"));job.setUpdatedAt(job.getCreatedAt());job.setSelectedBooks(total);

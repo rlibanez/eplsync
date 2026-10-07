@@ -1,28 +1,35 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 const fields = [
-  "title",
   "eplId",
+  "title",
   "registeredRevision",
   "availableRevision",
   "status",
 ] as const;
-const defaults = [360, 100, 190, 190, 200];
-const storageKey = "eplsync.updates.columnWidths.v2";
+const defaults = [100, 360, 190, 190, 200];
+const storageKey = "eplsync.updates.columnWidths.v3";
 const clamp = (width: number) => Math.min(1200, Math.max(80, width));
 export function useUpdateColumns(selectable: boolean) {
   const { t } = useTranslation();
   const [widths, setWidths] = useState<number[]>(() => {
     try {
       const current = localStorage.getItem(storageKey);
-      const legacy = !current;
-      const saved: unknown = JSON.parse(current || localStorage.getItem("eplsync.updates.columnWidths") || "null");
+      const previous = localStorage.getItem("eplsync.updates.columnWidths.v2");
+      const saved: unknown = JSON.parse(
+        current ||
+          previous ||
+          localStorage.getItem("eplsync.updates.columnWidths") ||
+          "null",
+      );
       if (
         Array.isArray(saved) &&
         saved.length === fields.length &&
         saved.every((v) => typeof v === "number" && Number.isFinite(v))
       )
-        return (legacy ? [saved[1], saved[0], ...saved.slice(2)] : saved).map(clamp);
+        return (
+          !current && previous ? [saved[1], saved[0], ...saved.slice(2)] : saved
+        ).map(clamp);
     } catch {
       /* Optional browser storage. */
     }

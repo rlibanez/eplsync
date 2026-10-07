@@ -507,6 +507,25 @@ class DownloadTrackingTests {
                 .andExpect(jsonPath("$.applied").value(false)).andExpect(jsonPath("$.items").doesNotExist());
     }
 
+    @Test void tableSortsTitlesBeforePaginationAndRetainsOrphanRecords() throws Exception {
+        for (long id = 1; id <= 3; id++) {
+            var row = new DownloadRecord(); row.setEplId(id); row.setRevision(1.0);
+            row.setHash(String.format("%040X", id)); row.setClient("stub"); row.setClientInstanceId("instance");
+            row.setOrigin(DownloadRecord.Origin.EPLSYNC); row.setStatus(DownloadStatus.SUBMITTED); row.setCreatedAt(Instant.now());
+            downloads.save(row);
+        }
+        books.save(CatalogBook.builder().eplId(1L).revision(1.0).title("Zebra").author("Author").build());
+        books.save(CatalogBook.builder().eplId(2L).revision(1.0).title("Alpha").author("Author")
+            .coverUrl("https://example.org/cover.jpg").coverAvailable(true).build());
+        mvc.perform(get("/api/torrent/downloads").param("sort", "title,asc").param("size", "1"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3))
+            .andExpect(jsonPath("$.items[0].eplId").value(3));
+        mvc.perform(get("/api/torrent/downloads").param("sort", "title,asc").param("size", "1").param("page", "1"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].title").value("Alpha"))
+            .andExpect(jsonPath("$.items[0].coverUrl").value("https://example.org/cover.jpg"))
+            .andExpect(jsonPath("$.items[0].catalogBook").doesNotExist());
+    }
+
     @Test void apiProvidesFullDetailsFiltersAndCatalogSummary() throws Exception {
         book(2.0, HASH);
         when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent(HASH, DownloadStatus.DOWNLOADED, Instant.parse("2026-01-01T10:00:00Z"))));

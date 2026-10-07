@@ -16,7 +16,7 @@ import java.util.UUID;
 public class DownloadRecord {
     public enum Origin { EPLSYNC, DISCOVERED }
     @Id private String id = UUID.randomUUID().toString();
-    @Column(nullable = false) private Long eplId;
+    @Column(name = "epl_id", nullable = false) private Long eplId;
     @Column(nullable = false) private Double revision;
     @Column(nullable = false, length = 64) private String hash;
     @Column(nullable = false) private String client;
@@ -31,4 +31,11 @@ public class DownloadRecord {
     private Instant lastCheckedAt;
     private Instant lastSeenAt;
     private String lastError;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "epl_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private com.rlibanez.eplsync.model.CatalogBook catalogBook;
+    @Transient private String title;
+    @Transient private String coverUrl;
+    @Transient private Boolean coverAvailable;
 }

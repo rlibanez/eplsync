@@ -1,3 +1,4 @@
+import { DownloadBook, useDownloadColumns } from "./DownloadTable";
 import { useNotifications } from "../notifications/Notifications";
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { ArrowUp, ArrowDown, CircleStop } from "lucide-react";
@@ -214,6 +215,10 @@ export function Jobs() {
   );
 }
 interface Item {
+  revision?: number | null;
+  title?: string | null;
+  coverUrl?: string | null;
+  coverAvailable?: boolean | null;
   id: string;
   eplId: number;
   hash: string;
@@ -229,6 +234,7 @@ export function JobDetail() {
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
   const [filter, setFilter] = useState("");
+  const [sort, setSort] = useState("position,asc");
   const [cancel, setCancel] = useState(false);
   const job = useQuery({
     queryKey: ["job", id],
@@ -246,10 +252,10 @@ export function JobDetail() {
         : 3000,
   });
   const items = useQuery({
-    queryKey: ["job-items", id, page, size, filter],
+    queryKey: ["job-items", id, page, size, filter, sort],
     queryFn: ({ signal }) =>
       get<Page<Item>>(
-        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}${filter ? `&status=${filter}` : ""}`,
+        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&sort=${encodeURIComponent(sort)}${filter ? `&status=${filter}` : ""}`,
         signal,
       ),
     refetchInterval: ["COMPLETED", "CANCELLED"].includes(job.data?.status ?? "")
@@ -270,6 +276,23 @@ export function JobDetail() {
       void cache.invalidateQueries({ queryKey: ["job-items", id] });
     },
   });
+  const columns = useDownloadColumns(
+    "eplsync.jobItems.columnWidths.v3",
+    [
+      { field: "eplId", label: "filters.eplId", width: 100 },
+      { field: "title", label: "downloads.book", width: 360 },
+      { field: "hash", label: "downloads.hash", width: 340 },
+      { field: "revision", label: "downloads.revision", width: 110 },
+      { field: "status", label: "downloads.status", width: 180 },
+      { field: "attempts", label: "downloads.attempts", width: 120 },
+      { field: "message", label: "downloads.message", width: 320 },
+    ],
+    sort,
+    (value) => {
+      setSort(value);
+      setPage(0);
+    },
+  );
   const data = job.data;
   return (
     <>
@@ -289,9 +312,8 @@ export function JobDetail() {
         />
       ) : (
         data && (
-          <section className="panel settings-section">
+          <section className="panel settings-section job-report-panel">
             <div className="job-controls-heading">
-              <h2>{status(data.status)}</h2>
               <div className="action-row">
                 {["QUEUED", "RUNNING", "RETRY_WAIT"].includes(data.status) && (
                   <Button
@@ -321,83 +343,115 @@ export function JobDetail() {
                 )}
               </div>
             </div>
-            <Progress
-              aria-label={t("downloads.progress")}
-              value={
-                data.selectedItems
-                  ? (100 * data.processedItems) / data.selectedItems
-                  : 0
-              }
-            />
-            <dl className="import-summary">
-              <div>
-                <dt>{t("downloads.type")}</dt>
-                <dd>
-                  {t(`historyActions.jobTypes.${data.type ?? "DOWNLOAD"}`)}
-                </dd>
-              </div>
-              {data.previousVersions && (
-                <div>
-                  <dt>{t("send.previousVersions")}</dt>
-                  <dd>
-                    {t(`historyActions.policies.${data.previousVersions}`)}
-                  </dd>
+            <details className="report-collapse">
+              <summary>
+                <span>{t("downloads.report")}</span>
+                <strong className="report-result">{status(data.status)}</strong>
+              </summary>
+              <div className="report-collapse-body">
+                <Progress
+                  aria-label={t("downloads.progress")}
+                  value={
+                    data.selectedItems
+                      ? (100 * data.processedItems) / data.selectedItems
+                      : 0
+                  }
+                />
+                <div className="job-report-groups">
+                  {[
+                    {
+                      title: "downloads.job",
+                      values: [
+                        [
+                          "downloads.type",
+                          t(
+                            `historyActions.jobTypes.${data.type ?? "DOWNLOAD"}`,
+                          ),
+                        ],
+                        ["downloads.client", data.client],
+                        ["downloads.createdAt", date(data.createdAt)],
+                        ["downloads.updatedAt", date(data.updatedAt)],
+                        ...(data.retryAt
+                          ? [["downloads.retryAt", date(data.retryAt)]]
+                          : []),
+                      ],
+                    },
+                    {
+                      title: "downloads.progress",
+                      values: (
+                        [
+                          "selectedBooks",
+                          "processedItems",
+                          "selectedItems",
+                          "accepted",
+                          "alreadyExists",
+                          "skipped",
+                          "failed",
+                          "pending",
+                          "inFlight",
+                          "cancelled",
+                        ] as const
+                      ).map((key) => [
+                        `downloads.${key === "failed" ? "failedCount" : key}`,
+                        number(data[key]),
+                      ]),
+                    },
+                    {
+                      title: "send.options",
+                      values: [
+                        ["downloads.batchSize", number(data.batchSize)],
+                        ["downloads.concurrency", number(data.concurrency)],
+                        ["send.interval", data.interval],
+                        [
+                          "send.multipleHashes",
+                          data.multipleHashes
+                            ? t(`send.${data.multipleHashes.toLowerCase()}`)
+                            : "—",
+                        ],
+                      ],
+                    },
+                    ...(data.previousVersions || data.cleanup
+                      ? [
+                          {
+                            title: "send.previousVersions",
+                            values: [
+                              ...(data.previousVersions
+                                ? [
+                                    [
+                                      "send.previousVersions",
+                                      t(
+                                        `historyActions.policies.${data.previousVersions}`,
+                                      ),
+                                    ],
+                                  ]
+                                : []),
+                              ...Object.entries(data.cleanup ?? {}).map(
+                                ([key, value]) => [
+                                  `historyActions.summary.${key}`,
+                                  number(value),
+                                ],
+                              ),
+                            ],
+                          },
+                        ]
+                      : []),
+                  ].map((group) => (
+                    <section className="job-report-group" key={group.title}>
+                      <h3>{t(group.title)}</h3>
+                      <dl className="import-summary">
+                        {group.values.map(([label, value]) => (
+                          <div key={label}>
+                            <dt>{t(label)}</dt>
+                            <dd>{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </section>
+                  ))}
                 </div>
-              )}
-              {data.cleanup &&
-                Object.entries(data.cleanup).map(([key, value]) => (
-                  <div key={`cleanup-${key}`}>
-                    <dt>{t(`historyActions.summary.${key}`)}</dt>
-                    <dd>{number(value)}</dd>
-                  </div>
-                ))}
-              {(
-                [
-                  "selectedBooks",
-                  "processedItems",
-                  "selectedItems",
-                  "accepted",
-                  "alreadyExists",
-                  "skipped",
-                  "failed",
-                  "pending",
-                  "inFlight",
-                  "cancelled",
-                  "batchSize",
-                  "concurrency",
-                ] as const
-              ).map((key) => (
-                <div key={key}>
-                  <dt>
-                    {t(`downloads.${key === "failed" ? "failedCount" : key}`)}
-                  </dt>
-                  <dd>{number(data[key])}</dd>
-                </div>
-              ))}
-              <div>
-                <dt>{t("downloads.createdAt")}</dt>
-                <dd>{date(data.createdAt)}</dd>
+                {data.message && <Alert>{data.message}</Alert>}
               </div>
-              <div>
-                <dt>{t("downloads.updatedAt")}</dt>
-                <dd>{date(data.updatedAt)}</dd>
-              </div>
-              {data.retryAt && (
-                <div>
-                  <dt>{t("downloads.retryAt")}</dt>
-                  <dd>{date(data.retryAt)}</dd>
-                </div>
-              )}
-              <div>
-                <dt>{t("send.interval")}</dt>
-                <dd>{data.interval}</dd>
-              </div>
-              <div>
-                <dt>{t("send.multipleHashes")}</dt>
-                <dd>{data.multipleHashes}</dd>
-              </div>
-            </dl>
-            {data.message && <Alert>{data.message}</Alert>}
+            </details>
           </section>
         )
       )}
@@ -425,29 +479,25 @@ export function JobDetail() {
         ) : (
           <>
             <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    {["book", "hash", "status", "attempts", "message"].map(
-                      (key) => (
-                        <th key={key}>
-                          {t(
-                            `downloads.${key === "failed" ? "failedCount" : key}`,
-                          )}
-                        </th>
-                      ),
-                    )}
-                  </tr>
-                </thead>
+              <table
+                className="download-record-table"
+                style={{ width: columns.width }}
+              >
+                {columns.colgroup}
+                <thead>{columns.headings}</thead>
                 <tbody>
                   {items.data.items.map((item) => (
                     <tr key={item.id}>
                       <td>
-                        <Link to={`/catalog/${item.eplId}`}>
-                          EPL {item.eplId}
-                        </Link>
+                        <Link to={`/catalog/${item.eplId}`}>{item.eplId}</Link>
+                      </td>
+                      <td className="catalog-title-cell">
+                        <DownloadBook book={item} />
                       </td>
                       <td className="hash-text">{item.hash}</td>
+                      <td>
+                        {item.revision == null ? "—" : number(item.revision)}
+                      </td>
                       <td>{status(item.status)}</td>
                       <td>{item.attempts}</td>
                       <td>{item.message || "—"}</td>

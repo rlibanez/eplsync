@@ -1,3 +1,4 @@
+import { DownloadBook, useDownloadColumns } from "./DownloadTable";
 import { SyncPage } from "../auth/SyncPage";
 import { useAuth } from "../auth/Auth";
 import { useSyncSession } from "./useSyncSession";
@@ -19,6 +20,9 @@ import { Paging, post, downloadStates, type Page } from "./shared";
 export interface Download {
   id: string;
   eplId: number;
+  title?: string | null;
+  coverUrl?: string | null;
+  coverAvailable?: boolean | null;
   revision: number;
   hash: string;
   client: string;
@@ -113,6 +117,22 @@ function DownloadHistory() {
     setFilters((f) => ({ ...f, [key]: value }));
     setPage(0);
   }
+  const columns = useDownloadColumns(
+    "eplsync.downloads.columnWidths",
+    [
+      { field: "eplId", label: "filters.eplId", width: 100 },
+      { field: "title", label: "downloads.book", width: 360 },
+      { field: "hash", label: "downloads.hash", width: 340 },
+      { field: "revision", label: "downloads.revision", width: 110 },
+      { field: "status", label: "downloads.status", width: 160 },
+      { field: "client", label: "downloads.client", width: 180 },
+      { field: "lastCheckedAt", label: "downloads.lastChecked", width: 200 },
+      { field: "completedAt", label: "downloads.completed", width: 200 },
+      { field: "lastError", label: "downloads.error", width: 240 },
+    ],
+    filters.sort,
+    (value) => filter("sort", value),
+  );
   return (
     <>
       <div className="page-heading">
@@ -212,21 +232,6 @@ function DownloadHistory() {
         <Failure error={summary.error} retry={() => summary.refetch()} />
       )}
       <section className="panel">
-        <div className="table-toolbar">
-          <Select
-            aria-label={t("downloads.sort")}
-            value={filters.sort}
-            data={[
-              { value: "createdAt,desc", label: t("downloads.newest") },
-              {
-                value: "lastCheckedAt,desc",
-                label: t("downloads.lastChecked"),
-              },
-              { value: "eplId,asc", label: t("filters.eplId") },
-            ]}
-            onChange={(v) => filter("sort", v ?? "createdAt,desc")}
-          />
-        </div>
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
@@ -234,33 +239,22 @@ function DownloadHistory() {
         ) : (
           <>
             <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    {[
-                      "book",
-                      "revision",
-                      "status",
-                      "client",
-                      "lastChecked",
-                      "completed",
-                      "error",
-                    ].map((key) => (
-                      <th key={key}>{t(`downloads.${key}`)}</th>
-                    ))}
-                  </tr>
-                </thead>
+              <table
+                className="download-record-table"
+                style={{ width: columns.width }}
+              >
+                {columns.colgroup}
+                <thead>{columns.headings}</thead>
                 <tbody>
                   {result.data.items.map((d) => (
                     <tr key={d.id}>
                       <td>
-                        <Link className="book-title" to={`/catalog/${d.eplId}`}>
-                          EPL {d.eplId}
-                        </Link>
-                        <small className="hash-text" title={d.hash}>
-                          {d.hash}
-                        </small>
+                        <Link to={`/catalog/${d.eplId}`}>{d.eplId}</Link>
                       </td>
+                      <td className="catalog-title-cell">
+                        <DownloadBook book={d} />
+                      </td>
+                      <td className="hash-text">{d.hash}</td>
                       <td>{number(d.revision)}</td>
                       <td>
                         <span className="badge">{status(d.status)}</span>

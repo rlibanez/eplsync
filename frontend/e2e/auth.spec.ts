@@ -49,6 +49,13 @@ test("login sends CSRF and enforces restricted navigation", async ({
     page.getByRole("heading", { name: "EPL Sync", exact: true }),
   ).toHaveCSS("text-align", "center");
   await expect(page.locator(".auth-panel form > div")).toHaveCSS("gap", "16px");
+  await expect(
+    page.locator(".auth-panel .mantine-InputWrapper-required"),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Nombre de usuario")).toHaveAttribute(
+    "required",
+    "",
+  );
   await page.getByLabel("Nombre de usuario").fill("reader");
   await page.getByLabel(/^Contraseña/).fill("reader-password");
   await page
@@ -132,7 +139,7 @@ test("temporary credentials require password replacement", async ({ page }) => {
   await expect(
     page
       .getByRole("tooltip", {
-        name: "Entre 8 y 256 caracteres",
+        name: "Entre 8 y 256 caracteres.",
         exact: true,
       })
       .first(),
@@ -239,19 +246,19 @@ test("first web load creates an administrator only after password confirmation",
   await page.getByLabel(/^Nombre de usuario/).fill("bad user");
   await expect(
     page.getByText(
-      "El usuario debe tener entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo",
+      "El usuario debe tener entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo.",
       { exact: true },
     ),
   ).toBeVisible();
   await page.getByLabel(/^Nombre de usuario/).fill("webadmin");
   await expect(
-    page.getByText("Entre 8 y 256 caracteres", { exact: true }),
+    page.getByText("Entre 8 y 256 caracteres.", { exact: true }),
   ).toHaveCount(0);
   await page.getByText("Contraseña", { exact: true }).hover();
   await expect(
     page
       .getByRole("tooltip", {
-        name: "Entre 8 y 256 caracteres",
+        name: "Entre 8 y 256 caracteres.",
         exact: true,
       })
       .first(),
@@ -271,7 +278,7 @@ test("first web load creates an administrator only after password confirmation",
   await expect(
     page
       .getByRole("tooltip", {
-        name: "Entre 8 y 256 caracteres",
+        name: "Entre 8 y 256 caracteres.",
         exact: true,
       })
       .first(),
@@ -382,28 +389,44 @@ test("registration and return to login use full width buttons", async ({
   await expect(login).toBeVisible();
 });
 
-test("connection failure shows a clear page and retry restores access", async ({ page }) => {
+test("connection failure shows a clear page and retry restores access", async ({
+  page,
+}) => {
   let offline = true;
   await page.route("http://127.0.0.1:5178/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/ui/config") return route.fulfill({ json: { defaultLanguage: "es" } });
+    if (path === "/api/ui/config")
+      return route.fulfill({ json: { defaultLanguage: "es" } });
     if (path === "/api/auth/me") {
       if (offline) return route.abort("connectionrefused");
       return route.fulfill({ status: 401, json: {} });
     }
-    if (path === "/api/auth/status") return route.fulfill({ json: { initialized: true, registrationEnabled: false } });
+    if (path === "/api/auth/status")
+      return route.fulfill({
+        json: { initialized: true, registrationEnabled: false },
+      });
     return route.fulfill({ json: {} });
   });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "No se puede conectar con el servidor" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "No se puede conectar con el servidor" }),
+  ).toBeVisible();
   await expect(page.getByRole("alert")).not.toContainText("Failed to fetch");
   await page.getByRole("button", { name: "Reintentar" }).click();
-  await expect(page.getByRole("heading", { name: "No se puede conectar con el servidor" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "No se puede conectar con el servidor" }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Reintentar" })).toBeEnabled();
   await page.screenshot({ path: "/tmp/eplsync-connection-error.png" });
   await page.setViewportSize({ width: 360, height: 760 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   offline = false;
   await page.getByRole("button", { name: "Reintentar" }).click();
-  await expect(page.getByRole("button", { name: "Iniciar sesión", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Iniciar sesión", exact: true }),
+  ).toBeVisible();
 });
