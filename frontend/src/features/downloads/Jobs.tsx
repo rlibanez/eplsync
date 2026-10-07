@@ -1,7 +1,8 @@
+import { sortQuery } from "./TableControls";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
 import { useNotifications } from "../notifications/Notifications";
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
-import { ArrowUp, ArrowDown, CircleStop } from "lucide-react";
+import { CircleStop } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert, Button, Select, Progress } from "@mantine/core";
@@ -41,7 +42,7 @@ export function Jobs() {
     queryKey: ["jobs", page, size, filter, sort],
     queryFn: ({ signal }) =>
       get<Page<Job>>(
-        `/torrent/jobs?page=${page}&size=${size}&sort=${encodeURIComponent(sort)}${filter ? `&status=${filter}` : ""}`,
+        `/torrent/jobs?page=${page}&size=${size}&${sortQuery(sort)}${filter ? `&status=${filter}` : ""}`,
         signal,
       ),
     refetchInterval: 5000,
@@ -74,6 +75,29 @@ export function Jobs() {
       }
     }
   }
+  const columns = useDownloadColumns(
+    "eplsync.jobs.columns",
+    [
+      { field: "jobId", label: "downloads.job", width: 310 },
+      { field: "type", label: "downloads.type", width: 140 },
+      { field: "status", label: "downloads.status", width: 160 },
+      { field: "progress", label: "downloads.progress", width: 180 },
+      {
+        field: "selectedBooks",
+        label: "downloads.selectedBooks",
+        width: 160,
+      },
+      { field: "accepted", label: "downloads.accepted", width: 120 },
+      { field: "failed", label: "downloads.failedCount", width: 120 },
+      { field: "createdAt", label: "downloads.createdAt", width: 200 },
+    ],
+    sort,
+    (value) => {
+      setSort(value);
+      setPage(0);
+    },
+    { defaults: "createdAt,desc" },
+  );
   return (
     <>
       <div className="page-heading">
@@ -105,6 +129,9 @@ export function Jobs() {
         />
       </div>
       <section className="panel">
+        <div className="table-toolbar">
+          <div className="catalog-table-controls">{columns.controls}</div>
+        </div>
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
@@ -116,80 +143,39 @@ export function Jobs() {
         ) : (
           <>
             <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    {[
-                      "job",
-                      "type",
-                      "status",
-                      "progress",
-                      "selectedBooks",
-                      "accepted",
-                      "failed",
-                      "createdAt",
-                    ].map((key) => (
-                      <th
-                        key={key}
-                        scope="col"
-                        aria-sort={
-                          sort.startsWith(`${key === "job" ? "jobId" : key},`)
-                            ? sort.endsWith(",asc")
-                              ? "ascending"
-                              : "descending"
-                            : undefined
-                        }
-                      >
-                        <button
-                          type="button"
-                          className="catalog-sort-heading"
-                          onClick={() => {
-                            const field = key === "job" ? "jobId" : key;
-                            setSort(
-                              `${field},${sort === `${field},asc` ? "desc" : "asc"}`,
-                            );
-                            setPage(0);
-                          }}
-                        >
-                          {t(
-                            `downloads.${key === "failed" ? "failedCount" : key}`,
-                          )}
-                          {sort.startsWith(
-                            `${key === "job" ? "jobId" : key},`,
-                          ) &&
-                            (sort.endsWith(",asc") ? (
-                              <ArrowUp size={14} aria-hidden="true" />
-                            ) : (
-                              <ArrowDown size={14} aria-hidden="true" />
-                            ))}
-                        </button>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
+              <table
+                className="download-record-table"
+                style={{ width: columns.width }}
+              >
+                {columns.colgroup}
+                <thead>{columns.headings}</thead>
                 <tbody>
                   {result.data.items.map((job) => (
                     <tr key={job.jobId}>
-                      <td>
-                        <Link
-                          className="book-title"
-                          to={`/downloads/jobs/${job.jobId}`}
-                        >
-                          {job.jobId}
-                        </Link>
-                      </td>
-                      <td>
-                        {t(`historyActions.jobTypes.${job.type ?? "DOWNLOAD"}`)}
-                      </td>
-                      <td>{status(job.status)}</td>
-                      <td>
-                        {number(job.processedItems)} /{" "}
-                        {number(job.selectedItems)}
-                      </td>
-                      <td>{number(job.selectedBooks)}</td>
-                      <td>{number(job.accepted)}</td>
-                      <td>{number(job.failed)}</td>
-                      <td>{date(job.createdAt)}</td>
+                      {columns.cells([
+                        <td>
+                          <Link
+                            className="book-title"
+                            to={`/downloads/jobs/${job.jobId}`}
+                          >
+                            {job.jobId}
+                          </Link>
+                        </td>,
+                        <td>
+                          {t(
+                            `historyActions.jobTypes.${job.type ?? "DOWNLOAD"}`,
+                          )}
+                        </td>,
+                        <td>{status(job.status)}</td>,
+                        <td>
+                          {number(job.processedItems)} /{" "}
+                          {number(job.selectedItems)}
+                        </td>,
+                        <td>{number(job.selectedBooks)}</td>,
+                        <td>{number(job.accepted)}</td>,
+                        <td>{number(job.failed)}</td>,
+                        <td>{date(job.createdAt)}</td>,
+                      ])}
                     </tr>
                   ))}
                 </tbody>
@@ -255,7 +241,7 @@ export function JobDetail() {
     queryKey: ["job-items", id, page, size, filter, sort],
     queryFn: ({ signal }) =>
       get<Page<Item>>(
-        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&sort=${encodeURIComponent(sort)}${filter ? `&status=${filter}` : ""}`,
+        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&${sortQuery(sort)}${filter ? `&status=${filter}` : ""}`,
         signal,
       ),
     refetchInterval: ["COMPLETED", "CANCELLED"].includes(job.data?.status ?? "")
@@ -291,6 +277,12 @@ export function JobDetail() {
     (value) => {
       setSort(value);
       setPage(0);
+    },
+    {
+      defaults: "position,asc",
+      extraSort: [
+        { field: "position", label: "tableControls.position", width: 100 },
+      ],
     },
   );
   const data = job.data;
@@ -468,6 +460,9 @@ export function JobDetail() {
         />
       </div>
       <section className="panel">
+        <div className="table-toolbar">
+          <div className="catalog-table-controls">{columns.controls}</div>
+        </div>
         {items.isPending ? (
           <Loading />
         ) : items.isError ? (
@@ -488,19 +483,23 @@ export function JobDetail() {
                 <tbody>
                   {items.data.items.map((item) => (
                     <tr key={item.id}>
-                      <td>
-                        <Link to={`/catalog/${item.eplId}`}>{item.eplId}</Link>
-                      </td>
-                      <td className="catalog-title-cell">
-                        <DownloadBook book={item} />
-                      </td>
-                      <td className="hash-text">{item.hash}</td>
-                      <td>
-                        {item.revision == null ? "—" : number(item.revision)}
-                      </td>
-                      <td>{status(item.status)}</td>
-                      <td>{item.attempts}</td>
-                      <td>{item.message || "—"}</td>
+                      {columns.cells([
+                        <td>
+                          <Link to={`/catalog/${item.eplId}`}>
+                            {item.eplId}
+                          </Link>
+                        </td>,
+                        <td className="catalog-title-cell">
+                          <DownloadBook book={item} />
+                        </td>,
+                        <td className="hash-text">{item.hash}</td>,
+                        <td>
+                          {item.revision == null ? "—" : number(item.revision)}
+                        </td>,
+                        <td>{status(item.status)}</td>,
+                        <td>{item.attempts}</td>,
+                        <td>{item.message || "—"}</td>,
+                      ])}
                     </tr>
                   ))}
                 </tbody>

@@ -23,6 +23,14 @@ public class EventOperations {
         return search(filter, page, size, snapshot, null);
     }
     public Page search(EventJournal.Filter filter, int page, int size, Long snapshot, String operationId) {
+        return search(filter,page,size,snapshot,operationId,"startedAt,desc");
+    }
+    public Page search(EventJournal.Filter filter,int page,int size,Long snapshot,String operationId,String sort) {
+        var fields=Map.of("startedAt","sort_at","finishedAt","CASE WHEN outcome IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') THEN created_at END",
+            "duration","CASE WHEN outcome IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') AND start_at IS NOT NULL AND NOT (category='SECURITY' AND event_count=1) THEN MAX(0,created_at-start_at) END",
+            "category","category","event","action","outcome","outcome","origin","origin","user","COALESCE(actor_username,actor_kind)");
+        var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort,fields.keySet());
+        String orderBy = criteria.stream().map(order -> fields.get(order.getProperty())+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","))+", first_id DESC";
         if (page < 0 || size < 1 || size > 200 || (snapshot != null && snapshot < 0))
             throw new com.rlibanez.eplsync.exception.UserInputException("page >= 0, size entre 1 y 200 y snapshot >= 0");
         return transactions.execute(tx -> {
@@ -31,10 +39,11 @@ public class EventOperations {
             String cte = """
                 WITH grouped AS (
                   SELECT operation_id, MIN(id) first_id, MAX(id) last_id,
-                    COALESCE(MIN(CASE WHEN outcome='STARTED' THEN created_at END), MIN(created_at)) sort_at
+                    COALESCE(MIN(CASE WHEN outcome='STARTED' THEN created_at END), MIN(created_at)) sort_at,
+                    MIN(CASE WHEN outcome='STARTED' THEN created_at END) start_at, COUNT(*) event_count
                   FROM app_events WHERE id<=? GROUP BY operation_id
                 ), operations AS (
-                  SELECT e.*, g.first_id, g.sort_at FROM grouped g JOIN app_events e ON e.id=g.last_id
+                  SELECT e.*, g.first_id, g.sort_at, g.start_at, g.event_count FROM grouped g JOIN app_events e ON e.id=g.last_id
                 )
                 """;
             var args = new ArrayList<Object>(); args.add(cursor);
@@ -52,7 +61,7 @@ public class EventOperations {
             long total = jdbc.queryForObject(cte + "SELECT COUNT(*) FROM operations" + where, Long.class, args.toArray());
             args.add(size); args.add((long) page * size);
             var ids = jdbc.queryForList(cte + "SELECT operation_id FROM operations" + where
-                + " ORDER BY sort_at DESC, first_id DESC LIMIT ? OFFSET ?", String.class, args.toArray());
+                + " ORDER BY "+orderBy+" LIMIT ? OFFSET ?", String.class, args.toArray());
             if (ids.isEmpty()) return new Page(List.of(), total, page, size, cursor);
             var eventArgs = new ArrayList<Object>(ids); eventArgs.add(cursor);
             var entries = jdbc.query("SELECT * FROM app_events WHERE operation_id IN ("

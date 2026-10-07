@@ -1,3 +1,4 @@
+import { checkTableControls } from "./table-controls";
 import { test, expect } from "./fixtures";
 
 test("book history shares catalog pagination spacing and aligns heading with page size", async ({
@@ -116,7 +117,7 @@ test("book history shares catalog pagination spacing and aligns heading with pag
     await expect(history.locator("tbody tr td").nth(2)).toHaveText("1");
     await expect(history.getByRole("columnheader")).toHaveCount(8);
     await expect(
-      history.getByRole("columnheader", { name: "Revisión", exact: true }),
+      history.locator('th[data-table-column="revision"]'),
     ).toHaveAttribute("aria-sort", "descending");
     await expect(history.locator("tbody tr td").nth(1)).toHaveText(
       "A".repeat(40),
@@ -137,8 +138,10 @@ test("book history shares catalog pagination spacing and aligns heading with pag
       .click();
     await request;
     await expect(
-      history.getByRole("columnheader", { name: "Revisión", exact: true }),
+      history.locator('th[data-table-column="revision"]'),
     ).toHaveAttribute("aria-sort", "ascending");
+    if (width === 1440)
+      await checkTableControls(page, "revision", "Revisión", history);
     await page.screenshot({
       path: `/tmp/eplsync-book-history-${width}.png`,
       fullPage: true,

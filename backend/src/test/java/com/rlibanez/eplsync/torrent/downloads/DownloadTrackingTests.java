@@ -378,10 +378,12 @@ class DownloadTrackingTests {
 
     @Test void discoversOnlyMatchingHashesAndKeepsOriginAndOriginalRevision() {
         book(1.0, HASH + "," + OTHER);
+        var catalogBook=books.findById(32L).orElseThrow();catalogBook.setCoverUrl("https://example.org/cover.jpg");catalogBook.setCoverAvailable(true);books.save(catalogBook);
         when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent(HASH, DownloadStatus.PAUSED, null),
                 new RemoteTorrent(OTHER, DownloadStatus.DOWNLOADED, null), new RemoteTorrent("C".repeat(40), DownloadStatus.DOWNLOADED, null)));
         var result = service.syncDownloads(false, true);
         assertThat(result.records().created()).isEqualTo(2); assertThat(result.remote().ignored()).isEqualTo(1);
+        assertThat(result.items()).allSatisfy(item -> {assertThat(item.coverUrl()).isEqualTo("https://example.org/cover.jpg");assertThat(item.coverAvailable()).isTrue();});
         assertThat(downloads.findAll()).allMatch(row -> row.getOrigin() == DownloadRecord.Origin.DISCOVERED
                 && row.getDiscoveredAt() != null && row.getSubmittedAt() == null && row.getRequestedAt() == null);
         assertThat(service.syncDownloads(false, true).records().created()).isZero();

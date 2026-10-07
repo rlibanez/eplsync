@@ -6,6 +6,7 @@
     "retry": "Retry",
     "more": "Load more"
   },
+  "tableControls": { "ascending": "Ascending", "descending": "Descending", "position": "Submission order" },
   "sorting": {
     "title": "Sort",
     "help": "Shift + click a column header to add a criterion.",

@@ -6,6 +6,7 @@
     "retry": "Reintentar",
     "more": "Cargar más"
   },
+  "tableControls": { "ascending": "Ascendente", "descending": "Descendente", "position": "Orden del envío" },
   "sorting": {
     "title": "Ordenar",
     "help": "Mayús + clic en una cabecera añade un criterio.",

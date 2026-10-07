@@ -66,6 +66,10 @@ class EventApiTests {
             var body=json.readTree(response.body());
             assertThat(body.path("total").asInt()).isEqualTo(1);
         }
+        var ordered=request("/operations?sort=category,asc&sort=event,asc&size=1",null);
+        assertThat(ordered.statusCode()).isEqualTo(200);
+        assertThat(json.readTree(ordered.body()).path("items").get(0).path("latest").path("category").asString()).isEqualTo("SECURITY");
+        assertThat(request("/operations?sort=category,asc&sort=category,desc",null).statusCode()).isEqualTo(400);
         assertThat(json.readTree(request("/operations?action=USER_CREATE&category=TORRENT",null).body()).path("total").asInt()).isZero();
         assertThat(json.readTree(request("/operations?action=USER_CREATE%27%20OR%201%3D1--",null).body()).path("total").asInt()).isZero();
     }

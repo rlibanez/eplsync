@@ -42,12 +42,10 @@ public class CatalogDownloadViewService {
     public com.rlibanez.eplsync.dto.PageResponse<HistoryItem> history(Long id,int page,int size,String sort) {
         com.rlibanez.eplsync.config.QueryLimits.page(page,size);
         var fields=Set.of("hash","revision","status","client","lastCheckedAt","completedAt","lastError");
-        var parts=sort==null ? new String[0] : sort.split(",",-1);
-        if(parts.length!=2 || !fields.contains(parts[0]) || !(parts[1].equalsIgnoreCase("asc") || parts[1].equalsIgnoreCase("desc")))
-            throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación del historial inválida");
-        var ordering=org.springframework.data.domain.Sort.by(
-            new org.springframework.data.domain.Sort.Order(org.springframework.data.domain.Sort.Direction.fromString(parts[1]),parts[0]),
-            org.springframework.data.domain.Sort.Order.desc("createdAt"),org.springframework.data.domain.Sort.Order.asc("id"));
+        var orders = new ArrayList<>(com.rlibanez.eplsync.config.TableOrdering.parse(sort,fields));
+        orders.add(org.springframework.data.domain.Sort.Order.desc("createdAt"));
+        orders.add(org.springframework.data.domain.Sort.Order.asc("id"));
+        var ordering=org.springframework.data.domain.Sort.by(orders);
         var result=repository.findByEplId(id,org.springframework.data.domain.PageRequest.of(page,size,ordering));
         return new com.rlibanez.eplsync.dto.PageResponse<>(result.getContent().stream().map(row -> new HistoryItem(
                 row.getId(),row.getRevision(),row.getStatus(),row.getCompletedAt()!=null,row.getHash(),row.getClient(),

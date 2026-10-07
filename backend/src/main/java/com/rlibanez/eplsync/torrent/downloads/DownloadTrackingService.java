@@ -102,7 +102,7 @@ public class DownloadTrackingService {
     public record SyncItem(String downloadId, Long eplId, String title, String hash, String action,
             DownloadStatus previousStatus, DownloadStatus resultingStatus, boolean foundInClient,
             List<String> changedFields, boolean newlyCompleted, boolean newlyNotFound,
-            Instant previousCompletedAt, Instant resultingCompletedAt, String previousError, String resultingError) {}
+            Instant previousCompletedAt, Instant resultingCompletedAt, String previousError, String resultingError, String coverUrl, Boolean coverAvailable) {}
     public record IgnoredTorrent(String hash, String name, String reason) {}
     public record SyncResult(String client, String clientInstanceId, boolean dryRun, boolean applied,
             Instant checkedAt, RemoteCounts remote, RecordCounts records, Outcomes outcomes,
@@ -236,7 +236,7 @@ public class DownloadTrackingService {
             if (items != null) items.add(new SyncItem(row.getId(), row.getEplId(), titles.get(row.getEplId()), row.getHash(),
                     changed.isEmpty() ? "UNCHANGED" : "UPDATE", original.getStatus(), row.getStatus(), observed != null,
                     List.copyOf(changed), newlyCompleted, newlyNotFound, original.getCompletedAt(), row.getCompletedAt(),
-                    original.getLastError(), row.getLastError()));
+                    original.getLastError(), row.getLastError(), null, false));
             if (!dryRun) org.springframework.beans.BeanUtils.copyProperties(row, original);
         }
         for (var book : catalog) {
@@ -253,7 +253,16 @@ public class DownloadTrackingService {
                 if (newlyCompleted) completed++;
                 if (items != null) items.add(new SyncItem(dryRun ? null : row.getId(), row.getEplId(), book.getTitle(), hash,
                         "CREATE", null, row.getStatus(), true, List.of(), newlyCompleted, false,
-                        null, row.getCompletedAt(), null, row.getLastError()));
+                        null, row.getCompletedAt(), null, row.getLastError(), null, false));
+            }
+        }
+        if (items != null) {
+            var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager,items.stream().map(SyncItem::eplId).toList());
+            for (int index=0; index<items.size(); index++) {
+                var item=items.get(index);var book=metadata.get(item.eplId());
+                if(book!=null) items.set(index,new SyncItem(item.downloadId(),item.eplId(),item.title(),item.hash(),item.action(),
+                    item.previousStatus(),item.resultingStatus(),item.foundInClient(),item.changedFields(),item.newlyCompleted(),item.newlyNotFound(),
+                    item.previousCompletedAt(),item.resultingCompletedAt(),item.previousError(),item.resultingError(),book.coverUrl(),book.coverAvailable()));
             }
         }
         var ignored = includeDetails ? uniqueRemote.values().stream().filter(t -> !matched.contains(t.hash()))

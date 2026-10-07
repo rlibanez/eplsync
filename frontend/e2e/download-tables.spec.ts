@@ -1,4 +1,5 @@
 import { test, expect } from "./fixtures";
+import { checkTableControls } from "./table-controls";
 const meta = {
   page: 0,
   size: 20,
@@ -162,6 +163,7 @@ for (const kind of ["state", "job"] as const) {
     await expect
       .poll(async () => (await handle.locator("..").boundingBox())!.width)
       .toBeGreaterThan(before + 40);
+    await checkTableControls(page, "title", "Libro");
     await page.screenshot({
       path: `/tmp/eplsync-${kind}-table.png`,
       fullPage: true,

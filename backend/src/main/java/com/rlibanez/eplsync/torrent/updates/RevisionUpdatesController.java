@@ -22,8 +22,8 @@ public class RevisionUpdatesController {
         @RequestParam(defaultValue="false") boolean synchronize, jakarta.servlet.http.HttpServletRequest request) {
         if(!java.util.Set.of("page","size","sort","synchronize","status").containsAll(request.getParameterMap().keySet()))
             throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro de búsqueda desconocido");
-        for(var values:request.getParameterMap().values()) if(values.length!=1 || values[0].isBlank())
-            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro vacío o repetido");
+        com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
+        sort = com.rlibanez.eplsync.config.TableOrdering.request(request, "title,asc");
         RevisionUpdates.validate(input,page,size,sort);
         if(synchronize) {
             com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_SYNC);

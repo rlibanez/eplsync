@@ -1,7 +1,8 @@
 import { HistorySelection } from "./HistorySelection";
 import { useAuth } from "../auth/Auth";
 import { Checkbox } from "@mantine/core";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { useDownloadColumns } from "../downloads/DownloadTable";
+import { sortQuery } from "../downloads/TableControls";
 import type { Download } from "../downloads/DownloadState";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -32,22 +33,31 @@ export function BookHistory({ id }: { id: number }) {
   const [selected, setSelected] = useState<string[]>([]);
   const { status, number, date } = useLocale();
   const [sort, setSort] = useState("revision,desc");
-  const columns = [
-    ["hash", "hash"],
-    ["revision", "revision"],
-    ["status", "status"],
-    ["client", "client"],
-    ["lastCheckedAt", "lastChecked"],
-    ["completedAt", "completed"],
-    ["lastError", "error"],
-  ] as const;
   const [page, setPage] = useState(0),
     [size, setSize] = useState(20);
+  const columns = useDownloadColumns(
+    "eplsync.history.columns",
+    [
+      { field: "hash", label: "downloads.hash", width: 360 },
+      { field: "revision", label: "downloads.revision", width: 100 },
+      { field: "status", label: "downloads.status", width: 160 },
+      { field: "client", label: "downloads.client", width: 160 },
+      { field: "lastCheckedAt", label: "downloads.lastChecked", width: 200 },
+      { field: "completedAt", label: "downloads.completed", width: 220 },
+      { field: "lastError", label: "downloads.error", width: 250 },
+    ],
+    sort,
+    (value) => {
+      setSort(value);
+      setPage(0);
+    },
+    { defaults: "revision,desc", selection: selectable },
+  );
   const result = useQuery({
     queryKey: ["book-history", id, page, size, sort],
     queryFn: ({ signal }) =>
       get<Page<HistoryItem>>(
-        `/catalog/books/${id}/history?page=${page}&size=${size}&sort=${encodeURIComponent(sort)}`,
+        `/catalog/books/${id}/history?page=${page}&size=${size}&${sortQuery(sort)}`,
         signal,
       ),
   });
@@ -56,6 +66,7 @@ export function BookHistory({ id }: { id: number }) {
     <section className="panel book-history">
       <div className="table-toolbar book-history-toolbar">
         <h2>{t("detail.history")}</h2>
+        <div className="catalog-table-controls">{columns.controls}</div>
       </div>
       {result.isPending ? (
         <Loading />
@@ -70,11 +81,15 @@ export function BookHistory({ id }: { id: number }) {
             onDone={() => setSelected([])}
           />
           <div className="table-scroll">
-            <table>
+            <table
+              className="download-record-table"
+              style={{ width: columns.width }}
+            >
+              {columns.colgroup}
               <caption className="sr-only">{t("detail.history")}</caption>
               <thead>
-                <tr>
-                  {selectable && (
+                {columns.selectionHeadings(
+                  selectable && (
                     <th className="history-selection">
                       <Checkbox
                         aria-label={t("historyActions.selectPage")}
@@ -100,42 +115,8 @@ export function BookHistory({ id }: { id: number }) {
                         }
                       />
                     </th>
-                  )}
-                  {columns.map(([field, label]) => {
-                    const ascending = sort === `${field},asc`;
-                    const active = sort.startsWith(field + ",");
-                    return (
-                      <th
-                        key={field}
-                        scope="col"
-                        aria-sort={
-                          active
-                            ? ascending
-                              ? "ascending"
-                              : "descending"
-                            : undefined
-                        }
-                      >
-                        <button
-                          type="button"
-                          className="catalog-sort-heading"
-                          onClick={() => {
-                            setSort(`${field},${ascending ? "desc" : "asc"}`);
-                            setPage(0);
-                          }}
-                        >
-                          {t(`downloads.${label}`)}
-                          {active &&
-                            (ascending ? (
-                              <ArrowUp size={14} aria-hidden="true" />
-                            ) : (
-                              <ArrowDown size={14} aria-hidden="true" />
-                            ))}
-                        </button>
-                      </th>
-                    );
-                  })}
-                </tr>
+                  ),
+                )}
               </thead>
               <tbody>
                 {result.data.items.map((item) => (
@@ -158,22 +139,24 @@ export function BookHistory({ id }: { id: number }) {
                         />
                       </td>
                     )}
-                    <td>
-                      <small className="hash-text" title={item.hash}>
-                        {item.hash || "—"}
-                      </small>
-                    </td>
-                    <td>{number(item.revision)}</td>
-                    <td>
-                      <span className="badge">{status(item.status)}</span>
-                    </td>
-                    <td title={item.clientInstanceId}>
-                      {item.client || "—"}
-                      <small className="hash-text">{item.origin}</small>
-                    </td>
-                    <td>{date(item.lastCheckedAt)}</td>
-                    <td>{date(item.completedAt)}</td>
-                    <td>{item.lastError || "—"}</td>
+                    {columns.cells([
+                      <td>
+                        <small className="hash-text" title={item.hash}>
+                          {item.hash || "—"}
+                        </small>
+                      </td>,
+                      <td>{number(item.revision)}</td>,
+                      <td>
+                        <span className="badge">{status(item.status)}</span>
+                      </td>,
+                      <td title={item.clientInstanceId}>
+                        {item.client || "—"}
+                        <small className="hash-text">{item.origin}</small>
+                      </td>,
+                      <td>{date(item.lastCheckedAt)}</td>,
+                      <td>{date(item.completedAt)}</td>,
+                      <td>{item.lastError || "—"}</td>,
+                    ])}
                   </tr>
                 ))}
               </tbody>

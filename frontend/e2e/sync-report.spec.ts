@@ -1,3 +1,4 @@
+import { checkTableControls } from "./table-controls";
 import { test, expect } from "./fixtures";
 test("preview and execution show local searchable detail without repeating sync", async ({
   page,
@@ -7,6 +8,12 @@ test("preview and execution show local searchable detail without repeating sync"
   );
   await page.route("**/api/catalog/covers/task", (r) =>
     r.fulfill({ json: { task: null } }),
+  );
+  await page.route("https://example.org/sync-cover.jpg", (r) =>
+    r.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="60"/>',
+    }),
   );
   let reads = 0;
   const calls: boolean[] = [];
@@ -46,6 +53,8 @@ test("preview and execution show local searchable detail without repeating sync"
           downloadId: dryRun ? null : String(i),
           eplId: i + 1,
           title: `Libro ${i + 1}`,
+          coverUrl: "https://example.org/sync-cover.jpg",
+          coverAvailable: true,
           hash: String(i).padStart(40, "a"),
           action: "CREATE",
           previousStatus: null,
@@ -87,6 +96,26 @@ test("preview and execution show local searchable detail without repeating sync"
     report.getByText("Simulación: sin cambios guardados", { exact: true }),
   ).toBeVisible();
   expect(reads).toBe(initialReads);
+  await expect(report.locator(".book-cover img").first()).toHaveAttribute(
+    "src",
+    "https://example.org/sync-cover.jpg",
+  );
+  await checkTableControls(page, "title", "Libro", report);
+  await report.getByRole("button", { name: "Ordenar", exact: true }).click();
+  await page.screenshot({
+    path: "/tmp/eplsync-sync-table-controls.png",
+    fullPage: true,
+  });
+  await report
+    .locator('th[data-table-column="eplId"] button.catalog-sort-heading')
+    .click();
+  await expect(
+    report.locator("tbody tr").first().locator("td").first(),
+  ).toHaveText("25");
+  await report
+    .locator('th[data-table-column="eplId"] button.catalog-sort-heading')
+    .click();
+
   await expect(report.locator("tbody tr")).toHaveCount(20);
   await expect(
     report.locator("tbody tr").first().locator("td").last(),
@@ -131,6 +160,7 @@ test("preview and execution show local searchable detail without repeating sync"
   await expect(
     report.getByText("Torrent ajeno", { exact: true }),
   ).toBeVisible();
+  await checkTableControls(page, "hash", "Hash", report);
   const search = report.getByLabel("Buscar", { exact: true });
   await search.pressSequentially("coraz");
   await search.dispatchEvent("compositionstart");

@@ -25,8 +25,10 @@ public class EventController {
             @RequestParam(required=false) EventJournal.Outcome outcome,
             @RequestParam(required=false) EventContext.Origin origin,
             @RequestParam(required=false) String operationId,
-            @RequestParam(required=false) Instant from, @RequestParam(required=false) Instant before) {
-        return operations.search(new EventJournal.Filter(category, outcome, origin, from, before, action, username), page, size, snapshot, operationId);
+            @RequestParam(required=false) Instant from, @RequestParam(required=false) Instant before,
+            jakarta.servlet.http.HttpServletRequest request) {
+        com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
+        return operations.search(new EventJournal.Filter(category, outcome, origin, from, before, action, username), page, size, snapshot, operationId, com.rlibanez.eplsync.config.TableOrdering.request(request,"startedAt,desc"));
     }
     @GetMapping
     public EventJournal.Page search(@RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size,

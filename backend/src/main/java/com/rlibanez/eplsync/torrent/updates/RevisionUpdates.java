@@ -22,9 +22,7 @@ public class RevisionUpdates {
             || input.states().stream().anyMatch(Objects::isNull) || new HashSet<>(input.states()).size()!=input.states().size())
             throw new UserInputException("Selecciona al menos un estado válido, sin duplicados");
         var fields=Map.of("eplId","b.eplId","title","b.title","registeredRevision","d.revision","availableRevision","b.revision","status","d.status");
-        var parts=sort.split(",",-1);
-        if(parts.length!=2 || !fields.containsKey(parts[0]) || !Set.of("asc","desc").contains(parts[1]))
-            throw new UserInputException("Ordenación de actualizaciones inválida");
+        com.rlibanez.eplsync.config.TableOrdering.parse(sort, fields.keySet());
     }
     @Transactional(readOnly=true,timeout=120)
     public PageResponse<Row> search(UpdatePreferences.Preferences input,int page,int size,String sort) {
@@ -38,7 +36,9 @@ public class RevisionUpdates {
     public PageResponse<Row> search(UpdatePreferences.Preferences input,int page,int size,String sort,Long onlyId,DownloadStatus status) {
         validate(input,page,size,sort);
         var fields=Map.of("eplId","b.eplId","title","b.title","registeredRevision","d.revision","availableRevision","b.revision","status","d.status");
-        var parts=sort.split(",",-1);
+        var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, fields.keySet());
+        var orderBy = criteria.stream().map(order -> fields.get(order.getProperty())+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","));
+        if (criteria.stream().noneMatch(order -> order.getProperty().equals("eplId"))) orderBy += ", b.eplId asc";
         String from=" from CatalogBook b, DownloadRecord d where b.eplId=d.eplId and d.status in :states and d.revision<b.revision and "+evidence("d")
             +" and not exists (select x.id from DownloadRecord x where x.eplId=b.eplId and x.revision>=b.revision and "+evidence("x")+")"
             +" and not exists (select h.id from DownloadRecord h where h.eplId=b.eplId and h.status in :states and "+evidence("h")
@@ -51,7 +51,7 @@ public class RevisionUpdates {
         if(onlyId!=null) from += " and b.eplId="+onlyId.longValue();
         long total=em.createQuery("select count(d.id)"+from,Long.class).setParameter("states",input.states())
             .setHint("jakarta.persistence.query.timeout",120000).getSingleResult();
-        var rows=em.createQuery("select b.eplId,b.title,d.revision,b.revision,d.status,b.coverUrl,b.coverAvailable"+from+" order by "+fields.get(parts[0])+" "+parts[1]+", b.eplId asc",Object[].class)
+        var rows=em.createQuery("select b.eplId,b.title,d.revision,b.revision,d.status,b.coverUrl,b.coverAvailable"+from+" order by "+orderBy,Object[].class)
             .setParameter("states",input.states()).setHint("jakarta.persistence.query.timeout",120000)
             .setFirstResult(Math.toIntExact((long)page*size)).setMaxResults(size).getResultList().stream()
             .map(r -> new Row((Long)r[0],(String)r[1],(Double)r[2],(Double)r[3],(DownloadStatus)r[4],(String)r[5],(Boolean)r[6])).toList();

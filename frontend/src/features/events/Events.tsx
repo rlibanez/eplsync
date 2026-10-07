@@ -2,10 +2,15 @@ import { eventActorLabel } from "./eventTypes";
 import { useAuth } from "../auth/Auth";
 import { EventSummary } from "./EventSummary";
 import { readEventNavigation, saveEventNavigation } from "./eventNavigation";
-import { useEventColumns } from "./EventColumns";
+import { useDownloadColumns } from "../downloads/DownloadTable";
+import { ordering } from "../downloads/TableControls";
 import { markEventsRead, markOperationRead } from "./useUnreadEvents";
 import { useEffect, useState, useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import {
   Badge,
   Button,
@@ -45,6 +50,7 @@ function EventsView({ operationId }: { operationId?: string }) {
           from: "",
           to: "",
           page: 0,
+          sort: "startedAt,desc",
           expanded: [operationId],
           scroll: 0,
         }
@@ -54,7 +60,7 @@ function EventsView({ operationId }: { operationId?: string }) {
   const snapshot = useRef<number | undefined>(undefined);
   const restored = useRef(false);
   const cache = useQueryClient();
-  const columns = useEventColumns();
+
   const [visible, setVisible] = useState(
     document.visibilityState === "visible",
   );
@@ -72,6 +78,32 @@ function EventsView({ operationId }: { operationId?: string }) {
   const [from, setFrom] = useState(saved.from);
   const [to, setTo] = useState(saved.to);
   const [page, setPage] = useState(saved.page);
+  const [sort, setSort] = useState(saved.sort);
+  const columns = useDownloadColumns(
+    "eplsync.events.columnWidths",
+    [
+      { field: "startedAt", label: "events.startedAt", width: 195 },
+      { field: "finishedAt", label: "events.finishedAt", width: 195 },
+      { field: "duration", label: "events.duration", width: 110 },
+      { field: "category", label: "events.category", width: 140 },
+      { field: "event", label: "events.event", width: 195 },
+      { field: "outcome", label: "events.outcome", width: 170 },
+      { field: "origin", label: "events.origin", width: 120 },
+      { field: "user", label: "events.user", width: 170 },
+      {
+        field: "summary",
+        label: "events.summary",
+        width: 480,
+        sortable: false,
+      },
+    ],
+    sort,
+    (value) => {
+      setSort(value);
+      setPage(0);
+    },
+    { defaults: "startedAt,desc" },
+  );
   const [expanded, setExpanded] = useState(saved.expanded);
   const navigation = useRef(saved);
   navigation.current = {
@@ -84,6 +116,7 @@ function EventsView({ operationId }: { operationId?: string }) {
     to,
     page,
     expanded,
+    sort,
     scroll: navigation.current.scroll,
   };
   useEffect(() => {
@@ -99,6 +132,7 @@ function EventsView({ operationId }: { operationId?: string }) {
     page,
     expanded,
     operationId,
+    sort,
   ]);
   useEffect(() => {
     const storeScroll = () => {
@@ -115,6 +149,7 @@ function EventsView({ operationId }: { operationId?: string }) {
     initialData: { cursor: 0, revision: 0 },
   });
   const params = new URLSearchParams({ page: String(page), size: "20" });
+  ordering(sort).forEach((value) => params.append("sort", value));
   if (operationId) params.set("operationId", operationId);
   if (action) params.set("action", action);
   if (category) params.set("category", category);
@@ -125,6 +160,7 @@ function EventsView({ operationId }: { operationId?: string }) {
   if (bounds.from) params.set("from", bounds.from);
   if (bounds.before) params.set("before", bounds.before);
   const result = useQuery({
+    placeholderData: keepPreviousData,
     queryKey: ["event-operations", visit, params.toString()],
     staleTime: Infinity,
     gcTime: 0,
@@ -370,15 +406,16 @@ function EventsView({ operationId }: { operationId?: string }) {
               {pending ? t("events.newEvents") : ""}
             </span>
           </Group>
+          <div className="table-toolbar">
+            <div className="catalog-table-controls">{columns.controls}</div>
+          </div>
           {!result.data.items.length ? (
             <p>{t(operationId ? "events.missingOperation" : "events.empty")}</p>
           ) : (
             <div className="table-scroll">
               <table className="events-table" style={{ width: columns.width }}>
                 {columns.colgroup}
-                <thead>
-                  <tr>{columns.headers}</tr>
-                </thead>
+                <thead>{columns.headings}</thead>
                 <tbody>
                   {result.data.items.map((operation) => {
                     const event = operation.latest;
@@ -396,77 +433,79 @@ function EventsView({ operationId }: { operationId?: string }) {
                         : "—";
                     return (
                       <tr key={event.id}>
-                        <td>{date(operation.startedAt)}</td>
-                        <td>{date(operation.finishedAt)}</td>
-                        <td>
-                          {operation.durationMs === null
-                            ? "—"
-                            : formatDuration(
-                                operation.durationMs,
-                                i18n.resolvedLanguage,
-                              )}
-                        </td>
-                        <td>
-                          {filterValue(
-                            "category",
-                            event.category,
-                            t("events.categories." + event.category),
-                          )}
-                        </td>
-                        <td>
-                          {filterValue(
-                            "action",
-                            event.action,
-                            t("events.actions." + event.action),
-                          )}
-                        </td>
-                        <td>
-                          {filterValue(
-                            "outcome",
-                            outcome,
-                            outcomeLabel,
-                            <Badge
-                              variant="light"
-                              color={
-                                event.outcome === "FAILED"
-                                  ? "red"
-                                  : event.outcome === "PARTIAL"
-                                    ? "orange"
-                                    : undefined
-                              }
+                        {columns.cells([
+                          <td>{date(operation.startedAt)}</td>,
+                          <td>{date(operation.finishedAt)}</td>,
+                          <td>
+                            {operation.durationMs === null
+                              ? "—"
+                              : formatDuration(
+                                  operation.durationMs,
+                                  i18n.resolvedLanguage,
+                                )}
+                          </td>,
+                          <td>
+                            {filterValue(
+                              "category",
+                              event.category,
+                              t("events.categories." + event.category),
+                            )}
+                          </td>,
+                          <td>
+                            {filterValue(
+                              "action",
+                              event.action,
+                              t("events.actions." + event.action),
+                            )}
+                          </td>,
+                          <td>
+                            {filterValue(
+                              "outcome",
+                              outcome,
+                              outcomeLabel,
+                              <Badge
+                                variant="light"
+                                color={
+                                  event.outcome === "FAILED"
+                                    ? "red"
+                                    : event.outcome === "PARTIAL"
+                                      ? "orange"
+                                      : undefined
+                                }
+                              >
+                                {outcomeLabel}
+                              </Badge>,
+                            )}
+                          </td>,
+                          <td>
+                            {filterValue(
+                              "origin",
+                              event.origin,
+                              t("events.origins." + event.origin),
+                            )}
+                          </td>,
+                          <td>{eventActorLabel(event, t)}</td>,
+                          <td>
+                            <details
+                              open={expanded.includes(event.operationId)}
+                              onToggle={(e) => {
+                                const open = e.currentTarget.open;
+                                setExpanded((current) =>
+                                  open
+                                    ? current.includes(event.operationId)
+                                      ? current
+                                      : [...current, event.operationId]
+                                    : current.filter(
+                                        (id) => id !== event.operationId,
+                                      ),
+                                );
+                              }}
                             >
-                              {outcomeLabel}
-                            </Badge>,
-                          )}
-                        </td>
-                        <td>
-                          {filterValue(
-                            "origin",
-                            event.origin,
-                            t("events.origins." + event.origin),
-                          )}
-                        </td>
-                        <td>{eventActorLabel(event, t)}</td>
-                        <td>
-                          <details
-                            open={expanded.includes(event.operationId)}
-                            onToggle={(e) => {
-                              const open = e.currentTarget.open;
-                              setExpanded((current) =>
-                                open
-                                  ? current.includes(event.operationId)
-                                    ? current
-                                    : [...current, event.operationId]
-                                  : current.filter(
-                                      (id) => id !== event.operationId,
-                                    ),
-                              );
-                            }}
-                          >
-                            <summary>{t("events.details")}</summary>
-                            <EventSummary operation={operation} />
-                          </details>
-                        </td>
+                              <summary>{t("events.details")}</summary>
+                              <EventSummary operation={operation} />
+                            </details>
+                          </td>,
+                        ])}
                       </tr>
                     );
                   })}

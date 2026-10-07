@@ -42,7 +42,9 @@ public class CatalogBookController {
     @GetMapping("/{eplId}/history")
     public ResponseEntity<?> history(@PathVariable Long eplId,@RequestParam(defaultValue="0") int page,
             @RequestParam(defaultValue="20") int size,
-            @RequestParam(defaultValue="revision,desc") String sort) {
+            @RequestParam(defaultValue="revision,desc") String sort, jakarta.servlet.http.HttpServletRequest request) {
+        com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
+        sort = com.rlibanez.eplsync.config.TableOrdering.request(request,"revision,desc");
         com.rlibanez.eplsync.config.QueryLimits.page(page,size);
         if (catalogBookService.getByEplId(eplId).isEmpty()) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(downloads.history(eplId,page,size,sort));

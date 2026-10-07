@@ -406,6 +406,25 @@ class BulkTests {
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].jobId").value("errors"));
     }
+    @Test void ordersMultipleJobCriteriaBeforePaginationAndValidatesRepeatedParameters() throws Exception {
+        seedSortJob("a",2,1,0);
+        seedSortJob("b",4,2,0);
+        assertThat(store.list(0,1,null,"progress,asc;accepted,desc").items().getFirst().jobId()).isEqualTo("b");
+        assertThat(store.list(1,1,null,"progress,asc;accepted,desc").items().getFirst().jobId()).isEqualTo("a");
+        assertThat(store.list(0,1,null,"status,asc;jobId,desc").items().getFirst().jobId()).isEqualTo("b");
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+            .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs")
+            .param("sort","progress,asc","accepted,desc").param("size","1"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].jobId").value("b"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs")
+            .param("sort","progress,asc","progress,desc"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        assertThatThrownBy(() -> store.list(0,20,null,"jobId,asc;type,asc;status,asc;progress,asc;selectedBooks,asc;accepted,asc;failed,asc;createdAt,asc;jobId,desc"))
+            .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+    }
+
     @Test void jobItemsRetainThePreparedRevisionAfterCatalogUpdates() {
         var book = books.findById(1L).orElseThrow(); book.setRevision(1.4); books.save(book);
         var filter = new CatalogBookFilter(); filter.setEplId(1L);

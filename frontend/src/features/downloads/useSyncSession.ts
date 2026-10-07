@@ -8,6 +8,8 @@ export const defaultSyncView = {
   search: "",
   page: 0,
   size: 20,
+  bookSort: "eplId,asc",
+  ignoredSort: "name,asc",
 };
 interface Session {
   report: SyncResult | null;

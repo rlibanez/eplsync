@@ -1,3 +1,4 @@
+import { ordering } from "./TableControls";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
 import { SyncPage } from "../auth/SyncPage";
 import { useAuth } from "../auth/Auth";
@@ -69,7 +70,11 @@ function DownloadHistory() {
 
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters))
-    if (value) params.set(key, value);
+    if (value) {
+      if (key === "sort")
+        ordering(value).forEach((sort) => params.append("sort", sort));
+      else params.set(key, value);
+    }
   const summaryParams = new URLSearchParams(params);
   summaryParams.delete("sort");
   params.set("page", String(page));
@@ -132,6 +137,12 @@ function DownloadHistory() {
     ],
     filters.sort,
     (value) => filter("sort", value),
+    {
+      defaults: "createdAt,desc",
+      extraSort: [
+        { field: "createdAt", label: "downloads.createdAt", width: 200 },
+      ],
+    },
   );
   return (
     <>
@@ -232,6 +243,9 @@ function DownloadHistory() {
         <Failure error={summary.error} retry={() => summary.refetch()} />
       )}
       <section className="panel">
+        <div className="table-toolbar">
+          <div className="catalog-table-controls">{columns.controls}</div>
+        </div>
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
@@ -248,24 +262,26 @@ function DownloadHistory() {
                 <tbody>
                   {result.data.items.map((d) => (
                     <tr key={d.id}>
-                      <td>
-                        <Link to={`/catalog/${d.eplId}`}>{d.eplId}</Link>
-                      </td>
-                      <td className="catalog-title-cell">
-                        <DownloadBook book={d} />
-                      </td>
-                      <td className="hash-text">{d.hash}</td>
-                      <td>{number(d.revision)}</td>
-                      <td>
-                        <span className="badge">{status(d.status)}</span>
-                      </td>
-                      <td title={d.clientInstanceId}>
-                        {d.client}
-                        <small className="hash-text">{d.origin}</small>
-                      </td>
-                      <td>{date(d.lastCheckedAt)}</td>
-                      <td>{date(d.completedAt)}</td>
-                      <td>{d.lastError || "—"}</td>
+                      {columns.cells([
+                        <td>
+                          <Link to={`/catalog/${d.eplId}`}>{d.eplId}</Link>
+                        </td>,
+                        <td className="catalog-title-cell">
+                          <DownloadBook book={d} />
+                        </td>,
+                        <td className="hash-text">{d.hash}</td>,
+                        <td>{number(d.revision)}</td>,
+                        <td>
+                          <span className="badge">{status(d.status)}</span>
+                        </td>,
+                        <td title={d.clientInstanceId}>
+                          {d.client}
+                          <small className="hash-text">{d.origin}</small>
+                        </td>,
+                        <td>{date(d.lastCheckedAt)}</td>,
+                        <td>{date(d.completedAt)}</td>,
+                        <td>{d.lastError || "—"}</td>,
+                      ])}
                     </tr>
                   ))}
                 </tbody>

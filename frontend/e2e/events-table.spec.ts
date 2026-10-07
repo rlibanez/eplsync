@@ -1,3 +1,4 @@
+import { checkTableControls } from "./table-controls";
 import { test, expect, operationResponse } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
@@ -128,4 +129,15 @@ test("event cell filters its action without leaving events and clears with other
   ).toHaveValue("Actualización del catálogo");
   await page.getByRole("button", { name: "Limpiar", exact: true }).click();
   await expect(page.locator(".events-table tbody tr")).toHaveCount(3);
+});
+
+test("event table supports criteria and configurable columns", async ({
+  page,
+}) => {
+  await checkTableControls(
+    page,
+    "finishedAt",
+    "Fin",
+    page.locator(".events-panel"),
+  );
 });

@@ -1,3 +1,5 @@
+import { DownloadBook, useDownloadColumns } from "./DownloadTable";
+import { ordering } from "./TableControls";
 import { LinkTorrent } from "./LinkTorrent";
 import { useEffect, useRef, useState } from "react";
 import { defaultSyncView, useSyncSession } from "./useSyncSession";
@@ -12,6 +14,8 @@ export interface SyncItem {
   eplId: number;
   title: string | null;
   hash: string;
+  coverUrl?: string | null;
+  coverAvailable?: boolean | null;
   action: "CREATE" | "UPDATE" | "UNCHANGED";
   previousStatus: string | null;
   resultingStatus: string;
@@ -74,23 +78,104 @@ export function SyncReport({
   };
   const setPage = (page: number) => setView({ page });
   const setSize = (size: number) => setView({ size });
-  const needle = search.trim().toLocaleLowerCase();
-  const items = report.items.filter(
-    (item) =>
-      (action === "ALL" ||
-        (action === "CHANGED"
-          ? item.action !== "UNCHANGED"
-          : item.action === action)) &&
-      (outcome === "ALL" ||
-        (outcome === "notFound"
-          ? item.resultingStatus === "NOT_FOUND"
-          : item[outcome as "newlyCompleted" | "newlyNotFound"])) &&
-      `${item.title || ""} ${item.eplId} ${item.hash}`
-        .toLocaleLowerCase()
-        .includes(needle),
+  const bookColumns = useDownloadColumns(
+    "eplsync.sync.books.columns",
+    [
+      { field: "eplId", label: "filters.eplId", width: 100 },
+      { field: "title", label: "downloads.book", width: 360 },
+      { field: "hash", label: "downloads.hash", width: 360 },
+      { field: "action", label: "syncReport.action", width: 150 },
+      { field: "previousStatus", label: "syncReport.previous", width: 180 },
+      { field: "resultingStatus", label: "syncReport.result", width: 180 },
+      { field: "changes", label: "syncReport.changes", width: 300 },
+    ],
+    view.bookSort,
+    (value) => setView({ bookSort: value, page: 0 }),
+    { defaults: "eplId,asc" },
   );
-  const ignored = report.ignoredTorrents.filter((item) =>
-    `${item.name || ""} ${item.hash}`.toLocaleLowerCase().includes(needle),
+  const ignoredColumns = useDownloadColumns(
+    "eplsync.sync.ignored.columns",
+    [
+      { field: "name", label: "syncReport.name", width: 360 },
+      { field: "hash", label: "downloads.hash", width: 360 },
+      { field: "reason", label: "syncReport.reason", width: 260 },
+      {
+        field: "actions",
+        label: "torrentLink.actions",
+        width: 170,
+        sortable: false,
+      },
+    ],
+    view.ignoredSort,
+    (value) => setView({ ignoredSort: value, page: 0 }),
+    { defaults: "name,asc" },
+  );
+  const columns = tab === "books" ? bookColumns : ignoredColumns;
+  function sorted<T>(
+    rows: T[],
+    sort: string,
+    value: (row: T, field: string) => string | number | null | undefined,
+  ) {
+    const collator = new Intl.Collator(undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    return [...rows].sort((left, right) => {
+      for (const criterion of ordering(sort)) {
+        const [field, direction] = criterion.split(",");
+        const a = value(left, field),
+          b = value(right, field);
+        const comparison =
+          typeof a === "number" && typeof b === "number"
+            ? a - b
+            : collator.compare(String(a ?? ""), String(b ?? ""));
+        if (comparison) return direction === "desc" ? -comparison : comparison;
+      }
+      return 0;
+    });
+  }
+  const needle = search.trim().toLocaleLowerCase();
+  const items = sorted(
+    report.items.filter(
+      (item) =>
+        (action === "ALL" ||
+          (action === "CHANGED"
+            ? item.action !== "UNCHANGED"
+            : item.action === action)) &&
+        (outcome === "ALL" ||
+          (outcome === "notFound"
+            ? item.resultingStatus === "NOT_FOUND"
+            : item[outcome as "newlyCompleted" | "newlyNotFound"])) &&
+        `${item.title || ""} ${item.eplId} ${item.hash}`
+          .toLocaleLowerCase()
+          .includes(needle),
+    ),
+    view.bookSort,
+    (item, field) => {
+      if (field === "action") return t(`syncReport.actions.${item.action}`);
+      if (field === "previousStatus")
+        return item.previousStatus ? status(item.previousStatus) : null;
+      if (field === "resultingStatus") return status(item.resultingStatus);
+      if (field === "changes")
+        return item.changedFields
+          .map((field) => t(`syncReport.fields.${field}`))
+          .join(", ");
+      return item[field as "title" | "eplId" | "hash"];
+    },
+  );
+  const ignored = sorted(
+    report.ignoredTorrents.filter((item) =>
+      `${item.name || ""} ${item.hash}`.toLocaleLowerCase().includes(needle),
+    ),
+    view.ignoredSort,
+    (item, field) =>
+      field === "reason"
+        ? item.linked
+          ? t("torrentLink.linked")
+          : t(`syncReport.reasons.${item.reason}`, {
+              defaultValue: item.reason,
+            })
+        : item[field as "name" | "hash"],
   );
   const total = tab === "books" ? items.length : ignored.length;
   const totalPages = Math.ceil(total / size);
@@ -251,91 +336,90 @@ export function SyncReport({
               {t("catalog.clear")}
             </Button>
           </div>
+          <div className="table-toolbar">
+            <div className="catalog-table-controls">{columns.controls}</div>
+          </div>
           <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  {(tab === "books"
-                    ? ["book", "action", "previous", "result", "changes"]
-                    : ["name", "hash", "reason"]
-                  ).map((key) => (
-                    <th key={key}>{t(`syncReport.${key}`)}</th>
-                  ))}
-                  {tab === "ignored" && <th>{t("torrentLink.actions")}</th>}
-                </tr>
-              </thead>
+            <table
+              className="download-record-table"
+              style={{ width: columns.width }}
+            >
+              {columns.colgroup}
+              <thead>{columns.headings}</thead>
               <tbody>
                 {tab === "books"
                   ? items.slice(start, start + size).map((item) => (
                       <tr key={`${item.eplId}:${item.hash}`}>
-                        <td>
-                          <Link
-                            className="book-title"
-                            to={`/catalog/${item.eplId}`}
-                          >
-                            {item.title || `EPL ${item.eplId}`}
-                          </Link>
-                          <small className="hash-text">
-                            EPL {item.eplId} · {item.hash}
-                          </small>
-                        </td>
-                        <td>{t(`syncReport.actions.${item.action}`)}</td>
-                        <td>
-                          {item.previousStatus
-                            ? status(item.previousStatus)
-                            : "—"}
-                        </td>
-                        <td>{status(item.resultingStatus)}</td>
-                        <td>
-                          {item.changedFields
-                            .map((field) => t(`syncReport.fields.${field}`))
-                            .join(", ")}
-                          {!item.changedFields.length &&
-                            !item.newlyCompleted &&
-                            !item.newlyNotFound &&
-                            "—"}
-                          {item.newlyCompleted && (
-                            <div>
-                              {t("syncReport.completionDetected")}:{" "}
-                              {date(item.resultingCompletedAt)}
-                            </div>
-                          )}
-                          {item.newlyNotFound && (
-                            <div>{t("syncReport.counts.newlyNotFound")}</div>
-                          )}
-                          {item.changedFields.includes("lastError") && (
-                            <div>
-                              {item.previousError || "—"} →{" "}
-                              {item.resultingError || "—"}
-                            </div>
-                          )}
-                        </td>
+                        {bookColumns.cells([
+                          <td>
+                            <Link to={`/catalog/${item.eplId}`}>
+                              {item.eplId}
+                            </Link>
+                          </td>,
+                          <td>
+                            <DownloadBook book={item} />
+                          </td>,
+                          <td className="hash-text">{item.hash}</td>,
+                          <td>{t(`syncReport.actions.${item.action}`)}</td>,
+                          <td>
+                            {item.previousStatus
+                              ? status(item.previousStatus)
+                              : "—"}
+                          </td>,
+                          <td>{status(item.resultingStatus)}</td>,
+                          <td>
+                            {item.changedFields
+                              .map((field) => t(`syncReport.fields.${field}`))
+                              .join(", ")}
+                            {!item.changedFields.length &&
+                              !item.newlyCompleted &&
+                              !item.newlyNotFound &&
+                              "—"}
+                            {item.newlyCompleted && (
+                              <div>
+                                {t("syncReport.completionDetected")}:{" "}
+                                {date(item.resultingCompletedAt)}
+                              </div>
+                            )}
+                            {item.newlyNotFound && (
+                              <div>{t("syncReport.counts.newlyNotFound")}</div>
+                            )}
+                            {item.changedFields.includes("lastError") && (
+                              <div>
+                                {item.previousError || "—"} →{" "}
+                                {item.resultingError || "—"}
+                              </div>
+                            )}
+                          </td>,
+                        ])}
                       </tr>
                     ))
                   : ignored.slice(start, start + size).map((item) => (
                       <tr key={item.hash}>
-                        <td>{item.name || "—"}</td>
-                        <td className="sync-hash">{item.hash}</td>
-                        <td>
-                          {item.linked
-                            ? t("torrentLink.linked")
-                            : t(`syncReport.reasons.${item.reason}`, {
-                                defaultValue: item.reason,
-                              })}
-                        </td>
-                        <td>
-                          <Button
-                            variant="light"
-                            disabled={item.linked}
-                            onClick={() => setLinking(item)}
-                          >
-                            {t(
-                              item.linked
-                                ? "torrentLink.linked"
-                                : "torrentLink.link",
-                            )}
-                          </Button>
-                        </td>
+                        {ignoredColumns.cells([
+                          <td>{item.name || "—"}</td>,
+                          <td className="sync-hash">{item.hash}</td>,
+                          <td>
+                            {item.linked
+                              ? t("torrentLink.linked")
+                              : t(`syncReport.reasons.${item.reason}`, {
+                                  defaultValue: item.reason,
+                                })}
+                          </td>,
+                          <td>
+                            <Button
+                              variant="light"
+                              disabled={item.linked}
+                              onClick={() => setLinking(item)}
+                            >
+                              {t(
+                                item.linked
+                                  ? "torrentLink.linked"
+                                  : "torrentLink.link",
+                              )}
+                            </Button>
+                          </td>,
+                        ])}
                       </tr>
                     ))}
               </tbody>

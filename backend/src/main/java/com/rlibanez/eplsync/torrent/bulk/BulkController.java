@@ -21,8 +21,7 @@ public class BulkController {
         var allowed = java.util.Set.of("page", "size", "status", "sort");
         if (!allowed.containsAll(request.getParameterMap().keySet()))
             throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size, status y sort");
-        for (var values : request.getParameterMap().values())
-            if (values.length != 1 || values[0].isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro vacío o repetido");
+        com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
         java.util.List<BulkJob.State> states = null;
         if (status != null) {
             try {
@@ -32,6 +31,7 @@ public class BulkController {
                 throw new com.rlibanez.eplsync.exception.UserInputException("status debe contener estados de job válidos separados por comas");
             }
         }
+        sort = com.rlibanez.eplsync.config.TableOrdering.request(request, "createdAt,desc");
         synchronized (store) { return store.list(page, size, states, sort); }
     }
 
@@ -46,8 +46,7 @@ public class BulkController {
             @RequestParam(defaultValue = "position,asc") String sort, @RequestParam(required = false) String status, jakarta.servlet.http.HttpServletRequest request) {
         if (!java.util.Set.of("page", "size", "status", "sort").containsAll(request.getParameterMap().keySet()))
             throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size, status y sort");
-        for (var values : request.getParameterMap().values())
-            if (values.length != 1 || values[0].isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro vacío o repetido");
+        com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
         java.util.List<BulkItem.State> states = null;
         if (status != null) {
             try {
@@ -57,6 +56,7 @@ public class BulkController {
                 throw new com.rlibanez.eplsync.exception.UserInputException("status debe contener estados de elemento válidos separados por comas");
             }
         }
+        sort = com.rlibanez.eplsync.config.TableOrdering.request(request, "position,asc");
         synchronized (store) { return store.details(id, page, size, states, sort); }
     }
 

@@ -114,6 +114,16 @@ class EventJournalTests {
         assertThat(journal.search(all, 0, 20).items().getFirst().actor()).isEqualTo(EventContext.Actor.unknown());
     }
 
+    @Test void groupedOperationsApplyMultipleCriteriaBeforePagination() {
+        at("short",Outcome.STARTED,"16:00:00");at("short",Outcome.SUCCEEDED,"16:01:00");
+        at("long",Outcome.STARTED,"16:02:00");at("long",Outcome.SUCCEEDED,"16:05:00");
+        var page=operations.search(all,0,1,null,null,"outcome,asc;duration,desc");
+        assertThat(page.items().getFirst().latest().operationId()).isEqualTo("long");
+        assertThat(operations.search(all,1,1,page.cursor(),null,"outcome,asc;duration,desc").items().getFirst().latest().operationId()).isEqualTo("short");
+        assertThatThrownBy(() -> operations.search(all,0,20,null,null,"duration,asc;duration,desc"))
+            .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+    }
+
     @Test void groupedOperationsSortByStartAndFreezeBothResultsAndPagination() {
         at("catalog1", Outcome.STARTED, "16:11:00");
         at("catalog1", Outcome.SUCCEEDED, "16:12:15");

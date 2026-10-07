@@ -1,12 +1,13 @@
 import { useUpdateSession } from "./useUpdateSession";
 import { BookCover } from "../catalog/BookCover";
-import { useUpdateColumns } from "./UpdateColumns";
+import { useDownloadColumns } from "./DownloadTable";
+import { sortQuery } from "./TableControls";
 import { useEffect, useState } from "react";
 import { Button, Checkbox, Select } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useAuth } from "../auth/Auth";
 import { get } from "../../api/catalog";
 import { useLocale } from "../../locales/useLocale";
@@ -31,7 +32,6 @@ export function RevisionUpdates() {
   const { status, number, date } = useLocale();
   const auth = useAuth();
   const cache = useQueryClient();
-  const columns = useUpdateColumns(auth.can("TORRENT_SEND"));
   const [opened, setOpened] = useState(false);
   const [options, setOptions] = useState<string[]>([]);
   const session = useUpdateSession();
@@ -60,7 +60,7 @@ export function RevisionUpdates() {
     ],
     queryFn: () =>
       post<Page<Update>>(
-        `/torrent/revision-updates/search?page=${page}&size=${size}&sort=${encodeURIComponent(sort)}${registeredStatus ? `&status=${registeredStatus}` : ""}`,
+        `/torrent/revision-updates/search?page=${page}&size=${size}&${sortQuery(sort)}${registeredStatus ? `&status=${registeredStatus}` : ""}`,
         { states: search!.states },
       ),
     enabled: search !== null,
@@ -82,26 +82,17 @@ export function RevisionUpdates() {
     mutationKey: ["torrent-sync"],
     mutationFn: () =>
       post<Page<Update>>(
-        `/torrent/revision-updates/search?synchronize=true&page=0&size=${size}&sort=title,asc`,
+        `/torrent/revision-updates/search?synchronize=true&page=0&size=${size}&${sortQuery(sort)}`,
         { states: options },
       ),
     retry: false,
     onSuccess: (data) => {
       const generation = Date.now();
       cache.setQueryData(
-        [
-          "revision-updates",
-          auth.user?.id,
-          generation,
-          0,
-          size,
-          "title,asc",
-          null,
-        ],
+        ["revision-updates", auth.user?.id, generation, 0, size, sort, null],
         data,
       );
       setPage(0);
-      setSort("title,asc");
       setRegisteredStatus(null);
       setSelected([]);
       session.setView({ search: { states: [...options], generation } });
@@ -120,6 +111,31 @@ export function RevisionUpdates() {
         : old.filter((value) => value !== id),
     );
   }
+  const columns = useDownloadColumns(
+    "eplsync.updates.columnWidths.v3",
+    [
+      { field: "eplId", label: "revisionUpdates.eplId", width: 100 },
+      { field: "title", label: "revisionUpdates.title", width: 360 },
+      {
+        field: "registeredRevision",
+        label: "revisionUpdates.registeredRevision",
+        width: 190,
+      },
+      {
+        field: "availableRevision",
+        label: "revisionUpdates.availableRevision",
+        width: 190,
+      },
+      { field: "status", label: "revisionUpdates.status", width: 200 },
+    ],
+    sort,
+    (value) => {
+      setSort(value);
+      setPage(0);
+      setSelected([]);
+    },
+    { defaults: "title,asc", selection: auth.can("TORRENT_SEND") },
+  );
   const rows = result.data?.items ?? [];
   const allChecked =
     rows.length > 0 && rows.every((row) => selected.includes(row.eplId));
@@ -177,27 +193,37 @@ export function RevisionUpdates() {
       </div>
       {search && (
         <section className="panel">
+          <div className="table-toolbar">
+            <span>
+              {t("revisionUpdates.count", {
+                count: result.data?.meta.totalItems ?? 0,
+              })}
+            </span>
+            <div className="catalog-table-controls">{columns.controls}</div>
+          </div>
           {result.isFetching ? (
             <Loading />
           ) : result.isError ? (
             <Failure error={result.error} retry={() => result.refetch()} />
           ) : (
             <>
-              <div className="table-toolbar">
-                <span>
-                  {t("revisionUpdates.count", {
-                    count: result.data?.meta.totalItems ?? 0,
-                  })}
-                </span>
-                {auth.can("TORRENT_SEND") && (
-                  <Button
-                    disabled={!selected.length}
-                    onClick={() => setSending(true)}
-                  >
-                    {t("revisionUpdates.send", { count: selected.length })}
-                  </Button>
-                )}
-              </div>
+              {auth.can("TORRENT_SEND") && selected.length > 0 && (
+                <div className="catalog-selection-bar has-selection">
+                  <div className="catalog-selection-info">
+                    <span
+                      className="catalog-selection-count"
+                      aria-live="polite"
+                    >
+                      {t("selection.selected", { count: selected.length })}
+                    </span>
+                  </div>
+                  <div className="catalog-selection-actions">
+                    <Button onClick={() => setSending(true)}>
+                      {t("revisionUpdates.send", { count: selected.length })}
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="table-scroll">
                 <table
                   className="updates-table"
@@ -205,8 +231,8 @@ export function RevisionUpdates() {
                 >
                   {columns.colgroup}
                   <thead>
-                    <tr>
-                      {auth.can("TORRENT_SEND") && (
+                    {columns.selectionHeadings(
+                      auth.can("TORRENT_SEND") && (
                         <th className="updates-selection">
                           <Checkbox
                             aria-label={t("selection.page")}
@@ -221,49 +247,10 @@ export function RevisionUpdates() {
                             }}
                           />
                         </th>
-                      )}
-                      {[
-                        "eplId",
-                        "title",
-                        "registeredRevision",
-                        "availableRevision",
-                        "status",
-                      ].map((field) => (
-                        <th
-                          key={field}
-                          scope="col"
-                          data-update-column={field}
-                          aria-sort={
-                            sort.startsWith(`${field},`)
-                              ? sort.endsWith(",asc")
-                                ? "ascending"
-                                : "descending"
-                              : undefined
-                          }
-                        >
-                          <button
-                            className="catalog-sort-heading"
-                            type="button"
-                            onClick={() => {
-                              setSort(
-                                `${field},${sort === `${field},asc` ? "desc" : "asc"}`,
-                              );
-                              setPage(0);
-                            }}
-                          >
-                            {t(`revisionUpdates.${field}`)}
-                            {sort.startsWith(`${field},`) &&
-                              (sort.endsWith(",asc") ? (
-                                <ArrowUp size={14} aria-hidden="true" />
-                              ) : (
-                                <ArrowDown size={14} aria-hidden="true" />
-                              ))}
-                          </button>
-                          {columns.resizer(field)}
-                        </th>
-                      ))}
-                    </tr>
+                      ),
+                    )}
                   </thead>
+
                   <tbody>
                     {rows.map((row) => (
                       <tr key={row.eplId}>
@@ -278,21 +265,25 @@ export function RevisionUpdates() {
                             />
                           </td>
                         )}
-                        <td>
-                          <Link to={`/catalog/${row.eplId}`}>{row.eplId}</Link>
-                        </td>
-                        <td className="catalog-title-cell">
-                          <Link
-                            className="book-title"
-                            to={`/catalog/${row.eplId}`}
-                          >
-                            <BookCover book={row} />
-                            <span>{row.title}</span>
-                          </Link>
-                        </td>
-                        <td>{number(row.registeredRevision)}</td>
-                        <td>{number(row.availableRevision)}</td>
-                        <td>{status(row.status)}</td>
+                        {columns.cells([
+                          <td>
+                            <Link to={`/catalog/${row.eplId}`}>
+                              {row.eplId}
+                            </Link>
+                          </td>,
+                          <td className="catalog-title-cell">
+                            <Link
+                              className="book-title"
+                              to={`/catalog/${row.eplId}`}
+                            >
+                              <BookCover book={row} />
+                              <span>{row.title}</span>
+                            </Link>
+                          </td>,
+                          <td>{number(row.registeredRevision)}</td>,
+                          <td>{number(row.availableRevision)}</td>,
+                          <td>{status(row.status)}</td>,
+                        ])}
                       </tr>
                     ))}
                   </tbody>

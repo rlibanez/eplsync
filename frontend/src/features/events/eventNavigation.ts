@@ -8,6 +8,7 @@ export interface EventNavigation {
   from: string;
   to: string;
   page: number;
+  sort: string;
   scroll: number;
   expanded: string[];
 }
@@ -20,6 +21,7 @@ const defaults: EventNavigation = {
   from: "",
   to: "",
   page: 0,
+  sort: "startedAt,desc",
   scroll: 0,
   expanded: [],
 };

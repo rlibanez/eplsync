@@ -319,37 +319,34 @@ public class BulkStore {
     public PageResponse<View> list(int page, int size, List<BulkJob.State> states, String sort) {
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
         var fields=Map.of("jobId","id","status","state","type","type","selectedBooks","selectedBooks","createdAt","createdAt");
-        var parts=sort==null ? new String[0] : sort.split(",",-1);
-        if(parts.length!=2 || !(fields.containsKey(parts[0]) || Set.of("progress","accepted","failed").contains(parts[0]))
-            || !(parts[1].equalsIgnoreCase("asc") || parts[1].equalsIgnoreCase("desc")))
-            throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación de trabajos inválida");
+        var allowed = new HashSet<>(fields.keySet()); allowed.addAll(Set.of("progress", "accepted", "failed"));
+        var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, allowed);
         org.springframework.data.domain.Page<BulkJob> result;
-        if(fields.containsKey(parts[0])) {
-            var orders=new ArrayList<Sort.Order>();
-            var property=fields.get(parts[0]);
-            orders.add(new Sort.Order(Sort.Direction.fromString(parts[1]),property));
-            if(!property.equals("createdAt")) orders.add(Sort.Order.desc("createdAt"));
-            if(!property.equals("id")) orders.add(Sort.Order.desc("id"));
-            var pageable=PageRequest.of(page,size,Sort.by(orders));
-            result=states==null ? jobs.findAll(pageable) : jobs.findByStateIn(states,pageable);
+        if (criteria.stream().allMatch(order -> fields.containsKey(order.getProperty()))) {
+            var orders = new ArrayList<Sort.Order>();
+            criteria.forEach(order -> orders.add(new Sort.Order(order.getDirection(), fields.get(order.getProperty()))));
+            if (orders.stream().noneMatch(order -> order.getProperty().equals("createdAt"))) orders.add(Sort.Order.desc("createdAt"));
+            if (orders.stream().noneMatch(order -> order.getProperty().equals("id"))) orders.add(Sort.Order.desc("id"));
+            var pageable = PageRequest.of(page, size, Sort.by(orders));
+            result = states == null ? jobs.findAll(pageable) : jobs.findByStateIn(states, pageable);
         } else {
-            // Aggregate and sort in SQLite before limiting the page, never load all jobs into Java.
-            String processed="SUM(CASE WHEN i.state IN ('ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED') THEN 1 ELSE 0 END)";
-            String expression=switch(parts[0]) {
-                case "progress" -> "CASE WHEN COUNT(i.id)=0 THEN 0 ELSE 1.0*"+processed+"/COUNT(i.id) END";
-                case "accepted" -> "SUM(CASE WHEN i.state='ACCEPTED' THEN 1 ELSE 0 END)";
-                default -> "SUM(CASE WHEN i.state='FAILED' THEN 1 ELSE 0 END)";
-            };
-            String where=states==null ? "" : " WHERE j.state IN ("+String.join(",",Collections.nCopies(states.size(),"?"))+")";
-            var query=em.createNativeQuery("SELECT j.id FROM torrent_bulk_jobs j LEFT JOIN torrent_bulk_items i ON i.job_id=j.id"
-                +where+" GROUP BY j.id ORDER BY "+expression+" "+parts[1].toUpperCase(Locale.ROOT)+",j.created_at DESC,j.id DESC");
-            if(states!=null) for(int index=0;index<states.size();index++) query.setParameter(index+1,states.get(index).name());
-            query.setFirstResult(Math.toIntExact((long)page*size));query.setMaxResults(size);
-            List<?> ids=query.getResultList();
-            var records=new HashMap<String,BulkJob>();
+            // Aggregate and order in SQLite before pagination, including secondary criteria.
+            String processed = "SUM(CASE WHEN i.state IN ('ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED') THEN 1 ELSE 0 END)";
+            var expressions = Map.of("jobId", "j.id", "status", "j.state", "type", "j.type", "selectedBooks", "j.selected_books", "createdAt", "j.created_at",
+                "progress", "CASE WHEN COUNT(i.id)=0 THEN 0 ELSE 1.0*"+processed+"/COUNT(i.id) END",
+                "accepted", "SUM(CASE WHEN i.state='ACCEPTED' THEN 1 ELSE 0 END)", "failed", "SUM(CASE WHEN i.state='FAILED' THEN 1 ELSE 0 END)");
+            String orderBy = criteria.stream().map(order -> expressions.get(order.getProperty())+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","));
+            if (criteria.stream().noneMatch(order -> order.getProperty().equals("createdAt"))) orderBy += ",j.created_at DESC";
+            if (criteria.stream().noneMatch(order -> order.getProperty().equals("jobId"))) orderBy += ",j.id DESC";
+            String where = states == null ? "" : " WHERE j.state IN ("+String.join(",",Collections.nCopies(states.size(),"?"))+")";
+            var query = em.createNativeQuery("SELECT j.id FROM torrent_bulk_jobs j LEFT JOIN torrent_bulk_items i ON i.job_id=j.id"+where+" GROUP BY j.id ORDER BY "+orderBy);
+            if (states != null) for (int index=0;index<states.size();index++) query.setParameter(index+1,states.get(index).name());
+            query.setFirstResult(Math.toIntExact((long)page*size)); query.setMaxResults(size);
+            List<?> ids = query.getResultList();
+            var records = new HashMap<String,BulkJob>();
             jobs.findAllById(ids.stream().map(Object::toString).toList()).forEach(job -> records.put(job.getId(),job));
-            var selected=ids.stream().map(id -> records.get(id.toString())).toList();
-            result=new org.springframework.data.domain.PageImpl<>(selected,PageRequest.of(page,size),states==null ? jobs.count() : jobs.countByStateIn(states));
+            var selected = ids.stream().map(id -> records.get(id.toString())).toList();
+            result = new org.springframework.data.domain.PageImpl<>(selected,PageRequest.of(page,size),states==null ? jobs.count() : jobs.countByStateIn(states));
         }
         return new PageResponse<>(result.getContent().stream().map(this::view).toList(),
                 new PageResponse.PageMeta(page, size, result.getTotalElements(), result.getTotalPages(),
@@ -370,11 +367,10 @@ public class BulkStore {
     public PageResponse<ItemView> details(String id, int page, int size, List<BulkItem.State> states, String sort) {
         job(id);
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
-        var parts = sort.split(",", -1);
-        if (parts.length != 2 || !Set.of("position", "title", "eplId", "revision", "hash", "status", "attempts", "message").contains(parts[0]) || !Set.of("asc", "desc").contains(parts[1]))
-            throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación de elementos inválida");
-        var field = parts[0].equals("title") ? "catalogBook.title" : parts[0].equals("status") ? "state" : parts[0];
-        var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.fromString(parts[1]), field).and(Sort.by("position")));
+        var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, Set.of("position", "title", "eplId", "revision", "hash", "status", "attempts", "message"));
+        var orders = criteria.stream().map(order -> new Sort.Order(order.getDirection(), order.getProperty().equals("title") ? "catalogBook.title" : order.getProperty().equals("status") ? "state" : order.getProperty())).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        if (orders.stream().noneMatch(order -> order.getProperty().equals("position"))) orders.add(Sort.Order.asc("position"));
+        var pageable = PageRequest.of(page, size, Sort.by(orders));
         var result = states == null ? items.findByJobId(id, pageable)
                 : items.findByJobIdAndStateIn(id, states, pageable);
         var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(em, result.getContent().stream().map(BulkItem::getEplId).toList());

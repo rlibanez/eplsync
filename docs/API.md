@@ -758,7 +758,7 @@ Se ordenan por creación descendente, con desempate por ID. Véase la sección d
 | --- | --- |
 | `page` | `0`. |
 | `size` | `50`. |
-| `sort` | `position,asc`; campos: `position`, `title`, `eplId`, `revision`, `hash`, `status`, `attempts`, `message`. Dirección: `asc` o `desc`. |
+| `sort` | Repetible, hasta 8 criterios por prioridad; predeterminado: `position,asc`; campos: `position`, `title`, `eplId`, `revision`, `hash`, `status`, `attempts`, `message`. Dirección: `asc` o `desc`. |
 | `status` | Uno o varios estados separados por comas; omitido: todos. |
 
 ```text
@@ -1690,7 +1690,8 @@ desempate estable. La ordenación se aplica antes de paginar; no admite filtros.
 ### Ordenación del listado de trabajos
 
 `GET /api/torrent/jobs` admite `sort=campo,asc|desc`, además de `page`, `size` y
-`status`. Los campos permitidos son `jobId`, `status`, `progress`, `selectedBooks`,
+`status`. Puede repetirse para indicar hasta 8 criterios por prioridad; por ejemplo,
+`sort=status,asc&sort=progress,desc`. Los campos permitidos son `jobId`, `type`, `status`, `progress`, `selectedBooks`,
 `accepted`, `failed` y `createdAt`. El orden predeterminado sigue siendo
 `createdAt,desc`.
 
@@ -1717,7 +1718,7 @@ Los apartados de portadas se encuentran en `/settings/catalog`;
 
 `POST /api/torrent/revision-updates/search` requiere `CATALOG_READ` y
 `DOWNLOADS_READ`, y protección CSRF. Cuerpo: `{"states":["DOWNLOADED","NOT_FOUND"]}`.
-Parámetros: `page=0`, `size=20` (máximo 1000), `sort=title,asc` y
+Parámetros: `page=0`, `size=20` (máximo 1000), `sort=title,asc` (repetible, hasta 8 criterios por prioridad) y
 `synchronize=false` y `status` opcional (estado registrado). El filtro `status`
 se aplica a las filas resultantes antes de paginar; no cambia los estados que
 determinan la revisión de referencia. `synchronize=true` requiere además `TORRENT_SYNC`:
@@ -1807,3 +1808,33 @@ La vista conserva la última búsqueda, filtro, ordenación, tamaño y página e
 memoria durante la sesión. Volver a ella no sincroniza ni repite consultas
 automáticamente; muestra la fecha de la última búsqueda. El título reutiliza
 la portada del catálogo y su mismo componente visual.
+
+### Controles de tablas de Descargas
+
+Estado, Actualizaciones, Trabajos y los elementos de un trabajo comparten los
+controles «Ordenar» y «Columnas» con el estilo de Catálogo. «Ordenar» permite
+añadir, quitar y reordenar criterios; Mayús + clic en una cabecera añade un
+criterio. La ordenación se aplica en el servidor antes de paginar.
+
+«Columnas» permite mostrar u ocultar campos, cambiar su orden mediante arrastre
+o flechas y restaurar la distribución predeterminada. Los anchos, el orden y
+la visibilidad se guardan por tabla en este navegador. Siempre queda al menos
+una columna visible; la columna de selección de Actualizaciones permanece fija.
+«Enviar actualizaciones» aparece junto al contador cuando hay libros seleccionados.
+
+Los mismos controles están disponibles en Eventos, Historial asociado y las
+listas de libros y torrents ignorados del informe de sincronización. En este
+informe se ordena el conjunto filtrado en memoria antes de paginar, sin repetir
+la sincronización. Libros separa EPL ID, título con portada y hash. Los campos
+Resumen de Eventos y Acciones de torrents ignorados no son criterios de ordenación.
+
+`GET /api/events/operations` acepta `sort` repetido (máximo 8 criterios) con
+campos `startedAt`, `finishedAt`, `duration`, `category`, `event`, `outcome`,
+`origin` y `user`. Predeterminado: `startedAt,desc`; conserva el snapshot y añade
+el identificador inicial como desempate. Los filtros y la visibilidad de los
+eventos de seguridad se mantienen. El historial de un libro también acepta
+`sort` repetido; mantiene `revision,desc` por defecto.
+
+Cuando la sincronización incluye detalles, cada libro incorpora `coverUrl` y
+`coverAvailable` del catálogo. No se descargan ni almacenan las imágenes;
+se presentan mediante el mismo componente de portada que las demás tablas.
