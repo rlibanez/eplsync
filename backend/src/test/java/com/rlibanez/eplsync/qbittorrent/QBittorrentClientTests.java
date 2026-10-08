@@ -37,6 +37,9 @@ class QBittorrentClientTests {
     private final CopyOnWriteArrayList<Call> calls = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> torrentQueries = new CopyOnWriteArrayList<>();
     private volatile String torrentInfo = "[]";
+    private volatile int generatedTorrents;
+    private volatile boolean chunked;
+    private volatile long bodyDelay;
     private volatile String categories = "{\"Libros\":{},\"Personal\":{}}";
     private volatile int addStatus = 200;
     private volatile String addBody = "{\"success_count\":1,\"failure_count\":0,\"pending_count\":0}";
@@ -51,6 +54,36 @@ class QBittorrentClientTests {
     private volatile long delay;
 
     record Call(String method, String path, String authorization, String cookie, String body, String origin) {}
+
+    @Test void boundsChunkedBytesAndTorrentCountAndRejectsTruncatedSnapshots() {
+        chunked=true;
+        properties.setMaxResponseSize(org.springframework.util.unit.DataSize.ofKilobytes(1));
+        torrentInfo="[{\"hash\":\""+"A".repeat(40)+"\",\"name\":\""+"x".repeat(2000)+"\"}]";
+        var qbit=client();
+        assertThatThrownBy(qbit::listTorrents).isInstanceOfSatisfying(QBittorrentConnectionException.class,
+            ex -> assertThat(ex.getReason()).isEqualTo(RESPONSE_TOO_LARGE));
+        properties.setMaxResponseSize(org.springframework.util.unit.DataSize.ofMegabytes(256));
+        properties.setMaxRemoteTorrents(1);generatedTorrents=2;
+        assertThatThrownBy(qbit::listTorrents).isInstanceOfSatisfying(QBittorrentConnectionException.class,
+            ex -> assertThat(ex.getReason()).isEqualTo(RESPONSE_TOO_LARGE));
+        generatedTorrents=0;torrentInfo="[";
+        assertThatThrownBy(qbit::listTorrents).isInstanceOf(QBittorrentConnectionException.class);
+    }
+    @Test void timeoutCoversBodyReceptionAfterHeaders() {
+        var qbit=client();qbit.checkConnection();
+        properties.setRequestTimeout(Duration.ofMillis(100));bodyDelay=1000;
+        assertThatThrownBy(qbit::listTorrents).isInstanceOfSatisfying(QBittorrentConnectionException.class,
+            ex -> assertThat(ex.getReason()).isEqualTo(TIMEOUT));
+    }
+    @Test void streamsOneHundredThousandTorrentsWithLongNamesAndPaths() {
+        generatedTorrents=100000;
+        properties.setRequestTimeout(Duration.ofSeconds(30));
+        long start=System.nanoTime();
+        var snapshot=client().listTorrents();
+        assertThat(snapshot).hasSize(100000);
+        assertThat(snapshot.getLast().contentPath()).hasSize(1016);
+        System.out.println("100000 torrents streamed (~214 MiB): "+Duration.ofNanos(System.nanoTime()-start).toMillis()+" ms");
+    }
 
     @Test void deletionUsesRemoteIdAndExplicitFilePolicy() {
         var qbit = client();
@@ -206,7 +239,26 @@ class QBittorrentClientTests {
                 } else if (rejectSession || call.cookie() == null || !call.cookie().contains(cookieName + "=" + cookieValue)) {
                     respond(exchange, 403, "Forbidden"); return;
                 }
-                if (call.path().endsWith("/torrents/info")) { torrentQueries.add(String.valueOf(exchange.getRequestURI().getRawQuery())); respond(exchange, 200, torrentInfo); }
+                if (call.path().endsWith("/torrents/info")) { torrentQueries.add(String.valueOf(exchange.getRequestURI().getRawQuery()));
+                    if (generatedTorrents > 0) {
+                        exchange.sendResponseHeaders(200,0);
+                        try (var output=exchange.getResponseBody()) {
+                            output.write('[');
+                            String padding="x".repeat(1000);
+                            for(int i=0;i<generatedTorrents;i++) {
+                                if(i>0) output.write(',');
+                                String item="{\"hash\":\""+String.format("%040X",i+1)+"\",\"state\":\"stoppedUP\",\"progress\":1,\"amount_left\":0,\"name\":\""+padding+"\",\"content_path\":\"/downloads/"+padding+".epub\"}";
+                                output.write(item.getBytes(StandardCharsets.UTF_8));
+                            }
+                            output.write(']');
+                        }
+                    } else if(chunked || bodyDelay>0) {
+                        exchange.sendResponseHeaders(200,0);
+                        try(var output=exchange.getResponseBody()) {
+                            if(bodyDelay>0) try {Thread.sleep(bodyDelay);} catch(InterruptedException ex) {Thread.currentThread().interrupt();}
+                            output.write(torrentInfo.getBytes(StandardCharsets.UTF_8));
+                        }
+                    } else respond(exchange, 200, torrentInfo); }
                 else if (call.path().endsWith("/torrents/categories")) respond(exchange, 200, categories);
                 else if (call.path().endsWith("/torrents/add")) respond(exchange, addStatus, addBody);
                 else if (call.path().endsWith("/torrents/rename")) respond(exchange, renameStatus, "");

@@ -50,10 +50,14 @@ public interface CatalogBookRepository extends JpaRepository<CatalogBook, Long>,
         Long getEplId();
         Double getRevision();
         String getLinks();
+        String getCoverUrl();
+        Boolean getCoverAvailable();
     }
 
     @org.springframework.data.jpa.repository.Query("select b.eplId as eplId, b.revision as revision, b.links as links, b.title as title from CatalogBook b")
     java.util.List<TorrentIdentity> findTorrentIdentities();
+    @org.springframework.data.jpa.repository.Query("select b.eplId as eplId, b.revision as revision, b.links as links, b.title as title, b.coverUrl as coverUrl, b.coverAvailable as coverAvailable from CatalogBook b where b.eplId > :afterId order by b.eplId")
+    java.util.List<TorrentIdentity> torrentBatch(long afterId, org.springframework.data.domain.Pageable pageable);
     interface UpdateIdentity extends TorrentIdentity { String getTitle(); }
 
     @org.springframework.data.jpa.repository.Query("select b.eplId as eplId, b.revision as revision, "

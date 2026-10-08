@@ -19,6 +19,7 @@ import java.util.function.Supplier;
 @Service
 public class DownloadTrackingService {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.reports.ReportSnapshots snapshots;
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DownloadTrackingService.class);
     private final DownloadRepository downloads;
     private final CatalogBookRepository books;
@@ -111,14 +112,14 @@ public class DownloadTrackingService {
             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
             List<IgnoredTorrent> ignoredTorrents,
             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-            List<com.rlibanez.eplsync.torrent.updates.CleanupQueue.Result> cleanup) {
+            List<com.rlibanez.eplsync.torrent.updates.CleanupQueue.Result> cleanup, String detailsId) {
         public SyncResult(String client, String clientInstanceId, boolean dryRun, boolean applied,
                 Instant checkedAt, RemoteCounts remote, RecordCounts records, Outcomes outcomes,
                 List<SyncItem> items, List<IgnoredTorrent> ignoredTorrents) {
-            this(client, clientInstanceId, dryRun, applied, checkedAt, remote, records, outcomes, items, ignoredTorrents, null);
+            this(client, clientInstanceId, dryRun, applied, checkedAt, remote, records, outcomes, items, ignoredTorrents, null, null);
         }
         public SyncResult withCleanup(List<com.rlibanez.eplsync.torrent.updates.CleanupQueue.Result> results) {
-            return new SyncResult(client, clientInstanceId, dryRun, applied, checkedAt, remote, records, outcomes, items, ignoredTorrents, results);
+            return new SyncResult(client, clientInstanceId, dryRun, applied, checkedAt, remote, records, outcomes, items, ignoredTorrents, results, detailsId);
         }
     }
 
@@ -144,16 +145,19 @@ public class DownloadTrackingService {
             // Sin transacción/connection SQL durante la consulta de red. Si falla no se modifica ningún registro.
             var remote = remoteReader.get();
             var now = Instant.now();
+            try (var report = includeDetails ? snapshots.create() : null) {
             synchronized (writes) {
                 var result = transactions.execute(tx -> {
-                    var summary = reconcile(remote, now, dryRun, includeDetails);
+                    var summary = reconcile(remote, now, dryRun, report);
                     if (events != null && !dryRun) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT, "SYNC",
                         java.util.Map.of("checked", summary.records().checked(), "created", summary.records().created(),
                             "updated", summary.records().updated(), "ignored", summary.remote().ignored()));
                     return summary;
                 });
                 log.info("Sincronización finalizada: dryRun={}, remote={}, records={}, outcomes={}", dryRun, result.remote(), result.records(), result.outcomes());
+                if (report != null) report.finish();
                 return result;
+            }
             }
         } finally { coordination.writeLock().unlock(); }
     }
@@ -177,18 +181,24 @@ public class DownloadTrackingService {
                 return transactions.execute(tx -> {
                     if (!books.existsById(request.eplId()))
                         throw new TorrentOperationException(HttpStatus.NOT_FOUND, "El libro no existe en el catálogo");
-                    var existing = downloads.findByClientInstanceId(instanceId()).stream()
-                            .filter(row -> torrent.aliases().contains(row.getHash())).toList();
+                    var existing = downloads.findByClientInstanceIdAndHashIn(instanceId(),torrent.aliases(),
+                        org.springframework.data.domain.PageRequest.of(0,2));
                     if (!existing.isEmpty()) {
                         if (existing.size() == 1 && existing.getFirst().getEplId().equals(request.eplId())
                                 && existing.getFirst().getRevision().equals(request.revision()))
                             return existing.getFirst();
                         throw new TorrentOperationException(HttpStatus.CONFLICT, "El torrent ya está vinculado a otro libro o revisión");
                     }
-                    for (var book : books.findTorrentIdentities()) {
-                        if (magnets.hashes(book.getLinks()).stream().anyMatch(torrent.aliases()::contains)
-                                && (!book.getEplId().equals(request.eplId()) || !book.getRevision().equals(request.revision())))
-                            throw new TorrentOperationException(HttpStatus.CONFLICT, "El hash corresponde a otro libro o revisión del catálogo");
+                    long cursor=0;
+                    while(true) {
+                        var batch=books.torrentBatch(cursor,org.springframework.data.domain.PageRequest.of(0,500));
+                        if(batch.isEmpty()) break;
+                        cursor=batch.getLast().getEplId();
+                        for (var book : batch) {
+                            if (magnets.hashes(book.getLinks()).stream().anyMatch(torrent.aliases()::contains)
+                                    && (!book.getEplId().equals(request.eplId()) || !book.getRevision().equals(request.revision())))
+                                throw new TorrentOperationException(HttpStatus.CONFLICT, "El hash corresponde a otro libro o revisión del catálogo");
+                        }
                     }
                     var now = Instant.now();
                     var row = create(request.eplId(), request.revision(), torrent.hash(), DownloadRecord.Origin.DISCOVERED, now);
@@ -202,26 +212,30 @@ public class DownloadTrackingService {
         });
     }
 
-    private SyncResult reconcile(List<RemoteTorrent> remote, Instant now, boolean dryRun, boolean includeDetails) {
+    private SyncResult reconcile(List<RemoteTorrent> remote, Instant now, boolean dryRun, com.rlibanez.eplsync.reports.ReportSnapshots.Writer report) {
         var byHash = new HashMap<String, RemoteTorrent>();
-        var uniqueRemote = new LinkedHashMap<String, RemoteTorrent>();
+        var uniqueRemote = new HashSet<String>();
         for (var torrent : remote) {
-            uniqueRemote.putIfAbsent(torrent.hash(), torrent);
+            uniqueRemote.add(torrent.hash());
             for (var alias : torrent.aliases()) {
                 var previous = byHash.putIfAbsent(alias, torrent);
                 if (previous != null && !previous.hash().equals(torrent.hash()))
                     throw new TorrentOperationException(HttpStatus.BAD_GATEWAY, "El cliente devuelve identidades de torrent ambiguas");
             }
         }
-        var catalog = books.findTorrentIdentities();
-        var titles = new HashMap<Long, String>();
-        if (includeDetails) catalog.forEach(book -> titles.put(book.getEplId(), book.getTitle()));
-        var known = downloads.findByClientInstanceId(instanceId());
         var identities = new HashSet<String>();
         var matched = new HashSet<String>();
-        var items = includeDetails ? new ArrayList<SyncItem>() : null;
+        int known = 0;
+        String recordCursor = "";
         int updated = 0, completed = 0, missing = 0, newlyMissing = 0, created = 0;
-        for (var original : known) {
+        while (true) {
+        var batch = downloads.syncBatch(instanceId(), recordCursor, org.springframework.data.domain.PageRequest.of(0,500));
+        if (batch.isEmpty()) break;
+        known += batch.size();
+        recordCursor = batch.getLast().getId();
+        var metadata = report == null ? Map.<Long,com.rlibanez.eplsync.torrent.DownloadBookMetadata.Book>of() :
+            com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager,batch.stream().map(DownloadRecord::getEplId).toList());
+        for (var original : batch) {
             // Work on detached copies: a dry-run must not trigger Hibernate dirty checking.
             var row = new DownloadRecord();
             org.springframework.beans.BeanUtils.copyProperties(original, row);
@@ -244,12 +258,21 @@ public class DownloadTrackingService {
             if (newlyCompleted) completed++;
             if (row.getStatus() == DownloadStatus.NOT_FOUND) missing++;
             if (newlyNotFound) newlyMissing++;
-            if (items != null) items.add(new SyncItem(row.getId(), row.getEplId(), titles.get(row.getEplId()), row.getHash(),
+            var bookMetadata = metadata.get(row.getEplId());
+            if (report != null) report.add("books", new SyncItem(row.getId(), row.getEplId(), bookMetadata == null ? null : bookMetadata.title(), row.getHash(),
                     changed.isEmpty() ? "UNCHANGED" : "UPDATE", original.getStatus(), row.getStatus(), observed != null,
                     List.copyOf(changed), newlyCompleted, newlyNotFound, original.getCompletedAt(), row.getCompletedAt(),
-                    original.getLastError(), row.getLastError(), null, false));
+                    original.getLastError(), row.getLastError(), bookMetadata == null ? null : bookMetadata.coverUrl(), bookMetadata == null ? Boolean.FALSE : bookMetadata.coverAvailable()));
             if (!dryRun) org.springframework.beans.BeanUtils.copyProperties(row, original);
         }
+        if (!dryRun) entityManager.flush();
+        entityManager.clear();
+        }
+        long catalogCursor = 0;
+        while (true) {
+        var catalog = books.torrentBatch(catalogCursor,org.springframework.data.domain.PageRequest.of(0,500));
+        if(catalog.isEmpty()) break;
+        catalogCursor=catalog.getLast().getEplId();
         for (var book : catalog) {
             for (var hash : magnets.hashes(book.getLinks())) {
                 var observed = byHash.get(hash);
@@ -262,26 +285,20 @@ public class DownloadTrackingService {
                 created++;
                 boolean newlyCompleted = row.getCompletedAt() != null;
                 if (newlyCompleted) completed++;
-                if (items != null) items.add(new SyncItem(dryRun ? null : row.getId(), row.getEplId(), book.getTitle(), hash,
+                if (report != null) report.add("books", new SyncItem(dryRun ? null : row.getId(), row.getEplId(), book.getTitle(), hash,
                         "CREATE", null, row.getStatus(), true, List.of(), newlyCompleted, false,
-                        null, row.getCompletedAt(), null, row.getLastError(), null, false));
+                        null, row.getCompletedAt(), null, row.getLastError(), book.getCoverUrl(), book.getCoverAvailable()));
             }
         }
-        if (items != null) {
-            var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager,items.stream().map((SyncItem entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).toList());
-            for (int index=0; index<items.size(); index++) {
-                var item=items.get(index);var book=metadata.get(item.eplId());
-                if(book!=null) items.set(index,new SyncItem(item.downloadId(),item.eplId(),item.title(),item.hash(),item.action(),
-                    item.previousStatus(),item.resultingStatus(),item.foundInClient(),item.changedFields(),item.newlyCompleted(),item.newlyNotFound(),
-                    item.previousCompletedAt(),item.resultingCompletedAt(),item.previousError(),item.resultingError(),book.coverUrl(),book.coverAvailable()));
-            }
+        if (!dryRun) entityManager.flush();
+        entityManager.clear();
         }
-        var ignored = includeDetails ? uniqueRemote.values().stream().filter(t -> !matched.contains(t.hash()))
-                .map(t -> new IgnoredTorrent(t.hash(), t.name(), "NO_CATALOG_MATCH")).toList() : null;
+        if(report != null) for(var torrent : remote) if(!matched.contains(torrent.hash()))
+            report.add("ignored",new IgnoredTorrent(torrent.hash(),torrent.name(),"NO_CATALOG_MATCH"));
         return new SyncResult(properties.getClient(), instanceId(), dryRun, !dryRun, now,
                 new RemoteCounts(uniqueRemote.size(), matched.size(), uniqueRemote.size() - matched.size()),
-                new RecordCounts(known.size() + created, created, updated, known.size() - updated),
-                new Outcomes(completed, missing, newlyMissing), items, ignored);
+                new RecordCounts(known + created, created, updated, known - updated),
+                new Outcomes(completed, missing, newlyMissing), null, null, null, report == null ? null : report.id);
     }
 
     /** Observe existing cleanup-related records only; never discover unrelated catalog entries. */

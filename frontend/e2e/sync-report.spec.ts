@@ -156,6 +156,21 @@ test("preview and execution show local searchable detail without repeating sync"
       },
     }),
   );
+  await page.route("**/api/catalog/books/1/history?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [],
+        meta: {
+          page: 0,
+          size: 20,
+          totalItems: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrevious: false,
+        },
+      },
+    }),
+  );
   await page.route("**/api/catalog/books/1/magnets", (r) =>
     r.fulfill({ json: [] }),
   );

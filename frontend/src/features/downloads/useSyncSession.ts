@@ -12,10 +12,15 @@ export const defaultSyncView = {
   ignoredSort: "name,asc",
 };
 interface Session {
+  linkedHashes: string[];
   report: SyncResult | null;
   view: typeof defaultSyncView;
 }
-const empty = (): Session => ({ report: null, view: { ...defaultSyncView } });
+const empty = (): Session => ({
+  linkedHashes: [],
+  report: null,
+  view: { ...defaultSyncView },
+});
 // Keep the last snapshot in memory across routes; never refetch a sync automatically.
 export function useSyncSession() {
   const cache = useQueryClient();
@@ -31,6 +36,7 @@ export function useSyncSession() {
     ...data,
     save: (report: SyncResult) =>
       cache.setQueryData<Session>(key, {
+        linkedHashes: [],
         report,
         view: { ...defaultSyncView },
       }),
@@ -39,9 +45,10 @@ export function useSyncSession() {
         previous?.report
           ? {
               ...previous,
+              linkedHashes: [...previous.linkedHashes, hash],
               report: {
                 ...previous.report,
-                ignoredTorrents: previous.report.ignoredTorrents.map((item) =>
+                ignoredTorrents: previous.report.ignoredTorrents?.map((item) =>
                   item.hash === hash ? { ...item, linked: true } : item,
                 ),
               },

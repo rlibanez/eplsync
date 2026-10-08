@@ -162,3 +162,11 @@ Con `BOOK_HISTORY_READ`, cada libro incluye hasta 20 registros recientes en
 todo su historial en `download.statuses`. La ficha consulta el historial completo
 por páginas mediante `GET /api/catalog/books/EPL_ID/history?page=0&size=20`
 (máximo 1000 por página). Sin ese permiso no se revelan registros, totales ni estados.
+
+### Informes de sincronización y límites de memoria
+
+La consulta completa a qBittorrent se mantiene. EPL Sync interpreta cada torrent directamente desde la respuesta, omitiendo los campos que no necesita. `EPLSYNC_TORRENT_MAX_RESPONSE_SIZE` limita los bytes recibidos a 256 MiB y `EPLSYNC_TORRENT_MAX_REMOTE_TORRENTS` a 500.000 torrents por listado. Las respuestas auxiliares se limitan a 1 MiB. El tiempo de petición también cubre la recepción del cuerpo. Un listado truncado, inválido o que supera los límites no se aplica parcialmente a los registros de EPL Sync.
+
+Los registros y el catálogo se recorren en lotes de 500. El resumen de sincronización no contiene todas las filas: con `includeDetails=true` devuelve `detailsId`. Los detalles se consultan en `GET /api/torrent/downloads/reports/{detailsId}/books` o `/ignored`, con `page`, `size` (1–1000), `sort` (criterios separados por `;`), `search`, `action` y `outcome`. Estas páginas conservan el resultado de esa ejecución, incluido el de una previsualización; no vuelven a sincronizar ni consultan el estado posterior a la limpieza.
+
+Los detalles se guardan en SQLite temporal, separado de la base de datos principal y accesible solamente al usuario que creó el informe, con permiso `TORRENT_SYNC`. Se retienen como máximo cuatro informes durante 30 minutos, con 128 MiB por informe y 64 KiB por fila. Un informe nuevo puede retirar el más antiguo terminado; los informes desaparecen al reiniciar la aplicación. Las consultas tienen un máximo de 10 segundos y se admite una a la vez, sin acumular consultas en cola. La interfaz conserva el resumen al navegar y solicita únicamente la página visible.

@@ -1,4 +1,6 @@
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
+import { useQuery } from "@tanstack/react-query";
+import { get } from "../../api/catalog";
 import { ordering } from "./TableControls";
 import { LinkTorrent } from "./LinkTorrent";
 import { useEffect, useRef, useState } from "react";
@@ -38,6 +40,7 @@ export interface SyncResult {
     state: string;
     message: string;
   }[];
+  detailsId?: string | null;
   dryRun: boolean;
   applied: boolean;
   checkedAt: string;
@@ -51,13 +54,15 @@ export interface SyncResult {
     unchanged: number;
   };
   outcomes: { newlyCompleted: number; notFound: number; newlyNotFound: number };
-  items: SyncItem[];
-  ignoredTorrents: {
-    hash: string;
-    name: string | null;
-    linked?: boolean;
-    reason: string;
-  }[];
+  items?: SyncItem[] | null;
+  ignoredTorrents?:
+    | {
+        hash: string;
+        name: string | null;
+        linked?: boolean;
+        reason: string;
+      }[]
+    | null;
 }
 export function SyncReport({
   report,
@@ -68,9 +73,9 @@ export function SyncReport({
 }) {
   const { t } = useTranslation();
   const { date, number, status } = useLocale();
-  const { view, setView, markLinked } = useSyncSession();
+  const { view, setView, markLinked, linkedHashes } = useSyncSession();
   const [linking, setLinking] = useState<
-    SyncResult["ignoredTorrents"][number] | null
+    NonNullable<SyncResult["ignoredTorrents"]>[number] | null
   >(null);
   const { tab, action, outcome, search, page, size } = view;
   const setTab = (tab: string) => setView({ tab });
@@ -145,7 +150,7 @@ export function SyncReport({
   }
   const needle = search.trim().toLocaleLowerCase();
   const items = sorted(
-    report.items.filter(
+    (report.items || []).filter(
       (item) =>
         (action === "ALL" ||
           (action === "CHANGED"
@@ -173,7 +178,7 @@ export function SyncReport({
     },
   );
   const ignored = sorted(
-    report.ignoredTorrents.filter((item) =>
+    (report.ignoredTorrents || []).filter((item) =>
       `${item.name || ""} ${item.hash}`.toLocaleLowerCase().includes(needle),
     ),
     view.ignoredSort,
@@ -186,9 +191,47 @@ export function SyncReport({
             })
         : item[field as "name" | "hash"],
   );
-  const total = tab === "books" ? items.length : ignored.length;
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+    search,
+    action,
+    outcome,
+  });
+  params.set(
+    "sort",
+    ordering(tab === "books" ? view.bookSort : view.ignoredSort)
+      .map((value) => value.replace("changes,", "changedFields,"))
+      .join(";"),
+  );
+  const details = useQuery<{
+    items: (SyncItem | NonNullable<SyncResult["ignoredTorrents"]>[number])[];
+    meta: { totalItems: number };
+  }>({
+    queryKey: ["sync-report-details", report.detailsId, tab, params.toString()],
+    queryFn: ({ signal }) =>
+      get(
+        `/torrent/downloads/reports/${report.detailsId}/${tab === "books" ? "books" : "ignored"}?${params}`,
+        signal,
+      ),
+    enabled: !!report.detailsId,
+    gcTime: 0,
+  });
+  const total = report.detailsId
+    ? details.data?.meta.totalItems || 0
+    : tab === "books"
+      ? items.length
+      : ignored.length;
   const totalPages = Math.ceil(total / size);
   const start = page * size;
+  const visibleItems = report.detailsId
+    ? ((details.data?.items || []) as SyncItem[])
+    : items.slice(start, start + size);
+  const visibleIgnored = report.detailsId
+    ? ((details.data?.items || []) as NonNullable<
+        SyncResult["ignoredTorrents"]
+      >)
+    : ignored.slice(start, start + size);
   return (
     <section className="panel settings-section sync-report">
       {linking && (
@@ -361,6 +404,7 @@ export function SyncReport({
               {t("catalog.clear")}
             </Button>
           </div>
+          {details.error && <p role="alert">{String(details.error)}</p>}
           <div className="table-toolbar">
             <div className="catalog-table-controls">{columns.controls}</div>
           </div>
@@ -373,7 +417,7 @@ export function SyncReport({
               <thead>{columns.headings}</thead>
               <tbody>
                 {tab === "books"
-                  ? items.slice(start, start + size).map((item) => (
+                  ? visibleItems.map((item) => (
                       <tr key={`${item.eplId}:${item.hash}`}>
                         {bookColumns.cells([
                           <td>
@@ -419,34 +463,42 @@ export function SyncReport({
                         ])}
                       </tr>
                     ))
-                  : ignored.slice(start, start + size).map((item) => (
-                      <tr key={item.hash}>
-                        {ignoredColumns.cells([
-                          <td>{item.name || "—"}</td>,
-                          <td className="sync-hash">{item.hash}</td>,
-                          <td>
-                            {item.linked
-                              ? t("torrentLink.linked")
-                              : t(`syncReport.reasons.${item.reason}`, {
-                                  defaultValue: item.reason,
-                                })}
-                          </td>,
-                          <td>
-                            <Button
-                              variant="light"
-                              disabled={item.linked}
-                              onClick={() => setLinking(item)}
-                            >
-                              {t(
-                                item.linked
-                                  ? "torrentLink.linked"
-                                  : "torrentLink.link",
-                              )}
-                            </Button>
-                          </td>,
-                        ])}
-                      </tr>
-                    ))}
+                  : visibleIgnored.map((original) => {
+                      const item = {
+                        ...original,
+                        linked:
+                          original.linked ||
+                          linkedHashes.includes(original.hash),
+                      };
+                      return (
+                        <tr key={item.hash}>
+                          {ignoredColumns.cells([
+                            <td>{item.name || "—"}</td>,
+                            <td className="sync-hash">{item.hash}</td>,
+                            <td>
+                              {item.linked
+                                ? t("torrentLink.linked")
+                                : t(`syncReport.reasons.${item.reason}`, {
+                                    defaultValue: item.reason,
+                                  })}
+                            </td>,
+                            <td>
+                              <Button
+                                variant="light"
+                                disabled={item.linked}
+                                onClick={() => setLinking(item)}
+                              >
+                                {t(
+                                  item.linked
+                                    ? "torrentLink.linked"
+                                    : "torrentLink.link",
+                                )}
+                              </Button>
+                            </td>,
+                          ])}
+                        </tr>
+                      );
+                    })}
               </tbody>
             </table>
           </div>

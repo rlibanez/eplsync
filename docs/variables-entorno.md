@@ -43,7 +43,9 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 | `EPLSYNC_TORRENT_CLIENT` | Adaptador del cliente torrent; actualmente qbittorrent. | `qbittorrent` |
 | `EPLSYNC_TORRENT_BASEURL` | URL HTTP(S) de la WebUI de qBittorrent, accesible desde el contenedor. | `http://qbittorrent:8090` |
 | `EPLSYNC_TORRENT_CONNECTTIMEOUT` | Tiempo máximo para establecer una conexión con el cliente torrent. | `5s` |
-| `EPLSYNC_TORRENT_REQUESTTIMEOUT` | Tiempo máximo por petición HTTP al cliente torrent. | `10s` |
+| `EPLSYNC_TORRENT_REQUESTTIMEOUT` | Tiempo máximo por petición HTTP al cliente torrent, incluida la recepción del cuerpo. | `10s` |
+| `EPLSYNC_TORRENT_MAX_RESPONSE_SIZE` | Tamaño máximo real de los listados de qBittorrent (también sin Content-Length). Entre 1 KiB y 1 GiB. Las respuestas auxiliares tienen un máximo fijo de 1 MiB. | `256MB` |
+| `EPLSYNC_TORRENT_MAX_REMOTE_TORRENTS` | Máximo de torrents por listado; entre 1 y 1000000. Superarlo aborta la operación antes de reconciliar registros. | `500000` |
 | `EPLSYNC_TORRENT_QBITTORRENT_AUTH_MODE` | Modo de autenticación: auto, api-key o session. auto prueba la API key si existe y puede recurrir a usuario y contraseña si están configurados. | `auto` |
 | `EPLSYNC_TORRENT_QBITTORRENT_AUTH_USERNAME` | Necesaria con la integración activa y auth.mode=session, o con auto sin API key. Debe acompañarse de contraseña. | Vacío |
 | `EPLSYNC_TORRENT_QBITTORRENT_AUTH_PASSWORD` | Necesaria junto al usuario en autenticación por sesión. No es la contraseña de un usuario de EPL Sync. | Vacío |

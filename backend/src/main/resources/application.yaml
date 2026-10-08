@@ -121,6 +121,8 @@ eplsync:
     base-url: "http://qbittorrent:8090"
     connect-timeout: 5s
     request-timeout: 10s
+    max-response-size: ${EPLSYNC_TORRENT_MAX_RESPONSE_SIZE:256MB}
+    max-remote-torrents: ${EPLSYNC_TORRENT_MAX_REMOTE_TORRENTS:500000}
 
     # Temporizador provisional; el ejecutor de limpieza es independiente de su programación.
     cleanup:

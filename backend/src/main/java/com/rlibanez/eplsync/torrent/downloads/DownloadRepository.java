@@ -6,7 +6,10 @@ import java.util.*;
 public interface DownloadRepository extends JpaRepository<DownloadRecord, String>, JpaSpecificationExecutor<DownloadRecord> {
     Optional<DownloadRecord> findByClientInstanceIdAndEplIdAndHash(String instance, Long eplId, String hash);
     List<DownloadRecord> findByClientInstanceId(String instance);
+    @Query("select d from DownloadRecord d where d.clientInstanceId=:instance and d.id > :afterId order by d.id")
+    List<DownloadRecord> syncBatch(String instance, String afterId, org.springframework.data.domain.Pageable pageable);
     List<DownloadRecord> findByClientInstanceIdAndHashIn(String instance, Collection<String> hashes);
+    List<DownloadRecord> findByClientInstanceIdAndHashIn(String instance, Collection<String> hashes, org.springframework.data.domain.Pageable pageable);
     List<DownloadRecord> findByEplIdIn(Collection<Long> ids);
 
     interface HistoryRow {

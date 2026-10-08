@@ -38,6 +38,7 @@ class DownloadTrackingTests {
         }
     }
     @Autowired com.rlibanez.eplsync.events.EventJournal events;
+    @Autowired com.rlibanez.eplsync.reports.ReportSnapshots reports;
     @Autowired DownloadRepository downloads;
     @Autowired CatalogBookRepository books;
     @Autowired DownloadTrackingService tracking;
@@ -56,6 +57,12 @@ class DownloadTrackingTests {
     MockMvc mvc;
     static final String HASH = "A".repeat(40), OTHER = "B".repeat(40);
 
+    List<DownloadTrackingService.SyncItem> details(DownloadTrackingService.SyncResult result) {
+        return reports.page(result.detailsId(),"books",0,1000,List.of(),Set.of(),List.of(),DownloadTrackingService.SyncItem.class).items();
+    }
+    List<DownloadTrackingService.IgnoredTorrent> ignored(DownloadTrackingService.SyncResult result) {
+        return reports.page(result.detailsId(),"ignored",0,1000,List.of(),Set.of(),List.of(),DownloadTrackingService.IgnoredTorrent.class).items();
+    }
     @BeforeEach void setup() {
         bulkItems.deleteAll(); bulkJobs.deleteAll(); downloads.deleteAll(); books.deleteAll(); reset(stubClient);
         properties.effective().setEnabled(true); properties.effective().setBaseUrl("http://localhost:8080");
@@ -146,7 +153,7 @@ class DownloadTrackingTests {
         mvc.perform(post("/api/torrent/downloads/link").contentType("application/json").content(body))
                 .andExpect(status().isOk());
         assertThat(downloads.count()).isEqualTo(1);
-        assertThat(service.syncDownloads(true, true).ignoredTorrents()).isEmpty();
+        assertThat(ignored(service.syncDownloads(true,true))).isEmpty();
         mvc.perform(post("/api/torrent/downloads/link").contentType("application/json").content(body.replace("1.7", "1.6")))
                 .andExpect(status().isConflict());
         verify(stubClient, never()).addTorrent(any());
@@ -383,7 +390,7 @@ class DownloadTrackingTests {
                 new RemoteTorrent(OTHER, DownloadStatus.DOWNLOADED, null), new RemoteTorrent("C".repeat(40), DownloadStatus.DOWNLOADED, null)));
         var result = service.syncDownloads(false, true);
         assertThat(result.records().created()).isEqualTo(2); assertThat(result.remote().ignored()).isEqualTo(1);
-        assertThat(result.items()).allSatisfy(item -> {assertThat(item.coverUrl()).isEqualTo("https://example.org/cover.jpg");assertThat(item.coverAvailable()).isTrue();});
+        assertThat(details(result)).allSatisfy(item -> {assertThat(item.coverUrl()).isEqualTo("https://example.org/cover.jpg");assertThat(item.coverAvailable()).isTrue();});
         assertThat(downloads.findAll()).allMatch(row -> row.getOrigin() == DownloadRecord.Origin.DISCOVERED
                 && row.getDiscoveredAt() != null && row.getSubmittedAt() == null && row.getRequestedAt() == null);
         assertThat(service.syncDownloads(false, true).records().created()).isZero();
@@ -466,8 +473,8 @@ class DownloadTrackingTests {
         assertThat(preview.dryRun()).isTrue(); assertThat(preview.applied()).isFalse();
         assertThat(preview.records()).isEqualTo(new DownloadTrackingService.RecordCounts(2,1,1,0));
         assertThat(preview.remote()).isEqualTo(new DownloadTrackingService.RemoteCounts(3,2,1));
-        assertThat(preview.ignoredTorrents()).singleElement().satisfies(item -> assertThat(item.name()).isEqualTo("Unrelated"));
-        assertThat(preview.items()).filteredOn(item -> item.action().equals("CREATE")).singleElement()
+        assertThat(ignored(preview)).singleElement().satisfies(item -> assertThat(item.name()).isEqualTo("Unrelated"));
+        assertThat(details(preview)).filteredOn(item -> item.action().equals("CREATE")).singleElement()
                 .satisfies(item -> assertThat(item.downloadId()).isNull());
         assertThat(downloads.count()).isEqualTo(1);
         assertThat(only()).usingRecursiveComparison().isEqualTo(before);

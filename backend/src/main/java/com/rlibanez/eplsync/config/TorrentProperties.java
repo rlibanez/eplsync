@@ -32,6 +32,8 @@ public class TorrentProperties {
     public Bulk getBulk() { var current = effective(); return current == this ? bulk : current.getBulk(); }
     public List<String> getTrackers() { var current = effective(); return current == this ? trackers : current.getTrackers(); }
 
+    private org.springframework.util.unit.DataSize maxResponseSize = org.springframework.util.unit.DataSize.ofMegabytes(256);
+    private int maxRemoteTorrents = 500000;
     private boolean enabled;
     private String client = "qbittorrent";
     private String baseUrl = "http://localhost:8080";
@@ -69,6 +71,8 @@ public class TorrentProperties {
 
     @PostConstruct
     public void validate() {
+        if (maxResponseSize == null || maxResponseSize.toBytes() < 1024 || maxResponseSize.toBytes() > 1073741824L
+                || maxRemoteTorrents < 1 || maxRemoteTorrents > 1000000) throw invalid("límites de respuesta inválidos (1KiB–1GiB, 1–1000000 torrents)");
         if (!enabled) return;
         com.rlibanez.eplsync.qbittorrent.QBittorrentDestination.normalize(baseUrl);
         if (connectTimeout == null || connectTimeout.isNegative() || connectTimeout.isZero()

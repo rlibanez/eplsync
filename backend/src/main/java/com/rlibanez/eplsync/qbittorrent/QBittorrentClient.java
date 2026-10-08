@@ -31,7 +31,9 @@ import static com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.*
 @ConditionalOnProperty(prefix = "eplsync.torrent", name = "client", havingValue = "qbittorrent", matchIfMissing = true)
 public class QBittorrentClient implements TorrentClient, AutoCloseable {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(QBittorrentClient.class);
-    private final tools.jackson.databind.json.JsonMapper jsonMapper = tools.jackson.databind.json.JsonMapper.builder().build();
+    private final tools.jackson.databind.json.JsonMapper jsonMapper = tools.jackson.databind.json.JsonMapper.builder(
+        tools.jackson.core.json.JsonFactory.builder().streamReadConstraints(tools.jackson.core.StreamReadConstraints.builder()
+            .maxNestingDepth(32).maxStringLength(16384).maxNumberLength(64).build()).build()).build();
     private AuthMode sendingAuth;
     private final TorrentProperties properties;
     private final QBittorrentProperties qbittorrent;
@@ -248,14 +250,10 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
 
     /** Índice por solicitud: el identificador remoto puede diferir del hash v1 del catálogo. */
     private java.util.Set<String> submissionHashes() {
-        var response = readAuthenticatedJson("torrents/info");
-        if (!response.isArray()) throw new QBittorrentConnectionException(UPSTREAM);
         var hashes = new java.util.HashSet<String>();
-        for (var item : response) {
-            var aliases = torrentHashes(item);
+        readArray("torrents/info", item -> { var aliases = torrentHashes(item);
             if (aliases.isEmpty()) throw new QBittorrentConnectionException(UPSTREAM);
-            hashes.addAll(aliases);
-        }
+            hashes.addAll(aliases); return Boolean.TRUE; });
         return hashes;
     }
 
@@ -263,7 +261,7 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
     @Override
     public java.util.List<RemoteTorrent> listTorrents() {
         if (dynamic()) return configured(value -> Objects.requireNonNull(value).listTorrents());
-        return parseTorrents(readAuthenticatedJson("torrents/info"));
+        return readTorrents("torrents/info");
     }
 
     @Override
@@ -277,9 +275,64 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
         var result = new java.util.ArrayList<RemoteTorrent>();
         for (int start=0;start<ordered.size();start+=50) {
             var hashes=ordered.subList(start,Math.min(start+50,ordered.size()));
-            result.addAll(parseTorrents(readAuthenticatedJson("torrents/info?hashes=" + encode(String.join("|",hashes)))));
+            result.addAll(readTorrents("torrents/info?hashes=" + encode(String.join("|",hashes))));
         }
         return result.stream().filter(t -> t.aliases().stream().anyMatch(normalized::contains)).distinct().toList();
+    }
+
+    private java.util.List<RemoteTorrent> readTorrents(String path) {
+        var hashes = new java.util.HashSet<String>();
+        return readArray(path, item -> {
+            var torrent = parseTorrents(jsonMapper.createArrayNode().add(item)).getFirst();
+            if (!hashes.add(torrent.hash())) throw new QBittorrentConnectionException(UPSTREAM);
+            return torrent;
+        });
+    }
+    private <T> java.util.List<T> readArray(String path, java.util.function.Function<tools.jackson.databind.JsonNode,T> convert) {
+        var mode = sendingAuth();
+        try { return readArray(path, mode == AuthMode.API_KEY, convert); }
+        catch (QBittorrentConnectionException ex) {
+            if (ex.getReason() != AUTHENTICATION) throw ex;
+            synchronized (this) { if (sendingAuth == mode) invalidateSendingState(); mode = sendingAuth(); }
+            return readArray(path, mode == AuthMode.API_KEY, convert);
+        }
+    }
+    private <T> java.util.List<T> readArray(String path, boolean key, java.util.function.Function<tools.jackson.databind.JsonNode,T> convert) {
+        var builder = request(path).GET();
+        if (key) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
+        var response = send(key ? apiKeyClient : sessionClient, builder.build(), HttpResponse.BodySubscribers::ofInputStream,
+                properties.getMaxResponseSize().toBytes());
+        try (var body = response.body()) {
+            checkStatus(response);
+            try (var parser = jsonMapper.createParser(body)) {
+                if (parser.nextToken() != tools.jackson.core.JsonToken.START_ARRAY) throw new QBittorrentConnectionException(UPSTREAM);
+                var result = new java.util.ArrayList<T>();
+                while (parser.nextToken() != tools.jackson.core.JsonToken.END_ARRAY) {
+                    if (parser.currentToken() != tools.jackson.core.JsonToken.START_OBJECT) throw new QBittorrentConnectionException(UPSTREAM);
+                    if (result.size() >= properties.getMaxRemoteTorrents()) throw new QBittorrentConnectionException(RESPONSE_TOO_LARGE);
+                    var item = jsonMapper.createObjectNode();
+                    while (parser.nextToken() != tools.jackson.core.JsonToken.END_OBJECT) {
+                        if (parser.currentToken() != tools.jackson.core.JsonToken.PROPERTY_NAME) throw new QBittorrentConnectionException(UPSTREAM);
+                        var field = parser.currentName();
+                        if (parser.nextToken() == null) throw new QBittorrentConnectionException(UPSTREAM);
+                        if (java.util.Set.of("hash","infohash_v1","infohash_v2","state","progress","amount_left","completion_on","content_path","name").contains(field)) {
+                            if (!parser.currentToken().isScalarValue() || item.has(field)) throw new QBittorrentConnectionException(UPSTREAM);
+                            item.set(field,jsonMapper.reader().without(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(parser));
+                        } else parser.skipChildren();
+                    }
+                    result.add(convert.apply(item));
+                }
+                if (parser.nextToken() != null) throw new QBittorrentConnectionException(UPSTREAM);
+                return java.util.Collections.unmodifiableList(result);
+            }
+        } catch (tools.jackson.core.exc.StreamConstraintsException ex) {
+            throw new QBittorrentConnectionException(RESPONSE_TOO_LARGE);
+        } catch (IOException | tools.jackson.core.JacksonException ex) {
+            for (Throwable cause = ex; cause != null; cause = cause.getCause())
+                if (cause instanceof com.rlibanez.eplsync.exception.TorrentConnectionException connection)
+                    throw new QBittorrentConnectionException(connection.getReason());
+            throw new QBittorrentConnectionException(UPSTREAM);
+        }
     }
 
     private java.util.List<RemoteTorrent> parseTorrents(tools.jackson.databind.JsonNode response) {
@@ -478,6 +531,10 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
     }
 
     private HttpResponse<String> send(HttpClient client, HttpRequest request) {
+        return send(client, request, () -> HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8), 1024 * 1024);
+    }
+    private <T> HttpResponse<T> send(HttpClient client, HttpRequest request,
+            java.util.function.Supplier<HttpResponse.BodySubscriber<T>> subscriber, long maximum) {
         String expected = authorizedDestination + "/api/v2/";
         if (!request.uri().toString().startsWith(expected)
                 || !QBittorrentDestination.normalize(properties.getBaseUrl()).equals(authorizedDestination)) {
@@ -487,7 +544,8 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
         String endpoint = path.substring(path.lastIndexOf("/api/v2/"));
         long started = System.nanoTime();
         try {
-            var response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            var response = client.send(request, info -> new BoundedBodySubscriber<>(subscriber.get(), maximum, java.time.Duration.ofNanos(
+                Math.max(1, properties.getRequestTimeout().toNanos() - (System.nanoTime() - started)))));
             log.trace("qBittorrent {} {}: HTTP {}, {}ms", request.method(), endpoint, response.statusCode(),
                     java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
             if (response.statusCode() >= 400) log.debug("qBittorrent {} {}: HTTP {}", request.method(), endpoint, response.statusCode());
@@ -495,6 +553,9 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
         } catch (HttpTimeoutException ex) {
             throw new QBittorrentConnectionException(TIMEOUT);
         } catch (IOException ex) {
+            for (Throwable cause = ex; cause != null; cause = cause.getCause())
+                if (cause instanceof com.rlibanez.eplsync.exception.TorrentConnectionException connection)
+                    throw new QBittorrentConnectionException(connection.getReason());
             log.debug("Fallo de comunicación qBittorrent {} {}: {}", request.method(), endpoint, ex.getClass().getSimpleName());
             throw new QBittorrentConnectionException(UPSTREAM);
         } catch (InterruptedException ex) {

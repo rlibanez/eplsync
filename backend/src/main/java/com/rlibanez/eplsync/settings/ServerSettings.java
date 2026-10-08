@@ -77,6 +77,8 @@ public class ServerSettings {
         add("torrent", "torrent.qbittorrent.auth.username", "text", q.getAuth().getUsername());
         add("torrent", "torrent.qbittorrent.auth.password", "secret", q.getAuth().getPassword());
         add("torrent", "torrent.qbittorrent.auth.api-key", "secret", q.getAuth().getApiKey());
+        installation.put("torrent.max-response-size", t.getMaxResponseSize());
+        installation.put("torrent.max-remote-torrents", t.getMaxRemoteTorrents());
         Map<String, Object> saved = new LinkedHashMap<>();
         jdbc.query("select setting_key, setting_value from app_settings", (org.springframework.jdbc.core.RowCallbackHandler) row -> {
             String key = row.getString(1);
