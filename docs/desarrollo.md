@@ -97,7 +97,10 @@ El catálogo no proporciona portadas: se muestra un marcador gráfico local.
 
 ## Frontend en Docker
 
-`docker compose up -d --build` compila el frontend con Node, copia `dist/` a los
+Para construir localmente, copia `docker-compose.override.example.yml` a
+`docker-compose.override.yml` si aún no existe. Después,
+`REVISION=$(git rev-parse HEAD) docker compose up -d --build`
+compila el frontend con Node, copia `dist/` a los
 recursos estáticos de Spring y empaqueta todo en el JAR. El contenedor final
 solo ejecuta Java y sirve interfaz y API en el puerto 8088:
 

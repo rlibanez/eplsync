@@ -1,12 +1,7 @@
 services:
   eplsync:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        PUID: "${PUID:-1000}"
-        PGID: "${PGID:-1000}"
-    image: rlibanez/eplsync:0.0.1
+    image: ghcr.io/rlibanez/eplsync:0.0.1
+    user: "${PUID:-1000}:${PGID:-1000}"
     container_name: eplsync
     ports:
       - "${HOST_BIND:-127.0.0.1}:${HOST_PORT:-8088}:8088"

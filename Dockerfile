@@ -30,6 +30,17 @@ RUN --mount=type=cache,target=/root/.m2 \
 
 FROM eclipse-temurin:25-jre-noble AS runtime
 
+ARG VERSION=0.0.1
+ARG REVISION
+
+LABEL org.opencontainers.image.title="EPL Sync" \
+      org.opencontainers.image.description="Aplicación para gestionar el catálogo de ePubLibre y las descargas mediante un cliente torrent." \
+      org.opencontainers.image.source="https://github.com/rlibanez/eplsync" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.authors="Roberto López @rlibanez"
+
 ARG PUID=1000
 ARG PGID=1000
 

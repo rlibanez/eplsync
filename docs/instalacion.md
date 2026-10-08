@@ -38,17 +38,27 @@ Adapta esos números si has elegido otros. El `chown` del Dockerfile solo afecta
 a la imagen; no cambia los permisos de las carpetas montadas desde el host.
 
 ```sh
-docker compose up -d --build
-docker compose logs -f eplsync
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml logs -f eplsync
 curl http://localhost:8088/actuator/health
 ```
 
 Para utilizar el archivo completo:
 
 ```sh
-docker compose -f docker-compose-full.yml up -d --build
+docker compose -f docker-compose-full.yml pull
+docker compose -f docker-compose-full.yml up -d
 docker compose -f docker-compose-full.yml logs -f eplsync
 ```
+
+Para construir el código local, copia `docker-compose.override.example.yml` a
+`docker-compose.override.yml` si aún no tienes un override. La plantilla incluye
+toda la configuración del completo y construye la imagen local.
+Usa `REVISION=$(git rev-parse HEAD) docker compose up -d --build`: se carga
+automáticamente `docker-compose.override.yml` y se genera `eplsync:local`.
+Los comandos con `-f` anteriores utilizan exclusivamente la imagen de GHCR.
+Para el completo local, añade `-f docker-compose.override.yml` tras el archivo completo.
 
 Los dos archivos son alternativas completas para la misma instalación; elige uno
 y úsalo en todos los comandos (`up`, `logs`, `down`, etc.). No hace falta combinarlos.
@@ -57,9 +67,9 @@ plantilla única. Consulta [todas las variables y sus valores predeterminados](v
 
 La imagen compila el backend con el wrapper Maven y Java 25 en una etapa separada;
 la ejecución usa un JRE 25 y un usuario sin privilegios, con el UID/GID indicado.
-No requiere Java ni Maven instalados en el host. `PUID` y `PGID` se aplican durante
-la construcción: si los cambias, ajusta los permisos y reconstruye con
-`docker compose up -d --build`. El build omite los tests; para validarlos antes
+No requiere Java ni Maven instalados en el host. `PUID` y `PGID` se aplican al
+ejecutar el contenedor mediante `user`: si los cambias, ajusta los permisos y
+recrea con `docker compose -f docker-compose.yml up -d`, sin reconstruir la imagen. El build omite los tests; para validarlos antes
 puedes ejecutar `cd backend && ./mvnw verify`.
 
 El puerto publicado por defecto es `8088`, limitado a `127.0.0.1`.
@@ -79,11 +89,11 @@ No ejecutes dos instancias contra la misma base SQLite.
 `.env` está excluido de Git y del contexto de build. `.env.example` se versiona
 como plantilla y también queda fuera del contexto de build.
 Compose utiliza `.env` para interpolar el YAML. Con `docker-compose-full.yml`, todas las variables de la plantilla
-se utilizan: `PUID` y `PGID` en la construcción; `HOST_BIND` y `HOST_PORT` en el
+se utilizan: `PUID` y `PGID` en el usuario de ejecución; `HOST_BIND` y `HOST_PORT` en el
 puerto publicado; `DATA_DIR` y `LOGS_DIR` en los montajes; el resto se transmite
 al contenedor mediante `environment`.
 
-El mínimo transmite `TZ` y `EPLSYNC_SECRET_KEY`, además de usar las variables de construcción,
+El mínimo transmite `TZ` y `EPLSYNC_SECRET_KEY`, además de usar las variables del usuario de ejecución,
 puertos y montajes. Las demás variables de `.env` no se transmiten con el mínimo.
 Para aplicarlas, utiliza el Compose completo. Las opciones disponibles en Ajustes
 también se pueden modificar desde la interfaz.

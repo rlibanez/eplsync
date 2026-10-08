@@ -10,7 +10,7 @@
 Los dos archivos son alternativas para la misma instalación. El archivo completo se selecciona con:
 
 ```sh
-docker compose -f docker-compose-full.yml up -d --build
+docker compose -f docker-compose-full.yml up -d
 ```
 
 Cambiar una variable exclusiva del completo en `.env` no tiene efecto al utilizar el mínimo. El mínimo utiliza `PUID`, `PGID`, `TZ`, `HOST_BIND`, `HOST_PORT`, `DATA_DIR`, `LOGS_DIR` y `EPLSYNC_SECRET_KEY`; el completo utiliza todas las variables. Los valores predeterminados de la tabla corresponden al Compose y a `.env.example`.
@@ -22,8 +22,8 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 | Variable | Descripción | Valor predeterminado |
 | --- | --- | --- |
 | `EPLSYNC_SECRET_KEY` | Necesaria para guardar contraseñas/API keys de qBittorrent en SQLite. Base64 estándar de 32 bytes (44 caracteres). Generar con `openssl rand -base64 32`; conservar y no cambiar si hay credenciales guardadas. Ambos Compose la transmiten. | Vacío |
-| `PUID` | UID del usuario del contenedor; se aplica al construir la imagen. Debe poder escribir en los montajes. | `1000` |
-| `PGID` | GID del usuario del contenedor; se aplica al construir la imagen. | `1000` |
+| `PUID` | UID del usuario del contenedor; se aplica al ejecutarlo. Debe poder escribir en los montajes. | `1000` |
+| `PGID` | GID del usuario del contenedor; se aplica al ejecutarlo. | `1000` |
 | `TZ` | Zona horaria del contenedor. | `Europe/Madrid` |
 | `HOST_PORT` | Puerto publicado en el host; el puerto interno sigue siendo 8088. | `8088` |
 | `HOST_BIND` | IP del host donde se publica el puerto. Loopback limita el acceso al propio servidor; una IP LAN permite esa interfaz; 0.0.0.0 publica en todas. | `127.0.0.1` |
@@ -85,7 +85,7 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 
 - Las personalizaciones del catálogo, portadas, torrent y eventos guardadas desde Ajustes tienen prioridad sobre los valores de instalación. Restaurar valores de instalación vuelve a utilizar los de la configuración.
 - La longitud mínima de contraseña es un valor inicial persistido; después se modifica desde Usuarios y seguridad.
-- Para cambiar variables de entorno, recrea el contenedor con `docker compose up -d` o su variante con `-f docker-compose-full.yml`. Para cambiar `PUID` o `PGID`, añade `--build` y adapta los permisos de las carpetas del host.
+- Para cambiar variables de entorno, recrea el contenedor con `docker compose -f docker-compose.yml up -d` o su variante con `-f docker-compose-full.yml`. Para cambiar `PUID` o `PGID`, adapta los permisos de las carpetas del host y recrea el contenedor; no necesitas reconstruir la imagen.
 - Duraciones como `3s`, `500ms` y `24h` incluyen su unidad. Las listas de trackers y tags se separan con comas.
 - En `.env`, encierra entre comillas simples los valores que contengan un `$` literal, especialmente contraseñas. No guardes `.env` en Git.
 - Compose traduce `EPLSYNC_EVENTS_RETENTION_MAX_COUNT` y `EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS` a `EPLSYNC_EVENTS_RETENTION_MAXCOUNT` y `EPLSYNC_EVENTS_RETENTION_MAXAGEDAYS` dentro del contenedor. La tabla usa los nombres de `.env`.

@@ -19,8 +19,12 @@ mkdir -p data logs
 aplicación y permite configurar el resto desde **Ajustes**. Ajusta `PUID` y `PGID`
 al usuario que tiene permisos de escritura en `data/` y `logs/`.
 
+Para usar exclusivamente la imagen publicada (una vez disponible en GHCR),
+indica el archivo explícitamente para evitar cargar el override local:
+
 ```sh
-docker compose up -d --build
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
 curl http://localhost:8088/actuator/health
 ```
 
@@ -28,8 +32,29 @@ Para personalizar todos los valores iniciales mediante `.env`, utiliza
 `docker-compose-full.yml`:
 
 ```sh
-docker compose -f docker-compose-full.yml up -d --build
+docker compose -f docker-compose-full.yml pull
+docker compose -f docker-compose-full.yml up -d
 ```
+
+Para construir el código local, `docker-compose.override.yml` añade `build`,
+incluye toda la configuración del completo, utiliza la imagen `eplsync:local`
+y fuerza la construcción. Copia la plantilla versionada si aún no tienes el
+override local. Compose lo carga
+automáticamente cuando no indicas archivos con `-f`:
+
+```sh
+cp -n docker-compose.override.example.yml docker-compose.override.yml
+REVISION=$(git rev-parse HEAD) docker compose up -d --build
+```
+
+Para construir localmente con la configuración completa, incluye ambos archivos:
+
+```sh
+REVISION=$(git rev-parse HEAD) docker compose -f docker-compose-full.yml -f docker-compose.override.yml up -d --build
+```
+
+`PUID` y `PGID` se aplican al ejecutar el contenedor; no requieren reconstruir
+la imagen. Las carpetas del host deben permitir escritura a esos identificadores.
 
 Son alternativas para la misma instalación. Usa el archivo elegido también para
 `logs`, `down` y posteriores actualizaciones. `.env.example` sirve para ambos;

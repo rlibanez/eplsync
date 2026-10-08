@@ -1,7 +1,14 @@
-# Configuración completa. Ejecutar con docker compose -f docker-compose-full.yml up -d.
+# Configuración completa con construcción local. Ejecutar con docker compose up -d --build.
 services:
   eplsync:
-    image: ghcr.io/rlibanez/eplsync:0.0.1
+    image: eplsync:local
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: "0.0.1"
+        REVISION: "${REVISION:-}"
     user: "${PUID:-1000}:${PGID:-1000}"
     container_name: eplsync
     ports:
