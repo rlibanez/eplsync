@@ -354,5 +354,10 @@ permisos existentes siguen limitando las consultas de catálogo, descargas y
 eventos. Cerrar el encabezado con su X desactiva esa sección para la cuenta; se
 puede recuperar desde la misma pestaña de Ajustes.
 
+Cuando se incorporan secciones nuevas, las preferencias guardadas conservan su
+orden y sus elecciones. Las secciones que falten se añaden al final con sus valores
+predeterminados; las que ya no existan se ignoran. Esta compatibilidad se aplica al
+leer el JSON y no requiere migraciones del esquema ni reescrituras al consultar.
+
 `TORRENT_SYNC` unifica la consulta del historial global, sincronización y vinculación de descargas.
 Los envíos y borrados mantienen sus permisos específicos.

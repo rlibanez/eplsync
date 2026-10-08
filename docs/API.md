@@ -1710,8 +1710,16 @@ debe contener exactamente una entrada por cada identificador: `header`,
 Cada entrada contiene `id`, `enabled`, `bookCount` y `eventCount`. `bookCount`
 debe estar entre 1 y 100 para las tres secciones de libros y ser `null` para las
 demás. `eventCount` indica el número de eventos (1 a 100) de `recentEvents`; es
-`null` para las demás secciones. Si falta en preferencias anteriores, se utiliza
-10, conservando el orden y la activación guardados.
+`null` para las demás secciones.
+
+Al leer preferencias guardadas, se conserva el orden, la activación y las cantidades
+válidas de las secciones conocidas. Las secciones que falten se añaden al final,
+en el orden predeterminado y con sus valores predeterminados. Se ignoran secciones
+desconocidas; si hay duplicados, se conserva la primera entrada conocida.
+Los campos ausentes y las cantidades inválidas utilizan los valores predeterminados
+de su sección. Esta adaptación no modifica SQLite al consultar las preferencias.
+Al guardar, sigue siendo obligatorio enviar todas las secciones actuales sin
+duplicados y con valores válidos.
 
 Por defecto todas las secciones están activadas, con 10 libros por sección y 10 eventos. Las preferencias se guardan en SQLite junto a la cuenta
 y se conservan al cerrar sesión, cambiar de navegador o reiniciar la aplicación.
