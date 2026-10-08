@@ -657,4 +657,69 @@ class BulkTests {
         assertThatThrownBy(() -> mapper.readValue("{\"multipleHashes\":\"last\"}", BulkRequest.class))
                 .isInstanceOf(RuntimeException.class);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"disable","url","client"})
+    void configurationChangesPauseNewSendsButLetInFlightFinish(String change) throws Exception {
+        boolean disable=change.equals("disable");
+        String originalClient=properties.getClient();
+        var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
+        when(client.addTorrent(any())).thenAnswer(invocation -> {
+            entered.countDown();release.await(3,TimeUnit.SECONDS);
+            return TorrentDownloadResult.Status.ACCEPTED;
+        });
+        long cursor=events.cursor();
+        var job=create(new BulkRequest(null,2,1,"0ms"));start();worker.tick();
+        try {
+            assertThat(entered.await(2,TimeUnit.SECONDS)).isTrue();
+            if (disable) properties.effective().setEnabled(false);
+            else if (change.equals("url")) properties.effective().setBaseUrl("http://new-destination:8080");
+            else properties.effective().setClient("another-client");
+            worker.tick();
+            var paused=store.view(job.jobId());
+            assertThat(paused.status()).isEqualTo(BulkJob.State.PAUSED);
+            assertThat(paused.message()).contains(disable ? "desactivado" : "destino");
+            assertThat(paused.inFlight()).isEqualTo(1);
+            assertThat(paused.pending()).isEqualTo(4);
+            worker.tick();verify(client,times(1)).addTorrent(any());
+        } finally { release.countDown(); }
+        until(() -> store.view(job.jobId()).inFlight()==0);
+        assertThat(store.view(job.jobId()).accepted()).isEqualTo(1);
+        assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);
+        var pauses=events.after(cursor,100).stream().filter(e -> e.operationId().equals(job.jobId())
+            && e.outcome()==com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED).toList();
+        assertThat(pauses).hasSize(1);
+        assertThat(pauses.getFirst().details()).containsKey("reason");
+        if (!disable) assertThatThrownBy(() -> store.control(job.jobId(),"resume"))
+            .hasMessageContaining("destino original");
+        properties.effective().setEnabled(true);properties.effective().setBaseUrl("http://localhost:8080");
+        properties.effective().setClient(originalClient);
+        store.control(job.jobId(),"resume");
+        until(() -> store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        verify(client,times(5)).addTorrent(any());
+    }
+    @Test void claimingAnItemAlsoChecksTheCurrentConfiguration() {
+        var job=create(null);store.next();
+        var id=store.pending(job.jobId(),1).getFirst();
+        properties.effective().setEnabled(false);
+        assertThat(store.claim(job.jobId(),id)).isNull();
+        assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);
+        assertThat(items.findById(id).orElseThrow().getAttempts()).isZero();
+    }
+
+    @Test void disablingAfterEveryItemIsDispatchedAllowsNormalCompletion() throws Exception {
+        var entered=new CountDownLatch(5);var release=new CountDownLatch(1);
+        when(client.addTorrent(any())).thenAnswer(invocation -> {
+            entered.countDown();release.await(3,TimeUnit.SECONDS);
+            return TorrentDownloadResult.Status.ACCEPTED;
+        });
+        var job=create(new BulkRequest(null,5,5,"0ms"));start();worker.tick();
+        try {
+            assertThat(entered.await(2,TimeUnit.SECONDS)).isTrue();
+            properties.effective().setEnabled(false);worker.tick();
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.RUNNING);
+        } finally { release.countDown(); }
+        until(() -> store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        assertThat(store.view(job.jobId()).accepted()).isEqualTo(5);
+    }
 }

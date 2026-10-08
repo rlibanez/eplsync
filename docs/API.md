@@ -787,6 +787,11 @@ curl -s -X POST 'http://192.168.2.2:8088/api/torrent/jobs/JOB_ID/cancel' | jq
 
 No necesitan cuerpo. Un job completado o cancelado no se puede reanudar.
 
+Desactivar la integración o cambiar el cliente/URL pausa los trabajos activos antes
+de nuevos envíos. Los envíos ya iniciados terminan y conservan su resultado.
+La pausa registra un evento y un motivo en `message`. Para reanudar hay que habilitar
+la integración y restaurar el destino original del trabajo.
+
 > Estos controles actúan sobre los envíos de EPLsync. No pausan ni borran torrents
 > ya enviados a qBittorrent. Las operaciones en vuelo pueden finalizar.
 

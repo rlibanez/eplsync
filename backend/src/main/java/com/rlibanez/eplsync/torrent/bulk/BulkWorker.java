@@ -131,6 +131,10 @@ public class BulkWorker {
         }
         if (!properties.isEnabled() && activeId == null) return IDLE_WAIT;
         BulkJob job = activeId == null ? null : store.job(activeId);
+        if (job != null && job.getState() == BulkJob.State.RUNNING) {
+            store.checkDispatchConfiguration(job.getId());
+            job = store.job(activeId);
+        }
         if (job != null && job.getState() != BulkJob.State.RUNNING) {
             buffer.clear();
             if (!inFlight.isEmpty()) return IDLE_WAIT;

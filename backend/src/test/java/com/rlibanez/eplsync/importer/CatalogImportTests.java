@@ -267,4 +267,31 @@ class CatalogImportTests {
         assertThat(repository.findById(1L).orElseThrow()).usingRecursiveComparison().isEqualTo(original);
         assertThat(repository.count()).isEqualTo(1);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"-1,1,Autor,Invalid","0,1,Autor,Invalid","3,-1,Autor,Invalid",
+        "3,0,Autor,Invalid","3,Infinity,Autor,Invalid","3,NaN,Autor,Invalid","3,1,   ,Invalid","3,1,Autor,   "})
+    void semanticErrorsAreSharedAndCannotReplaceTheCatalog(String invalid) throws Exception {
+        importer.importFile(csv("1,1,Autor,Original\n"),true);
+        var path=csv("2,1,Autor,Valid\n"+invalid+"\n");
+        var preview=importer.previewFile(path,0,20);
+        assertThat(preview.summary().recordsProcessed()).isEqualTo(1);
+        assertThat(preview.summary().errors()).isEqualTo(1);
+        assertThatThrownBy(() -> importer.importFile(path,true))
+            .hasMessageContaining("El catálogo anterior se ha conservado").hasMessageContaining("Fila 3");
+        assertThat(repository.count()).isEqualTo(1);
+        assertThat(repository.findById(1L).orElseThrow().getTitle()).isEqualTo("Original");
+        var update=importer.importFile(path,false);
+        assertThat(update.processed()).isEqualTo(1);assertThat(update.errors()).isEqualTo(1);
+        assertThat(repository.count()).isEqualTo(2);
+    }
+    @Test void extensiveAuthorListsAreAcceptedAndOversizedFieldsAreRejected() throws Exception {
+        String authors="a".repeat(16_384);
+        importer.importFile(csv("1,1,"+authors+",Title\n"),true);
+        assertThat(repository.findById(1L).orElseThrow().getAuthor()).isEqualTo(authors);
+        var path=csv("2,1,Author,Valid\n3,1,"+authors+"a,Invalid\n");
+        assertThat(importer.previewFile(path,0,20).summary().errors()).isEqualTo(1);
+        assertThatThrownBy(() -> importer.importFile(path,true)).hasMessageContaining("Autor").hasMessageContaining("16384");
+        assertThat(repository.count()).isEqualTo(1);
+    }
 }

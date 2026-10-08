@@ -127,6 +127,14 @@ sobredimensionados se rechazan antes de que OpenCSV los acumule en memoria. Los
 errores de conversión aislados siguen contabilizándose; un CSV sin ningún libro válido se rechaza; un exceso aborta la operación
 y no se guardan las filas originales en la cola de errores.
 
+La validación de libros exige EPL Id positivo, revisión finita y positiva, y Autor y
+Título no vacíos ni compuestos solo por espacios. Los máximos por campo, medidos en
+caracteres Unicode, son: Autor 16.384, Título/Colección/Géneros 4.096, Sinopsis
+524.288, Enlace(s) 65.536 y Portada 8.192. Se aplican también en previsualización.
+Las filas que incumplen estos límites cuentan como errores: una actualización
+conserva las válidas, mientras que un reemplazo se rechaza antes de borrar.
+El rechazo de reemplazo incluye la primera fila y el campo inválidos, sin su contenido.
+
 Un fallo de descarga, descompresión o validación elimina sus temporales y no modifica
 el catálogo ni sus metadatos. Un ZIP malformado no se conserva para reutilizarlo.
 Iniciar una nueva fuente sigue invalidando el ZIP guardado anteriormente, incluso si

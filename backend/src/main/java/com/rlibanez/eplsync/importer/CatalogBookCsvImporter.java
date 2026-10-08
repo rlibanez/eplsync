@@ -57,15 +57,16 @@ public class CatalogBookCsvImporter {
 
         if (truncateBeforeImport) {
             CatalogCsvValidator.validate(csvPath, System.nanoTime() + CatalogImportLimits.EXTRACTION_TIME.toNanos());
-            requireCompleteReplacement(processFile(csvPath, true, 0, 1, true).summary());
+            requireCompleteReplacement(processFile(csvPath, true, 0, 1, true));
             repository.deleteAllInBatch();
             repository.flush();
             em.clear();
         }
 
-        var summary = processFile(csvPath, false, 0, 1).summary();
+        var result = processFile(csvPath, false, 0, 1);
+        var summary = result.summary();
         // Keep the transactional guard even after preflight: reading or writing may fail on the second pass.
-        if (truncateBeforeImport) requireCompleteReplacement(summary);
+        if (truncateBeforeImport) requireCompleteReplacement(result);
         if (suggestions != null) suggestions.invalidateAfterCommit();
         return summary;
     }
@@ -92,14 +93,16 @@ public class CatalogBookCsvImporter {
         return new Analysis(result.summary(), result.missingBooks());
     }
     private record ProcessResult(ImportStats summary, List<CatalogBook> createdBooks,
-                                 List<BookUpdate> updatedBooks, List<MissingBook> missingBooks) {}
+                                 List<BookUpdate> updatedBooks, List<MissingBook> missingBooks, String firstValidationError) {}
 
-    private void requireCompleteReplacement(ImportStats stats) {
+    private void requireCompleteReplacement(ProcessResult result) {
+        var stats = result.summary();
         if (stats.errors() > 0)
             throw new com.rlibanez.eplsync.exception.CatalogValidationException(
                 "No se puede reemplazar el catálogo: el CSV contiene "
                 + (stats.errors() == 1 ? "1 registro con errores" : stats.errors() + " registros con errores")
-                + ". El catálogo anterior se ha conservado.");
+                + ". El catálogo anterior se ha conservado."
+                + (result.firstValidationError() == null ? "" : " " + result.firstValidationError()));
     }
 
     private ProcessResult processFile(Path csvPath, boolean preview, int page, int size) throws IOException {
@@ -117,6 +120,7 @@ public class CatalogBookCsvImporter {
         int created = 0;
         int unchanged = 0;
         int rowNumber = 1;
+        String firstValidationError = null;
 
         if (Files.size(csvPath) > CatalogImportLimits.CSV_BYTES)
             throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV supera el máximo de 512 MiB");
@@ -147,6 +151,7 @@ public class CatalogBookCsvImporter {
                 CatalogBook entity;
                 row = it.next(); // Los fallos de lectura abortan; los de conversión los captura OpenCSV.
                 try {
+                    CatalogBookValidation.validate(row);
                     var pub = PublicationFieldParser.parse(row.getPublishedRaw());
 
                     entity = CatalogBook.builder()
@@ -171,12 +176,10 @@ public class CatalogBookCsvImporter {
                                     ? null : row.getCoverUrl().strip())
                             .build();
 
-                    if (entity.getEplId() == null || entity.getRevision() == null
-                            || entity.getAuthor() == null || entity.getTitle() == null) {
-                        throw new com.rlibanez.eplsync.exception.CatalogValidationException("Faltan campos obligatorios del libro");
-                    }
                 } catch (Exception ex) {
                     errors++;
+                    if (firstValidationError == null && ex instanceof com.rlibanez.eplsync.exception.CatalogValidationException)
+                        firstValidationError = "Fila " + rowNumber + ": " + ex.getMessage() + ".";
                     if (errors <= 20) {
                         Long eplId = (row != null) ? row.getEplId() : null;
                         log.warn("Error importando fila {} (eplId={}): {}", rowNumber, eplId, ex.getMessage());
@@ -240,7 +243,8 @@ public class CatalogBookCsvImporter {
                 }
             }
             if (processed == 0)
-                throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV no contiene ningún libro válido");
+                throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV no contiene ningún libro válido"
+                        + (firstValidationError == null ? "" : ". " + firstValidationError));
             if (!preview) {
                 repository.flush();
             }
@@ -252,7 +256,7 @@ public class CatalogBookCsvImporter {
             .map(book -> new MissingBook(book.getEplId(), book.getTitle(), book.getRevision(), book.getInsertDate(), book.getLastModifiedDate()))
             .toList() : List.<MissingBook>of();
         return new ProcessResult(new ImportStats(processed, errors, updated, created, unchanged, !validateOnly && errors == 0 ? (long) missing.size() : null),
-                List.copyOf(createdBooks), List.copyOf(updatedBooks), missing);
+                List.copyOf(createdBooks), List.copyOf(updatedBooks), missing, firstValidationError);
     }
 
     /** Compara solo datos del CSV, excluyendo las fechas de auditoría local. */

@@ -34,9 +34,11 @@ public class BulkStore {
             : com.rlibanez.eplsync.events.EventContext.Origin.valueOf(job.getEventOrigin());
         var currentActor = com.rlibanez.eplsync.events.EventContext.actor();
         var actor = "USER".equals(currentActor.kind()) ? currentActor : job.eventActor();
-        events.recordAs(actor, com.rlibanez.eplsync.events.EventJournal.Category.JOB, "DOWNLOAD", outcome, origin, job.getId(),
-            Map.of("selected", summary.selectedItems(), "processed", summary.processedItems(), "accepted", summary.accepted(),
+        var details = new java.util.LinkedHashMap<String,Object>();
+        details.putAll(Map.of("selected", summary.selectedItems(), "processed", summary.processedItems(), "accepted", summary.accepted(),
                 "alreadyExists", summary.alreadyExists(), "failed", summary.failed(), "skipped", summary.skipped()));
+        if (job.getMessage() != null) details.put("reason", job.getMessage());
+        events.recordAs(actor, com.rlibanez.eplsync.events.EventJournal.Category.JOB, "DOWNLOAD", outcome, origin, job.getId(), details);
     }
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkStore.class);
@@ -458,11 +460,28 @@ public class BulkStore {
 
     @Transactional
     public BulkItem claim(String jobId, String id) {
-        if (job(jobId).getState() != BulkJob.State.RUNNING) return null;
+        if (!checkDispatchConfiguration(jobId)) return null;
         var item = items.findById(id).orElseThrow();
         if (item.getState() != BulkItem.State.PENDING) return null;
         item.setState(BulkItem.State.IN_FLIGHT); item.setAttempts(item.getAttempts() + 1);
         items.saveAndFlush(item); return item;
+    }
+
+    /** Only prevents new claims; already dispatched requests retain their original snapshot. */
+    @Transactional
+    public boolean checkDispatchConfiguration(String id) {
+        var job = job(id);
+        if (job.getState() != BulkJob.State.RUNNING) return false;
+        String reason = !properties.isEnabled() ? "La integración torrent se ha desactivado"
+                : !job.getTargetFingerprint().equals(fingerprint()) ? "El destino configurado ha cambiado" : null;
+        if (reason == null) return true;
+        // If everything is already in flight, let its normal completion finalize the job.
+        if (count(id, BulkItem.State.PENDING) == 0) return true;
+        job.setState(BulkJob.State.PAUSED); job.setMessage(reason); job.setRetryAt(null);
+        job.setUpdatedAt(Instant.now()); jobs.saveAndFlush(job);
+        event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED);
+        log.info("Trabajo bulk pausado: jobId={}, motivo={}; los envíos en curso terminarán",id,reason);
+        return false;
     }
 
     public TorrentDownload command(BulkItem item) { return mapper.readValue(item.getCommandJson(), TorrentDownload.class); }
