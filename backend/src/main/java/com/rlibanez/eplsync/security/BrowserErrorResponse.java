@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.Locale;
 import org.springframework.web.util.HtmlUtils;
 
 /** Standalone error view: it also works when security blocks the frontend assets. */
@@ -22,19 +24,21 @@ final class BrowserErrorResponse {
         response.setStatus(status);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setHeader("Cache-Control", "no-store");
+        String language = language(request);
+        boolean english = language.equals("en");
         String accept = request.getHeader("Accept");
         // API consumers always receive the same machine-readable response, even in a browser.
         if (request.getServletPath().startsWith("/api/") || accept == null || !accept.contains("text/html")) {
             response.setContentType("application/json");
             if (code.equals("CSRF_INVALID")) {
-                String details=request.getLocale().getLanguage().equals("en")
+                response.setHeader("Content-Language", language);
+                String details=english
                     ? "The session has changed. Please try the operation again."
                     : "La sesión ha cambiado. Vuelve a intentar la operación.";
                 response.getWriter().write("{\"code\":\"CSRF_INVALID\",\"details\":\""+details+"\"}");
             } else response.getWriter().write("{\"code\":\"" + code + "\"}");
             return;
         }
-        boolean english = request.getLocale().getLanguage().equals("en");
         String title;
         String message;
         switch (code) {
@@ -60,10 +64,28 @@ final class BrowserErrorResponse {
             }
         }
         response.setContentType("text/html");
+        response.setHeader("Content-Language", language);
         response.getWriter().write(TEMPLATE.replace("{{lang}}", english ? "en" : "es")
             .replace("{{title}}", HtmlUtils.htmlEscape(title, "UTF-8"))
             .replace("{{message}}", HtmlUtils.htmlEscape(message, "UTF-8"))
             .replace("{{code}}", HtmlUtils.htmlEscape(code, "UTF-8"))
             .replace("{{status}}", Integer.toString(status)));
+    }
+
+    /** First supported browser preference, including regional variants; never use the server's locale. */
+    private static String language(HttpServletRequest request) {
+        String preferences = String.join(",", Collections.list(request.getHeaders("Accept-Language")));
+        if (!preferences.isBlank()) {
+            try {
+                for (var range : Locale.LanguageRange.parse(preferences)) {
+                    if (range.getWeight() == 0) continue;
+                    String base = range.getRange().split("-", 2)[0];
+                    if (base.equals("es") || base.equals("en")) return base;
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Invalid client headers use the same English fallback as unsupported languages.
+            }
+        }
+        return "en";
     }
 }
