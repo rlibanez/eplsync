@@ -716,6 +716,8 @@
     "drag": "Drag {{column}}"
   },
   "syncReport": {
+    "phases": "The counters and table describe synchronization before deletion. Subsequent cleanup is reported separately.",
+    "cleanupTitle": "Subsequent cleanup",
     "title": "Synchronization result",
     "applied": "Changes applied",
     "preview": "Preview: no changes saved",
@@ -897,6 +899,11 @@
       "CLEANUP": "Clean up previous revisions"
     },
     "fields": {
+      "policy": "Deletion policy",
+      "requested": "Deletion requested",
+      "confirmed": "Absence confirmed",
+      "cleanupId": "Cleanup request",
+      "deleteFiles": "Delete files",
       "historyDeleted": "History records deleted",
       "pendingCleanup": "Pending cleanup requests",
       "processed": "Processed",

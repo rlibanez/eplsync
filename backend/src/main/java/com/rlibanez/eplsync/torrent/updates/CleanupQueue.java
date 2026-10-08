@@ -1,6 +1,7 @@
 package com.rlibanez.eplsync.torrent.updates;
 
 import com.rlibanez.eplsync.events.EventContext;
+import com.rlibanez.eplsync.events.EventJournal;
 import com.rlibanez.eplsync.repository.CatalogBookRepository;
 import com.rlibanez.eplsync.security.*;
 import com.rlibanez.eplsync.service.TorrentClientService;
@@ -26,10 +27,15 @@ public class CleanupQueue {
     private final CatalogBookRepository books;
     private final MagnetLinkBuilder magnets;
     private final TransactionTemplate tx;
-    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
+    @org.springframework.beans.factory.annotation.Autowired private EventJournal events;
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
     private final JsonMapper mapper = JsonMapper.builder().build();
-    public record Result(String id, String downloadId, UpdateCleanup.State state, String message) {}
+    public record Result(String id, String downloadId, Long eplId, String hash, PreviousVersions policy, UpdateCleanup.State state, String message) {}
+    private record Attempt(UpdateCleanup entry, EventContext.Actor actor, EventContext.Origin origin, String operationId) {}
+    private Map<String,Object> auditDetails(UpdateCleanup entry) {
+        return Map.of("eplId",entry.getEplId(),"cleanupId",entry.getId(),"hash",entry.getHash(),
+            "policy",entry.getPreviousVersions().name(),"deleteFiles",entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES);
+    }
 
     public CleanupQueue(UpdateCleanupRepository entries, UpdatePlanRepository plans, DownloadRepository downloads,
             DownloadTrackingService tracking, TorrentClientService client, CatalogBookRepository books,
@@ -133,6 +139,9 @@ public class CleanupQueue {
         }
         tracking.observeSelected(byHash,observedHashes);
         var dispatched=new HashSet<String>();
+        var attempts=new ArrayList<Attempt>();
+        var previousBlocks=new HashMap<String,String>();
+        for (var entry:selected) if(entry.getState()==UpdateCleanup.State.BLOCKED) previousBlocks.put(entry.getId(),entry.getMessage());
         for (var entry:selected) {
             // Reload: a duplicate hash earlier in this batch may already have resolved this request.
             var fresh=entries.findById(entry.getId()).orElseThrow();
@@ -177,11 +186,12 @@ public class CleanupQueue {
                 save(entry,UpdateCleanup.State.REQUESTED,"Eliminación solicitada; pendiente de confirmar ausencia");
                 if (!dispatched.add(old.hash())) continue;
                 try {
-                    if (automatic) EventContext.withActor(new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()),() ->
-                        events.run(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,"CLEANUP",
-                            Map.of("eplId",entry.getEplId(),"cleanupId",entry.getId(),"deleteFiles",files),
-                            () -> {adapter.deleteTorrent(old.hash(),files); return true;},result -> Map.of("requested",true)));
-                    else adapter.deleteTorrent(old.hash(),files);
+                    var actor=automatic ? new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()) : EventContext.actor();
+                    var attempt=new Attempt(entry,actor,EventContext.origin(),UUID.randomUUID().toString());
+                    events.recordAs(actor,EventJournal.Category.TORRENT,"CLEANUP",
+                        EventJournal.Outcome.STARTED,attempt.origin(),attempt.operationId(),auditDetails(entry));
+                    attempts.add(attempt);
+                    adapter.deleteTorrent(old.hash(),files);
                 }
                 catch (RuntimeException ex) {
                     save(entry,UpdateCleanup.State.REQUESTED,"No se pudo confirmar la eliminación; no se repetirá automáticamente");
@@ -205,8 +215,31 @@ public class CleanupQueue {
                 log.warn("Confirmación de borrado pendiente: tipo={}",ex.getClass().getSimpleName());
             }
         }
+        for (var entry:entries.findAllById(selected.stream().map(UpdateCleanup::getId).toList())) {
+            if(entry.getState()==UpdateCleanup.State.BLOCKED && (!automatic || !Objects.equals(previousBlocks.get(entry.getId()),entry.getMessage()))) {
+                var actor=automatic ? new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()) : EventContext.actor();
+                var details=new HashMap<String,Object>(auditDetails(entry));
+                details.put("requested",false); details.put("confirmed",false); details.put("reason",entry.getMessage());
+                var operationId=UUID.randomUUID().toString();
+                events.recordAs(actor,EventJournal.Category.TORRENT,"CLEANUP",
+                    EventJournal.Outcome.STARTED,EventContext.origin(),operationId,auditDetails(entry));
+                events.recordAs(actor,EventJournal.Category.TORRENT,"CLEANUP",
+                    EventJournal.Outcome.FAILED,EventContext.origin(),operationId,details);
+            }
+        }
+        for (var attempt:attempts) {
+            var entry=entries.findById(attempt.entry().getId()).orElseThrow();
+            boolean confirmed=entry.getState()==UpdateCleanup.State.REMOVED;
+            var details=new HashMap<String,Object>(auditDetails(entry));
+            details.put("requested",true);
+            details.put("confirmed",confirmed);
+            details.put("reason",entry.getMessage());
+            events.recordAs(attempt.actor(),EventJournal.Category.TORRENT,"CLEANUP",
+                confirmed ? EventJournal.Outcome.SUCCEEDED : EventJournal.Outcome.PARTIAL,
+                attempt.origin(),attempt.operationId(),details);
+        }
         return entries.findAllById(selected.stream().map((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getId()).toList()).stream()
-            .map(e -> new Result(e.getId(),e.getDownloadId(),e.getState(),e.getMessage())).toList();
+            .map(e -> new Result(e.getId(),e.getDownloadId(),e.getEplId(),e.getHash(),e.getPreviousVersions(),e.getState(),e.getMessage())).toList();
     }
     private List<String> targets(UpdateCleanup entry) {
         if (entry.getTargetHashes()==null) throw new IllegalStateException("Faltan dependencias de limpieza");
@@ -216,15 +249,7 @@ public class CleanupQueue {
     private void save(UpdateCleanup entry,UpdateCleanup.State state,String message) {
         // Never forget an uncertain write until absence is confirmed.
         if (entry.getState()==UpdateCleanup.State.REQUESTED && state!=UpdateCleanup.State.REMOVED) state=UpdateCleanup.State.REQUESTED;
-        boolean newlyBlocked=state==UpdateCleanup.State.BLOCKED && (entry.getState()!=state || !Objects.equals(entry.getMessage(),message));
         entry.setState(state); entry.setMessage(message); entry.setUpdatedAt(Instant.now()); entries.saveAndFlush(entry);
-        if(newlyBlocked && Boolean.TRUE.equals(entry.getAutomatic()))
-            EventContext.withActor(new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()),() -> {
-                events.rejected(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,"CLEANUP",
-                Map.of("eplId",entry.getEplId(),"cleanupId",entry.getId(),"deleteFiles",entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES),
-                entry.getLastCheckedAt()==null ? Instant.now() : entry.getLastCheckedAt(),new com.rlibanez.eplsync.exception.UserInputException(message));
-                return null;
-            });
     }
     public void resolve(Set<String> aliases) {
         tx.executeWithoutResult(status -> {

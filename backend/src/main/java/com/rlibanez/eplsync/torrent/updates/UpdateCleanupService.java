@@ -101,7 +101,7 @@ public class UpdateCleanupService {
                 var result=tracking.sync(() -> remote,dryRun,details);
                 if (!dryRun && com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP)) {
                     var selected=queue.manualPending();
-                    if (!selected.isEmpty()) queue.execute(selected,adapter,remote,false,false);
+                    if (!selected.isEmpty()) result=result.withCleanup(queue.execute(selected,adapter,remote,false,false));
                 }
                 return result;
             });

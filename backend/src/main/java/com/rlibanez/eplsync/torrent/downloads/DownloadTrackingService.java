@@ -109,7 +109,18 @@ public class DownloadTrackingService {
             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
             List<SyncItem> items,
             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
-            List<IgnoredTorrent> ignoredTorrents) {}
+            List<IgnoredTorrent> ignoredTorrents,
+            @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+            List<com.rlibanez.eplsync.torrent.updates.CleanupQueue.Result> cleanup) {
+        public SyncResult(String client, String clientInstanceId, boolean dryRun, boolean applied,
+                Instant checkedAt, RemoteCounts remote, RecordCounts records, Outcomes outcomes,
+                List<SyncItem> items, List<IgnoredTorrent> ignoredTorrents) {
+            this(client, clientInstanceId, dryRun, applied, checkedAt, remote, records, outcomes, items, ignoredTorrents, null);
+        }
+        public SyncResult withCleanup(List<com.rlibanez.eplsync.torrent.updates.CleanupQueue.Result> results) {
+            return new SyncResult(client, clientInstanceId, dryRun, applied, checkedAt, remote, records, outcomes, items, ignoredTorrents, results);
+        }
+    }
 
     public <T> T exclusive(Supplier<T> action) {
         if (!coordination.writeLock().tryLock()) throw new TorrentOperationException(HttpStatus.CONFLICT,

@@ -716,6 +716,8 @@
     "drag": "Arrastrar {{column}}"
   },
   "syncReport": {
+    "phases": "Los contadores y la tabla corresponden a la sincronización previa al borrado. La limpieza posterior se presenta por separado.",
+    "cleanupTitle": "Limpieza posterior",
     "title": "Resultado de la sincronización",
     "applied": "Cambios aplicados",
     "preview": "Simulación: sin cambios guardados",
@@ -897,6 +899,11 @@
       "CLEANUP": "Limpiar revisiones anteriores"
     },
     "fields": {
+      "policy": "Política de borrado",
+      "requested": "Borrado solicitado",
+      "confirmed": "Ausencia confirmada",
+      "cleanupId": "Solicitud de limpieza",
+      "deleteFiles": "Borrar archivos",
       "historyDeleted": "Registros del historial eliminados",
       "pendingCleanup": "Solicitudes de limpieza pendientes",
       "processed": "Procesados",

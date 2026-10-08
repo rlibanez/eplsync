@@ -44,6 +44,20 @@ test("preview and execution show local searchable detail without repeating sync"
       json: {
         dryRun,
         applied: !dryRun,
+        cleanup: dryRun
+          ? undefined
+          : [
+              {
+                id: "cleanup-1",
+                downloadId: "0",
+                eplId: 1,
+                hash: "a".repeat(40),
+                policy: "REMOVE_TORRENT",
+                state: "REMOVED",
+                message:
+                  "Ausencia confirmada en el cliente; historial conservado",
+              },
+            ],
         client: "qbittorrent",
         checkedAt: "2026-10-01T12:00:00Z",
         remote: { total: 27, matched: 25, ignored: 2 },
@@ -193,6 +207,23 @@ test("preview and execution show local searchable detail without repeating sync"
     .click();
   await expect(
     report.getByText("Cambios aplicados", { exact: true }),
+  ).toBeVisible();
+  if ((await report.locator("details").first().getAttribute("open")) === null)
+    await report.locator("summary").first().click();
+  await expect(
+    report.getByRole("heading", { name: "Limpieza posterior", exact: true }),
+  ).toBeVisible();
+  await expect(
+    report.getByText(
+      "Ausencia confirmada en el cliente; historial conservado",
+      { exact: false },
+    ),
+  ).toBeVisible();
+  await expect(
+    report.getByText(
+      "Los contadores y la tabla corresponden a la sincronización previa al borrado. La limpieza posterior se presenta por separado.",
+      { exact: true },
+    ),
   ).toBeVisible();
   expect(calls).toEqual([true, false]);
   await expect.poll(() => reads).toBe(initialReads + 1);

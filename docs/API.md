@@ -1788,6 +1788,22 @@ que podrá invocarse desde el futuro planificador.
 La sincronización manual aplicada comprueba también las limpiezas pendientes
 del destino actual, reutilizando su respuesta y respetando `TORRENT_CLEANUP` y
 `TORRENT_FILES_DELETE`. La previsualización y una consulta fallida no ejecutan borrados.
+El informe distingue las fases: `remote`, `records`, `outcomes` e `items` describen
+la sincronización **anterior** a la limpieza. Si se comprueban solicitudes pendientes,
+`cleanup` contiene sus resultados posteriores (`id`, `downloadId`, `eplId`, `hash`,
+`policy`, `state`, `message`), también con `includeDetails=false`. La interfaz muestra
+esta fase por separado; no debe interpretarse el estado de `items` como posterior
+al borrado. La previsualización no incluye limpieza.
+
+Cada petición de borrado manual o automática registra un evento `CLEANUP` con
+inicio, usuario ejecutor (autor original en ejecución automática), hash, política y
+resultado después de comprobar la ausencia. `SUCCEEDED` confirma la ausencia;
+`PARTIAL` indica un intento sin confirmación, aunque el cliente haya aceptado la
+petición. Un bloqueo de seguridad registra `FAILED` sin solicitar el borrado.
+Los eventos propios de limpieza no sustituyen el identificador del evento de
+sincronización de la respuesta HTTP. Se conserva la prohibición de reintentar
+borrados inciertos automáticamente.
+
 Las acciones manuales bloqueadas del historial no se convierten en borrados diferidos;
 los intentos `REQUESTED` solo se revisan para confirmar su ausencia.
 

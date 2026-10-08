@@ -29,6 +29,15 @@ export interface SyncItem {
   resultingError: string | null;
 }
 export interface SyncResult {
+  cleanup?: {
+    id: string;
+    downloadId: string;
+    eplId: number;
+    hash: string;
+    policy: string;
+    state: string;
+    message: string;
+  }[];
   dryRun: boolean;
   applied: boolean;
   checkedAt: string;
@@ -211,6 +220,7 @@ export function SyncReport({
           <p>
             {report.client} · {date(report.checkedAt)}
           </p>
+          {report.cleanup && <p>{t("syncReport.phases")}</p>}
           <div className="job-report-groups sync-report-groups">
             {(["remote", "records", "outcomes"] as const).map((group) => (
               <section className="job-report-group" key={group}>
@@ -247,6 +257,21 @@ export function SyncReport({
                 </dl>
               </section>
             ))}
+            {report.cleanup && (
+              <section className="job-report-group">
+                <h3>{t("syncReport.cleanupTitle")}</h3>
+                <ul>
+                  {report.cleanup.map((entry) => (
+                    <li key={entry.id}>
+                      <Link to={`/catalog/${entry.eplId}`}>
+                        EPL {entry.eplId}
+                      </Link>{" "}
+                      · {entry.hash}: {entry.message}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
           <div
             className="action-row"
