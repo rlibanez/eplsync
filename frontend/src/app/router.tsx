@@ -1,13 +1,8 @@
-import { DatabaseReset } from "../features/auth/DatabaseReset";
 import { RouteError } from "../components/RouteError";
 import { AccountSettings } from "../features/auth/Auth";
-import { UserSettings } from "../features/auth/UserSettings";
-import { Events } from "../features/events/Events";
 import { useTranslation } from "react-i18next";
 import { createBrowserRouter, Link, Navigate } from "react-router-dom";
 import { Shell } from "../layout/Shell";
-import { SettingsLayout } from "../features/settings/SettingsLayout";
-import { Home } from "../features/home/Home";
 export const router = createBrowserRouter([
   {
     element: <Shell />,
@@ -17,16 +12,30 @@ export const router = createBrowserRouter([
         path: "/downloads/sync",
         element: <Navigate to="/downloads" replace />,
       },
-      { path: "/events", element: <Events /> },
+      {
+        path: "/events",
+        lazy: async () => ({
+          Component: (await import("../features/events/Events")).Events,
+        }),
+      },
       {
         path: "/maintenance/catalog",
         element: <Navigate to="/settings/catalog" replace />,
       },
       {
         path: "/settings",
-        element: <SettingsLayout />,
+        lazy: async () => ({
+          Component: (await import("../features/settings/SettingsLayout"))
+            .SettingsLayout,
+        }),
         children: [
-          { path: "database", element: <DatabaseReset /> },
+          {
+            path: "database",
+            lazy: async () => ({
+              Component: (await import("../features/auth/DatabaseReset"))
+                .DatabaseReset,
+            }),
+          },
           {
             path: "home",
             lazy: async () => ({
@@ -35,7 +44,13 @@ export const router = createBrowserRouter([
             }),
           },
           { path: "account", element: <AccountSettings /> },
-          { path: "users", element: <UserSettings /> },
+          {
+            path: "users",
+            lazy: async () => ({
+              Component: (await import("../features/auth/UserSettings"))
+                .UserSettings,
+            }),
+          },
           {
             path: "reset",
             element: <Navigate to="/settings/database" replace />,
@@ -125,7 +140,12 @@ export const router = createBrowserRouter([
           Component: (await import("../features/downloads/Jobs")).JobDetail,
         }),
       },
-      { path: "/", element: <Home /> },
+      {
+        path: "/",
+        lazy: async () => ({
+          Component: (await import("../features/home/Home")).Home,
+        }),
+      },
       {
         path: "/catalog",
         lazy: async () => ({
