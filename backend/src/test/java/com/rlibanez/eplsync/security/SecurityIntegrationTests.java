@@ -57,6 +57,22 @@ class SecurityIntegrationTests {
         return login("admin",PASSWORD);
     }
     String json(Object value) {return tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(value);}
+    @Test void staleCsrfIsDistinguishedFromPermissionDenial() throws Exception {
+        var oldSession=admin();
+        var mapper=tools.jackson.databind.json.JsonMapper.builder().build();
+        var oldToken=mapper.readTree(mvc.perform(get("/api/auth/csrf").session(oldSession)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token").asText();
+        var newSession=login("admin",PASSWORD);
+        mvc.perform(put("/api/auth/email").session(newSession).header("X-CSRF-TOKEN",oldToken)
+            .contentType("application/json").content("{\"email\":\"changed@example.org\"}"))
+            .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALID"));
+        accounts.policy(new AccountStore.Policy(true,false,30,12));
+        accounts.register("reader","reader@example.org",PASSWORD);
+        var reader=login("reader",PASSWORD);
+        var token=mapper.readTree(mvc.perform(get("/api/auth/csrf").session(reader)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token").asText();
+        mvc.perform(put("/api/settings/torrent").session(reader).header("X-CSRF-TOKEN",token)
+            .contentType("application/json").content("{}"))
+            .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+    }
     @Test void securityEventsArePrivateAndContainNoCredentials() throws Exception {
         var administrator=admin();
         accounts.policy(new AccountStore.Policy(true,false,30,12));

@@ -15,6 +15,10 @@ import { OptionLabel } from "../downloads/SendOptions";
 import { ValidationTip } from "./ValidationTip";
 import { validEmail, validUsername } from "./validation";
 import { Check, Copy, KeyRound, WifiOff } from "lucide-react";
+import {
+  announceSessionChange,
+  subscribeSessionChanges,
+} from "./sessionChanges";
 import { authRequest, resetCsrf, secureFetch } from "./transport";
 export type Permission =
   | "CATALOG_READ"
@@ -67,13 +71,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [refreshing, setRefreshing] = useState(false);
   const { t } = useTranslation();
   const generation = useRef(0);
+  const currentUser = useRef(user);
+  currentUser.current = user;
   async function refresh() {
+    // Account equality cannot identify a new session for the same user.
+    resetCsrf();
     const requestGeneration = ++generation.current;
     setRefreshing(true);
     try {
       const response = await secureFetch("/api/auth/me", { cache: "no-store" });
       if (requestGeneration !== generation.current) return;
       if (response.status === 401) {
+        setTemporary(undefined);
         setUser(null);
 
         resetCsrf();
@@ -83,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!response.ok) throw new Error(t("auth.unavailable"));
       const account: Account = await response.json();
       if (requestGeneration !== generation.current) return;
+      if (currentUser.current?.id !== account.id) setTemporary(undefined);
       setUser((previous) =>
         JSON.stringify(previous) === JSON.stringify(account)
           ? previous
@@ -105,12 +115,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!response.ok && response.status !== 401)
       throw new Error(t("auth.unavailable"));
     ++generation.current;
-    resetCsrf();
+    announceSessionChange();
+    setTemporary(undefined);
     setUser(null);
   }
   useEffect(() => {
     void refresh();
     const expired = () => {
+      setTemporary(undefined);
       ++generation.current;
       setUser(null);
 
@@ -118,10 +130,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("eplsync-auth-expired", expired);
     const focused = () => void refresh();
+    const changed = () => {
+      setTemporary(undefined);
+      setLoading(true);
+      void refresh();
+    };
+    const unsubscribe = subscribeSessionChanges(changed);
+    const visible = () => {
+      if (document.visibilityState === "visible") focused();
+    };
     window.addEventListener("focus", focused);
+    document.addEventListener("visibilitychange", visible);
+    window.addEventListener("eplsync-auth-session-changed", changed);
     return () => {
       window.removeEventListener("eplsync-auth-expired", expired);
       window.removeEventListener("focus", focused);
+      document.removeEventListener("visibilitychange", visible);
+      window.removeEventListener("eplsync-auth-session-changed", changed);
+      unsubscribe();
     };
   }, []);
   const value = {
@@ -166,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ) : !user ? (
         <Login
           onLogin={async () => {
-            resetCsrf();
+            announceSessionChange();
             await refresh();
           }}
         />
@@ -539,7 +565,7 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
         currentPassword,
         newPassword,
       });
-      resetCsrf();
+      announceSessionChange();
       await auth.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : t("auth.unavailable"));

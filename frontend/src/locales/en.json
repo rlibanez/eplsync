@@ -1102,6 +1102,7 @@
     }
   },
   "auth": {
+    "sessionChanged": "The session has changed. Please try the operation again.",
     "connectionTitle": "Unable to connect to the server",
     "connectionMessage": "Check your connection and make sure the EPL Sync server is running. When it becomes available again, select Retry.",
     "serverMessage": "The server could not respond correctly. Wait a moment and select Retry.",

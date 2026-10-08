@@ -165,6 +165,8 @@ Las sesiones usan una cookie HttpOnly y SameSite=Lax, con 30 minutos de inactivi
 
 Las operaciones que modifican datos requieren CSRF, incluido login e importaciones multipart. React solicita el token y lo envía en la cabecera indicada por el servidor. Los intentos de login, registro y cambio de contraseña están limitados en memoria por intervalos de cinco minutos; el límite se reinicia al arrancar la aplicación.
 
+Las pestañas notifican los cambios de sesión mediante BroadcastChannel o, como alternativa, un evento de almacenamiento, sin compartir credenciales ni tokens. Al recibir el aviso o recuperar el foco, la interfaz comprueba la sesión y descarta el token CSRF anterior, incluso si sigue conectado el mismo usuario. Un rechazo CSRF devuelve `CSRF_INVALID`, distinto de `ACCESS_DENIED`: la interfaz renueva la sesión y solicita un nuevo intento explícito. Nunca repite automáticamente la operación rechazada. Si la sesión cambia mientras se prepara una petición de modificación, esta se cancela antes de enviarla.
+
 ## Despliegue
 
 Docker publica el puerto en `127.0.0.1` por defecto. Con `EPLSYNC_SECURITY_REQUIRE_HTTPS=false`, la aplicación admite HTTP y HTTPS, sin restringirlos según la IP de origen. Para exigir conexiones cifradas, sirve la aplicación mediante HTTPS y activa `EPLSYNC_SECURITY_REQUIRE_HTTPS=true` mediante el Compose completo o la configuración externa de la aplicación: la cookie será Secure y el servidor rechazará peticiones que no identifique como HTTPS.

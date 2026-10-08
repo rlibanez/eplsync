@@ -39,7 +39,7 @@ public class SecurityConfiguration {
             .requestMatchers("/actuator/**").denyAll()
             .anyRequest().permitAll());
         http.exceptionHandling(c->c.authenticationEntryPoint((req,res,ex)->error(req,res,401,"AUTH_REQUIRED"))
-            .accessDeniedHandler((req,res,ex)->error(req,res,403,"ACCESS_DENIED")));
+            .accessDeniedHandler((req,res,ex)->error(req,res,403,ex instanceof CsrfException ? "CSRF_INVALID" : "ACCESS_DENIED")));
         // Admission precedes database-backed session checks: a busy SQLite connection must not queue another import.
         http.addFilterAfter(new CatalogImportAdmissionFilter(catalogOperations,
             () -> env.getProperty("eplsync.security.require-https",Boolean.class,false)),SecurityContextHolderFilter.class);

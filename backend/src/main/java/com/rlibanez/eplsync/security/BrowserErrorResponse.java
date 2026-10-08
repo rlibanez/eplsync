@@ -26,7 +26,12 @@ final class BrowserErrorResponse {
         // API consumers always receive the same machine-readable response, even in a browser.
         if (request.getServletPath().startsWith("/api/") || accept == null || !accept.contains("text/html")) {
             response.setContentType("application/json");
-            response.getWriter().write("{\"code\":\"" + code + "\"}");
+            if (code.equals("CSRF_INVALID")) {
+                String details=request.getLocale().getLanguage().equals("en")
+                    ? "The session has changed. Please try the operation again."
+                    : "La sesión ha cambiado. Vuelve a intentar la operación.";
+                response.getWriter().write("{\"code\":\"CSRF_INVALID\",\"details\":\""+details+"\"}");
+            } else response.getWriter().write("{\"code\":\"" + code + "\"}");
             return;
         }
         boolean english = request.getLocale().getLanguage().equals("en");
@@ -38,6 +43,10 @@ final class BrowserErrorResponse {
                 message = english
                     ? "This installation requires HTTPS. Open EPL Sync using its HTTPS address. If you administer this installation, check the certificate and reverse proxy configuration."
                     : "Esta instalación exige HTTPS. Abre EPL Sync mediante su dirección HTTPS. Si administras esta instalación, comprueba la configuración del certificado y del proxy inverso.";
+            }
+            case "CSRF_INVALID" -> {
+                title=english ? "The session has changed" : "La sesión ha cambiado";
+                message=english ? "Return to EPL Sync and try the operation again." : "Vuelve a EPL Sync e intenta de nuevo la operación.";
             }
             case "AUTH_REQUIRED", "SESSION_EXPIRED" -> {
                 title = english ? "Please sign in" : "Inicia sesión";
