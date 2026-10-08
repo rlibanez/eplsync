@@ -185,6 +185,13 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
               <p className="muted">{t("covers.background")}</p>
             </>
           )}
+          {task.state === "FAILED" && (
+            <Alert color="red" role="alert">
+              {t(`covers.errors.${task.error}`, {
+                defaultValue: t("covers.errors.CHECK_FAILED"),
+              })}
+            </Alert>
+          )}
           {task.summary && (
             <dl className="cover-summary">
               {(

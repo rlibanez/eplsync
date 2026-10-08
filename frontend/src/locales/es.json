@@ -587,6 +587,12 @@
     "records": "{{total}} elementos"
   },
   "covers": {
+    "errors": {
+      "CHECK_FAILED": "No se pudo completar la comprobación de portadas. Revisa los eventos y vuelve a intentarlo.",
+      "CHECK_BUSY": "Ya hay una comprobación de portadas en curso.",
+      "MAINTENANCE_BUSY": "Hay una operación de mantenimiento en curso. Vuelve a intentarlo cuando termine.",
+      "REPORT_STORAGE_FAILED": "No se pudo guardar el informe de portadas. Comprueba el espacio temporal disponible; el límite por informe es de 128 MiB."
+    },
     "title": "Comprobar portadas",
     "description": "Comprueba las portadas no disponibles del catálogo. Los resultados concluyentes se guardan y las portadas no encontradas se sustituyen por una portada alternativa. Los fallos temporales conservan el estado anterior.",
     "parametersNote": "Estos valores solo se aplican a esta ejecución; no cambian la configuración de la aplicación.",

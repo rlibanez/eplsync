@@ -32,7 +32,7 @@ public class ReportSnapshots implements AutoCloseable {
     private String owner() { var actor = EventContext.actor(); return actor.kind()+":"+actor.id()+":"+actor.username(); }
     private void expire() {
         for (var report : List.copyOf(reports.values()))
-            if (report.ready && report.created.isBefore(Instant.now().minusSeconds(TTL_SECONDS))) discard(report);
+            if (report.ready && report.completed.isBefore(Instant.now().minusSeconds(TTL_SECONDS))) discard(report);
     }
     private void discard(Writer writer) {
         reports.remove(writer.id);
@@ -40,11 +40,14 @@ public class ReportSnapshots implements AutoCloseable {
     }
     private TorrentOperationException failure(Exception ex) {
         org.slf4j.LoggerFactory.getLogger(getClass()).warn("No se pudo almacenar o consultar el informe temporal", ex);
-        return new TorrentOperationException(HttpStatus.INSUFFICIENT_STORAGE, "No se pudo almacenar o consultar el informe temporal (límite: 128 MiB); vuelve a ejecutar la operación");
+        return new StorageException();
+    }
+    public static class StorageException extends TorrentOperationException {
+        public StorageException() {super(HttpStatus.INSUFFICIENT_STORAGE,"No se pudo almacenar o consultar el informe temporal (límite: 128 MiB); vuelve a ejecutar la operación");}
     }
     public final class Writer implements AutoCloseable {
         public final String id = UUID.randomUUID().toString();
-        private final Instant created = Instant.now();
+        private Instant completed;
         private final String owner = owner();
         private final Path path;
         private Connection connection;
@@ -58,6 +61,7 @@ public class ReportSnapshots implements AutoCloseable {
                     statement.execute("PRAGMA page_size=4096"); statement.execute("PRAGMA journal_mode=OFF"); statement.execute("PRAGMA temp_store=FILE");
                     statement.execute("PRAGMA cache_size=-1024"); statement.execute("PRAGMA max_page_count=32768");
                     statement.execute("CREATE TABLE details (seq INTEGER PRIMARY KEY, section TEXT NOT NULL, payload TEXT NOT NULL)");
+                    statement.execute("CREATE TABLE url_cache (url TEXT PRIMARY KEY, payload TEXT NOT NULL)");
                 }
                 connection.setAutoCommit(false);
                 insert = connection.prepareStatement("INSERT INTO details(section,payload) VALUES(?,?)");
@@ -70,8 +74,40 @@ public class ReportSnapshots implements AutoCloseable {
                 insert.setString(1,section); insert.setString(2,json); insert.executeUpdate();
             } catch (Exception ex) { throw failure(ex); }
         }
+        public record Entry<T>(long sequence, T value) {}
+        public <T> List<Entry<T>> batch(long after, int size, Class<T> type) {
+            if (size < 1 || size > 500) throw new IllegalArgumentException("Invalid report batch size");
+            try (var statement=connection.prepareStatement("SELECT seq,payload FROM details WHERE seq>? ORDER BY seq LIMIT ?")) {
+                statement.setLong(1,after);statement.setInt(2,size);
+                var result=new ArrayList<Entry<T>>();
+                try(var rows=statement.executeQuery()) {
+                    while(rows.next()) result.add(new Entry<>(rows.getLong(1),mapper.readValue(rows.getString(2),type)));
+                }
+                return result;
+            } catch(Exception ex) {throw failure(ex);}
+        }
+        public void update(long sequence,Object value) {
+            try(var statement=connection.prepareStatement("UPDATE details SET payload=? WHERE seq=?")) {
+                String json=mapper.writeValueAsString(value);
+                if(json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65536) throw new IllegalArgumentException("Report entry exceeds 64 KiB");
+                statement.setString(1,json);statement.setLong(2,sequence);statement.executeUpdate();
+            } catch(Exception ex) {throw failure(ex);}
+        }
+        public <T> T cached(String url,Class<T> type) {
+            try(var statement=connection.prepareStatement("SELECT payload FROM url_cache WHERE url=?")) {
+                statement.setString(1,url);
+                try(var rows=statement.executeQuery()) {return rows.next()?mapper.readValue(rows.getString(1),type):null;}
+            } catch(Exception ex) {throw failure(ex);}
+        }
+        public void cache(String url,Object value) {
+            try(var statement=connection.prepareStatement("INSERT INTO url_cache(url,payload) VALUES(?,?)")) {
+                if(url.length()>16384) throw new IllegalArgumentException("Cover URL exceeds 16 KiB");
+                statement.setString(1,url);statement.setString(2,mapper.writeValueAsString(value));statement.executeUpdate();
+            } catch(Exception ex) {throw failure(ex);}
+        }
+        public void abort() {synchronized(ReportSnapshots.this) {discard(this);}}
         public void finish() {
-            try { connection.commit(); insert.close(); connection.close(); connection=null; ready=true; }
+            try { connection.commit(); insert.close(); connection.close(); connection=null; completed=Instant.now(); ready=true; }
             catch (Exception ex) { throw failure(ex); }
         }
         private void dispose() {

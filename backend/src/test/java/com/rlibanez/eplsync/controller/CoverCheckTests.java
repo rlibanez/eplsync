@@ -71,6 +71,39 @@ class CoverCheckTests {
                 .coverUrl(url).coverAvailable(available).build());
     }
 
+    @Test void applicationFailureRollsBackAllPreviouslyUpdatedCovers() {
+        book(1,"https://example.org/ok.jpg",null);book(2,"https://example.org/ok.jpg",null);
+        var original=org.springframework.test.util.ReflectionTestUtils.getField(service,"repository");
+        var failing=mock(CatalogBookRepository.class,org.mockito.AdditionalAnswers.delegatesTo(repository));
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        doAnswer(call -> {
+            if(calls.incrementAndGet()==2) throw new IllegalStateException("Synthetic update failure");
+            return repository.updateCoverAvailability(call.getArgument(0),call.getArgument(1),call.getArgument(2),call.getArgument(3));
+        }).when(failing).updateCoverAvailability(anyLong(),anyString(),nullable(Boolean.class),nullable(Boolean.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"repository",failing);
+        try {
+            assertThatThrownBy(() -> service.check(false,0,null,null,true)).hasMessageContaining("Synthetic update failure");
+            assertThat(repository.findAll()).allSatisfy(book -> assertThat(book.getCoverAvailable()).isNull());
+        } finally {org.springframework.test.util.ReflectionTestUtils.setField(service,"repository",original);}
+    }
+    @Test void reportStorageLimitFailsBeforeAnyCoverChangesAreApplied() {
+        for(int i=1;i<=200;i++) book(i,"https://example.org/ok.jpg",null);
+        var original=org.springframework.test.util.ReflectionTestUtils.getField(service,"snapshots");
+        try(var limited=new com.rlibanez.eplsync.reports.ReportSnapshots() {
+            @Override public synchronized Writer create() {
+                var writer=super.create();
+                var connection=(java.sql.Connection)org.springframework.test.util.ReflectionTestUtils.getField(writer,"connection");
+                try(var statement=connection.createStatement()) {statement.execute("PRAGMA max_page_count=8");}
+                catch(java.sql.SQLException ex) {throw new IllegalStateException(ex);}
+                return writer;
+            }
+        }) {
+            org.springframework.test.util.ReflectionTestUtils.setField(service,"snapshots",limited);
+            assertThatThrownBy(() -> service.check(false,0,null,null,true)).isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
+            assertThat(repository.findAll()).allSatisfy(book -> assertThat(book.getCoverAvailable()).isNull());
+        } finally {org.springframework.test.util.ReflectionTestUtils.setField(service,"snapshots",original);}
+    }
+
     @Test void getIsReadOnlyAndPostOnlyWritesConclusiveStatesWithoutDeletingUrls() throws Exception {
         book(1, "https://example.org/ok.jpg", null);
         book(2, "https://example.org/missing.jpg", null);
@@ -190,13 +223,18 @@ class CoverCheckTests {
             book(id, id % 2 == 0 ? "https://example.org/ok.jpg" : "https://example.org/missing.jpg", true);
         }
         book(124, null, null);
-        mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("onlyUnchecked", "false").field("coverAvailable", "false"))
+        var response=mvc.perform(com.rlibanez.eplsync.api.OperationRequest.operation("/api/catalog/covers/check", true).field("onlyUnchecked", "false").field("coverAvailable", "false"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.checked").value(123))
                 .andExpect(jsonPath("$.available").value(61)).andExpect(jsonPath("$.unavailable").value(62))
-                .andExpect(jsonPath("$.items.length()").value(62)).andExpect(jsonPath("$.items[61].eplId").value(123))
+                .andExpect(jsonPath("$.items.length()").value(20)).andExpect(jsonPath("$.items[19].eplId").value(39))
                 .andExpect(jsonPath("$.hasMore").value(false))
                 .andExpect(jsonPath("$.nextAfterId").value(org.hamcrest.Matchers.nullValue()))
-                .andExpect(jsonPath("$.updated").value(0));
+                .andExpect(jsonPath("$.updated").value(0)).andReturn();
+        var id=tools.jackson.databind.json.JsonMapper.builder().build().readTree(response.getResponse().getContentAsString()).get("detailsId").asText();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/catalog/covers/check/reports/"+id)
+            .param("coverAvailable","false").param("page","3").param("size","20"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(62))
+            .andExpect(jsonPath("$.items.length()").value(2)).andExpect(jsonPath("$.items[1].eplId").value(123));
         verify(probe, times(1)).check("https://example.org/ok.jpg");
         verify(probe, times(1)).check("https://example.org/missing.jpg");
         assertThat(repository.findById(123L).orElseThrow().getCoverAvailable()).isTrue();

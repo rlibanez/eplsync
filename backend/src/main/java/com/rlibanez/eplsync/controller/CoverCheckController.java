@@ -21,7 +21,14 @@ public class CoverCheckController {
         var input = com.rlibanez.eplsync.api.OperationBody.read(body, Check.class, request);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.check(input.dryRun(),
                 input.afterId() == null ? 0 : input.afterId(), input.eplId(), input.size(),
-                !Boolean.FALSE.equals(input.onlyUnchecked())).filterAvailability(input.coverAvailable()));
+                !Boolean.FALSE.equals(input.onlyUnchecked()),input.coverAvailable()));
+    }
+
+    @GetMapping("/reports/{id}")
+    public com.rlibanez.eplsync.dto.PageResponse<CoverCheckService.Item> details(@PathVariable String id,
+            @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,
+            @RequestParam(required=false) Boolean coverAvailable) {
+        return service.details(id,page,size,coverAvailable);
     }
 
     @ExceptionHandler(CoverCheckService.BusyException.class)

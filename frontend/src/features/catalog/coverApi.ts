@@ -19,6 +19,7 @@ export interface CoverResult {
   updated: boolean;
 }
 export interface CoverReport {
+  detailsId?: string | null;
   dryRun: boolean;
   checked: number;
   available: number;

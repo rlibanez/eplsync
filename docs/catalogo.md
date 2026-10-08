@@ -588,3 +588,13 @@ JSON en `details`: HTTP 429 si hay otra exportación, 413 si se supera un tamañ
 La transferencia libera la conexión SQLite del catálogo antes de enviar el archivo.
 Los listados y previsualizaciones costosas admiten cuatro solicitudes simultáneas;
 el exceso devuelve HTTP 429 con `Retry-After`.
+
+### Memoria durante la comprobación de portadas
+
+Una comprobación completa conserva únicamente el lote actual (50 libros), los contadores y una primera página de 20 resultados en memoria. La deduplicación de URL y los resultados se almacenan en el informe SQLite temporal; una URL compartida se comprueba una sola vez por ejecución, incluso si sus libros aparecen en lotes distintos.
+
+La aplicación de cambios sigue siendo atómica: todas las comprobaciones de red terminan antes de iniciar la transacción de escritura. Los resultados se recorren desde disco en lotes de 500 y se mantienen las comprobaciones de cambios concurrentes en la URL y su estado anterior. Una interrupción o un error de almacenamiento durante la aplicación revierte la transacción y descarta el informe.
+
+`POST /api/catalog/covers/check` devuelve los contadores completos, `detailsId` y como máximo 20 filas iniciales. `size` continúa limitando el número de libros comprobados; no es el tamaño de página de los detalles. `coverAvailable` filtra esa primera página, sin modificar los contadores ni el cursor de comprobación. Para consultar el resto, usa `GET /api/catalog/covers/check/reports/{detailsId}?page=0&size=20&coverAvailable=false` (tamaño de página entre 1 y 1000; filtro de disponibilidad opcional).
+
+Las tareas de fondo exponen `summary.detailsId` y mantienen únicamente el resumen en memoria. Los detalles requieren `COVERS_MANAGE` y pertenecen al usuario que inició la comprobación. Se aplican los mismos límites de informes temporales que a la sincronización: cuatro informes compartidos entre ambos tipos, 128 MiB por archivo, 64 KiB por fila y 30 minutos desde su finalización. No hay nuevas tablas ni migraciones en `eplsync.db`.

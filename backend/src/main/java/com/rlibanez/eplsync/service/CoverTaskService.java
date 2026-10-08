@@ -89,7 +89,7 @@ public class CoverTaskService {
             var report = checks.check(task.dryRun, 0, null, null, task.onlyUnchecked, properties, probe,
                     (done, total) -> { task.total = total; task.checked = done; });
             task.summary = new CoverCheckService.Report(report.dryRun(), report.checked(), report.available(), report.unavailable(),
-                    report.inconclusive(), report.wouldChange(), report.updated(), null, false, List.of());
+                    report.inconclusive(), report.wouldChange(), report.updated(), null, false, List.of(), report.detailsId());
             task.state = "COMPLETED";
         } catch (CoverCheckService.BusyException ex) {
             task.error = "CHECK_BUSY"; task.state = "FAILED";
@@ -97,7 +97,7 @@ public class CoverTaskService {
             if (!checking && events != null) events.record(com.rlibanez.eplsync.events.EventJournal.Category.COVERS, "CHECK",
                 com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED, task.origin, task.id,
                 java.util.Map.of("reason", ex.getClass().getSimpleName()));
-            task.error = "CHECK_FAILED"; task.state = "FAILED";
+            task.error = ex instanceof com.rlibanez.eplsync.reports.ReportSnapshots.StorageException ? "REPORT_STORAGE_FAILED" : "CHECK_FAILED"; task.state = "FAILED";
         } finally {
             if (probe != null) probe.shutdown();
             gate.leave(false);

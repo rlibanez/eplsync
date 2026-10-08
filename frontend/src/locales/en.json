@@ -587,6 +587,12 @@
     "records": "{{total}} items"
   },
   "covers": {
+    "errors": {
+      "CHECK_FAILED": "The cover check could not be completed. Review the events and try again.",
+      "CHECK_BUSY": "A cover check is already running.",
+      "MAINTENANCE_BUSY": "A maintenance operation is running. Try again when it finishes.",
+      "REPORT_STORAGE_FAILED": "The cover report could not be saved. Check the available temporary storage; each report is limited to 128 MiB."
+    },
     "title": "Check covers",
     "description": "Check unavailable catalog covers. Conclusive results are saved and missing covers use an alternative cover. Temporary errors preserve the previous state.",
     "parametersNote": "These values apply only to this run; they do not change the application configuration.",
