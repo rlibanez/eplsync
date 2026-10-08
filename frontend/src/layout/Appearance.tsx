@@ -1,12 +1,19 @@
-import faviconTemplate from "../../public/favicon.svg?raw";
 import {
   createContext,
   useContext,
   useLayoutEffect,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
 import { MantineProvider, createTheme } from "@mantine/core";
+let faviconTemplate: Promise<string | null> | undefined;
+function loadFavicon() {
+  // Files in public are served by URL, rather than imported as source modules.
+  return (faviconTemplate ??= fetch("/favicon.svg")
+    .then((response) => (response.ok ? response.text() : null))
+    .catch(() => null));
+}
 export const palettes = {
   teal: 150,
   blue: 215,
@@ -69,13 +76,24 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     );
     document.documentElement.dataset.palette = palette;
   }, [palette]);
-  useLayoutEffect(() => {
+  useEffect(() => {
+    let active = true;
     const hue = palettes[palette];
-    const background = scheme === "dark" ? `hsl(${hue} 23% 20%)` : `hsl(${hue} 35% 90%)`;
-    const foreground = scheme === "dark" ? `hsl(${hue} 40% 76%)` : `hsl(${hue} 55% 29%)`;
-    const svg = faviconTemplate.replace("#294536", background).replace("#a8d9bb", foreground);
-    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (icon) icon.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    const background =
+      scheme === "dark" ? `hsl(${hue} 23% 20%)` : `hsl(${hue} 35% 90%)`;
+    const foreground =
+      scheme === "dark" ? `hsl(${hue} 40% 76%)` : `hsl(${hue} 55% 29%)`;
+    void loadFavicon().then((template) => {
+      if (!active || template === null) return;
+      const svg = template
+        .replace("#294536", background)
+        .replace("#a8d9bb", foreground);
+      const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+      if (icon) icon.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+    });
+    return () => {
+      active = false;
+    };
   }, [palette, scheme]);
   return (
     <Context.Provider value={{ palette, setPalette, scheme, setScheme }}>
