@@ -206,14 +206,14 @@ function EventsView({ operationId }: { operationId?: string }) {
         const selected = result.data.items.find(
           (item) => item.latest.operationId === operationId,
         );
-        if (selected) markOperationRead(selected.latest.id);
-      } else markEventsRead(result.data.cursor);
+        if (selected) markOperationRead(auth.user?.id, selected.latest.id);
+      } else markEventsRead(auth.user?.id, result.data.cursor);
     }
     if (result.data)
       setPage((current) =>
         Math.min(current, Math.max(0, Math.ceil(result.data.total / 20) - 1)),
       );
-  }, [result.data, result.isFetching, visible, operationId]);
+  }, [result.data, result.isFetching, visible, operationId, auth.user?.id]);
   const filterValue = (
     field: "action" | "category" | "outcome" | "origin",
     value: string,

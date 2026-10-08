@@ -277,12 +277,12 @@ test("reconnection with a lower event cursor does not fight the frozen table rea
   }));
   await page.goto("/events");
   await expect(page.locator(".events-table tbody tr")).toHaveCount(1);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("eplsync.events.lastRead"))).toBe("50");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("eplsync.events.test-admin.lastRead"))).toBe("50");
   cursor = 2;
   await page.evaluate(() => {
     (window as unknown as { __event: (name: string, data: unknown) => void }).__event("reset", { cursor: 2 });
   });
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("eplsync.events.lastRead"))).toBe("0");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("eplsync.events.test-admin.lastRead"))).toBe("0");
   await expect(page.getByRole("heading", { name: "Eventos", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Actualizar tabla" })).toBeVisible();
   expect(errors).toEqual([]);
