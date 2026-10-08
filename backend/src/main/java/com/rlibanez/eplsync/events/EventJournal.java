@@ -125,6 +125,12 @@ public class EventJournal {
     }
 
     private String failureReason(RuntimeException ex) {
+        if(ex instanceof com.rlibanez.eplsync.exception.CatalogImportInterruptedException)
+            return "La operación de importación fue interrumpida";
+        if(com.rlibanez.eplsync.importer.CatalogOperationBudget.active()
+            && (ex instanceof org.springframework.transaction.TransactionTimedOutException || ex instanceof org.springframework.dao.QueryTimeoutException
+                || ex instanceof jakarta.persistence.QueryTimeoutException))
+            return "La operación de catálogo superó el tiempo disponible para la base de datos; los cambios no se han confirmado";
         if(ex instanceof com.rlibanez.eplsync.exception.CatalogImportException) {
             return ex.getCause() instanceof com.rlibanez.eplsync.exception.CatalogDownloadException rejected
                 ? rejected.getMessage() : "No se pudo importar el catálogo";

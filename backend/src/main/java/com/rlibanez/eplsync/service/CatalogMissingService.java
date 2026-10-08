@@ -18,6 +18,7 @@ import org.springframework.http.HttpStatus;
 /** Bounded, short-lived review snapshots. Confirmation never downloads a different CSV. */
 @Service
 public class CatalogMissingService {
+    @org.springframework.beans.factory.annotation.Autowired private CatalogOperationGate admission;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.rlibanez.eplsync.service.CatalogSuggestionService suggestions;
     public record Book(Long eplId, String title, Double revision) {}
@@ -40,10 +41,19 @@ public class CatalogMissingService {
         this.tracking = tracking; this.em = em; this.events = events;
         transactions = new TransactionTemplate(manager);
     }
+    private TransactionTemplate boundedTransactions() {
+        var bounded=new TransactionTemplate(java.util.Objects.requireNonNull(transactions.getTransactionManager()),transactions);
+        bounded.setTimeout(com.rlibanez.eplsync.importer.CatalogOperationBudget.transactionSeconds());
+        return bounded;
+    }
     private String version() {
         return metadata.findById(1L).map(m -> m.getImportedAt() + ":" + m.getSourceSha256()).orElse("");
     }
     public Preview preview() {
+        return admission.run(() -> events.run(EventJournal.Category.CATALOG,"PREVIEW",
+            Map.of("dryRun",true,"missing",true),this::previewAdmitted,result -> Map.of("missing",result.total())));
+    }
+    private Preview previewAdmitted() {
         String before = version();
         var analysis = imports.analyzeMissing();
         if (!before.equals(version())) throw conflict("El catálogo ha cambiado; repite la previsualización");
@@ -73,21 +83,28 @@ public class CatalogMissingService {
         }
         return snapshot;
     }
-    public Result delete(String token, boolean confirm) {
+    public Result delete(String token,boolean confirm) { return admission.run(() -> deleteAdmitted(token,confirm)); }
+    private Result deleteAdmitted(String token, boolean confirm) {
         if (!confirm) throw new com.rlibanez.eplsync.exception.UserInputException("Es necesario confirmar la eliminación");
         synchronized (bulk) {
             return tracking.exclusive(() -> {
                 synchronized (previews) {
                     var snapshot = snapshot(token);
-                    var result = events.run(EventJournal.Category.CATALOG, "DELETE_MISSING", () -> transactions.execute(tx -> {
+                    var result = events.run(EventJournal.Category.CATALOG, "DELETE_MISSING", () -> boundedTransactions().execute(tx -> {
+                        com.rlibanez.eplsync.importer.CatalogOperationBudget.enlist();
                         if (!snapshot.version().equals(version())) throw conflict("El catálogo ha cambiado; repite la previsualización");
                         var current = new HashMap<Long, MissingBook>();
-                        books.findMissingIdentities().forEach(b -> current.put(b.getEplId(), new MissingBook(
-                                b.getEplId(), b.getTitle(), b.getRevision(), b.getInsertDate(), b.getLastModifiedDate())));
-                        for (var book : snapshot.books()) if (!book.equals(current.get(book.eplId())))
-                            throw conflict("Los libros han cambiado; repite la previsualización");
+                        books.findMissingIdentities().forEach(b -> {
+                            com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
+                            current.put(b.getEplId(),new MissingBook(b.getEplId(),b.getTitle(),b.getRevision(),b.getInsertDate(),b.getLastModifiedDate()));
+                        });
+                        for (var book : snapshot.books()) {
+                            com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
+                            if (!book.equals(current.get(book.eplId()))) throw conflict("Los libros han cambiado; repite la previsualización");
+                        }
                         var ids = snapshot.books().stream().map(value -> Objects.requireNonNull(value).eplId()).toList();
                         for (int start = 0; start < ids.size(); start += 500) {
+                            com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
                             var batch = ids.subList(start, Math.min(start + 500, ids.size()));
                             if (em.createQuery("select count(i) from BulkItem i where i.eplId in :ids and i.state in :states", Long.class)
                                     .setParameter("ids", batch).setParameter("states", List.of(

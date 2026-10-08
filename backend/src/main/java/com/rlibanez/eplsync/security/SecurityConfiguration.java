@@ -29,7 +29,7 @@ public class SecurityConfiguration {
         return new DelegatingPasswordEncoder("argon2id",java.util.Map.of("argon2id",new Argon2PasswordEncoder(16,32,1,19456,2)));
     }
     @Bean @ConditionalOnWebApplication SecurityFilterChain security(HttpSecurity http,SessionAccess sessions,AccountStore accounts,
-            org.springframework.core.env.Environment env) throws Exception {
+            org.springframework.core.env.Environment env,com.rlibanez.eplsync.service.CatalogOperationGate catalogOperations) throws Exception {
         http.formLogin(c->c.disable()).httpBasic(c->c.disable()).logout(c->c.disable()).requestCache(c->c.disable());
         http.csrf(c->c.csrfTokenRepository(new HttpSessionCsrfTokenRepository()));
         http.authorizeHttpRequests(c->c
@@ -40,6 +40,9 @@ public class SecurityConfiguration {
             .anyRequest().permitAll());
         http.exceptionHandling(c->c.authenticationEntryPoint((req,res,ex)->error(req,res,401,"AUTH_REQUIRED"))
             .accessDeniedHandler((req,res,ex)->error(req,res,403,"ACCESS_DENIED")));
+        // Admission precedes database-backed session checks: a busy SQLite connection must not queue another import.
+        http.addFilterAfter(new CatalogImportAdmissionFilter(catalogOperations,
+            () -> env.getProperty("eplsync.security.require-https",Boolean.class,false)),SecurityContextHolderFilter.class);
         http.addFilterAfter(new OncePerRequestFilter() {
             @Override protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,FilterChain chain) throws IOException,ServletException {
                 if(req.getServletPath().startsWith("/api/")) res.setHeader("Cache-Control","no-store");
@@ -57,7 +60,7 @@ public class SecurityConfiguration {
                 }
                 chain.doFilter(req,res);
             }
-        },SecurityContextHolderFilter.class);
+        },CatalogImportAdmissionFilter.class);
         return http.build();
     }
     static void error(HttpServletRequest req,HttpServletResponse res,int status,String code) throws IOException {

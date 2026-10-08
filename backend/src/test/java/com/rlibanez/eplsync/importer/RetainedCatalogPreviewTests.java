@@ -51,6 +51,33 @@ class RetainedCatalogPreviewTests {
         jdbc.execute("DROP TRIGGER IF EXISTS fail_preview_apply");
         store.clear();
     }
+    @Test void sharedDeadlineRejectsDownloadedZipAndCleansTemporaryFilesWithoutChangingCatalog() throws Exception {
+        service.updateCatalog(null);
+        String originalHash=metadata.findById(1L).orElseThrow().getSourceSha256();
+        var clock=new java.util.concurrent.atomic.AtomicLong();
+        when(downloader.download(anyString(),anyString(),anyString())).thenAnswer(invocation -> {
+            zip=Files.createTempFile(directory,"expired-", ".zip");
+            try(var output=new ZipOutputStream(Files.newOutputStream(zip))) {
+                output.putNextEntry(new ZipEntry("catalog.csv"));
+                output.write(csv.getBytes(java.nio.charset.StandardCharsets.UTF_8));output.closeEntry();
+            }
+            clock.set(Duration.ofSeconds(2).toNanos());return zip;
+        });
+        long cursor=serviceEvents.cursor();
+        try(var budget=new CatalogOperationBudget(Duration.ofSeconds(1),clock::get)) {
+            assertThatThrownBy(() -> service.importCatalog(null)).isInstanceOf(com.rlibanez.eplsync.exception.CatalogOperationException.class);
+        }
+        assertThat(books.count()).isEqualTo(1);
+        assertThat(metadata.findById(1L).orElseThrow().getSourceSha256()).isEqualTo(originalHash);
+        assertThat(Files.exists(zip)).isFalse();
+        assertThat(store.archive()).isNull();
+        try(var files=Files.list(cache)) { assertThat(files.toList()).isEmpty(); }
+        var event=serviceEvents.after(cursor,10).getLast();
+        assertThat(event.outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
+        assertThat(event.details().get("reason")).asString().contains("tiempo máximo");
+    }
+    @Autowired com.rlibanez.eplsync.events.EventJournal serviceEvents;
+
     @Test void appliesExactCsvWithoutDownloadAndPreservesSourceMetadata() throws Exception {
         Instant before = Instant.now();
         var summary = service.previewCatalog("https://example.test/original.zip",0,50).summary();
@@ -188,7 +215,7 @@ class RetainedCatalogPreviewTests {
     @Test void concurrentApplyOnlyImportsOnce() throws Exception {
         var token = service.previewCatalog(null,0,50).summary().preview().token();
         try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
-            java.util.concurrent.Callable<Boolean> apply = () -> { try { service.applyPreview(token); return true; } catch (CatalogPreviewException ex) { return false; } };
+            java.util.concurrent.Callable<Boolean> apply = () -> { try { service.applyPreview(token); return true; } catch (CatalogPreviewException | com.rlibanez.eplsync.exception.CatalogOperationException ex) { return false; } };
             var first = executor.submit(apply); var second = executor.submit(apply);
             assertThat(java.util.List.of(first.get(), second.get())).containsExactlyInAnyOrder(true,false);
         }

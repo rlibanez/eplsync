@@ -27,6 +27,7 @@ services:
 
       # Catálogo e importaciones
       EPLSYNC_CATALOG_ZIPURL: "${EPLSYNC_CATALOG_ZIPURL:-https://epublibre.org/rssweb/csv/epub.zip}"
+      EPLSYNC_CATALOG_IMPORT_OPERATION_TIMEOUT: "${EPLSYNC_CATALOG_IMPORT_OPERATION_TIMEOUT:-30m}"
       EPLSYNC_CATALOG_IMPORT_RETENTION: "${EPLSYNC_CATALOG_IMPORT_RETENTION:-24h}"
 
       # Comprobación de portadas

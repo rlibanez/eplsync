@@ -33,6 +33,7 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 | `EPLSYNC_INITIAL_ADMIN_KEY` | Clave opcional para autorizar la creación del primer administrador. Generar con `openssl rand -hex 16`. Vacía no exige clave; después de crear la primera cuenta deja de tener efecto. Solo el Compose completo la transmite. | Vacío |
 | `EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH` | Longitud mínima inicial de contraseña (8–128). Después se administra en Usuarios y seguridad. | `8` |
 | `EPLSYNC_CATALOG_ZIPURL` | URL del ZIP utilizado para importar el catálogo. | `https://epublibre.org/rssweb/csv/epub.zip` |
+| `EPLSYNC_CATALOG_IMPORT_OPERATION_TIMEOUT` | Presupuesto compartido de importación, previsualización y comprobación de ausentes, incluyendo carga, descarga y escritura. Duración positiva, máximo `24h`. La cancelación es cooperativa; una llamada bloqueada puede tardar en devolver el control. | `30m` |
 | `EPLSYNC_CATALOG_IMPORT_RETENTION` | Tiempo de conservación del ZIP de importación guardado. | `24h` |
 | `EPLSYNC_CATALOG_COVERCHECK_CONNECTTIMEOUT` | Tiempo máximo para establecer una conexión al comprobar portadas. | `3s` |
 | `EPLSYNC_CATALOG_COVERCHECK_REQUESTTIMEOUT` | Presupuesto por URL, incluidas redirecciones; debe ser mayor o igual al tiempo de conexión. | `3s` |

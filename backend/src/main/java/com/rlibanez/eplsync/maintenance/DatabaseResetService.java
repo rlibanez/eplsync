@@ -21,6 +21,7 @@ public class DatabaseResetService {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogImportStore previews;
     @org.springframework.beans.factory.annotation.Autowired(required = false) private com.rlibanez.eplsync.settings.ServerSettings settings;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.security.AccountStore accounts;
+    private final com.rlibanez.eplsync.service.CatalogOperationGate catalogOperations;
     private final BulkStore bulk;
     private final ObjectProvider<BulkWorker> workers;
     private final DownloadTrackingService tracking;
@@ -32,8 +33,10 @@ public class DatabaseResetService {
             int jobs, int jobItems, int updatePlans, int cleanupRecords, int metadataRecords, int events, int settingsRecords) {}
 
     public DatabaseResetService(BulkStore bulk, ObjectProvider<BulkWorker> workers,
-            DownloadTrackingService tracking, EntityManager em, PlatformTransactionManager manager) {
+            DownloadTrackingService tracking, EntityManager em, PlatformTransactionManager manager,
+            com.rlibanez.eplsync.service.CatalogOperationGate catalogOperations) {
 
+        this.catalogOperations=catalogOperations;
         this.bulk = bulk; this.workers = workers; this.tracking = tracking; this.em = em;
         this.transactions = new TransactionTemplate(manager);
     }
@@ -42,6 +45,9 @@ public class DatabaseResetService {
         return reset(false);
     }
     public ResetResult reset(boolean eraseUsersAndSettings) {
+        return catalogOperations.run(() -> resetAdmitted(eraseUsersAndSettings));
+    }
+    private ResetResult resetAdmitted(boolean eraseUsersAndSettings) {
         // Worker dispatch and job creation use this same monitor. Do not hold a
         // database transaction while waiting for the worker or tracking locks.
         synchronized (bulk) {
@@ -50,6 +56,7 @@ public class DatabaseResetService {
             if (coverTasks != null && coverTasks.current() != null && coverTasks.current().state().equals("RUNNING")) throw busy();
             return tracking.exclusive(() -> {
                 ResetResult result = transactions.execute(status -> {
+                    com.rlibanez.eplsync.importer.CatalogOperationBudget.enlist();
                     // Also protect installations with the worker disabled after an interrupted send.
                     if (em.createQuery("select count(i) from BulkItem i where i.state = "
                             + "com.rlibanez.eplsync.torrent.bulk.BulkItem.State.IN_FLIGHT", Long.class)

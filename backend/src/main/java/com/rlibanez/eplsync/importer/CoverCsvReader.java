@@ -32,6 +32,7 @@ final class CoverCsvReader extends Reader {
             return line;
         }
         for (int i = 0; i < line.length(); i++) {
+            if ((i & 1023) == 0) CatalogOperationBudget.check();
             char c = line.charAt(i);
             if (c == '"') {
                 if (!quoted && column == coverColumn
@@ -56,6 +57,7 @@ final class CoverCsvReader extends Reader {
 
     @Override
     public int read(char[] target, int offset, int length) throws IOException {
+        CatalogOperationBudget.check();
         java.util.Objects.checkFromIndexSize(offset, length, target.length);
         if (length == 0) return 0;
         if (position == buffer.length()) {
@@ -77,6 +79,7 @@ final class CoverCsvReader extends Reader {
     private String readBoundedLine() throws IOException {
         var line = new StringBuilder();
         for (int c; (c = source.read()) != -1;) {
+            if ((line.length() & 2047) == 0) CatalogOperationBudget.check();
             if (Thread.currentThread().isInterrupted())
                 throw new com.rlibanez.eplsync.exception.CatalogValidationException("Procesamiento del CSV interrumpido");
             if (c == '\n') return line.toString();

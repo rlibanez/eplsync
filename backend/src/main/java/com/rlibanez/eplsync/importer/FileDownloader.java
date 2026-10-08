@@ -36,8 +36,9 @@ public class FileDownloader {
     public static URI validateUrl(String value) { return CatalogDownloadPolicy.validateUrl(value); }
 
     public Path download(String url,String filePrefix,String fileSuffix) throws IOException,InterruptedException {
+        if(Thread.currentThread().isInterrupted()) throw new InterruptedException("Descarga del catálogo interrumpida");
         URI uri = validateUrl(url);
-        var budget = new DownloadBudget(timeout);
+        var budget = new DownloadBudget(CatalogOperationBudget.remaining(timeout));
         var visited = new HashSet<URI>();
         boolean publicOrigin = false;
         var received = new java.util.concurrent.atomic.AtomicReference<Path>();
@@ -82,9 +83,11 @@ public class FileDownloader {
                 throw new CatalogDownloadException("Error al descargar el catálogo. HTTP " + status);
             }
         } catch (CatalogDownloadException ex) {
+            CatalogOperationBudget.check();
             log.warn("Descarga del catálogo rechazada: {}",ex.getMessage());
             throw ex;
         } catch (IOException ex) {
+            CatalogOperationBudget.check();
             budget.remaining();
             // HttpClient exceptions can contain the request URI. Expose neither their message nor their cause.
             log.warn("Fallo de comunicación al descargar el catálogo: {}",ex.getClass().getSimpleName());

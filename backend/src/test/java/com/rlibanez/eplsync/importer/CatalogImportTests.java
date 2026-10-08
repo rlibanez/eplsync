@@ -40,6 +40,53 @@ class CatalogImportTests {
                 "EPL Id,Revisión,Autor,Título\n" + rows);
     }
 
+    @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
+
+    @Test void expiryBeforeCommitRollsBackReplacementAndUpdate() throws Exception {
+        importer.importFile(csv("1,1,Autor,Original\n"),true);
+        for(boolean replace:new boolean[]{true,false}) {
+            var clock=new java.util.concurrent.atomic.AtomicLong();
+            var source=csv("1,2,Autor,Cambiado\n2,1,Autor,Nuevo\n");
+            try(var budget=new CatalogOperationBudget(java.time.Duration.ofSeconds(1),clock::get)) {
+                assertThatThrownBy(() -> transactions.execute(tx -> {
+                    try { importer.importFile(source,replace); }
+                    catch(IOException ex) {throw new java.io.UncheckedIOException(ex);}
+                    clock.set(java.time.Duration.ofSeconds(2).toNanos());
+                    return null;
+                })).isInstanceOf(com.rlibanez.eplsync.exception.CatalogOperationException.class);
+            }
+            assertThat(repository.count()).isEqualTo(1);
+            assertThat(repository.findById(1L).orElseThrow().getTitle()).isEqualTo("Original");
+        }
+    }
+
+    @Test void deadlineStopsConversionAndDoesNotTurnTimeoutIntoInvalidRows() throws Exception {
+        importer.importFile(csv("1,1,Autor,Original\n"),true);
+        var source=csv("2,1,Autor,Nuevo\n".repeat(100));
+        var clock=new java.util.concurrent.atomic.AtomicLong();
+        try(var budget=new CatalogOperationBudget(java.time.Duration.ofSeconds(1),() -> clock.addAndGet(100_000_000))) {
+            assertThatThrownBy(() -> importer.importFile(source,false)).isInstanceOf(com.rlibanez.eplsync.exception.CatalogOperationException.class);
+        }
+        assertThat(repository.count()).isEqualTo(1);
+    }
+
+    @Test
+    @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named="EPLSYNC_TEST_IMPORT_LOAD",matches="true")
+    void measuresSynthetic73000BookImportAndPreview() throws Exception {
+        var source=directory.resolve("load.csv");
+        try(var output=Files.newBufferedWriter(source)) {
+            output.write("EPL Id,Revisión,Autor,Título,Sinopsis\n");
+            for(int id=1;id<=73000;id++) output.write(id+",1.2,Autor "+id+",Título "+id+",Sinopsis sintética del libro "+id+" para medir conversión y persistencia.\n");
+        }
+        long start=System.nanoTime();
+        importer.importFile(source,true);
+        long imported=System.nanoTime();
+        importer.previewFile(source,0,50);
+        long previewed=System.nanoTime();
+        assertThat(repository.count()).isEqualTo(73000);
+        System.out.printf("LOAD_73000 import=%.3fs preview=%.3fs%n",(imported-start)/1e9,(previewed-imported)/1e9);
+    }
+
     @Test
     void updateCountsChangesAndPreservesMissingBooksAndDates() throws Exception {
         importer.importFile(csv("1,1,Autor,Original\n2,1,Autor,Igual\n3,1,Autor,Ausente\n"), true);

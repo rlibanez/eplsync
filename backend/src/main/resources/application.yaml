@@ -6,6 +6,7 @@ spring:
     multipart:
       max-file-size: 128MB
       max-request-size: 129MB
+      resolve-lazily: true # La admisión y autorización se comprueban antes de procesar el ZIP.
 
   datasource:
     url: jdbc:sqlite:./data/eplsync.db
@@ -98,6 +99,8 @@ eplsync:
   catalog:
     zip-url: "https://epublibre.org/rssweb/csv/epub.zip"
     import:
+      # Plazo compartido de la operación completa (positivo, máximo 24h).
+      operation-timeout: ${EPLSYNC_CATALOG_IMPORT_OPERATION_TIMEOUT:30m}
       retention: 24h # Conservación del único ZIP guardado desde su descarga/carga.
     cover-check:
       # Debe cumplirse connect-timeout ≤ request-timeout ≤ batch-timeout:

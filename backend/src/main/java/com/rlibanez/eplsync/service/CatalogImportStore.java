@@ -51,7 +51,10 @@ public class CatalogImportStore {
         try (var input = Files.newInputStream(path)) {
             var digest = java.security.MessageDigest.getInstance("SHA-256");
             byte[] buffer = new byte[65536]; int read;
-            while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+            while ((read = input.read(buffer)) != -1) {
+                com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
+                digest.update(buffer, 0, read);
+            }
             return HexFormat.of().formatHex(digest.digest());
         } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
@@ -72,6 +75,7 @@ public class CatalogImportStore {
             save(new State(archive, null)); published = true;
             log.info("ZIP de importación guardado: nombre={}, bytes={}, SHA-256={}, fecha CSV={}, caduca={}",
                     name, archive.size(), archive.sha256(), csv.modifiedAt(), archive.expiresAt());
+            com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
             return work.run(archive, csv);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
@@ -96,11 +100,13 @@ public class CatalogImportStore {
             if (!state.archive().sha256().equals(digest(zipPath()))) throw new CatalogPreviewException("PREVIEW_FILE_CHANGED");
             csv = extractor.extractCsvWithMetadata(zipPath());
             log.info("CSV extraído del ZIP guardado: nombre={}, bytes={}, fecha del CSV={}", csv.name(), Files.size(csv.path()), csv.modifiedAt());
+            com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
             return work.run(state.archive(), csv);
         } catch (IOException ex) { throw new com.rlibanez.eplsync.exception.CatalogImportException("No se pudo leer el ZIP guardado", ex); }
         finally { remove(csv == null ? null : csv.path()); }
     }
     public synchronized ImportPreviewResult preview(Archive archive, Evaluation evaluation, String sourceType) {
+        com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
         String token = UUID.randomUUID().toString();
         var summary = evaluation.result().summary().withPreview(new ImportResult.PreviewFile(token, archive.expiresAt(), archive.csvModifiedAt()));
         save(new State(archive, new Snapshot(token, evaluation.catalogVersion(), summary, sourceType)));

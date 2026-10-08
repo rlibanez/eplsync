@@ -55,6 +55,7 @@ public class CatalogBookCsvImporter {
     @Transactional(rollbackFor = Exception.class)
     public ImportStats importFile(Path csvPath, boolean truncateBeforeImport) throws IOException {
 
+        CatalogOperationBudget.enlist();
         if (truncateBeforeImport) {
             CatalogCsvValidator.validate(csvPath, System.nanoTime() + CatalogImportLimits.EXTRACTION_TIME.toNanos());
             requireCompleteReplacement(processFile(csvPath, true, 0, 1, true));
@@ -110,6 +111,7 @@ public class CatalogBookCsvImporter {
     }
 
     private ProcessResult processFile(Path csvPath, boolean preview, int page, int size, boolean validateOnly) throws IOException {
+        CatalogOperationBudget.enlist();
         List<CatalogBook> createdBooks = new ArrayList<>();
         List<BookUpdate> updatedBooks = new ArrayList<>();
         var seenIds = new HashSet<Long>();
@@ -134,6 +136,7 @@ public class CatalogBookCsvImporter {
                     .withIgnoreLeadingWhiteSpace(true)
                     .withMultilineLimit(CatalogImportLimits.RECORD_LINES)
                     .withExceptionHandler(exception -> {
+                        CatalogOperationBudget.check();
                         if (conversionErrors.incrementAndGet() > CatalogImportLimits.CONVERSION_ERRORS)
                             throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV supera el máximo de 1000 errores de conversión");
                         // Do not retain attacker-controlled rows/values in OpenCSV's exception queue.
@@ -144,7 +147,10 @@ public class CatalogBookCsvImporter {
                     .build();
             var it = parser.iterator();
 
-            while (it.hasNext()) {
+            while (true) {
+                CatalogOperationBudget.check();
+                if (!it.hasNext()) break;
+                CatalogOperationBudget.check();
                 if (++rowNumber > CatalogImportLimits.RECORDS + 1)
                     throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV supera el máximo de 1000000 registros");
                 CatalogBookCsvRow row = null;
@@ -199,6 +205,7 @@ public class CatalogBookCsvImporter {
                 }
 
                 // Los errores de persistencia abortan la transacción: no se cuentan como filas omitidas.
+                CatalogOperationBudget.check();
                 CatalogBook existing = repository.findById(entity.getEplId()).orElse(null);
                 if (existing == null) {
                     if (!preview) {
@@ -236,6 +243,7 @@ public class CatalogBookCsvImporter {
                     log.info("Progreso importación: {} filas OK, {} errores", processed, errors);
                 }
             }
+            CatalogOperationBudget.check();
             for (var error : parser.getCapturedExceptions()) {
                 errors++;
                 if (errors <= 20) {
@@ -252,9 +260,10 @@ public class CatalogBookCsvImporter {
         }
 
         var missing = !validateOnly && errors == 0 ? repository.findMissingIdentities().stream()
-            .filter(book -> !seenIds.contains(book.getEplId()))
+            .filter(book -> { CatalogOperationBudget.check(); return !seenIds.contains(book.getEplId()); })
             .map(book -> new MissingBook(book.getEplId(), book.getTitle(), book.getRevision(), book.getInsertDate(), book.getLastModifiedDate()))
             .toList() : List.<MissingBook>of();
+        CatalogOperationBudget.check();
         return new ProcessResult(new ImportStats(processed, errors, updated, created, unchanged, !validateOnly && errors == 0 ? (long) missing.size() : null),
                 List.copyOf(createdBooks), List.copyOf(updatedBooks), missing, firstValidationError);
     }

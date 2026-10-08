@@ -25,6 +25,13 @@ import java.nio.file.Path;
  */
 @Service
 public class CatalogImportService {
+    @org.springframework.beans.factory.annotation.Autowired private CatalogOperationGate admission;
+    private <T> T admitted(java.util.function.Supplier<T> work) { return admission.run(work); }
+    private org.springframework.transaction.support.TransactionTemplate boundedTransactions() {
+        var bounded=new org.springframework.transaction.support.TransactionTemplate(java.util.Objects.requireNonNull(transactions.getTransactionManager()),transactions);
+        bounded.setTimeout(com.rlibanez.eplsync.importer.CatalogOperationBudget.transactionSeconds());
+        return bounded;
+    }
     @org.springframework.beans.factory.annotation.Autowired
     private com.rlibanez.eplsync.events.EventJournal events;
     @org.springframework.beans.factory.annotation.Autowired private CatalogImportStore previews;
@@ -84,7 +91,8 @@ public class CatalogImportService {
         return importCatalog(zipUrl, false);
     }
 
-    private ImportResult importCatalog(String zipUrl, boolean truncateBeforeImport) {
+    private ImportResult importCatalog(String zipUrl, boolean truncateBeforeImport) { return admitted(() -> importCatalogAdmitted(zipUrl,truncateBeforeImport)); }
+    private ImportResult importCatalogAdmitted(String zipUrl, boolean truncateBeforeImport) {
         if (events == null) return performImport(zipUrl, truncateBeforeImport);
         return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, truncateBeforeImport ? "REPLACE" : "UPDATE",
             () -> performImport(zipUrl, truncateBeforeImport), this::eventSummary);
@@ -107,8 +115,9 @@ public class CatalogImportService {
         metadata.setImportMode(truncateBeforeImport ? "REPLACE" : "UPDATE");
         metadata.setSourceSha256(CatalogImportStore.digest(csv.path()));
         metadata.setSourceZipSha256(archive.sha256());
-        return transactions.execute(status -> {
+        return boundedTransactions().execute(status -> {
             try {
+                com.rlibanez.eplsync.importer.CatalogOperationBudget.enlist();
                 ImportStats stats = csvImporter.importFile(csv.path(), truncateBeforeImport);
                 metadata.setTotalRows((long) stats.processed() + stats.errors());
                 metadata.setInsertedRows(stats.created());
@@ -118,6 +127,7 @@ public class CatalogImportService {
                 metadata.setMissingRows(stats.missingBooks());
                 metadata.setImportedAt(java.time.Instant.now());
                 metadata.setDurationMs((System.nanoTime() - started) / 1_000_000);
+                com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
                 metadataRepository.saveAndFlush(metadata);
                 var result = new ImportResult(true, "Importación completada", stats.processed(), stats.errors(),
                         stats.updated(), stats.created(), stats.unchanged(), stats.missingBooks(), metadata);
@@ -130,11 +140,13 @@ public class CatalogImportService {
         });
     }
 
-    public CatalogBookCsvImporter.Analysis analyzeMissing() {
+    public CatalogBookCsvImporter.Analysis analyzeMissing() { return admitted(this::analyzeMissingAdmitted); }
+    private CatalogBookCsvImporter.Analysis analyzeMissingAdmitted() {
         return withCatalogFile(null, csv -> csvImporter.analyzeMissing(csv.path()));
     }
 
-    public ImportPreviewResult previewCatalog(String zipUrl, int page, int size) {
+    public ImportPreviewResult previewCatalog(String zipUrl,int page,int size) { return admitted(() -> previewCatalogAdmitted(zipUrl,page,size)); }
+    private ImportPreviewResult previewCatalogAdmitted(String zipUrl, int page, int size) {
         java.util.function.Supplier<ImportPreviewResult> work =
                 () -> {
                     String source = zipUrl == null ? configuredUrl() : zipUrl;
@@ -147,8 +159,9 @@ public class CatalogImportService {
     }
 
     private CatalogImportStore.Evaluation evaluate(ZipExtractor.ExtractedCsv csv, int page, int size) {
-        return transactions.execute(tx -> {
+        return boundedTransactions().execute(tx -> {
             try {
+                com.rlibanez.eplsync.importer.CatalogOperationBudget.enlist();
                 String version = catalogVersion();
                 return new CatalogImportStore.Evaluation(version, csvImporter.previewFile(csv.path(), page, size));
             } catch (IOException ex) { throw new CatalogImportException("Error previsualizando CSV", ex); }
@@ -162,6 +175,7 @@ public class CatalogImportService {
             var digest = java.security.MessageDigest.getInstance("SHA-256");
             for (String query : java.util.List.of("select * from catalog_books order by epl_id", "select * from catalog_metadata order by id")) {
                 jdbc.query(query, (org.springframework.jdbc.core.RowCallbackHandler) row -> {
+                    com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
                     for (int column = 1; column <= row.getMetaData().getColumnCount(); column++) {
                         String value = row.getString(column);
                         byte[] bytes = value == null ? new byte[0] : value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -175,21 +189,24 @@ public class CatalogImportService {
         } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
 
-    public ImportResult retainedPreview(String token) { return previews.usePreview(token, value -> Objects.requireNonNull(value).summary()); }
-    public ImportResult refreshPreview(String token) {
+    public ImportResult retainedPreview(String token) { return admitted(() -> previews.usePreview(token, value -> Objects.requireNonNull(value).summary())); }
+    public ImportResult refreshPreview(String token) { return admitted(() -> refreshPreviewAdmitted(token)); }
+    private ImportResult refreshPreviewAdmitted(String token) {
         return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "PREVIEW",
                 java.util.Map.of("dryRun", true),
                 () -> previews.refresh(token, csv -> evaluate(csv, 0, 50)), this::eventSummary);
     }
-    public void discardPreview(String token) { previews.discard(token); }
-    public ImportResult applyPreview(String token) {
+    public void discardPreview(String token) { admitted(() -> { previews.discard(token); return null; }); }
+    public ImportResult applyPreview(String token) { return admitted(() -> applyPreviewAdmitted(token)); }
+    private ImportResult applyPreviewAdmitted(String token) {
         long started = System.nanoTime();
         return previews.usePreview(token, saved -> {
             var savedArchive = previews.archive();
             if (savedArchive == null) throw new com.rlibanez.eplsync.exception.CatalogPreviewException("PREVIEW_EXPIRED");
             return previews.useArchive(savedArchive.id(), (archive,csv) -> {
             var result = events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG, "UPDATE",
-                java.util.Map.of("retainedZip", true), () -> transactions.execute(tx -> {
+                java.util.Map.of("retainedZip", true), () -> boundedTransactions().execute(tx -> {
+                    com.rlibanez.eplsync.importer.CatalogOperationBudget.enlist();
                     if (!saved.catalogVersion().equals(catalogVersion()))
                         throw new com.rlibanez.eplsync.exception.CatalogPreviewException("PREVIEW_STALE");
                     try {
@@ -207,15 +224,17 @@ public class CatalogImportService {
     }
 
     public String defaultUrl() { return configuredUrl(); }
-    public CatalogImportStore.Archive savedArchive() { return previews.archive(); }
+    public CatalogImportStore.Archive savedArchive() { return admitted(previews::archive); }
     public enum Mode { PREVIEW, UPDATE }
-    public ImportResult runSaved(String archiveId, Mode mode) {
+    public ImportResult runSaved(String archiveId,Mode mode) { return admitted(() -> runSavedAdmitted(archiveId,mode)); }
+    private ImportResult runSavedAdmitted(String archiveId, Mode mode) {
         long started = System.nanoTime();
         return events.run(com.rlibanez.eplsync.events.EventJournal.Category.CATALOG,
                 mode == Mode.PREVIEW ? "PREVIEW" : "UPDATE", java.util.Map.of("retainedZip", true, "dryRun", mode == Mode.PREVIEW),
                 () -> previews.useArchive(archiveId, (archive,csv) -> processSource(archive, csv, mode, "SAVED_ZIP", started)), this::eventSummary);
     }
-    public ImportResult runUpload(org.springframework.web.multipart.MultipartFile file, Mode mode) {
+    public ImportResult runUpload(org.springframework.web.multipart.MultipartFile file,Mode mode) { return admitted(() -> runUploadAdmitted(file,mode)); }
+    private ImportResult runUploadAdmitted(org.springframework.web.multipart.MultipartFile file, Mode mode) {
         String originalName = file.getOriginalFilename();
         String name = com.rlibanez.eplsync.importer.CatalogFileNames.display(originalName, "");
         if (file.isEmpty() || originalName == null || !originalName.toLowerCase(java.util.Locale.ROOT).endsWith(".zip"))
@@ -233,6 +252,7 @@ public class CatalogImportService {
                         byte[] buffer = new byte[8192];
                         long total = 0;
                         for (int read; (read = input.read(buffer)) != -1;) {
+                            com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
                             if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Carga del ZIP interrumpida");
                             total += read;
                             if (total > com.rlibanez.eplsync.importer.CatalogImportLimits.ZIP_BYTES)

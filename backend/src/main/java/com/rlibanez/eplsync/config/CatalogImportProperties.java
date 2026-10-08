@@ -18,6 +18,13 @@ public class CatalogImportProperties {
     public CatalogImportProperties effective() { return effectiveSupplier == null ? this : effectiveSupplier.get(); }
     public Duration getRetention() { var current = effective(); return current == this ? retention : current.getRetention(); }
 
+    // Installation resource budget; deliberately not a runtime UI setting.
+    private Duration operationTimeout = Duration.ofMinutes(30);
+    @AssertTrue(message = "import.operation-timeout debe ser positiva y no superar 24 horas")
+    public boolean isOperationTimeoutValid() {
+        return operationTimeout != null && operationTimeout.compareTo(Duration.ZERO)>0
+            && operationTimeout.compareTo(Duration.ofDays(1))<=0;
+    }
     private Duration retention = Duration.ofHours(24);
     @AssertTrue(message = "import.retention debe ser positiva y no superar 7 días")
     public boolean isRetentionValid() {

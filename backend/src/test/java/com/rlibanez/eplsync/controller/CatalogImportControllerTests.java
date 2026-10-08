@@ -13,6 +13,30 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class CatalogImportControllerTests {
+    @Test void timeoutAndBusyErrorsExposeSafeSpecificDetails() throws Exception {
+        var service=mock(CatalogImportService.class);
+        var mvc=MockMvcBuilders.standaloneSetup(new CatalogImportController(service,mock(com.rlibanez.eplsync.repository.CatalogMetadataRepository.class)))
+            .setControllerAdvice(new GlobalExceptionHandler()).build();
+        when(service.importCatalog(null)).thenThrow(new com.rlibanez.eplsync.exception.CatalogOperationException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,"La operación de catálogo ha superado el tiempo máximo"));
+        mvc.perform(post("/api/catalog/import/reset")).andExpect(status().isRequestTimeout())
+            .andExpect(jsonPath("$.details").value("La operación de catálogo ha superado el tiempo máximo"));
+        reset(service);
+        when(service.importCatalog(null)).thenThrow(new com.rlibanez.eplsync.exception.CatalogOperationException(org.springframework.http.HttpStatus.CONFLICT,"Hay otra operación de catálogo en curso"));
+        mvc.perform(post("/api/catalog/import/reset")).andExpect(status().isConflict())
+            .andExpect(jsonPath("$.details").value("Hay otra operación de catálogo en curso"));
+        reset(service);
+        when(service.importCatalog(null)).thenThrow(new org.springframework.web.multipart.MultipartException("Internal multipart error",
+            new com.rlibanez.eplsync.exception.CatalogOperationException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,"La carga ha superado el tiempo máximo")));
+        mvc.perform(post("/api/catalog/import/reset")).andExpect(status().isRequestTimeout())
+            .andExpect(jsonPath("$.details").value("La carga ha superado el tiempo máximo"));
+        reset(service);
+        when(service.importCatalog(null)).thenThrow(new org.springframework.transaction.TransactionTimedOutException("private query detail"));
+        try(var budget=new com.rlibanez.eplsync.importer.CatalogOperationBudget(java.time.Duration.ofSeconds(10))) {
+            mvc.perform(post("/api/catalog/import/reset")).andExpect(status().isRequestTimeout())
+                .andExpect(jsonPath("$.details").value("La operación de catálogo superó el tiempo disponible para la base de datos; los cambios no se han confirmado"));
+        }
+    }
+
     @Test
     void routesReplacementAndUpdateAndExposesCounters() throws Exception {
         var service = mock(CatalogImportService.class);

@@ -117,6 +117,45 @@ no hay alias de compatibilidad. Usa `/run` con `dryRun`. El reemplazo del catál
 | POST | `/api/catalog/import/reset` | Reemplaza el catálogo de libros con el CSV descargado. |
 | POST | `/api/catalog/import/run` | `dryRun=true`: previsualiza; `false`: inserta y actualiza conservando ausentes. |
 
+### Admisión y plazo de importación
+
+Solo puede ejecutarse una operación de catálogo a la vez, sin cola de espera:
+importación por URL o ZIP, reemplazo, previsualización, aplicación de un ZIP guardado
+y comprobación/eliminación de ausentes. El reinicio de la base de datos comparte
+esta exclusión. Las peticiones adicionales reciben `409` con un mensaje claro.
+La admisión y los permisos se comprueban antes de procesar multipart; las cargas
+rechazadas no generan nuevos archivos temporales de importación.
+
+`EPLSYNC_CATALOG_IMPORT_OPERATION_TIMEOUT` (`30m`, duración positiva, máximo `24h`)
+define un único presupuesto monotónico desde la admisión web o de servicio, que
+incluye carga, descarga, extracción, validación, huellas, conversión, consultas y
+persistencia. No se reinicia al cambiar de fase ni en llamadas anidadas. Es una
+configuración de instalación, no un ajuste guardado en SQLite ni editable desde la UI.
+Los límites existentes de descarga y extracción siguen aplicándose aunque el
+presupuesto global sea mayor.
+
+El bucle CSV comprueba plazo/interrupción incluso al descartar registros inválidos.
+Las transacciones reciben el tiempo restante y comprueban el presupuesto antes
+del commit: un vencimiento devuelve `408` y revierte libros y metadatos. Una
+interrupción devuelve `503`. Los fallos de operaciones iniciadas quedan en Eventos.
+Una admisión rechazada antes de iniciar el proceso se informa en la respuesta y el log.
+
+La cancelación es cooperativa: una consulta SQLite o lectura multipart ya bloqueada
+puede tardar en devolver el control; el plazo no es una garantía de interrupción
+instantánea. En descarga HTTP también se cancela la petición al agotarse el tiempo.
+La protección no sustituye los límites de conexión/carga del servidor o proxy.
+Los CSV y archivos temporales de la ejecución se eliminan. Un ZIP ya validado y
+publicado puede conservarse para reintentar, sujeto al límite de tamaño y retención;
+no se acumulan ZIPs adicionales. No se necesitan migraciones de base de datos.
+
+Para repetir la medición sintética de conversión/persistencia de 73.000 libros
+(SQLite en memoria, no representa el rendimiento de producción):
+
+```sh
+cd backend
+EPLSYNC_TEST_IMPORT_LOAD=true ./mvnw -Dtest=CatalogImportTests#measuresSynthetic73000BookImportAndPreview test
+```
+
 ### Opciones de importación
 
 `/run` recibe `source` (`URL` o `SAVED`) y `dryRun` en JSON. Para `URL`, `url` es

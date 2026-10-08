@@ -100,6 +100,20 @@ public class GlobalExceptionHandler {
                         "No existe el recurso solicitado", request));
     }
 
+    @ExceptionHandler(CatalogOperationException.class)
+    public ResponseEntity<ErrorResponse> handleCatalogOperation(CatalogOperationException ex,HttpServletRequest request) {
+        log.warn("Operación de catálogo rechazada: {}",ex.getMessage());
+        return ResponseEntity.status(ex.getStatus()).body(buildError(ex.getStatus(),"Operación de catálogo rechazada",ex.getMessage(),request));
+    }
+
+    @ExceptionHandler({org.springframework.transaction.TransactionTimedOutException.class,org.springframework.dao.QueryTimeoutException.class,jakarta.persistence.QueryTimeoutException.class})
+    public ResponseEntity<ErrorResponse> handleDatabaseTimeout(Exception ex,HttpServletRequest request) {
+        if(com.rlibanez.eplsync.importer.CatalogOperationBudget.active())
+            return handleCatalogOperation(new CatalogOperationException(HttpStatus.REQUEST_TIMEOUT,
+                "La operación de catálogo superó el tiempo disponible para la base de datos; los cambios no se han confirmado"),request);
+        return incident(HttpStatus.INTERNAL_SERVER_ERROR,"Error de aplicación","No se pudo completar la operación",ex,request);
+    }
+
     @ExceptionHandler(CatalogImportInterruptedException.class)
     public ResponseEntity<ErrorResponse> handleCatalogImportInterrupted(
             CatalogImportInterruptedException ex,
@@ -159,6 +173,14 @@ public class GlobalExceptionHandler {
             ? part.getRequestPartName() : ((org.springframework.web.bind.MissingServletRequestParameterException)ex).getParameterName();
         return ResponseEntity.badRequest().body(buildError(HttpStatus.BAD_REQUEST,
                 "Solicitud inválida", "Falta el campo obligatorio: " + field, request));
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MultipartException.class)
+    public ResponseEntity<ErrorResponse> handleMultipart(org.springframework.web.multipart.MultipartException ex,HttpServletRequest request) {
+        for(Throwable cause=ex;cause!=null;cause=cause.getCause())
+            if(cause instanceof CatalogOperationException rejected) return handleCatalogOperation(rejected,request);
+        log.warn("Carga multipart rechazada: {}",ex.getClass().getSimpleName());
+        return ResponseEntity.badRequest().body(buildError(HttpStatus.BAD_REQUEST,"Carga inválida","No se pudo leer el archivo enviado",request));
     }
 
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)

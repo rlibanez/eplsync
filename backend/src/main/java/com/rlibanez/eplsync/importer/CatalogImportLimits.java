@@ -28,6 +28,7 @@ public final class CatalogImportLimits {
     }
 
     static void checkDeadline(long deadline) {
+        CatalogOperationBudget.check();
         if (Thread.currentThread().isInterrupted())
             throw new com.rlibanez.eplsync.exception.CatalogValidationException("Procesamiento del catálogo interrumpido");
         if (System.nanoTime() - deadline >= 0)
