@@ -10,6 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Alert, Button, PasswordInput, Stack, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { BrandLogo } from "../../components/BrandLogo";
 import { AppModal, ModalActions } from "../../components/AppModal";
 import { OptionLabel } from "../downloads/SendOptions";
 import { ValidationTip } from "./ValidationTip";
@@ -362,7 +363,10 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   }
   return (
     <main className="auth-panel">
-      <h1 className="auth-setup-title">EPL Sync</h1>
+      <h1 className="auth-setup-title">
+        <BrandLogo size={64} />
+        <span>EPL Sync</span>
+      </h1>
       {error && (
         <Alert color="red" role="alert">
           {error}

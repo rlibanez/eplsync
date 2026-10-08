@@ -86,8 +86,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     void loadFavicon().then((template) => {
       if (!active || template === null) return;
       const svg = template
-        .replace("#294536", background)
-        .replace("#a8d9bb", foreground);
+        .replaceAll("#294536", background)
+        .replaceAll("#a8d9bb", foreground);
       const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
       if (icon) icon.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
     });

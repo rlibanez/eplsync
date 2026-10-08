@@ -1995,3 +1995,9 @@ summary {
 }
 .sidebar-bottom .account-link { margin-bottom: 0; }
 .sidebar-bottom .account-link .nav-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* EPL Sync's single-colour artwork follows the palette in both colour schemes. */
+.brand-icon svg { display: block; }
+.mobile-brand { display: flex; align-items: center; gap: 10px; }
+.mobile-brand svg, .auth-setup-title svg { color: var(--accent); flex-shrink: 0; }
+.auth-setup-title { display: flex; flex-direction: column; align-items: center; gap: 14px; }

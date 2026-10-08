@@ -7,6 +7,7 @@ import {
   useNotifications,
 } from "../features/notifications/Notifications";
 import { CoverActivity } from "../features/catalog/CoverActivity";
+import { BrandLogo } from "../components/BrandLogo";
 import { BackToTop } from "../components/BackToTop";
 import { TorrentActivity } from "../features/downloads/TorrentActivity";
 import { PreferencesProvider, usePreferences } from "./Preferences";
@@ -21,7 +22,6 @@ import { catalogParams } from "../api/catalog";
 import { useState } from "react";
 import { Link, NavLink, Outlet, ScrollRestoration } from "react-router-dom";
 import {
-  BookOpen,
   Library,
   FolderOpen,
   Download,
@@ -82,7 +82,10 @@ function ShellContent() {
         {t("nav.skip")}
       </a>
       <header className="mobile-header">
-        <Link to="/">EPL Sync</Link>
+        <Link to="/" className="mobile-brand">
+          <BrandLogo size={32} />
+          EPL Sync
+        </Link>
         <button
           aria-label={t(open ? "nav.close" : "nav.open")}
           aria-expanded={open}
@@ -112,7 +115,7 @@ function ShellContent() {
             onClick={() => setOpen(false)}
           >
             <span className="brand-icon">
-              <BookOpen size={24} />
+              <BrandLogo size={32} />
             </span>
             <span className="brand-name">
               EPL <strong>Sync</strong>
