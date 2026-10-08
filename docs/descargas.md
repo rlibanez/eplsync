@@ -12,8 +12,31 @@ revisión y título, más los campos utilizados por los patrones de etiquetas.
 No duplica la sinopsis, los enlaces ni las portadas salvo que un patrón de etiqueta
 utilice explícitamente ese campo. Los valores necesarios quedan congelados al
 preparar el trabajo: modificar o borrar el catálogo no cambia el envío pendiente.
-Esta reducción no elimina trabajos, historial de descargas ni limpiezas pendientes;
-la retención de trabajos se abordará por separado.
+Esta reducción no elimina historial de descargas ni limpiezas pendientes.
+
+### Retención de trabajos finalizados
+
+Por defecto, los trabajos completados o cancelados se conservan 90 días desde su
+última actualización. La comprobación se ejecuta cada hora y puede desactivarse o
+configurarse mediante `EPLSYNC_TORRENT_BULK_RETENTION_ENABLED`,
+`EPLSYNC_TORRENT_BULK_RETENTION_DAYS` y `EPLSYNC_TORRENT_BULK_RETENTION_INTERVAL`.
+Se conservan los trabajos en cola, activos, pausados y pendientes de reintento, así
+como cualquiera con elementos pendientes/en curso o limpiezas en estado `WAITING`,
+`BLOCKED` o `REQUESTED`, incluso cuando la integración torrent está deshabilitada.
+
+Cada ciclo elimina hasta 20 trabajos caducados. Cada trabajo se elimina completo
+en su propia transacción, mediante borrados SQL sin cargar sus comandos en memoria.
+También se eliminan su plan de actualización y sus limpiezas ya finalizadas.
+Una transacción tiene un presupuesto SQLite de 10 segundos; un fallo revierte ese
+trabajo y se reintenta en otro ciclo. El ciclo deja de iniciar transacciones al
+alcanzar 10 segundos. No se publica un trabajo con sus elementos parcialmente
+eliminados. El tamaño de la transacción depende del número de elementos del trabajo.
+
+El historial asociado a los libros y los eventos permanecen intactos; los eventos
+siguen su propia retención. No se contacta con qBittorrent ni se borran archivos.
+Un trabajo eliminado deja de estar disponible en Trabajos y mediante su API;
+los enlaces antiguos a su detalle devuelven el error habitual de trabajo inexistente.
+SQLite reutiliza el espacio liberado: la purga no ejecuta `VACUUM` automáticamente.
 
 ## Historial de descargas y sincronización manual
 

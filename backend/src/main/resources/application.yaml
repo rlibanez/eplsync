@@ -131,6 +131,10 @@ eplsync:
       batch-size: ${EPLSYNC_TORRENT_CLEANUP_BATCH_SIZE:100}
 
     bulk:
+      retention:
+        enabled: ${EPLSYNC_TORRENT_BULK_RETENTION_ENABLED:true}
+        days: ${EPLSYNC_TORRENT_BULK_RETENTION_DAYS:90}
+        interval: ${EPLSYNC_TORRENT_BULK_RETENTION_INTERVAL:1h}
       multiple-hashes: all
       batch-size: 100
       concurrency: 1

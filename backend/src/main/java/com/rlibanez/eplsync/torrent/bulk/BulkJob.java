@@ -6,7 +6,7 @@ import lombok.Setter;
 import java.time.Instant;
 
 @Entity
-@Table(name = "torrent_bulk_jobs")
+@Table(name = "torrent_bulk_jobs", indexes = @Index(name="idx_bulk_job_retention",columnList="state,updatedAt"))
 @Getter @Setter
 public class BulkJob {
     private String eventActorId;

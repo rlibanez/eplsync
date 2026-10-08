@@ -58,6 +58,9 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 | `EPLSYNC_TORRENT_BULK_BATCHSIZE` | Número de libros procesados por lote en los trabajos de descargas. | `100` |
 | `EPLSYNC_TORRENT_BULK_CONCURRENCY` | Número máximo de envíos simultáneos en un trabajo de descargas. | `1` |
 | `EPLSYNC_TORRENT_BULK_INTERVAL` | Intervalo entre lotes del trabajo de descargas. | `500ms` |
+| `EPLSYNC_TORRENT_BULK_RETENTION_ENABLED` | Elimina trabajos finalizados caducados y sus elementos. Conserva trabajos con envíos o limpiezas pendientes; no borra historial de descargas, eventos, torrents ni archivos. | `true` |
+| `EPLSYNC_TORRENT_BULK_RETENTION_DAYS` | Días de conservación desde la última actualización del trabajo finalizado, entre 1 y 36500. | `90` |
+| `EPLSYNC_TORRENT_BULK_RETENTION_INTERVAL` | Espera positiva entre ciclos de retención. Cada ciclo elimina como máximo 20 trabajos, en transacciones independientes. | `1h` |
 | `EPLSYNC_TORRENT_DOWNLOAD_START` | true inicia las descargas enviadas; false las deja detenidas. | `true` |
 | `EPLSYNC_TORRENT_DOWNLOAD_SAVEPATH` | Ruta de destino en qBittorrent, no en EPL Sync. Vacío utiliza la ruta del cliente. | Vacío |
 | `EPLSYNC_TORRENT_RENAME_ENABLED` | Activa el renombrado del nombre mostrado del torrent al enviarlo. | `true` |
