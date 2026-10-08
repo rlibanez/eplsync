@@ -238,7 +238,8 @@ class BulkTests {
 
     @Test void snapshotsSelectionAndOptionsWithoutRetainingEntities() {
         var request = new BulkRequest(new TorrentDownloadRequest(null, false, "/test",
-                new TorrentDownloadRequest.Rename(true, "{title}"), null), 3, 2, "250ms");
+                new TorrentDownloadRequest.Rename(true, "{title}"),
+                new TorrentDownloadRequest.QBittorrent(null,List.of("{language}"),false)), 3, 2, "250ms");
         var job = create(request);
         books.deleteAll(); properties.getRename().setPattern("changed");
         assertThat(job.selectedBooks()).isEqualTo(5);
@@ -250,6 +251,8 @@ class BulkTests {
         assertThat(command.name()).isEqualTo("Book 1"); assertThat(command.start()).isFalse();
         assertThat(command.savePath()).isEqualTo("/test");
         assertThat(command.book().getLanguage()).isEqualTo(Language.INGLES);
+        assertThat(command.book().getAuthor()).isNull();
+        assertThat(command.book().getLinks()).isNull();
     }
 
     @Test void paginationFilteringAndPerFieldDefaults() {

@@ -4,6 +4,17 @@
 
 Las rutas y los comandos parten de la raíz del repositorio salvo que se indique otro directorio.
 
+## Datos persistidos de los trabajos
+
+Cada elemento preparado guarda un comando de envío con hash, magnet, nombre ya
+resuelto, ruta, inicio y opciones del cliente. Del libro conserva únicamente ID,
+revisión y título, más los campos utilizados por los patrones de etiquetas.
+No duplica la sinopsis, los enlaces ni las portadas salvo que un patrón de etiqueta
+utilice explícitamente ese campo. Los valores necesarios quedan congelados al
+preparar el trabajo: modificar o borrar el catálogo no cambia el envío pendiente.
+Esta reducción no elimina trabajos, historial de descargas ni limpiezas pendientes;
+la retención de trabajos se abordará por separado.
+
 ## Historial de descargas y sincronización manual
 
 Los envíos individuales y bulk registran cada torrent en `torrent_downloads`.

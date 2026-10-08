@@ -194,7 +194,10 @@ class UpdateTests {
         when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old"),
             remote(NEW,DownloadStatus.DOWNLOADED,"/new"))).thenReturn(List.of(remote(NEW,DownloadStatus.DOWNLOADED,"/new")));
         var report=cleaner.synchronize(false,true);
-        assertThat(report.items().stream().filter(i -> OLD.equals(i.hash())).findFirst().orElseThrow().resultingStatus()).isEqualTo(DownloadStatus.DOWNLOADED);
+        var details=webContext.getBean(com.rlibanez.eplsync.reports.ReportSnapshots.class)
+            .page(report.detailsId(),"books",0,1000,List.of(),java.util.Set.of(),List.of(),
+                com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.SyncItem.class).items();
+        assertThat(details.stream().filter(i -> OLD.equals(i.hash())).findFirst().orElseThrow().resultingStatus()).isEqualTo(DownloadStatus.DOWNLOADED);
         assertThat(report.cleanup()).hasSize(1);
         assertThat(report.cleanup().getFirst().state()).isEqualTo(UpdateCleanup.State.REMOVED);
         assertThat(report.cleanup().getFirst().hash()).isEqualTo(OLD);

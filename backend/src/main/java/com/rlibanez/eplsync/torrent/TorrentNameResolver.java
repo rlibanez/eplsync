@@ -29,6 +29,20 @@ public class TorrentNameResolver {
         validatePattern(pattern, "rename.pattern");
     }
 
+    /** Fields needed to expand frozen tag patterns without retaining the whole book. */
+    public static java.util.Set<String> tagFields(java.util.List<String> patterns) {
+        var fields = new java.util.LinkedHashSet<String>();
+        if (patterns == null) return fields;
+        for (String pattern : patterns) {
+            if (pattern == null) throw new com.rlibanez.eplsync.exception.UserInputException("tags no admite elementos null");
+            if (pattern.isBlank() && pattern.codePoints().noneMatch(Character::isISOControl)) continue;
+            validatePattern(pattern, "tags");
+            var matcher = TOKEN.matcher(pattern);
+            while (matcher.find()) fields.add(matcher.group(1));
+        }
+        return fields;
+    }
+
     private static void validatePattern(String pattern, String label) {
         if (pattern == null || pattern.isBlank() || pattern.chars().anyMatch(Character::isISOControl)) {
             throw new com.rlibanez.eplsync.exception.UserInputException(label + " no puede estar vacío ni contener caracteres de control");

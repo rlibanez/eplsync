@@ -168,7 +168,7 @@ public class BulkStore {
                                     ? new com.rlibanez.eplsync.dto.TorrentDownloadRequest(hash, null, null, null, null)
                                     : new com.rlibanez.eplsync.dto.TorrentDownloadRequest(hash, options.start(), options.savePath(), options.rename(), options.qbittorrent());
                             var command = downloads.prepare(book, explicit);
-                            item.setCommandJson(mapper.writeValueAsString(command));
+                            item.setCommandJson(BulkCommandSnapshot.encode(command, mapper));
                         } catch (TorrentOperationException | IllegalArgumentException ex) {
                             item.setState(BulkItem.State.SKIPPED); item.setMessage(safeMessage(ex));
                         }
@@ -243,7 +243,7 @@ public class BulkStore {
     @Transactional public void appendPrepared(String id,TorrentDownload command,long position) {
         var item=new BulkItem(); item.setId(UUID.randomUUID().toString()); item.setJobId(id);
         item.setEplId(command.book().getEplId()); item.setRevision(command.book().getRevision()); item.setPosition(position); item.setState(BulkItem.State.PENDING);
-        item.setHash(command.hash()); item.setCommandJson(mapper.writeValueAsString(command)); items.save(item);
+        item.setHash(command.hash()); item.setCommandJson(BulkCommandSnapshot.encode(command, mapper)); items.save(item);
     }
     @Transactional public View finishPrepared(String id,long selectedBooks) {
         em.flush(); var job=job(id); job.setSelectedBooks(selectedBooks);
