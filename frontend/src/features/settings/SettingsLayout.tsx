@@ -36,7 +36,7 @@ export function SettingsLayout() {
               );
             if (key === "events") return auth.can("EVENTS_MANAGE");
             if (key === "downloads")
-              return auth.can("DOWNLOADS_READ") && auth.can("CATALOG_READ");
+              return auth.can("TORRENT_SYNC") && auth.can("CATALOG_READ");
             if (key === "torrent") return auth.can("SETTINGS_MANAGE");
             return true;
           })

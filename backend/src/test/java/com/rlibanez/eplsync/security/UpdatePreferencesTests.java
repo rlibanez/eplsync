@@ -35,7 +35,7 @@ class UpdatePreferencesTests {
         accounts.policy(new AccountStore.Policy(true,false,30,12));
         accounts.register("reader","reader@example.org",PASSWORD);
         userId=accounts.users().stream().filter(user -> user.username().equals("reader")).findFirst().orElseThrow().id();
-        accounts.update(userId,"USER","ACTIVE",Map.of("DOWNLOADS_READ","ALLOW"),adminId);
+        accounts.update(userId,"USER","ACTIVE",Map.of("TORRENT_SYNC","ALLOW"),adminId);
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
     MockHttpSession login(String username) throws Exception {

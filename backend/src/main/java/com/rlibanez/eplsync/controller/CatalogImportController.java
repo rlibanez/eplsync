@@ -31,7 +31,10 @@ public class CatalogImportController {
     @GetMapping("/metadata")
     public ResponseEntity<?> metadata() {
         return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
-                .body(java.util.Collections.singletonMap("metadata", metadata.findById(1L).orElse(null)));
+                .body(java.util.Collections.singletonMap("metadata", metadata.findById(1L)
+                        .map(value -> com.rlibanez.eplsync.dto.CatalogMetadataResponse.from(value,
+                                com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.CATALOG_IMPORT)))
+                        .orElse(null)));
     }
 
     /**

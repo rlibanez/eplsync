@@ -83,7 +83,7 @@ export function Home() {
   });
   const downloads = useQuery({
     queryKey: ["download-summary", ""],
-    enabled: auth.can("DOWNLOADS_READ") && enabled("overview"),
+    enabled: auth.can("TORRENT_SYNC") && enabled("overview"),
     queryFn: ({ signal }) =>
       get<{ total: number; byStatus: Record<string, number> }>(
         "/torrent/downloads/summary",
@@ -201,7 +201,7 @@ export function Home() {
           )}
         </article>
       )}
-      {auth.can("DOWNLOADS_READ") && (
+      {auth.can("TORRENT_SYNC") && (
         <article className="home-panel">
           <Link className="home-panel-title" to="/downloads">
             <Download size={20} />

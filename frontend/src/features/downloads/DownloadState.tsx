@@ -1,6 +1,5 @@
 import { ordering } from "./TableControls";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
-import { SyncPage } from "../auth/SyncPage";
 import { useAuth } from "../auth/Auth";
 import { useSyncSession } from "./useSyncSession";
 import { SyncReport, type SyncResult } from "./SyncReport";
@@ -44,8 +43,7 @@ const initialFilters = {
 };
 
 export function DownloadState() {
-  const auth = useAuth();
-  return auth.can("DOWNLOADS_READ") ? <DownloadHistory /> : <SyncPage />;
+  return <DownloadHistory />;
 }
 function DownloadHistory() {
   const { t } = useTranslation();

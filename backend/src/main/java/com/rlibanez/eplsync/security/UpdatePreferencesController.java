@@ -5,7 +5,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/settings/downloads/updates")
-@PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('DOWNLOADS_READ')")
+@PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('TORRENT_SYNC')")
 public class UpdatePreferencesController {
     private final UpdatePreferences preferences;
     public UpdatePreferencesController(UpdatePreferences preferences) {

@@ -1703,7 +1703,7 @@ se resuelven por fecha de creación e identificador.
 
 ### Preferencias de búsqueda de actualizaciones
 
-`GET/PUT /api/settings/downloads/updates` requiere `CATALOG_READ` y `DOWNLOADS_READ`.
+`GET/PUT /api/settings/downloads/updates` requiere `CATALOG_READ` y `TORRENT_SYNC`.
 El cuerpo es `{"states":["DOWNLOADED","NOT_FOUND"]}`: al menos un estado de
  descarga válido, sin duplicados. La lectura requiere ambos permisos; la escritura requiere `SETTINGS_MANAGE`.
 Se guarda como JSON compartido en `revision_update_settings`, para toda la aplicación.
@@ -1717,11 +1717,11 @@ Los apartados de portadas se encuentran en `/settings/catalog`;
 ### Buscar actualizaciones de revisión
 
 `POST /api/torrent/revision-updates/search` requiere `CATALOG_READ` y
-`DOWNLOADS_READ`, y protección CSRF. Cuerpo: `{"states":["DOWNLOADED","NOT_FOUND"]}`.
+`TORRENT_SYNC`, y protección CSRF. Cuerpo: `{"states":["DOWNLOADED","NOT_FOUND"]}`.
 Parámetros: `page=0`, `size=20` (máximo 1000), `sort=title,asc` (repetible, hasta 8 criterios por prioridad) y
 `synchronize=false` y `status` opcional (estado registrado). El filtro `status`
 se aplica a las filas resultantes antes de paginar; no cambia los estados que
-determinan la revisión de referencia. `synchronize=true` requiere además `TORRENT_SYNC`:
+determinan la revisión de referencia. `synchronize=true` utiliza el mismo permiso `TORRENT_SYNC`:
 sincroniza primero con el cliente; cualquier fallo aborta la búsqueda.
 La paginación y ordenación posteriores no repiten la sincronización.
 
@@ -1744,7 +1744,7 @@ No modifica la configuración guardada ni elimina versiones anteriores.
 ### Envío seleccionado y limpieza automática de revisiones
 
 `POST /api/torrent/revision-updates/send` requiere `CATALOG_READ`,
-`DOWNLOADS_READ` y `TORRENT_SEND`. Cuerpo: `ids` (1–10000 IDs únicos),
+`TORRENT_SYNC` y `TORRENT_SEND`. Cuerpo: `ids` (1–10000 IDs únicos),
 `states` (estados de la búsqueda), opciones habituales de envío y
 `previousVersions`: `keep` (predeterminado), `removeTorrent` o
 `removeTorrentAndFiles`. Las políticas de eliminación requieren `TORRENT_CLEANUP`;
@@ -1925,3 +1925,7 @@ borrado sin confirmar. El borrado confirmado resuelve las solicitudes de limpiez
 asociadas al mismo torrent y destino. Los eventos del cliente y del historial se
 registran por separado. Una operación puede terminar con resultados distintos
 para cada registro seleccionado.
+
+La consulta de metadatos (`GET /api/catalog/import/metadata`) requiere `CATALOG_READ`.
+Sin `CATALOG_IMPORT`, `sourceUrl` omite credenciales de URL, parámetros y fragmentos;
+con `CATALOG_IMPORT` se conserva la URL completa. La URL almacenada y usada para descargar no cambia.

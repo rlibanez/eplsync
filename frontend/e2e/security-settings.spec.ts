@@ -304,7 +304,6 @@ test("users sort by translated headers and edit in grouped responsive dialog", a
   const permissions = [
     "CATALOG_READ",
     "BOOK_HISTORY_READ",
-    "DOWNLOADS_READ",
     "TORRENT_SEND",
     "TORRENT_SYNC",
     "TORRENT_JOBS_MANAGE",

@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","spring.jpa.hibernate.ddl-auto=create-drop","spring.flyway.enabled=false","eplsync.torrent.enabled=false","eplsync.torrent.bulk.worker-enabled=false"})
-@WithMockUser(authorities={"CATALOG_READ","DOWNLOADS_READ","TORRENT_SYNC"})
+@WithMockUser(authorities={"CATALOG_READ","TORRENT_SYNC"})
 class RevisionUpdatesTests {
     @Autowired RevisionUpdates updates;
     @Autowired DownloadRepository downloads;
@@ -102,9 +102,9 @@ class RevisionUpdatesTests {
         mvc.perform(post("/api/torrent/revision-updates/search?synchronize=true").contentType("application/json").content("{\"states\":[\"SUBMITTED\"]}"))
             .andExpect(status().isBadRequest());
     }
-    @Test @WithMockUser(authorities={"CATALOG_READ","DOWNLOADS_READ"}) void readingDoesNotAllowSynchronization() throws Exception {
+    @Test @WithMockUser(authorities={"CATALOG_READ","TORRENT_SYNC"}) void unifiedPermissionAllowsReadingAndSynchronization() throws Exception {
         mvc.perform(post("/api/torrent/revision-updates/search?synchronize=true").contentType("application/json").content("{\"states\":[\"SUBMITTED\"]}"))
-            .andExpect(status().isForbidden());verifyNoInteractions(client);
+            .andExpect(status().isOk());verify(client).syncDownloads(false,false);reset(client);
         mvc.perform(post("/api/torrent/revision-updates/search").contentType("application/json").content("{\"states\":[\"SUBMITTED\"]}"))
             .andExpect(status().isOk());
     }

@@ -5,7 +5,7 @@ import com.rlibanez.eplsync.service.TorrentClientService;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 
-@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('DOWNLOADS_READ')")
+@org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")
 @RestController
 @RequestMapping("/api/torrent/downloads")
 public class DownloadController {

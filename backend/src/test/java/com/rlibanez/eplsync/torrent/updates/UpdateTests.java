@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@org.springframework.security.test.context.support.WithMockUser(authorities={"ROLE_ADMIN","CATALOG_READ","BOOK_HISTORY_READ","DOWNLOADS_READ","DOWNLOADS_DELETE","TORRENT_SEND","TORRENT_SYNC","TORRENT_JOBS_MANAGE","TORRENT_CLEANUP","TORRENT_FILES_DELETE","CATALOG_IMPORT","CATALOG_DELETE","COVERS_MANAGE","EVENTS_MANAGE","SETTINGS_MANAGE"})
+@org.springframework.security.test.context.support.WithMockUser(authorities={"ROLE_ADMIN","CATALOG_READ","BOOK_HISTORY_READ","TORRENT_SYNC","DOWNLOADS_DELETE","TORRENT_SEND","TORRENT_JOBS_MANAGE","TORRENT_CLEANUP","TORRENT_FILES_DELETE","CATALOG_IMPORT","CATALOG_DELETE","COVERS_MANAGE","EVENTS_MANAGE","SETTINGS_MANAGE"})
 @SpringBootTest(properties = {"spring.datasource.url=jdbc:sqlite::memory:", "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.flyway.enabled=false", "eplsync.torrent.client=stub", "eplsync.torrent.enabled=false",
         "eplsync.torrent.bulk.worker-enabled=false"})
@@ -464,7 +464,7 @@ class UpdateTests {
             assertThat(event.actor().username()).isEqualTo("cleanupowner");
         } finally {org.springframework.security.core.context.SecurityContextHolder.setContext(context);}
     }
-    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_SEND","CATALOG_READ","DOWNLOADS_READ"})
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_SEND","CATALOG_READ","TORRENT_SYNC"})
     void selectedUpdatesCannotRequestCleanupWithoutPermission() throws Exception {
         mvc.perform(post("/api/torrent/revision-updates/send").contentType("application/json")
             .content("{\"ids\":[1],\"states\":[\"DOWNLOADED\"],\"previousVersions\":\"removeTorrent\"}"))

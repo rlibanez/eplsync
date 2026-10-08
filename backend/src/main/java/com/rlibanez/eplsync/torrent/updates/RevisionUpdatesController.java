@@ -8,7 +8,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/torrent/revision-updates")
-@PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('DOWNLOADS_READ')")
+@PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('TORRENT_SYNC')")
 public class RevisionUpdatesController {
     private final RevisionUpdates updates;
     private final TorrentClientService client;
@@ -32,7 +32,7 @@ public class RevisionUpdatesController {
         return updates.search(input,page,size,sort,null,status);
     }
     @PostMapping("/send")
-    @PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('DOWNLOADS_READ') and hasAuthority('TORRENT_SEND')")
+    @PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('TORRENT_SYNC') and hasAuthority('TORRENT_SEND')")
     public org.springframework.http.ResponseEntity<com.rlibanez.eplsync.torrent.bulk.BulkStore.View> send(@RequestBody SelectedUpdateSender.Request input) {
         synchronized(bulk) {
             var job=sender.create(input);

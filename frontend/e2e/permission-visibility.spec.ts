@@ -94,3 +94,48 @@ test("restore defaults clears permission overrides when the editor is saved", as
   await expect(dialog).toBeHidden();
   expect(saved).toEqual({ role: "USER", status: "ACTIVE", overrides: {} });
 });
+
+test("unified torrent permission exposes download history and synchronization together", async ({
+  page,
+}) => {
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        id: "sync-user",
+        username: "sync-user",
+        email: "sync@example.org",
+        role: "USER",
+        mustChangePassword: false,
+        permissions: ["TORRENT_SYNC"],
+      },
+    }),
+  );
+  await page.route("**/api/torrent/downloads?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        meta: { totalItems: 0, totalPages: 0, page: 0, size: 20 },
+      },
+    }),
+  );
+  await page.route("**/api/torrent/downloads/summary**", (route) =>
+    route.fulfill({ json: { total: 0, byStatus: {} } }),
+  );
+  await page.goto("/downloads");
+  await expect(
+    page.getByRole("link", { name: "Estado", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("EPL id", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Previsualizar sincronización",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Sincronizar con el cliente",
+      exact: true,
+    }),
+  ).toBeVisible();
+});

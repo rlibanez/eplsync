@@ -34,9 +34,8 @@ ADMIN dispone de todos los permisos y administra usuarios, seguridad y reinicio 
 | --- | --- |
 | CATALOG_READ | Catálogo, fichas y magnets |
 | BOOK_HISTORY_READ | Historial de descargas de un libro; también en respuestas del catálogo |
-| DOWNLOADS_READ | Vista global de descargas |
 | TORRENT_SEND | Enviar, preparar opciones y renombrar torrents |
-| TORRENT_SYNC | Sincronizar y asociar descargas |
+| TORRENT_SYNC | Consultar y sincronizar descargas, y vincular torrents |
 | TORRENT_JOBS_MANAGE | Consultar y administrar trabajos compartidos |
 | TORRENT_CLEANUP | Retirar torrents de versiones anteriores |
 | TORRENT_FILES_DELETE | Borrar también archivos; requiere TORRENT_CLEANUP |
@@ -344,3 +343,6 @@ o modificar preferencias ajenas. La configuración permanece en SQLite y los
 permisos existentes siguen limitando las consultas de catálogo, descargas y
 eventos. Cerrar el encabezado con su X desactiva esa sección para la cuenta; se
 puede recuperar desde la misma pestaña de Ajustes.
+
+`TORRENT_SYNC` unifica la consulta del historial global, sincronización y vinculación de descargas.
+Los envíos y borrados mantienen sus permisos específicos.

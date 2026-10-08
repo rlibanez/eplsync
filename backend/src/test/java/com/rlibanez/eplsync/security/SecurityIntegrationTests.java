@@ -456,4 +456,70 @@ class SecurityIntegrationTests {
         assertThat(details).contains("El ZIP contiene una ruta de archivo no permitida").doesNotContain("../../catalog.csv");
         assertThat(books.count()).isZero();
     }
+
+    @Test void metadataUrlVisibilityDependsOnImportPermission() throws Exception {
+        var administrator=admin();
+        accounts.policy(new AccountStore.Policy(true,false,30,12));
+        accounts.register("metadata-reader","metadata@example.org",PASSWORD);
+        var id=jdbc.queryForObject("SELECT id FROM users WHERE username='metadata-reader'",String.class);
+        var repository=context.getBean(com.rlibanez.eplsync.repository.CatalogMetadataRepository.class);
+        var metadata=new com.rlibanez.eplsync.model.CatalogMetadata();
+        metadata.setSourceUrl("https://source.example/catalog.zip?token=private#secret");
+        repository.saveAndFlush(metadata);
+        try {
+            mvc.perform(get("/api/catalog/import/metadata").session(login("metadata-reader",PASSWORD)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.metadata.sourceUrl").value("https://source.example/catalog.zip"));
+            accounts.update(id,"USER","ACTIVE",Map.of("CATALOG_IMPORT","ALLOW"),initial.user().id());
+            mvc.perform(get("/api/catalog/import/metadata").session(login("metadata-reader",PASSWORD)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.metadata.sourceUrl").value(metadata.getSourceUrl()));
+            mvc.perform(get("/api/catalog/import/metadata").session(administrator))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.metadata.sourceUrl").value(metadata.getSourceUrl()));
+            assertThat(repository.findById(1L).orElseThrow().getSourceUrl()).isEqualTo(metadata.getSourceUrl());
+        } finally { repository.deleteAll(); }
+    }
+
+    @Test void unifiedPermissionProtectsReadingSyncDetailsAndLinking() throws Exception {
+        admin();accounts.policy(new AccountStore.Policy(true,false,30,12));
+        accounts.register("sync-user","sync@example.org",PASSWORD);
+        var id=jdbc.queryForObject("SELECT id FROM users WHERE username='sync-user'",String.class);
+        var denied=login("sync-user",PASSWORD);
+        mvc.perform(get("/api/torrent/downloads").session(denied)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/torrent/downloads/sync").session(denied).with(csrf().asHeader())
+            .contentType("application/json").content("{\"dryRun\":true,\"includeDetails\":true}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(post("/api/torrent/downloads/link").session(denied).with(csrf().asHeader())
+            .contentType("application/json").content("{}" )).andExpect(status().isForbidden());
+        accounts.update(id,"USER","ACTIVE",Map.of("TORRENT_SYNC","ALLOW"),initial.user().id());
+        var session=login("sync-user",PASSWORD);
+        mvc.perform(get("/api/torrent/downloads").session(session)).andExpect(status().isOk());
+        var controller=context.getBean(DownloadController.class);
+        var target=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(controller);
+        var originalCleanup=org.springframework.test.util.ReflectionTestUtils.getField(target,"cleanup");
+        var originalClient=org.springframework.test.util.ReflectionTestUtils.getField(target,"client");
+        var cleanup=org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.updates.UpdateCleanupService.class);
+        var client=org.mockito.Mockito.mock(com.rlibanez.eplsync.service.TorrentClientService.class);
+        var record=new DownloadRecord();record.setHash("A".repeat(40));record.setEplId(1L);
+        var item=new DownloadTrackingService.SyncItem("download",1L,"Book","A".repeat(40),"UNCHANGED",
+            DownloadStatus.SUBMITTED,DownloadStatus.SUBMITTED,true,List.of(),false,false,null,null,null,null,null,null);
+        var report=new DownloadTrackingService.SyncResult("qbittorrent","test",true,false,Instant.now(),
+            new DownloadTrackingService.RemoteCounts(1,1,0),new DownloadTrackingService.RecordCounts(1,0,0,1),
+            new DownloadTrackingService.Outcomes(0,0,0),List.of(item),List.of());
+        org.mockito.Mockito.when(cleanup.synchronize(true,true)).thenReturn(report);
+        org.mockito.Mockito.when(client.linkDownload(org.mockito.ArgumentMatchers.any())).thenReturn(record);
+        try {
+            org.springframework.test.util.ReflectionTestUtils.setField(target,"cleanup",cleanup);
+            org.springframework.test.util.ReflectionTestUtils.setField(target,"client",client);
+            mvc.perform(post("/api/torrent/downloads/sync").session(session).with(csrf().asHeader())
+                .contentType("application/json").content("{\"dryRun\":true,\"includeDetails\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].title").value("Book"));
+            mvc.perform(post("/api/torrent/downloads/link").session(session).with(csrf().asHeader())
+                .contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.hash").value(record.getHash()));
+            mvc.perform(post("/api/torrent/downloads/remove-selected").session(session).with(csrf().asHeader())
+                .contentType("application/json").content("{}" )).andExpect(status().isForbidden());
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(target,"cleanup",originalCleanup);
+            org.springframework.test.util.ReflectionTestUtils.setField(target,"client",originalClient);
+        }
+    }
 }
