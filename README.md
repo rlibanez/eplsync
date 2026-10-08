@@ -4,6 +4,8 @@ Servicio para importar y consultar el catálogo de ePubLibre, generar enlaces
 magnet y gestionar envíos y actualizaciones con qBittorrent. Guarda el catálogo
 y el historial en SQLite.
 
+El esquema se gestiona con [migraciones versionadas](docs/migraciones.md).
+
 ## Instalación con Docker
 
 Necesitas Docker y Docker Compose v2 o posterior. Desde la raíz del repositorio:

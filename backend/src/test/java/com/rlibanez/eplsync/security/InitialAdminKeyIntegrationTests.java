@@ -12,7 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(properties={"eplsync.security.initial-admin-key=initial-test-secret", "spring.datasource.url=jdbc:sqlite::memory:",
-    "spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false", "eplsync.torrent.enabled=false",
+    "spring.jpa.hibernate.ddl-auto=validate", "spring.flyway.enabled=true", "eplsync.torrent.enabled=false",
     "eplsync.torrent.bulk.worker-enabled=false"})
 class InitialAdminKeyIntegrationTests {
     @Autowired WebApplicationContext context;

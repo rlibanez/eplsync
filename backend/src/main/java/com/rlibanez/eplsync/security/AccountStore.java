@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 @org.springframework.context.annotation.DependsOn("entityManagerFactory")
 public class AccountStore {
     private final com.rlibanez.eplsync.events.EventJournal journal;
@@ -32,29 +33,6 @@ public class AccountStore {
         if (defaultPasswordMinimumLength < 8 || defaultPasswordMinimumLength > 128)
             throw new com.rlibanez.eplsync.exception.UserInputException("La longitud mínima de contraseña debe estar entre 8 y 128");
         dummyHash = encoder.encode(UUID.randomUUID().toString());
-        jdbc.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-              id TEXT PRIMARY KEY, username TEXT NOT NULL, username_normalized TEXT NOT NULL UNIQUE,
-              email TEXT NOT NULL, email_verified_at TEXT, password_hash TEXT NOT NULL,
-              role TEXT NOT NULL CHECK(role IN ('ADMIN','USER')),
-              status TEXT NOT NULL CHECK(status IN ('PENDING','ACTIVE','DISABLED','REJECTED')),
-              must_change_password INTEGER NOT NULL DEFAULT 0, temporary_password_expires_at TEXT,
-              security_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-              password_changed_at TEXT, approved_at TEXT, approved_by TEXT)
-            """);
-        jdbc.execute("""
-            CREATE TABLE IF NOT EXISTS user_permission_overrides (
-              user_id TEXT NOT NULL REFERENCES users(id), permission TEXT NOT NULL,
-              effect TEXT NOT NULL CHECK(effect IN ('ALLOW','DENY')), PRIMARY KEY(user_id,permission))
-            """);
-        jdbc.execute("""
-            CREATE TABLE IF NOT EXISTS security_policy (
-              id INTEGER PRIMARY KEY CHECK(id=1), registration_enabled INTEGER NOT NULL DEFAULT 0,
-              approval_required INTEGER NOT NULL DEFAULT 1, idle_minutes INTEGER NOT NULL DEFAULT 30,
-              maximum_hours INTEGER NOT NULL DEFAULT 12)
-            """);
-        if (jdbc.queryForList("PRAGMA table_info(security_policy)").stream().noneMatch(column -> "password_minimum_length".equals(column.get("name"))))
-            jdbc.execute("ALTER TABLE security_policy ADD COLUMN password_minimum_length INTEGER NOT NULL DEFAULT " + defaultPasswordMinimumLength);
         jdbc.update("INSERT OR IGNORE INTO security_policy(id,password_minimum_length) VALUES(1,?)", defaultPasswordMinimumLength);
     }
     private void audit(String action, String id, String username, String actor) {

@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @org.springframework.security.test.context.support.WithMockUser(authorities={"ROLE_ADMIN","CATALOG_READ","BOOK_HISTORY_READ","TORRENT_SYNC","TORRENT_SEND","TORRENT_JOBS_MANAGE","TORRENT_CLEANUP","TORRENT_FILES_DELETE","CATALOG_IMPORT","CATALOG_DELETE","COVERS_MANAGE","EVENTS_MANAGE","SETTINGS_MANAGE"})
 @SpringBootTest(properties = {"spring.datasource.url=jdbc:sqlite::memory:",
-        "spring.jpa.hibernate.ddl-auto=create-drop", "spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=validate", "spring.flyway.enabled=true",
         "eplsync.torrent.client=stub", "eplsync.torrent.enabled=false", "eplsync.torrent.bulk.worker-enabled=false"})
 @Import(DownloadTrackingTests.Config.class)
 class DownloadTrackingTests {

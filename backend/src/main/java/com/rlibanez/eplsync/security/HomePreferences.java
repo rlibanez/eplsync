@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import com.rlibanez.eplsync.exception.UserInputException;
 
 @Service
+@org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 @org.springframework.context.annotation.DependsOn("accountStore")
 public class HomePreferences {
     public record Section(String id, Boolean enabled, Integer bookCount, Integer eventCount) {
@@ -22,8 +23,7 @@ public class HomePreferences {
     private final tools.jackson.databind.json.JsonMapper mapper=tools.jackson.databind.json.JsonMapper.builder().build();
     public HomePreferences(JdbcTemplate jdbc) {
         this.jdbc=jdbc;
-        if(jdbc.queryForList("PRAGMA table_info(users)").stream().noneMatch(column -> "home_preferences".equals(column.get("name"))))
-            jdbc.execute("ALTER TABLE users ADD COLUMN home_preferences TEXT");
+
     }
     public static Preferences defaults() {
         return new Preferences(DEFAULTS);

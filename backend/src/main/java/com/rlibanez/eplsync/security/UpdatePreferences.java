@@ -7,6 +7,7 @@ import com.rlibanez.eplsync.torrent.downloads.DownloadStatus;
 import com.rlibanez.eplsync.exception.UserInputException;
 
 @Service
+@org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 @org.springframework.context.annotation.DependsOn("accountStore")
 public class UpdatePreferences {
     public record Preferences(List<DownloadStatus> states) {}
@@ -14,7 +15,6 @@ public class UpdatePreferences {
     private final tools.jackson.databind.json.JsonMapper mapper=tools.jackson.databind.json.JsonMapper.builder().build();
     public UpdatePreferences(JdbcTemplate jdbc) {
         this.jdbc=jdbc;
-        jdbc.execute("CREATE TABLE IF NOT EXISTS revision_update_settings (id INTEGER PRIMARY KEY CHECK(id=1), settings TEXT NOT NULL)");
     }
     public static Preferences defaults() {
         return new Preferences(List.of(DownloadStatus.values()));

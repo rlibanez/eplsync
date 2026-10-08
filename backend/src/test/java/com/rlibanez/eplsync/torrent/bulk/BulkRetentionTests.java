@@ -14,7 +14,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.*;
 
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:",
-        "spring.jpa.hibernate.ddl-auto=create-drop","spring.flyway.enabled=false",
+        "spring.jpa.hibernate.ddl-auto=validate","spring.flyway.enabled=true",
         "eplsync.torrent.enabled=false","eplsync.torrent.bulk.worker-enabled=false",
         "eplsync.torrent.bulk.retention.enabled=false"})
 class BulkRetentionTests {

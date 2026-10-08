@@ -21,6 +21,7 @@ class QBittorrentPropertiesTests {
 
     private ApplicationContextRunner runner(Map<String, Object> environment) {
         return new ApplicationContextRunner()
+                .withBean(com.rlibanez.eplsync.reports.ReportSnapshots.class, () -> org.mockito.Mockito.mock(com.rlibanez.eplsync.reports.ReportSnapshots.class))
                 .withBean(com.rlibanez.eplsync.events.EventJournal.class, () -> org.mockito.Mockito.mock(com.rlibanez.eplsync.events.EventJournal.class))
                 .withBean(com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.class,
                 () -> org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.class)).withUserConfiguration(Config.class).withInitializer(context -> {
@@ -103,7 +104,8 @@ class QBittorrentPropertiesTests {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).doesNotHaveBean(QBittorrentClient.class);
-                    assertThat(context.getBean(TorrentClientService.class).checkConnection().connected()).isFalse();
+                    assertThatThrownBy(() -> context.getBean(TorrentClientService.class).checkConnection())
+                            .isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
                 });
         runner(Map.of("EPLSYNC_TORRENT_CLIENT", "future-client", "EPLSYNC_TORRENT_ENABLED", "true"))
                 .run(context -> assertThat(context).hasFailed());

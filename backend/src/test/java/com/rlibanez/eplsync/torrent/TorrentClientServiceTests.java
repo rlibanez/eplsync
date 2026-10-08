@@ -38,15 +38,14 @@ class TorrentClientServiceTests {
     }
 
     @Test
-    void disabledConnectionDoesNotNeedAnAdapterOrInvokeIt() {
+    void connectionCheckWorksWhenDisabledButRequiresAnAdapter() {
         var config = new TorrentProperties();
         config.setClient("future-client");
-        var status = new TorrentClientService(config, List.of(), org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.class)).checkConnection();
-        assertThat(status.connected()).isFalse();
-        assertThat(status.client()).isEqualTo("future-client");
+        assertThatThrownBy(() -> new TorrentClientService(config, List.of(), mock(com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.class)).checkConnection())
+                .isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
         var adapter = mock(TorrentClient.class);
         when(adapter.type()).thenReturn("future-client");
         new TorrentClientService(config, List.of(adapter), org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.class)).checkConnection();
-        verify(adapter, never()).checkConnection();
+        verify(adapter).checkConnection();
     }
 }

@@ -11,6 +11,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
 
 @Service
+@org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 public class EventJournal {
     public enum Category { CATALOG, JOB, COVERS, TORRENT, SECURITY }
     public enum Outcome { STARTED, SUCCEEDED, PARTIAL, FAILED, PAUSED, RETRY_WAIT, RESUMED, CANCELLED, RECOVERED }
@@ -57,21 +58,6 @@ public class EventJournal {
 
     @jakarta.annotation.PostConstruct
     void initialize() {
-        // AUTOINCREMENT keeps SSE cursors monotonic even when all events have been deleted.
-        jdbc.execute("""
-            CREATE TABLE IF NOT EXISTS app_events (
-              id INTEGER PRIMARY KEY AUTOINCREMENT,
-              created_at INTEGER NOT NULL, category TEXT NOT NULL, action TEXT NOT NULL,
-              outcome TEXT NOT NULL, origin TEXT NOT NULL, operation_id TEXT NOT NULL, details TEXT NOT NULL
-            )
-            """);
-        var columns = jdbc.queryForList("PRAGMA table_info(app_events)").stream()
-            .map(row -> String.valueOf(row.get("name"))).collect(java.util.stream.Collectors.toSet());
-        for (String column : List.of("actor_id", "actor_username", "actor_kind"))
-            if (!columns.contains(column)) jdbc.execute("ALTER TABLE app_events ADD COLUMN " + column + " TEXT");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_events_date ON app_events(created_at)");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_events_category_id ON app_events(category, id)");
-        jdbc.execute("CREATE INDEX IF NOT EXISTS idx_events_operation ON app_events(operation_id)");
         maintenance.scheduleWithFixedDelay(() -> {
             try { prune(); } catch (Exception ex) { log.warn("No se pudo limpiar el registro de eventos", ex); }
         }, 1, 60, TimeUnit.SECONDS);
