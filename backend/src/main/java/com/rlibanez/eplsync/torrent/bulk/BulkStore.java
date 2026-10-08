@@ -294,24 +294,7 @@ public class BulkStore {
     }
 
     private View view(BulkJob j) {
-        String id = j.getId();
-        long accepted = count(id, BulkItem.State.ACCEPTED), existing = count(id, BulkItem.State.ALREADY_EXISTS);
-        long skipped = count(id, BulkItem.State.SKIPPED), failed = count(id, BulkItem.State.FAILED);
-        var plan=em.find(com.rlibanez.eplsync.torrent.updates.UpdatePlan.class,id);
-        var counts=new java.util.EnumMap<com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State,Long>(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.class);
-        if (plan!=null) for (var row:em.createQuery("select e.state,count(e) from UpdateCleanup e where e.jobId=:job group by e.state",Object[].class).setParameter("job",id).getResultList())
-            counts.put((com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State)row[0],(Long)row[1]);
-        var summary=plan==null ? null : new CleanupSummary(counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.WAITING,0L),
-            counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.BLOCKED,0L),counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REQUESTED,0L),
-            counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REMOVED,0L),counts.getOrDefault(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.CANCELLED,0L));
-        return new View(id, j.getState(), j.getClient(), j.getSelectedBooks(), items.processedBooks(id, List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT, BulkItem.State.CANCELLED)),
-                accepted, existing, skipped, failed, count(id, BulkItem.State.PENDING), count(id, BulkItem.State.IN_FLIGHT),
-                count(id, BulkItem.State.CANCELLED), j.getBatchSize(), j.getConcurrency(), j.getIntervalMillis() + "ms",
-                j.getCreatedAt(), j.getUpdatedAt(), j.getRetryAt(), j.getMessage(),
-                j.getMultipleHashes() == null ? MultipleHashes.SKIP : j.getMultipleHashes(),
-                items.selectedTorrents(id), items.processedTorrents(id, List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT, BulkItem.State.CANCELLED)),
-                items.countByJobId(id), accepted + existing + skipped + failed, plan==null ? BulkJob.Type.DOWNLOAD : BulkJob.Type.UPDATE,
-                plan==null ? null : plan.getPreviousVersions(),summary, plan==null ? null : plan.getCleanupTiming()==null ? com.rlibanez.eplsync.torrent.updates.CleanupTiming.AFTER_DOWNLOAD : plan.getCleanupTiming());
+        return BulkSummaries.load(em,List.of(j)).getFirst();
     }
 
     @Transactional(readOnly = true)
@@ -351,7 +334,7 @@ public class BulkStore {
             var selected = ids.stream().map(id -> records.get(id.toString())).toList();
             result = new org.springframework.data.domain.PageImpl<>(selected,PageRequest.of(page,size),states==null ? jobs.count() : jobs.countByStateIn(states));
         }
-        return new PageResponse<>(result.getContent().stream().map(this::view).toList(),
+        return new PageResponse<>(BulkSummaries.load(em,result.getContent()),
                 new PageResponse.PageMeta(page, size, result.getTotalElements(), result.getTotalPages(),
                         result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
     }
