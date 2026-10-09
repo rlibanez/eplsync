@@ -4,7 +4,54 @@ export type { Page } from "@playwright/test";
 // UI tests isolate the transport. Real SSE commit/replay is covered by EventApiTests.
 export const test = base.extend<{ eventTransport: void }>({
   eventTransport: [
-    async ({ page }, use) => {
+    async ({ page, context }, use, testInfo) => {
+      const unmocked: string[] = [];
+      // Block access to real backends. More specific test routes take precedence.
+      await context.route(
+        (url) => url.pathname.startsWith("/api/"),
+        async (route) => {
+          const request = route.request();
+          unmocked.push(
+            `${request.method()} ${new URL(request.url()).pathname}${new URL(request.url()).search}`,
+          );
+          await route.fulfill({
+            status: 501,
+            json: { code: "E2E_UNMOCKED_API" },
+          });
+        },
+      );
+      await context.route(
+        /\/api\/catalog\/books\/\d+\/history(?:\?|$)/,
+        (route) => {
+          if (route.request().method() !== "GET") return route.fallback();
+          const params = new URL(route.request().url()).searchParams;
+          return route.fulfill({
+            json: {
+              items: [],
+              meta: {
+                page: Number(params.get("page") ?? 0),
+                size: Number(params.get("size") ?? 20),
+                totalItems: 0,
+                totalPages: 0,
+                hasNext: false,
+                hasPrevious: false,
+              },
+            },
+          });
+        },
+      );
+      await context.route("**/api/auth/status", (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        return route.fulfill({
+          json: {
+            initialized: true,
+            registrationEnabled: false,
+            approvalRequired: true,
+            passwordMinimumLength: 8,
+            initialAdminKeyRequired: false,
+          },
+        });
+      });
       await page.route("**/api/catalog/import/metadata", (route) =>
         route.fulfill({ json: { metadata: null } }),
       );
@@ -117,6 +164,16 @@ export const test = base.extend<{ eventTransport: void }>({
         });
       });
       await use();
+      if (unmocked.length) {
+        await testInfo.attach("unmocked-api-requests", {
+          body: JSON.stringify([...new Set(unmocked)], null, 2),
+          contentType: "application/json",
+        });
+        expect(
+          unmocked,
+          "Missing API mocks (see unmocked-api-requests attachment)",
+        ).toEqual([]);
+      }
     },
     { auto: true },
   ],

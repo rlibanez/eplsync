@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run src",
     "test:e2e": "playwright test",
+    "test:e2e:production": "playwright test --config=playwright.production.config.ts",
     "format": "prettier --write src *.ts *.json index.html e2e"
   },
   "dependencies": {

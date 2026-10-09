@@ -130,12 +130,23 @@ Los volúmenes `data/` y `logs/` mantienen su comportamiento habitual.
 cd frontend
 npx playwright install chromium
 npm run test:e2e
+npm run test:e2e:production
 ```
 
-Playwright arranca Vite en el puerto 5178 y utiliza respuestas de prueba para
+Las pruebas de desarrollo arrancan Vite en el puerto 5178. Las de producción
+compilan el frontend y arrancan preview en el puerto 5179 para verificar los
+archivos de las vistas diferidas y su recuperación. Ninguna configuración
+reutiliza un servidor existente. Ambas utilizan respuestas de prueba para
 verificar filtros, paginación, ficha, retorno al listado tras recargar, errores y
 menú móvil. No requiere ni modifica el catálogo local. Para usar un Chromium
 ya instalado, define `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` con su ruta.
+
+Las pruebas que utilizan `e2e/fixtures.ts` bloquean peticiones de API sin simular:
+no llegan al backend local y hacen fallar la prueba con un adjunto
+`unmocked-api-requests` que identifica método y URL. Los mocks específicos de
+cada prueba tienen prioridad. El historial de un libro se simula vacío por
+defecto con el contrato paginado actual; las pruebas de historial lo sustituyen
+con sus registros. No se generan respuestas de éxito para acciones sin simular.
 
 ## Traducciones de la interfaz
 
