@@ -306,6 +306,7 @@ export function RevisionUpdates() {
         </section>
       )}
       <AppModal
+        size={520}
         opened={opened}
         onClose={() => {
           if (!find.isPending) setOpened(false);
@@ -359,7 +360,7 @@ export function RevisionUpdates() {
             disabled={!options.length}
             onClick={() => find.mutate()}
           >
-            {t("revisionUpdates.search")}
+            {t("catalog.search")}
           </Button>
         </ModalActions>
       </AppModal>

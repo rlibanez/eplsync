@@ -74,6 +74,17 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     .getByRole("button", { name: "Buscar actualizaciones", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
+  const actionBoxes = await Promise.all(
+    ["Restaurar configuración guardada", "Cancelar", "Buscar"].map((name) =>
+      dialog.getByRole("button", { name, exact: true }).boundingBox(),
+    ),
+  );
+  expect(actionBoxes.every((box) => box !== null)).toBe(true);
+  expect(
+    Math.max(...actionBoxes.map((box) => box!.y)) -
+      Math.min(...actionBoxes.map((box) => box!.y)),
+  ).toBeLessThan(2);
+
   const boxes = dialog.locator("input[type=checkbox]");
   await expect(boxes).toHaveCount(10);
   await boxes.first().check();
@@ -82,9 +93,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     .click();
   await expect(boxes.first()).not.toBeChecked();
   await boxes.first().check();
-  await dialog
-    .getByRole("button", { name: "Buscar actualizaciones", exact: true })
-    .click();
+  await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "Test book", exact: true }),
   ).toBeVisible();
@@ -207,7 +216,7 @@ test("failed synchronization does not show results or change saved settings", as
     .click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Buscar actualizaciones", exact: true })
+    .getByRole("button", { name: "Buscar", exact: true })
     .click();
   await expect(
     page
@@ -264,7 +273,7 @@ test("last search, page, filter and ordering survive route changes and covers ma
     .click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Buscar actualizaciones", exact: true })
+    .getByRole("button", { name: "Buscar", exact: true })
     .click();
   await expect(page.locator("th[data-update-column]").first()).toHaveAttribute(
     "data-update-column",
