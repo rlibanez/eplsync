@@ -20,9 +20,6 @@ const book = {
 test("table values apply composable filters and exact local-day ranges", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   const queries: URLSearchParams[] = [];
   await page.route("**/api/catalog/books?**", (r) => {
     queries.push(new URL(r.request().url()).searchParams);
@@ -122,9 +119,6 @@ test("table values apply composable filters and exact local-day ranges", async (
 test("coauthors are independently clickable and preserve commas within names", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({
       json: {

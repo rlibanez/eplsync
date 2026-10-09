@@ -15,9 +15,6 @@ test("catalog reader sees neither an empty downloads group nor import controls",
       },
     }),
   );
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/books?**", (route) =>
     route.fulfill({
       json: {
@@ -52,9 +49,6 @@ test("restore defaults clears permission overrides when the editor is saved", as
     mustChangePassword: false,
   };
   let saved: Record<string, unknown> | undefined;
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/security/users", (route) =>
     route.fulfill({ json: [user] }),
   );

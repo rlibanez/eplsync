@@ -1,7 +1,6 @@
 import { test, expect } from './fixtures';
 test('book selects a magnet then sends that hash with wizard options', async ({ page }) => {
   const a = 'a'.repeat(40), b = 'b'.repeat(40);
-  await page.route('**/api/ui/config', r => r.fulfill({ json: { defaultLanguage: 'es' } }));
   await page.route('**/api/catalog/books/32', r => r.fulfill({ json: { eplId: 32, title: 'Dune', author: 'Frank Herbert', revision: 1, download: { items: [] } } }));
   await page.route('**/api/catalog/books/32/magnets', r => r.fulfill({ json: [a,b].map(h => `magnet:?xt=urn:btih:${h}`) }));
   await page.route('**/api/torrent/options', r => r.fulfill({ json: { start: true, autoManagement: false, savePath: '', rename: { enabled: true, pattern: '{title}' }, category: '', tags: [], concurrency: 2, batchSize: 20, interval: '0ms', multipleHashes: 'all' } }));

@@ -41,9 +41,6 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/catalog/covers/task", (r) =>
     r.fulfill({ json: { task: null } }),
   );
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/books/32/magnets", (r) =>
     r.fulfill({ json: [] }),
   );

@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 
 test("century selection filters the server, resets paging and survives back navigation", async ({ page }) => {
-  await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
   const requests: URLSearchParams[] = [];
   await page.route("**/api/catalog/directory/years?**", r => {
     const params = new URL(r.request().url()).searchParams;

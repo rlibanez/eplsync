@@ -23,9 +23,6 @@ const book = {
   download: { items: [] },
 };
 test.beforeEach(async ({ context }) => {
-  await context.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await context.route("**/api/catalog/books/32", (r) =>
     r.fulfill({ json: book }),
   );

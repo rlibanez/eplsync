@@ -48,9 +48,6 @@ function result(available: boolean | null, reason: string) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/covers/config", (r) =>
     r.fulfill({ json: options }),
   );

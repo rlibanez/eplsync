@@ -32,9 +32,6 @@ const job = {
   updatedAt: "2026-10-03T08:00:00Z",
 };
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/torrent/client/categories", (r) =>
     r.fulfill({ json: ["Libros", "Other"] }),
   );
@@ -422,38 +419,37 @@ test("multiple sort priorities survive pagination and can be reordered or remove
   await expect(
     page.getByRole("button", { name: "Ordenar (2)", exact: true }),
   ).toBeVisible();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
-    "language,asc",
-    "title,asc",
-  ]);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.getAll("sort"))
+    .toEqual(["language,asc", "title,asc"]);
   await page.getByRole("button", { name: "Siguiente", exact: true }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
-    "language,asc",
-    "title,asc",
-  ]);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.getAll("sort"))
+    .toEqual(["language,asc", "title,asc"]);
   await page.getByRole("button", { name: "Ordenar (2)", exact: true }).click();
   await page.getByRole("button", { name: "Subir criterio 2" }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
-    "title,asc",
-    "language,asc",
-  ]);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.getAll("sort"))
+    .toEqual(["title,asc", "language,asc"]);
   expect(new URL(page.url()).searchParams.get("page")).toBe("0");
   await expect(
     page.getByRole("textbox", { name: "Criterio 1", exact: true }),
   ).toHaveValue("Libro");
   await page.getByRole("button", { name: "Quitar criterio 2" }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
-    "title,asc",
-  ]);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.getAll("sort"))
+    .toEqual(["title,asc"]);
+  await expect(
+    page.getByRole("textbox", { name: "Criterio 2", exact: true }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Añadir criterio" }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
-    "title,asc",
-    "author,asc",
-  ]);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.getAll("sort"))
+    .toEqual(["title,asc", "author,asc"]);
   await page.getByRole("button", { name: "Restablecer", exact: true }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
-    "title,asc",
-  ]);
+  await expect
+    .poll(() => new URL(page.url()).searchParams.getAll("sort"))
+    .toEqual(["title,asc"]);
 });
 
 test("unknown configured category falls back to no category and query failures can be retried", async ({

@@ -18,9 +18,6 @@ const book = {
   download: { items: [] },
 };
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
 });
 test("state reads local records and sync is explicit", async ({ page }) => {
   let syncs = 0;

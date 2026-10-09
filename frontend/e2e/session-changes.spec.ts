@@ -46,7 +46,7 @@ test("another tab renews the token even when the account stays the same", async 
         }
         expect(route.request().method()).toBe("PUT");
         saves++;
-        return route.fulfill({ json: account });
+        return route.fulfill({ json: { success: true } });
       }
       unexpected.push(`${route.request().method()} ${path}`);
       return route.fulfill({ status: 501, json: { code: "E2E_UNMOCKED_API" } });

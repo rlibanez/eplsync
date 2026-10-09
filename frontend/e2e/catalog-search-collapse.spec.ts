@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 
 test("valid searches collapse advanced filters, including unchanged searches, while invalid ranges stay open", async ({ page }) => {
-  await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
   await page.route("**/api/catalog/books?**", r => r.fulfill({ json: {
     items: [], meta: { page: 0, size: 20, totalItems: 0, totalPages: 0, hasNext: false, hasPrevious: false },
   } }));

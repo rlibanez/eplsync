@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 
 test("catalog views preserve filters and selection, persist layout and open import", async ({ page }) => {
-  await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
   await page.route("https://images.epublibre.org/**", r => r.abort());
   await page.route("**/api/catalog/import/source", r => r.fulfill({ json: { defaultUrl: "https://example.org/catalog.zip", archive: null } }));
   await page.route("**/api/catalog/books?**", r => r.fulfill({ json: {
@@ -37,7 +36,6 @@ test("catalog views preserve filters and selection, persist layout and open impo
 
 test("only truncated card titles show their full text on hover or focus", async ({ page }) => {
   const title = "Un título muy largo que continúa durante muchas palabras y no cabe en la tarjeta del catálogo ".repeat(5);
-  await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
   await page.route("**/api/catalog/books?**", r => r.fulfill({ json: {
     items: [title, "Breve"].map((title, index) => ({ eplId: index + 1, title, author: "Autor", download: { items: [] } })),
     meta: { page: 0, size: 20, totalItems: 2, totalPages: 1, hasNext: false, hasPrevious: false },

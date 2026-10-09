@@ -2,7 +2,6 @@ import { test, expect } from "./fixtures";
 test.use({ timezoneId: "Europe/Madrid" });
 test("event deletion supports inclusive dates, open ranges and explicit all", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-10-04T12:00:00Z"));
-  await page.route("**/api/ui/config", r => r.fulfill({json: {defaultLanguage: "es"}}));
   await page.route("**/api/settings/events", r => r.fulfill({json: {section: "events", fields: []}}));
   const requests: unknown[] = [];
   await page.route("**/api/events/delete", r => {

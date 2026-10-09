@@ -1,8 +1,5 @@
 import { test, expect, emitEvent, operationResponse } from "./fixtures";
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/covers/task", (r) =>
     r.fulfill({ json: { task: null } }),
   );

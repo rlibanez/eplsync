@@ -3,9 +3,6 @@ import { test, expect } from "./fixtures";
 test("preview and execution show local searchable detail without repeating sync", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/covers/task", (r) =>
     r.fulfill({ json: { task: null } }),
   );
@@ -264,9 +261,6 @@ test("preview and execution show local searchable detail without repeating sync"
 test("ignored torrent can be linked with inferred editable identity", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/torrent/downloads?**", (r) =>
     r.fulfill({
       json: {

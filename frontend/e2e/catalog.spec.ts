@@ -6,9 +6,6 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/catalog/books/32/magnets", (r) =>
     r.fulfill({ json: [] }),
   );
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
 });
 const book = {
   eplId: 32,

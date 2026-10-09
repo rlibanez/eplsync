@@ -1,7 +1,6 @@
 import { test, expect } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
   await page.route("**/api/catalog/books?**", r => r.fulfill({ json: {
     items: [], meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
   } }));

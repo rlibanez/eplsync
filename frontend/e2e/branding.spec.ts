@@ -16,9 +16,6 @@ const palettes = [
 test("logo and favicon follow all palettes and both schemes without painted counters", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.goto("/settings/general");
   const logo = page.locator(".brand-icon svg");
   await expect(logo).toBeVisible();

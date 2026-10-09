@@ -1,9 +1,6 @@
 import { test, expect } from "./fixtures";
 
 async function setup(page: import("@playwright/test").Page, empty = false) {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({
       json: {

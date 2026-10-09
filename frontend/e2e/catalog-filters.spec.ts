@@ -3,9 +3,6 @@ test.use({ timezoneId: "Europe/Madrid" });
 test("advanced filters are collapsed and convert complete local days across DST", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/covers/task", (r) =>
     r.fulfill({ json: { task: null } }),
   );
@@ -97,9 +94,6 @@ test("advanced filters are collapsed and convert complete local days across DST"
 test("clear applied filters from the heading preserves table preferences and disclosure state", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({
       json: {
@@ -146,9 +140,6 @@ test("clear applied filters from the heading preserves table preferences and dis
 test("multiple text values commit with Enter, Tab and Search and survive reload", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({
       json: {
@@ -209,9 +200,6 @@ test("multiple text values commit with Enter, Tab and Search and survive reload"
 test("language and publication status allow multiple alternatives", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({
       json: {
@@ -254,9 +242,6 @@ test("language and publication status allow multiple alternatives", async ({
 test("empty token fields support keyboard deletion and Enter searches", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({
       json: {
