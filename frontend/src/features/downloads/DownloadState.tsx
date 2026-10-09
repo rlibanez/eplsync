@@ -73,22 +73,12 @@ function DownloadHistory() {
         ordering(value).forEach((sort) => params.append("sort", sort));
       else params.set(key, value);
     }
-  const summaryParams = new URLSearchParams(params);
-  summaryParams.delete("sort");
   params.set("page", String(page));
   params.set("size", String(size));
   const result = useQuery({
     queryKey: ["downloads", params.toString()],
     queryFn: ({ signal }) =>
       get<Page<Download>>(`/torrent/downloads?${params}`, signal),
-  });
-  const summary = useQuery({
-    queryKey: ["download-summary", summaryParams.toString()],
-    queryFn: ({ signal }) =>
-      get<{ total: number; byStatus: Record<string, number> }>(
-        `/torrent/downloads/summary?${summaryParams}`,
-        signal,
-      ),
   });
   const sync = useMutation({
     mutationKey: ["torrent-sync"],
@@ -111,7 +101,6 @@ function DownloadHistory() {
       if (!report.applied) return;
       void cache.invalidateQueries({ queryKey: ["catalog"] });
       void cache.invalidateQueries({ queryKey: ["downloads"] });
-      void cache.invalidateQueries({ queryKey: ["download-summary"] });
       void cache.invalidateQueries({ queryKey: ["book"] });
       void cache.invalidateQueries({ queryKey: ["book-history"] });
     },
@@ -222,24 +211,6 @@ function DownloadHistory() {
           {t("catalog.clear")}
         </Button>
       </form>
-      {summary.data && (
-        <div className="status-summary">
-          {Object.entries(summary.data.byStatus).map(([key, count]) => (
-            <button
-              key={key}
-              className={filters.status === key ? "active" : ""}
-              onClick={() =>
-                filter("status", filters.status === key ? "" : key)
-              }
-            >
-              {status(key)} <strong>{number(count)}</strong>
-            </button>
-          ))}
-        </div>
-      )}
-      {summary.isError && (
-        <Failure error={summary.error} retry={() => summary.refetch()} />
-      )}
       <section className="panel">
         <div className="table-toolbar">
           <div className="catalog-table-controls">{columns.controls}</div>
