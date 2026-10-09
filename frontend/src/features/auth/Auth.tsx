@@ -351,7 +351,10 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
         setRegister(false);
         setPassword("");
       } else {
-        await authRequest("/auth/login", "POST", { username, password });
+        await authRequest("/auth/login", "POST", {
+          username: username.trim(),
+          password,
+        });
         await onLogin();
       }
     } catch (e) {

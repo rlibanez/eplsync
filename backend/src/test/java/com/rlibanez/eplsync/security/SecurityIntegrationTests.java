@@ -57,6 +57,26 @@ class SecurityIntegrationTests {
         return login("admin",PASSWORD);
     }
     String json(Object value) {return tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(value);}
+    @Test void loginIgnoresSurroundingUsernameWhitespaceButPreservesPassword() throws Exception {
+        assertThat(accounts.authenticate(" admin ",initial.password()).username()).isEqualTo("admin");
+        var session=login(" ADMIN ",initial.password());
+        mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.username").value("admin"));
+        for(var input:java.util.List.of(Map.of("username","admin ","password",initial.password()+" "),
+                             Map.of("username","ad min","password",initial.password())))
+            mvc.perform(post("/api/auth/login").with(csrf()).contentType("application/json").content(json(input)))
+                .andExpect(status().isUnauthorized());
+    }
+    @Test void usernameWhitespaceCannotBypassAccountLoginThrottle() throws Exception {
+        for(int attempt=0;attempt<10;attempt++)
+            mvc.perform(post("/api/auth/login").with(csrf()).contentType("application/json")
+                .content(json(Map.of("username","admin"+" ".repeat(attempt),"password","incorrect"))))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/auth/login").with(csrf()).contentType("application/json")
+            .content(json(Map.of("username"," admin ","password","incorrect"))))
+            .andExpect(status().isTooManyRequests());
+    }
+
     @Test void staleCsrfIsDistinguishedFromPermissionDenial() throws Exception {
         var oldSession=admin();
         var mapper=tools.jackson.databind.json.JsonMapper.builder().build();

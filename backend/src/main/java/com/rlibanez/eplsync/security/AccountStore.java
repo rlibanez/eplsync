@@ -96,6 +96,7 @@ public class AccountStore {
         return new Account(a.id(),a.username(),a.email(),a.role(),a.status(),a.mustChangePassword(),a.temporaryExpiresAt(),a.securityVersion(),Set.copyOf(permissions),null);
     }
     public Account authenticate(String username, String password) {
+        if (username != null) username = username.strip();
         if (username == null || username.length() > 64 || password == null || password.length() > 256) return null;
         var rows = jdbc.queryForList("SELECT id,password_hash,security_version FROM users WHERE username_normalized=?",normalized(username));
         String hash = rows.isEmpty() ? dummyHash : (String) rows.getFirst().get("password_hash");

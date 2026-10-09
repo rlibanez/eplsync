@@ -46,7 +46,9 @@ public class AuthController {
         sessions.login(request,response,account);
         return account;
     }
-    public record Login(@NotBlank @Size(max=64) String username,@NotBlank @Size(max=256) String password) {}
+    public record Login(@NotBlank @Size(max=64) String username,@NotBlank @Size(max=256) String password) {
+        public Login { if (username != null) username = username.strip(); }
+    }
     @PostMapping("/login") public Account login(@Valid @RequestBody Login input,HttpServletRequest request,HttpServletResponse response) {
         throttle.check("login:"+request.getRemoteAddr(),30);
         throttle.check("account:"+input.username().toLowerCase(Locale.ROOT),10);

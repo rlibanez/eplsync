@@ -54,7 +54,7 @@ test("login sends CSRF and enforces restricted navigation", async ({
     "required",
     "",
   );
-  await page.getByLabel("Nombre de usuario").fill("reader");
+  await page.getByLabel("Nombre de usuario").fill(" reader ");
   await page.getByLabel(/^Contraseña/).fill("reader-password");
   await page
     .getByRole("button", { name: "Iniciar sesión", exact: true })
