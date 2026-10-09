@@ -18,8 +18,6 @@ test("login sends CSRF and enforces restricted navigation", async ({
   let signedIn = false;
   await page.route("http://127.0.0.1:5178/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/ui/config")
-      return route.fulfill({ json: { defaultLanguage: "es" } });
     if (path === "/api/auth/me")
       return route.fulfill({
         status: signedIn ? 200 : 401,
@@ -101,14 +99,40 @@ test("login sends CSRF and enforces restricted navigation", async ({
   ).toBeVisible();
 });
 test("temporary credentials require password replacement", async ({ page }) => {
-  await page.route("http://127.0.0.1:5178/api/**", (route) =>
-    route.fulfill({
-      json:
-        new URL(route.request().url()).pathname === "/api/auth/me"
-          ? { ...account, mustChangePassword: true }
-          : { defaultLanguage: "es" },
-    }),
-  );
+  let signedIn = true;
+  let changes = 0;
+  await page.route("http://127.0.0.1:5178/api/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/auth/me")
+      return route.fulfill({
+        status: signedIn ? 200 : 401,
+        json: signedIn ? { ...account, mustChangePassword: true } : {},
+      });
+    if (path === "/api/auth/status")
+      return route.fulfill({
+        json: {
+          initialized: true,
+          registrationEnabled: false,
+          passwordMinimumLength: 8,
+        },
+      });
+    if (path === "/api/auth/csrf")
+      return route.fulfill({
+        json: { token: "temporary-csrf", headerName: "X-CSRF-TOKEN" },
+      });
+    if (path === "/api/auth/password") {
+      expect(route.request().method()).toBe("POST");
+      expect(route.request().headers()["x-csrf-token"]).toBe("temporary-csrf");
+      expect(route.request().postDataJSON()).toEqual({
+        currentPassword: "temporary-password",
+        newPassword: "permanent password",
+      });
+      changes++;
+      signedIn = false;
+      return route.fulfill({ json: { success: true } });
+    }
+    return route.fulfill({ status: 501, json: { code: "E2E_UNMOCKED_API" } });
+  });
   await page.goto("/catalog");
   await expect(
     page.getByRole("heading", {
@@ -170,6 +194,18 @@ test("temporary credentials require password replacement", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: "Catálogo", exact: true }),
   ).toHaveCount(0);
+  expect(changes).toBe(0);
+  await current.fill("temporary-password");
+  await changeButton.click();
+  await expect(
+    page.getByRole("button", { name: "Iniciar sesión", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Debes establecer una contraseña definitiva",
+    }),
+  ).toHaveCount(0);
+  expect(changes).toBe(1);
 });
 
 test("first web load creates an administrator only after password confirmation", async ({
@@ -187,8 +223,6 @@ test("first web load creates an administrator only after password confirmation",
   };
   await page.route("http://127.0.0.1:5178/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/ui/config")
-      return route.fulfill({ json: { defaultLanguage: "es" } });
     if (path === "/api/auth/csrf")
       return route.fulfill({
         json: { token: "setup-token", headerName: "X-CSRF-TOKEN" },
@@ -317,7 +351,7 @@ test("first web load creates an administrator only after password confirmation",
   ).toHaveCount(0);
 });
 
-test("sync permission uses State without requesting download history", async ({
+test("legacy sync route redirects to State with download history and synchronization", async ({
   page,
 }) => {
   let historyRequests = 0;
@@ -327,8 +361,25 @@ test("sync permission uses State without requesting download history", async ({
       return route.fulfill({
         json: { ...account, permissions: ["TORRENT_SYNC"] },
       });
-    if (path.startsWith("/api/torrent/downloads")) historyRequests++;
-    return route.fulfill({ json: { defaultLanguage: "es" } });
+    if (path === "/api/torrent/downloads") {
+      historyRequests++;
+      return route.fulfill({
+        json: {
+          items: [],
+          meta: {
+            page: 0,
+            size: 20,
+            totalItems: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrevious: false,
+          },
+        },
+      });
+    }
+    if (path === "/api/torrent/downloads/summary")
+      return route.fulfill({ json: { total: 0, byStatus: {} } });
+    return route.fulfill({ json: {} });
   });
   await page.goto("/downloads/sync");
   await expect(page).toHaveURL(/\/downloads$/);
@@ -343,7 +394,7 @@ test("sync permission uses State without requesting download history", async ({
   await expect(
     page.getByRole("button", { name: "Previsualizar sincronización" }),
   ).toBeVisible();
-  expect(historyRequests).toBe(0);
+  expect(historyRequests).toBeGreaterThan(0);
 });
 
 test("registration and return to login use full width buttons", async ({
@@ -362,7 +413,7 @@ test("registration and return to login use full width buttons", async ({
           passwordMinimumLength: 8,
         },
       });
-    return route.fulfill({ json: { defaultLanguage: "es" } });
+    return route.fulfill({ json: {} });
   });
   await page.goto("/catalog");
   const register = page.getByRole("button", {
@@ -396,8 +447,6 @@ test("connection failure shows a clear page and retry restores access", async ({
   let offline = true;
   await page.route("http://127.0.0.1:5178/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/ui/config")
-      return route.fulfill({ json: { defaultLanguage: "es" } });
     if (path === "/api/auth/me") {
       if (offline) return route.abort("connectionrefused");
       return route.fulfill({ status: 401, json: {} });

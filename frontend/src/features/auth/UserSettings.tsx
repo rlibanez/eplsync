@@ -556,13 +556,14 @@ export function UserSettings() {
                   `/security/users/${resetting!.id}/password`,
                   "POST",
                 );
-                auth.showTemporary(result);
                 const self = resetting!.id === auth.user?.id;
                 setResetting(undefined);
                 if (self) {
                   await auth.logout();
+                  auth.showTemporary(result);
                   return false;
                 }
+                auth.showTemporary(result);
               })
             }
           >

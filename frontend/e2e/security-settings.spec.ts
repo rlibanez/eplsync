@@ -7,9 +7,6 @@ test("admin controls registration and mandatory approval", async ({ page }) => {
     maximumHours: 12,
     passwordMinimumLength: 8,
   };
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/security/users", (route) =>
     route.fulfill({ json: [] }),
   );
@@ -54,9 +51,6 @@ test("erasing users requires the full reset phrase and explicit flag", async ({
   page,
 }) => {
   let body: Record<string, unknown> | undefined;
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/maintenance/reset", (route) => {
     body = route.request().postDataJSON();
     return route.fulfill({ json: { success: true } });
@@ -104,9 +98,6 @@ test("users table creates, edits permissions and confirms irreversible deletion"
   let deletes = 0;
   let resets = 0;
   let creationAttempts = 0;
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/security/policy", (route) =>
     route.fulfill({
       json: {
@@ -200,7 +191,7 @@ test("users table creates, edits permissions and confirms irreversible deletion"
   await dialog.getByLabel(/^Nombre de usuario/).fill("bad user");
   await expect(
     page.getByRole("tooltip", {
-      name: "El usuario debe tener entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo",
+      name: "El usuario debe tener entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo.",
       exact: true,
     }),
   ).toBeVisible();
@@ -326,9 +317,6 @@ test("users sort by translated headers and edit in grouped responsive dialog", a
     permissions: ["CATALOG_READ"],
     mustChangePassword: false,
   }));
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/security/users", (route) =>
     route.fulfill({ json: users }),
   );
@@ -410,9 +398,6 @@ test("admin self reset keeps the temporary password visible after logout", async
     overrides: {},
     permissions: ["CATALOG_READ"],
   };
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({
       status: signedIn ? 200 : 401,
@@ -529,9 +514,6 @@ test("pending account can be approved directly and the approval action then disa
     permissions: ["CATALOG_READ"],
     mustChangePassword: false,
   };
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/security/users", (route) =>
     route.fulfill({ json: [user] }),
   );
@@ -567,22 +549,37 @@ test("pending account can be approved directly and the approval action then disa
   await expect(page.locator(".users-table")).toContainText("Activo");
 });
 
-
-test("settings tabs wrap and database stays immediately before about", async ({ page }) => {
+test("settings tabs wrap and database stays immediately before about", async ({
+  page,
+}) => {
   await page.goto("/settings/general");
   const tabs = page.locator(".settings-tabs");
-  await expect(tabs.locator("a").nth(-2)).toHaveAttribute("href", "/settings/database");
-  await expect(tabs.locator("a").last()).toHaveAttribute("href", "/settings/about");
+  await expect(tabs.locator("a").nth(-2)).toHaveAttribute(
+    "href",
+    "/settings/database",
+  );
+  await expect(tabs.locator("a").last()).toHaveAttribute(
+    "href",
+    "/settings/about",
+  );
   await expect(tabs.locator("a[href='/settings/catalog']")).toBeVisible();
   await page.setViewportSize({ width: 390, height: 900 });
   const layout = await tabs.evaluate((nav) => ({
     scroll: nav.scrollWidth,
     width: nav.clientWidth,
-    rows: new Set(Array.from(nav.querySelectorAll("a"), (a) => Math.round(a.getBoundingClientRect().top))).size,
+    rows: new Set(
+      Array.from(nav.querySelectorAll("a"), (a) =>
+        Math.round(a.getBoundingClientRect().top),
+      ),
+    ).size,
   }));
   expect(layout.scroll).toBeLessThanOrEqual(layout.width);
   expect(layout.rows).toBeGreaterThan(1);
   await tabs.locator("a[href='/settings/database']").click();
-  await expect(page.getByRole("button", { name: "Reiniciar base de datos", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Configuración de importación" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Reiniciar base de datos", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Configuración de importación" }),
+  ).toHaveCount(0);
 });

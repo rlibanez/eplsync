@@ -50,11 +50,22 @@ async function history(page: Page) {
   };
 }
 
-test("history refreshes selected records and removes through a confirmed dropdown action", async ({
+test("history refreshes selected records and removes through a confirmed dialog action", async ({
   page,
 }) => {
   const data = await history(page);
-  let refreshed: any, removed: any;
+  let refreshed: { eplId: number; ids: string[] } | undefined, removed: unknown;
+  await page.route(
+    "**/api/torrent/downloads/delete-history?preview=true",
+    (r) => {
+      expect(r.request().method()).toBe("POST");
+      expect(r.request().postDataJSON()).toEqual({
+        eplId: 1,
+        ids: ["r1", "r2"],
+      });
+      return r.fulfill({ json: { deleted: 0, pendingCleanup: 0 } });
+    },
+  );
   await page.route("**/api/torrent/downloads/refresh-selected", (r) => {
     refreshed = r.request().postDataJSON();
     data.setRows(data.rows.map((row) => ({ ...row, status: "DOWNLOADED" })));
@@ -117,8 +128,8 @@ test("history refreshes selected records and removes through a confirmed dropdow
     .click();
   const result = page.getByRole("dialog");
   await expect(result.getByText("Descargado", { exact: true })).toHaveCount(2);
-  expect(refreshed.eplId).toBe(1);
-  expect(refreshed.ids.sort()).toEqual(["r1", "r2"]);
+  expect(refreshed?.eplId).toBe(1);
+  expect(refreshed?.ids.sort()).toEqual(["r1", "r2"]);
   await result.getByRole("button", { name: "Cerrar", exact: true }).click();
   await section
     .getByRole("checkbox", { name: "Seleccionar registros de esta página" })
