@@ -1,5 +1,11 @@
 import { test, expect } from "./fixtures";
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/catalog/suggestions/**", (r) =>
+    r.fulfill({ json: { items: [], total: 0, nextOffset: null } }),
+  );
+  await page.route("**/api/catalog/books/32/magnets", (r) =>
+    r.fulfill({ json: [] }),
+  );
   await page.route("**/api/ui/config", (route) =>
     route.fulfill({ json: { defaultLanguage: "es" } }),
   );
@@ -29,7 +35,7 @@ const book = {
 test("filters, pagination, detail and back preserve the catalog context", async ({
   page,
 }) => {
-  await page.route("**/api/catalog/books**", async (route) => {
+  await page.route("**/api/catalog/books?**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/magnets")) return route.fulfill({ json: [] });
     if (url.pathname.endsWith("/32")) return route.fulfill({ json: book });
@@ -55,11 +61,8 @@ test("filters, pagination, detail and back preserve the catalog context", async 
       },
     });
   });
-  await page.goto("/");
-  await page
-    .getByRole("main")
-    .getByRole("link", { name: "Explorar catálogo", exact: true })
-    .click();
+  await page.route("**/api/catalog/books/32", (r) => r.fulfill({ json: book }));
+  await page.goto("/catalog");
   await page.locator(".catalog-search summary").click();
   await page.getByLabel("Título", { exact: true }).fill("Dune");
   await page.getByLabel("Autor", { exact: true }).fill("Herbert");
@@ -103,7 +106,7 @@ test("empty results, error retry and missing book are explained", async ({
   page,
 }) => {
   let failed = true;
-  await page.route("**/api/catalog/books**", (route) => {
+  await page.route("**/api/catalog/books?**", (route) => {
     if (route.request().url().includes("/999"))
       return route.fulfill({ status: 404 });
     if (failed) return route.fulfill({ status: 503 });
@@ -129,6 +132,12 @@ test("empty results, error retry and missing book are explained", async ({
     page.getByRole("heading", { name: "No hay libros para mostrar" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Siguiente" })).toBeDisabled();
+  await page.route("**/api/catalog/books/999", (r) =>
+    r.fulfill({ status: 404 }),
+  );
+  await page.route("**/api/catalog/books/999/magnets", (r) =>
+    r.fulfill({ json: [] }),
+  );
   await page.goto("/catalog/999");
   await expect(page.getByRole("alert")).toContainText(
     "No se ha encontrado este libro.",
@@ -138,9 +147,28 @@ test("mobile navigation closes after selection and home is responsive", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/catalog/books?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 10, totalItems: 0, totalPages: 0 },
+      },
+    }),
+  );
+  await page.route("**/api/torrent/downloads/summary", (r) =>
+    r.fulfill({ json: { total: 0, byStatus: {} } }),
+  );
+  await page.route("**/api/torrent/jobs?**", (r) =>
+    r.fulfill({ json: { items: [], meta: { totalItems: 0 } } }),
+  );
+  await page.route("**/api/events/operations?**", (r) =>
+    r.fulfill({ json: { items: [], total: 0, page: 0, size: 10, cursor: 0 } }),
+  );
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Todos tus libros. Un mismo lugar." }),
+    page.getByRole("heading", {
+      name: /Todos tus libros\.\s*Un mismo lugar\./,
+    }),
   ).toBeVisible();
   await page.screenshot({
     path: "test-results/home-mobile.png",

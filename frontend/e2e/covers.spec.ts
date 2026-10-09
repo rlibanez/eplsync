@@ -85,7 +85,7 @@ for (const coverUrl of [custom, null]) {
     const thumbnail = page.locator(".mini-book img");
     await expect(thumbnail).toHaveAttribute("src", expected);
     await expect(thumbnail).toHaveAttribute("loading", "lazy");
-    await expect(page.locator(".mini-book")).toHaveCSS("width", "33px");
+    await expect(page.locator(".mini-book")).toHaveCSS("width", "44px");
     await page.getByRole("link", { name: "Dune", exact: true }).click();
     const cover = page.getByRole("link", {
       name: "Abrir portada de Dune en una nueva pestaña",

@@ -35,7 +35,9 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/ui/config", (r) =>
     r.fulfill({ json: { defaultLanguage: "es" } }),
   );
-  await page.route("**/api/torrent/client/categories", r => r.fulfill({ json: ["Libros", "Other"] }));
+  await page.route("**/api/torrent/client/categories", (r) =>
+    r.fulfill({ json: ["Libros", "Other"] }),
+  );
   await page.route("**/api/torrent/options", (r) =>
     r.fulfill({ json: defaults }),
   );
@@ -154,7 +156,9 @@ test("explicit selected IDs create a job with editable defaults and keyboard hel
   await expect(dialog.locator(".send-option-modified")).toHaveCount(0);
   await dialog.getByLabel("Categoría", { exact: true }).click();
   await page.getByRole("option", { name: "Other", exact: true }).click();
-  await expect(dialog.getByLabel("Categoría", { exact: true })).toHaveClass(/send-option-modified/);
+  await expect(dialog.getByLabel("Categoría", { exact: true })).toHaveClass(
+    /send-option-modified/,
+  );
   await dialog
     .getByRole("button", { name: "Restablecer valores predeterminados" })
     .click();
@@ -177,7 +181,9 @@ test("explicit selected IDs create a job with editable defaults and keyboard hel
     .getByLabel("Ruta de descarga en el cliente", { exact: true })
     .fill("/downloads/books");
   await dialog.getByLabel("Categoría", { exact: true }).click();
-  await page.getByRole("option", { name: "Sin categoría", exact: true }).click();
+  await page
+    .getByRole("option", { name: "Sin categoría", exact: true })
+    .click();
   await dialog.getByLabel("Etiquetas", { exact: true }).fill("");
   await page.screenshot({ path: "test-results/send-options-modified.png" });
   expect(calls).toBe(0);
@@ -196,15 +202,11 @@ test("select all uses filters and exclusions without fetching the full catalog",
   await page.goto(
     "/catalog?author=Asimov&author=Sanderson&language=es&language=en",
   );
-  await page
-    .getByRole("button", { name: "Seleccionar todo (40)" })
-    .click();
+  await page.getByRole("button", { name: "Seleccionar todo (40)" }).click();
   await page
     .getByRole("checkbox", { name: "Seleccionar Book 1", exact: true })
     .uncheck();
-  await expect(
-    page.getByText("39 resultados seleccionados"),
-  ).toBeVisible();
+  await expect(page.getByText("39 resultados seleccionados")).toBeVisible();
   await page.getByRole("button", { name: "Siguiente", exact: true }).click();
   await expect(
     page.getByRole("checkbox", { name: "Seleccionar esta página" }),
@@ -249,17 +251,26 @@ test("export downloads selected IDs directly as magnets.txt without a dialog", a
   expect((await download).suggestedFilename()).toBe("magnets.txt");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
-test("native save picker opens directly and writes the exported links", async ({ page }) => {
+test("native save picker opens directly and writes the exported links", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "showSaveFilePicker", {
       value: async (options: { suggestedName: string }) => {
         document.documentElement.dataset.suggestedName = options.suggestedName;
         return {
           createWritable: async () => ({
-            write: async (blob: Blob) => {
-              document.documentElement.dataset.savedMagnets = await blob.text();
+            write: async (data: Blob | Uint8Array) => {
+              const text =
+                data instanceof Blob
+                  ? await data.text()
+                  : new TextDecoder().decode(data);
+              document.documentElement.dataset.savedMagnets =
+                (document.documentElement.dataset.savedMagnets ?? "") + text;
             },
-            close: async () => { document.documentElement.dataset.saved = "true"; },
+            close: async () => {
+              document.documentElement.dataset.saved = "true";
+            },
             abort: async () => {},
           }),
         };
@@ -267,14 +278,23 @@ test("native save picker opens directly and writes the exported links", async ({
       configurable: true,
     });
   });
-  await page.route("**/api/catalog/magnets/export", r => r.fulfill({
-    contentType: "text/plain", body: "magnet:?test",
-  }));
+  await page.route("**/api/catalog/magnets/export", (r) =>
+    r.fulfill({
+      contentType: "text/plain",
+      body: "magnet:?test",
+    }),
+  );
   await page.goto("/catalog");
   await page.getByRole("checkbox", { name: "Seleccionar esta página" }).check();
   await page.getByRole("button", { name: "Exportar magnet links" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-suggested-name", "magnets.txt");
-  await expect(page.locator("html")).toHaveAttribute("data-saved-magnets", "magnet:?test");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-suggested-name",
+    "magnets.txt",
+  );
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-saved-magnets",
+    "magnet:?test",
+  );
   await expect(page.locator("html")).toHaveAttribute("data-saved", "true");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
@@ -324,9 +344,9 @@ test("created jobs still support pause, resume and confirmed cancellation", asyn
     });
   await page.goto("/downloads/jobs/selected-job");
   await page.getByRole("button", { name: "Pausar", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Pausado", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator(".report-collapse summary")).toContainText(
+    "Pausado",
+  );
   await page.getByRole("button", { name: "Reanudar", exact: true }).click();
   await page
     .getByRole("button", { name: "Cancelar trabajo", exact: true })
@@ -336,9 +356,9 @@ test("created jobs still support pause, resume and confirmed cancellation", asyn
     .getByRole("dialog")
     .getByRole("button", { name: "Cancelar trabajo", exact: true })
     .click();
-  await expect(
-    page.getByRole("heading", { name: "Cancelado", exact: true }),
-  ).toBeVisible();
+  await expect(page.locator(".report-collapse summary")).toContainText(
+    "Cancelado",
+  );
   expect(cancels).toBe(1);
 });
 test("a failed submission is not retried automatically", async ({ page }) => {
@@ -348,9 +368,7 @@ test("a failed submission is not retried automatically", async ({ page }) => {
     return r.abort();
   });
   await page.goto("/catalog");
-  await page
-    .getByRole("button", { name: "Seleccionar todo (40)" })
-    .click();
+  await page.getByRole("button", { name: "Seleccionar todo (40)" }).click();
   await page
     .getByRole("button", { name: "Enviar a descargar", exact: true })
     .click();
@@ -365,69 +383,147 @@ test("a failed submission is not retried automatically", async ({ page }) => {
   expect(calls).toBe(1);
 });
 
-test("column sorting is server-side, resets pagination and preserves selection and filters", async ({ page }) => {
+test("column sorting is server-side, resets pagination and preserves selection and filters", async ({
+  page,
+}) => {
   await page.goto("/catalog?author=Asimov&page=1");
-  await page.getByRole("checkbox", { name: "Seleccionar Book 3", exact: true }).check();
+  await page
+    .getByRole("checkbox", { name: "Seleccionar Book 3", exact: true })
+    .check();
   const author = page.locator('th[data-column="author"]');
-  const request = page.waitForRequest(r => r.url().includes("/api/catalog/books?") && new URL(r.url()).searchParams.get("sort") === "author,asc");
+  const request = page.waitForRequest(
+    (r) =>
+      r.url().includes("/api/catalog/books?") &&
+      new URL(r.url()).searchParams.get("sort") === "author,asc",
+  );
   await author.getByRole("button", { name: "Autor", exact: true }).click();
   await request;
   await expect(page).toHaveURL(/page=0/);
   expect(new URL(page.url()).searchParams.get("author")).toBe("Asimov");
-  await expect(page.getByText("1 libros seleccionados", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("1 libros seleccionados", { exact: true }),
+  ).toBeVisible();
   await expect(author).toHaveAttribute("aria-sort", "ascending");
   await author.getByRole("button", { name: "Autor", exact: true }).click();
   await expect(author).toHaveAttribute("aria-sort", "descending");
   await page.getByRole("button", { name: "Ordenar", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "Criterio 1", exact: true })).toHaveValue("Autor");
+  await expect(
+    page.getByRole("textbox", { name: "Criterio 1", exact: true }),
+  ).toHaveValue("Autor");
 });
 
-
-test("multiple sort priorities survive pagination and can be reordered or removed", async ({ page }) => {
+test("multiple sort priorities survive pagination and can be reordered or removed", async ({
+  page,
+}) => {
   await page.goto("/catalog?sort=language,asc");
-  await page.locator('th[data-column="title"] .catalog-sort-heading').click({ modifiers: ["Shift"] });
-  await expect(page.getByRole("button", { name: "Ordenar (2)", exact: true })).toBeVisible();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["language,asc", "title,asc"]);
+  await page
+    .locator('th[data-column="title"] .catalog-sort-heading')
+    .click({ modifiers: ["Shift"] });
+  await expect(
+    page.getByRole("button", { name: "Ordenar (2)", exact: true }),
+  ).toBeVisible();
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
+    "language,asc",
+    "title,asc",
+  ]);
   await page.getByRole("button", { name: "Siguiente", exact: true }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["language,asc", "title,asc"]);
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
+    "language,asc",
+    "title,asc",
+  ]);
   await page.getByRole("button", { name: "Ordenar (2)", exact: true }).click();
   await page.getByRole("button", { name: "Subir criterio 2" }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc", "language,asc"]);
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
+    "title,asc",
+    "language,asc",
+  ]);
   expect(new URL(page.url()).searchParams.get("page")).toBe("0");
-  await expect(page.getByRole("textbox", { name: "Criterio 1", exact: true })).toHaveValue("Libro");
+  await expect(
+    page.getByRole("textbox", { name: "Criterio 1", exact: true }),
+  ).toHaveValue("Libro");
   await page.getByRole("button", { name: "Quitar criterio 2" }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc"]);
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
+    "title,asc",
+  ]);
   await page.getByRole("button", { name: "Añadir criterio" }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc", "author,asc"]);
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
+    "title,asc",
+    "author,asc",
+  ]);
   await page.getByRole("button", { name: "Restablecer", exact: true }).click();
-  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual(["title,asc"]);
+  expect(new URL(page.url()).searchParams.getAll("sort")).toEqual([
+    "title,asc",
+  ]);
 });
 
-
-test("unknown configured category falls back to no category and query failures can be retried", async ({ page }) => {
+test("unknown configured category falls back to no category and query failures can be retried", async ({
+  page,
+}) => {
   let fail = true;
-  await page.route("**/api/torrent/client/categories", r => fail
-    ? r.fulfill({ status: 409, json: { details: "La conexión torrent está deshabilitada" } })
-    : r.fulfill({ json: ["Other"] }));
+  await page.route("**/api/torrent/client/categories", (r) =>
+    fail
+      ? r.fulfill({
+          status: 409,
+          json: { details: "La conexión torrent está deshabilitada" },
+        })
+      : r.fulfill({ json: ["Other"] }),
+  );
   await page.goto("/catalog");
-  await page.getByRole("checkbox", { name: "Seleccionar Book 1", exact: true }).check();
-  await page.getByRole("button", { name: "Enviar a descargar", exact: true }).click();
+  await page
+    .getByRole("checkbox", { name: "Seleccionar Book 1", exact: true })
+    .check();
+  await page
+    .getByRole("button", { name: "Enviar a descargar", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("button", { name: "Crear trabajo" })).toBeDisabled();
-  await expect(dialog.getByText("La conexión torrent está deshabilitada", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("No se pudo cargar la información", { exact: true })).toHaveCount(0);
+  await expect(
+    dialog.getByRole("button", { name: "Crear trabajo" }),
+  ).toBeDisabled();
+  await expect(
+    dialog.getByText("La conexión torrent está deshabilitada", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("No se pudo cargar la información", { exact: true }),
+  ).toHaveCount(0);
   fail = false;
   await dialog.getByRole("button", { name: "Reintentar" }).click();
-  await expect(dialog.getByLabel("Categoría", { exact: true })).toHaveValue("Sin categoría");
-  await expect(dialog.getByRole("button", { name: "Crear trabajo" })).toBeEnabled();
-  await expect(dialog.getByLabel("Categoría", { exact: true })).not.toHaveClass(/send-option-modified/);
+  await expect(dialog.getByLabel("Categoría", { exact: true })).toHaveValue(
+    "Sin categoría",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Crear trabajo" }),
+  ).toBeEnabled();
+  await expect(dialog.getByLabel("Categoría", { exact: true })).not.toHaveClass(
+    /send-option-modified/,
+  );
 });
 
-test("page count column can be hidden, restored and used for exact filtering", async ({ page }) => {
-  await page.route("**/api/catalog/books?**", r => r.fulfill({ json: {
-    items: [{ eplId: 1, title: "Book", author: "Author", pages: 250, download: { items: [] } }],
-    meta: { page: 0, size: 20, totalItems: 1, totalPages: 1, hasNext: false, hasPrevious: false },
-  } }));
+test("page count column can be hidden, restored and used for exact filtering", async ({
+  page,
+}) => {
+  await page.route("**/api/catalog/books?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            eplId: 1,
+            title: "Book",
+            author: "Author",
+            pages: 250,
+            download: { items: [] },
+          },
+        ],
+        meta: {
+          page: 0,
+          size: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNext: false,
+          hasPrevious: false,
+        },
+      },
+    }),
+  );
   await page.goto("/catalog");
   const heading = page.locator('th[data-column="pages"]');
   await expect(heading).toHaveText("Páginas");

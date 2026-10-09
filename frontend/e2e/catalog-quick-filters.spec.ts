@@ -33,6 +33,12 @@ test("table values apply composable filters and exact local-day ranges", async (
       },
     });
   });
+  await page.route("**/api/catalog/books/17347", (r) =>
+    r.fulfill({ json: book }),
+  );
+  await page.route("**/api/catalog/books/17347/magnets", (r) =>
+    r.fulfill({ json: [] }),
+  );
   await page.goto("/catalog?language=es&page=2&size=50&sort=author,asc");
   const table = page.locator(".catalog-table");
   for (const [field, label, value] of [
@@ -60,6 +66,9 @@ test("table values apply composable filters and exact local-day ranges", async (
             : book[field as keyof typeof book],
         ),
       );
+    await expect
+      .poll(() => queries.at(-1)?.get(field))
+      .toBe(new URL(page.url()).searchParams.get(field));
   }
   await expect.poll(() => queries.at(-1)?.get("revision")).toBe("1.1");
   expect(new URL(page.url()).searchParams.get("page")).toBe("0");
@@ -110,15 +119,39 @@ test("table values apply composable filters and exact local-day ranges", async (
   await expect(page).toHaveURL(/\/catalog\/17347$/);
 });
 
-test("coauthors are independently clickable and preserve commas within names", async ({ page }) => {
-  await page.route("**/api/ui/config", r => r.fulfill({ json: { defaultLanguage: "es" } }));
-  await page.route("**/api/catalog/books?**", r => r.fulfill({ json: {
-    items: [{ ...book, author: "Arthur C. Clarke & Doe, Jane & Arthur C. Clarke" }],
-    meta: { page: 0, size: 20, totalItems: 1, totalPages: 1 },
-  } }));
+test("coauthors are independently clickable and preserve commas within names", async ({
+  page,
+}) => {
+  await page.route("**/api/ui/config", (r) =>
+    r.fulfill({ json: { defaultLanguage: "es" } }),
+  );
+  await page.route("**/api/catalog/books?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            ...book,
+            author: "Arthur C. Clarke & Doe, Jane & Arthur C. Clarke",
+          },
+        ],
+        meta: { page: 0, size: 20, totalItems: 1, totalPages: 1 },
+      },
+    }),
+  );
   await page.goto("/catalog");
-  const cell = page.locator('.catalog-table tbody td').filter({ has: page.getByRole("button", { name: "Filtrar por Autor: Doe, Jane", exact: true }) });
+  const cell = page
+    .locator(".catalog-table tbody td")
+    .filter({
+      has: page.getByRole("button", {
+        name: "Filtrar por Autor: Doe, Jane",
+        exact: true,
+      }),
+    });
   await expect(cell.getByRole("button")).toHaveCount(2);
-  await cell.getByRole("button", { name: "Filtrar por Autor: Doe, Jane", exact: true }).click();
-  expect(new URL(page.url()).searchParams.getAll("author")).toEqual(["Doe, Jane"]);
+  await cell
+    .getByRole("button", { name: "Filtrar por Autor: Doe, Jane", exact: true })
+    .click();
+  expect(new URL(page.url()).searchParams.getAll("author")).toEqual([
+    "Doe, Jane",
+  ]);
 });
