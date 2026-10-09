@@ -1944,7 +1944,7 @@ summary {
 .book-history-empty { padding-inline: 22px; }
 @media (max-width: 700px) { .book-history-empty { padding-inline: 15px; } }
 
-.jobs-filters > div { flex: 0 1 280px; width: 100%; max-width: 280px; min-width: 0; }
+.jobs-filters > div, .directory-filters > div { flex: 0 1 280px; width: 100%; max-width: 280px; min-width: 0; }
 
 .job-controls-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
 .job-controls-heading h2 { margin: 0; }

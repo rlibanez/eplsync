@@ -71,7 +71,7 @@ function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSecti
       </nav>
       <p className="muted">{t("directory.note")}</p>
       <form
-        className="filters"
+        className="filters directory-filters"
         key={kind}
         onSubmit={(e) => {
           e.preventDefault();
