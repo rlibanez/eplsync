@@ -12,7 +12,12 @@ spring:
     url: jdbc:sqlite:./data/eplsync.db
     driver-class-name: org.sqlite.JDBC
     hikari:
-      maximum-pool-size: 1
+      maximum-pool-size: 2
+      # WAL requiere almacenamiento local y backups consistentes de SQLite.
+      data-source-properties:
+        journal_mode: WAL
+        synchronous: FULL
+        busy_timeout: 10000
 
   flyway:
     enabled: true

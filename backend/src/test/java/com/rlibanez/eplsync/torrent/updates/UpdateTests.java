@@ -30,6 +30,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "eplsync.torrent.bulk.worker-enabled=false"})
 @Import(UpdateTests.Config.class)
 class UpdateTests {
+    @org.junit.jupiter.api.io.TempDir static java.nio.file.Path walDatabaseDirectory;
+    @org.springframework.test.context.DynamicPropertySource
+    static void diskConcurrencyConfiguration(org.springframework.test.context.DynamicPropertyRegistry registry) {
+        if (Boolean.getBoolean("eplsync.test.sqlite-disk")) {
+            registry.add("spring.datasource.url", () -> "jdbc:sqlite:"+walDatabaseDirectory.resolve("test.db"));
+            registry.add("spring.datasource.hikari.maximum-pool-size", () -> 2);
+        }
+    }
+
     @TestConfiguration static class Config {
         @Bean TorrentClient stubClient() { var client = mock(TorrentClient.class); when(client.type()).thenReturn("stub"); return client; }
     }

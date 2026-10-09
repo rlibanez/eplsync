@@ -71,3 +71,45 @@ cd backend
 ```
 
 Referencia: [soporte de SQLite en Flyway](https://documentation.red-gate.com/flyway/reference/database-driver-reference/sqlite).
+
+## Conexiones, WAL y durabilidad
+
+La base principal utiliza WAL, `synchronous=FULL`, dos conexiones Hikari y
+`busy_timeout=10000` (10 segundos), configurados en `application.yaml`.
+Estos parámetros se aplican a cada conexión física; el checkpoint automático
+conserva el valor predeterminado de SQLite (1000 páginas).
+
+Las transacciones de escritura gestionadas por Spring se coordinan dentro de la
+instancia de EPL Sync antes de solicitar una conexión. Esto evita que dos
+escritores lean el mismo estado y después fallen con `SQLITE_BUSY_SNAPSHOT`.
+Las transacciones marcadas como lectura pueden trabajar en paralelo y ven datos
+confirmados. La espera por el turno de escritura tiene un máximo de 30 segundos,
+o el timeout de la transacción si es menor. No se reintentan automáticamente
+operaciones destructivas. Una importación larga sigue retrasando otras escrituras,
+pero permite consultas usando la segunda conexión.
+
+Esta coordinación pertenece al proceso: no se deben ejecutar varias instancias
+escritoras de EPL Sync contra el mismo archivo. WAL requiere almacenamiento local;
+no se debe colocar `data` en NFS/SMB. Los archivos `eplsync.db-wal` y
+`eplsync.db-shm` forman parte del funcionamiento de SQLite y no deben borrarse
+manualmente mientras la aplicación está activa.
+
+Para backups en caliente se debe utilizar la API de backup de SQLite o un
+mecanismo equivalente consistente. Copiar únicamente el `.db` en funcionamiento
+puede perder cambios confirmados que aún están en el WAL. El backup/restore desde
+la interfaz sigue siendo una funcionalidad futura.
+
+Las pruebas antiguas con `jdbc:sqlite::memory:` conservan una conexión porque cada
+conexión crea una base independiente. `SqliteConcurrencyTests` utiliza una base
+en disco y el pool de dos conexiones, incluyendo rollback y recuperación tras
+la terminación abrupta de un proceso. Esa prueba no simula un corte eléctrico.
+
+Para repetir las pruebas de importación, trabajos, sincronización y limpieza con
+una base en disco y dos conexiones, desde `backend`:
+
+```bash
+EPLSYNC_TEST_IMPORT_LOAD=true ./mvnw -Deplsync.test.sqlite-disk=true -Dtest=BulkTests,UpdateTests,CatalogImportTests test
+```
+
+El modo solo afecta a esas pruebas y utiliza bases temporales independientes;
+no abre la base de datos de la instalación.
