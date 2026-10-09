@@ -1,9 +1,4 @@
-import { test, expect } from "./fixtures";
-test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
-});
+import { test, expect, operationResponse } from "./fixtures";
 test("compact sidebar keeps icon tooltips and separator only when collapsed", async ({
   page,
 }) => {
@@ -19,7 +14,11 @@ test("compact sidebar keeps icon tooltips and separator only when collapsed", as
     exact: true,
   });
   await expect(toggle).toHaveText("Plegar");
-  await expect(toggle).toHaveAttribute("title", "Plegar menú lateral");
+  await toggle.hover();
+  await expect(
+    page.getByRole("tooltip", { name: "Plegar menú lateral", exact: true }),
+  ).toBeVisible();
+  await page.mouse.move(500, 0);
   const icons = sidebar.locator("nav a svg");
   const before = await icons.evaluateAll((nodes) =>
     nodes.map((n) => n.getBoundingClientRect().y),
@@ -145,5 +144,42 @@ test("manual jobs refresh uses primary color and reports loading success and fai
   );
   await expect(page.locator(".notification-toasts")).not.toContainText(
     "correctamente",
+  );
+});
+
+test("mobile navigation opens, closes after following a link and returns without horizontal overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route("**/api/events/operations?**", (route) =>
+    route.fulfill({ json: operationResponse([], route.request().url()) }),
+  );
+  await page.goto("/settings/general");
+  const sidebar = page.locator("#sidebar");
+  const menu = page.locator(".mobile-header button");
+  await expect(sidebar).not.toBeInViewport();
+  await expect(sidebar).toHaveAttribute("inert", "");
+  await expect(menu).toHaveAccessibleName("Abrir menú");
+  await menu.click();
+  await expect(sidebar).toBeInViewport();
+  await expect(menu).toHaveAttribute("aria-expanded", "true");
+  await expect(sidebar).not.toHaveAttribute("inert", "");
+  await sidebar.getByRole("link", { name: "Eventos", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Eventos", exact: true }),
+  ).toBeVisible();
+  await expect(menu).toHaveAttribute("aria-expanded", "false");
+  await expect(sidebar).not.toBeInViewport();
+  await page.goBack();
+  await expect(
+    page.getByRole("heading", { name: "Aspecto", exact: true }),
+  ).toBeVisible();
+  await menu.click();
+  await expect(sidebar).toBeInViewport();
+  await page.locator(".scrim").click({ position: { x: 380, y: 400 } });
+  await expect(menu).toHaveAttribute("aria-expanded", "false");
+  await expect(sidebar).toHaveAttribute("inert", "");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    390,
   );
 });

@@ -1,9 +1,4 @@
 import { test, expect } from "./fixtures";
-test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
-});
 const book = {
   eplId: 14936,
   title: "Libro",
@@ -114,7 +109,7 @@ test("all sidebar icon centers remain fixed including logo and settings", async 
   const icons = page.locator(
     ".brand-icon svg, #sidebar nav a svg, .settings-link svg, .sidebar-toggle svg",
   );
-  await expect(icons).toHaveCount(9);
+  await expect(icons).toHaveCount(10);
   const positions = () =>
     icons.evaluateAll((nodes) =>
       nodes.map((node) => {

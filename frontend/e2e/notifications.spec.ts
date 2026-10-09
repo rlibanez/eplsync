@@ -2,8 +2,11 @@ import { test, expect, emitEvent, operationResponse } from "./fixtures";
 test.use({ timezoneId: "Europe/Madrid" });
 
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
+  await page.route("**/api/settings/events", (r) =>
+    r.fulfill({ json: { section: "events", fields: [] } }),
+  );
+  await page.route("**/api/settings/torrent", (r) =>
+    r.fulfill({ json: { section: "torrent", fields: [] } }),
   );
   await page.route("**/api/catalog/covers/task", (r) =>
     r.fulfill({ json: { task: null } }),
@@ -72,9 +75,10 @@ test("backend events survive reload, appear live once, and local feedback stays 
   await page.reload();
   await expect(page.locator(".events-table tbody tr")).toHaveCount(2);
   await expect(toast.getByRole("status")).toHaveCount(0);
-  await page
-    .getByRole("link", { name: "Mantenimiento de eventos", exact: true })
-    .click();
+  await expect(
+    page.getByRole("link", { name: "Mantenimiento de eventos", exact: true }),
+  ).toHaveCount(0);
+  await page.goto("/settings/events#events");
   await expect(page.locator("#events")).toBeInViewport();
   await page.goto("/settings/torrent");
   await page
@@ -104,14 +108,13 @@ test("event maintenance confirms inclusive local dates and validates the range",
     request = r.request().postDataJSON();
     await r.fulfill({ json: { deleted: 7 } });
   });
-  await page.goto("/settings/general");
+  await page.clock.setFixedTime(new Date("2026-10-26T12:00:00Z"));
+  await page.goto("/settings/events");
   const section = page.locator("#events");
   await expect(section).toContainText("10000");
   await expect(section).toContainText("365");
   await section.getByRole("textbox").first().click();
-  await page
-    .getByRole("option", { name: "Intervalo de fechas (días completos)" })
-    .click();
+  await page.getByRole("option", { name: "Intervalo de fechas" }).click();
   await section.getByLabel("Desde", { exact: true }).fill("2026-10-25");
   await section.getByLabel("Hasta", { exact: true }).fill("2026-10-25");
   await expect(section.getByLabel("Hasta", { exact: true })).toHaveAttribute(
@@ -176,6 +179,7 @@ test("new-event badge survives reload and clears on visiting events, including c
   await expect(page.locator(".events-table tbody tr")).toHaveCount(2);
   await expect(badge).toHaveCount(0);
   await page.reload();
+  await expect(page.locator(".events-table tbody tr")).toHaveCount(2);
   await expect(badge).toHaveCount(0);
   entries.push({ ...historical, id: 4, operationId: "fourth" });
   await emitEvent(page, { ...historical, id: 4, operationId: "fourth" });
@@ -215,9 +219,7 @@ test("start and finish share one unread operation and a later finish becomes unr
 }) => {
   const entries: (typeof historical)[] = [];
   await page.route("**/api/events/unread**", (r) => {
-    const after = Number(
-      r.request().postDataJSON()?.afterId ?? 0,
-    );
+    const after = Number(r.request().postDataJSON()?.afterId ?? 0);
     return r.fulfill({
       json: {
         count: new Set(
@@ -257,6 +259,13 @@ test("start and finish share one unread operation and a later finish becomes unr
   await page
     .getByRole("button", { name: "Actualizar tabla", exact: true })
     .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        localStorage.getItem("eplsync.events.test-admin.lastRead"),
+      ),
+    )
+    .toBe("3");
   await expect(badge).toHaveCount(0);
   entries.push({
     ...historical,
@@ -266,4 +275,32 @@ test("start and finish share one unread operation and a later finish becomes unr
   });
   await emitEvent(page, entries.at(-1)!);
   await expect(badge).toHaveText("1");
+});
+
+test("notifications default to five seconds and fit the bottom right corner on desktop and mobile", async ({
+  page,
+}) => {
+  await page.goto("/settings/general");
+  await expect(
+    page.getByRole("textbox", { name: "Tiempo en pantalla (segundos)" }),
+  ).toHaveValue("5 s");
+  await emitEvent(page, { ...historical, id: 2, operationId: "position" });
+  const toasts = page.locator(".notification-toasts");
+  await expect(toasts.getByRole("status")).toHaveCount(1);
+  await expect(toasts).toHaveCSS("bottom", "24px");
+  await expect(toasts).toHaveCSS("right", "20px");
+  await page.setViewportSize({ width: 360, height: 760 });
+  await expect(toasts).toHaveCSS("bottom", "16px");
+  await expect(toasts).toHaveCSS("right", "16px");
+  const box = (await toasts.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(360);
+  expect(box.y + box.height).toBeLessThanOrEqual(760);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    360,
+  );
+  await toasts
+    .getByRole("button", { name: "Cerrar notificación", exact: true })
+    .click();
+  await expect(toasts.getByRole("status")).toHaveCount(0);
 });
