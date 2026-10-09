@@ -13,6 +13,8 @@ test("jobs filter stays compact and headers request sorting before pagination", 
         items: [
           {
             jobId: "test-job",
+            username: "Alice",
+            type: "UPDATE",
             status: "RUNNING",
             processedItems: 1,
             selectedItems: 2,
@@ -75,6 +77,48 @@ test("jobs filter stays compact and headers request sorting before pagination", 
       (query) => new URLSearchParams(query).getAll("sort").length === 2,
     ),
   ).toBe(true);
+  await checkTableControls(page, "username", "Usuario");
+  await expect(
+    page.getByRole("cell", { name: "Alice", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("textbox", { name: "Tipo", exact: true }).click();
+  await page
+    .getByRole("option", { name: "Actualización", exact: true })
+    .click();
+  await page.getByRole("textbox", { name: "Usuario", exact: true }).fill("Ali");
+  await page.getByLabel("Desde", { exact: true }).fill("2026-10-06");
+  await page.getByLabel("Hasta", { exact: true }).fill("2026-10-07");
+  await expect
+    .poll(() => {
+      const p = new URLSearchParams(requests.at(-1));
+      return [
+        p.get("type"),
+        p.get("username"),
+        !!p.get("from"),
+        !!p.get("before"),
+      ];
+    })
+    .toEqual(["UPDATE", "Ali", true, true]);
+  await page.getByRole("button", { name: "Limpiar", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Usuario", exact: true }),
+  ).toHaveValue("");
+  await expect(
+    page.getByRole("textbox", { name: "Tipo", exact: true }),
+  ).toHaveValue("");
+  await expect(page.getByLabel("Desde", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Hasta", { exact: true })).toHaveValue("");
+  await page
+    .getByRole("button", { name: "Actualizar vista", exact: true })
+    .click();
+  await expect
+    .poll(() => {
+      const p = new URLSearchParams(requests.at(-1));
+      return ["status", "type", "username", "from", "before"].some((key) =>
+        p.has(key),
+      );
+    })
+    .toBe(false);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);
   expect(

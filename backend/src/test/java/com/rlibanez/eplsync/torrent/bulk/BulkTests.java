@@ -385,6 +385,30 @@ class BulkTests {
         }
     }
 
+    @Test void filtersJobsByCreatorTypeAndCreationDateBeforePagination() throws Exception {
+        seedSortJob("alice",2,1,0); seedSortJob("bob",2,0,1);
+        var alice=jobs.findById("alice").orElseThrow();alice.setEventActorUsername("Alice");alice.setType(BulkJob.Type.UPDATE);
+        alice.setCreatedAt(java.time.Instant.parse("2026-10-06T12:00:00Z"));jobs.save(alice);
+        var bob=jobs.findById("bob").orElseThrow();bob.setEventActorUsername("Bob");bob.setCreatedAt(java.time.Instant.parse("2026-10-07T12:00:00Z"));jobs.save(bob);
+        for(String sort:List.of("username,asc","progress,desc;username,asc")) {
+            var result=store.list(0,1,null,sort,BulkJob.Type.UPDATE,"ALI",java.time.Instant.parse("2026-10-06T00:00:00Z"),java.time.Instant.parse("2026-10-07T00:00:00Z"));
+            assertThat(result.meta().totalItems()).isEqualTo(1);
+            assertThat(result.items().getFirst().jobId()).isEqualTo("alice");
+            assertThat(result.items().getFirst().username()).isEqualTo("Alice");
+        }
+        assertThat(store.list(0,20,null,"username,desc").items()).extracting(BulkStore.View::username).containsExactly("Bob","Alice");
+        assertThat(store.list(0,20,null,"progress,asc",null,"%",null,null).items()).isEmpty();
+        assertThat(store.list(0,20,null,"progress,asc",null,null,null,alice.getCreatedAt()).items()).isEmpty();
+        assertThatThrownBy(() -> store.list(0,20,null,"username,asc",null,null,bob.getCreatedAt(),alice.getCreatedAt()))
+            .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+            .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs")
+            .param("username","ali").param("type","UPDATE").param("sort","username,asc"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].username").value("Alice"));
+    }
+
     @Test void sortsJobCountersAndPercentagesBeforePagination() throws Exception {
         seedSortJob("low",10,4,0);
         seedSortJob("high",2,1,0);

@@ -17,10 +17,12 @@ public class BulkController {
     public PageResponse<BulkStore.View> list(@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size, @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "createdAt,desc") String sort,
+            @RequestParam(required=false) BulkJob.Type type, @RequestParam(required=false) String username,
+            @RequestParam(required=false) java.time.Instant from, @RequestParam(required=false) java.time.Instant before,
             jakarta.servlet.http.HttpServletRequest request) {
-        var allowed = java.util.Set.of("page", "size", "status", "sort");
+        var allowed = java.util.Set.of("page", "size", "status", "sort", "type", "username", "from", "before");
         if (!allowed.containsAll(request.getParameterMap().keySet()))
-            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size, status y sort");
+            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size, status, sort, type, username, from y before");
         com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
         java.util.List<BulkJob.State> states = null;
         if (status != null) {
@@ -32,7 +34,7 @@ public class BulkController {
             }
         }
         sort = com.rlibanez.eplsync.config.TableOrdering.request(request, "createdAt,desc");
-        synchronized (store) { return store.list(page, size, states, sort); }
+        synchronized (store) { return store.list(page, size, states, sort,type,username,from,before); }
     }
 
     @GetMapping("/jobs/{id}")

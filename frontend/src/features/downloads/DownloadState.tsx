@@ -170,7 +170,7 @@ function DownloadHistory() {
       {session.report && (
         <SyncReport report={session.report} onClose={session.close} />
       )}
-      <form className="filters" onSubmit={(e) => e.preventDefault()}>
+      <form className="filters jobs-filters" onSubmit={(e) => e.preventDefault()}>
         <TextInput
           name="eplId"
           label={t("filters.eplId")}
@@ -211,7 +211,7 @@ function DownloadHistory() {
         />
         <Button
           type="button"
-          variant="default"
+          variant="subtle"
           onClick={() => {
             setDraftEplId("");
             setFilters(initialFilters);

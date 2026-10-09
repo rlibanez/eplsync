@@ -63,7 +63,7 @@ public class BulkStore {
             long pending, long inFlight, long cancelled, int batchSize, int concurrency,
             String interval, Instant createdAt, Instant updatedAt, Instant retryAt, String message,
             MultipleHashes multipleHashes, long selectedTorrents, long processedTorrents,
-            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming) {}
+            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming, String username) {}
     public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {}
     public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision) {
         public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null); }
@@ -303,8 +303,25 @@ public class BulkStore {
     }
     @Transactional(readOnly = true)
     public PageResponse<View> list(int page, int size, List<BulkJob.State> states, String sort) {
+        return list(page,size,states,sort,null,null,null,null);
+    }
+    @Transactional(readOnly = true)
+    public PageResponse<View> list(int page,int size,List<BulkJob.State> states,String sort,
+            BulkJob.Type type,String username,Instant from,Instant before) {
+        if (username != null && username.length()>64) throw new com.rlibanez.eplsync.exception.UserInputException("Usuario demasiado largo");
+        if (from != null && before != null && !from.isBefore(before)) throw new com.rlibanez.eplsync.exception.UserInputException("El intervalo de fechas no es válido");
+        String user=username==null ? null : username.trim().toLowerCase(java.util.Locale.ROOT);
+        org.springframework.data.jpa.domain.Specification<BulkJob> specification=(root,q,cb) -> {
+            var predicates=new ArrayList<jakarta.persistence.criteria.Predicate>();
+            if(states!=null) predicates.add(root.get("state").in(states));
+            if(type!=null) predicates.add(cb.equal(root.get("type"),type));
+            if(user!=null && !user.isEmpty()) predicates.add(cb.gt(cb.locate(cb.lower(root.get("eventActorUsername")),user),0));
+            if(from!=null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"),from));
+            if(before!=null) predicates.add(cb.lessThan(root.get("createdAt"),before));
+            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
-        var fields=Map.of("jobId","id","status","state","type","type","selectedBooks","selectedBooks","createdAt","createdAt");
+        var fields=Map.of("jobId","id","status","state","type","type","selectedBooks","selectedBooks","createdAt","createdAt","username","eventActorUsername");
         var allowed = new HashSet<>(fields.keySet()); allowed.addAll(Set.of("progress", "accepted", "failed"));
         var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, allowed);
         org.springframework.data.domain.Page<BulkJob> result;
@@ -314,25 +331,31 @@ public class BulkStore {
             if (orders.stream().noneMatch(order -> order.getProperty().equals("createdAt"))) orders.add(Sort.Order.desc("createdAt"));
             if (orders.stream().noneMatch(order -> order.getProperty().equals("id"))) orders.add(Sort.Order.desc("id"));
             var pageable = PageRequest.of(page, size, Sort.by(orders));
-            result = states == null ? jobs.findAll(pageable) : jobs.findByStateIn(states, pageable);
+            result = jobs.findAll(specification,pageable);
         } else {
             // Aggregate and order in SQLite before pagination, including secondary criteria.
             String processed = "SUM(CASE WHEN i.state IN ('ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED') THEN 1 ELSE 0 END)";
-            var expressions = Map.of("jobId", "j.id", "status", "j.state", "type", "j.type", "selectedBooks", "j.selected_books", "createdAt", "j.created_at",
+            var expressions = Map.of("jobId", "j.id", "status", "j.state", "type", "j.type", "selectedBooks", "j.selected_books", "createdAt", "j.created_at", "username", "j.event_actor_username",
                 "progress", "CASE WHEN COUNT(i.id)=0 THEN 0 ELSE 1.0*"+processed+"/COUNT(i.id) END",
                 "accepted", "SUM(CASE WHEN i.state='ACCEPTED' THEN 1 ELSE 0 END)", "failed", "SUM(CASE WHEN i.state='FAILED' THEN 1 ELSE 0 END)");
             String orderBy = criteria.stream().map(order -> expressions.get(order.getProperty())+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","));
             if (criteria.stream().noneMatch(order -> order.getProperty().equals("createdAt"))) orderBy += ",j.created_at DESC";
             if (criteria.stream().noneMatch(order -> order.getProperty().equals("jobId"))) orderBy += ",j.id DESC";
-            String where = states == null ? "" : " WHERE j.state IN ("+String.join(",",Collections.nCopies(states.size(),"?"))+")";
+            var conditions=new ArrayList<String>();var parameters=new ArrayList<Object>();
+            if(states!=null) { conditions.add("j.state IN ("+String.join(",",Collections.nCopies(states.size(),"?"))+")");states.forEach(state -> parameters.add(state.name())); }
+            if(type!=null) {conditions.add("j.type=?");parameters.add(type.name());}
+            if(user!=null && !user.isEmpty()) {conditions.add("instr(lower(j.event_actor_username),?)>0");parameters.add(user);}
+            if(from!=null) {conditions.add("j.created_at>=?");parameters.add(from);}
+            if(before!=null) {conditions.add("j.created_at<?");parameters.add(before);}
+            String where=conditions.isEmpty() ? "" : " WHERE "+String.join(" AND ",conditions);
             var query = em.createNativeQuery("SELECT j.id FROM torrent_bulk_jobs j LEFT JOIN torrent_bulk_items i ON i.job_id=j.id"+where+" GROUP BY j.id ORDER BY "+orderBy);
-            if (states != null) for (int index=0;index<states.size();index++) query.setParameter(index+1,states.get(index).name());
+            for(int index=0;index<parameters.size();index++) query.setParameter(index+1,parameters.get(index));
             query.setFirstResult(Math.toIntExact((long)page*size)); query.setMaxResults(size);
             List<?> ids = query.getResultList();
             var records = new HashMap<String,BulkJob>();
             jobs.findAllById(ids.stream().map((Object entryValue) -> java.util.Objects.requireNonNull(entryValue).toString()).toList()).forEach(job -> records.put(job.getId(),job));
             var selected = ids.stream().map(id -> records.get(id.toString())).toList();
-            result = new org.springframework.data.domain.PageImpl<>(selected,PageRequest.of(page,size),states==null ? jobs.count() : jobs.countByStateIn(states));
+            result = new org.springframework.data.domain.PageImpl<>(selected,PageRequest.of(page,size),jobs.count(specification));
         }
         return new PageResponse<>(BulkSummaries.load(em,result.getContent()),
                 new PageResponse.PageMeta(page, size, result.getTotalElements(), result.getTotalPages(),

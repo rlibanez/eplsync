@@ -70,7 +70,7 @@ final class BulkSummaries {
                     j.getBatchSize(),j.getConcurrency(),j.getIntervalMillis()+"ms",j.getCreatedAt(),j.getUpdatedAt(),j.getRetryAt(),j.getMessage(),
                     j.getMultipleHashes()==null ? MultipleHashes.SKIP : j.getMultipleHashes(),c.torrents,c.processedTorrents,
                     c.total,c.accepted+c.existing+c.skipped+c.failed,p==null ? BulkJob.Type.DOWNLOAD : BulkJob.Type.UPDATE,
-                    p==null ? null : p.policy,summary,p==null ? null : p.timing==null ? CleanupTiming.AFTER_DOWNLOAD : p.timing);
+                    p==null ? null : p.policy,summary,p==null ? null : p.timing==null ? CleanupTiming.AFTER_DOWNLOAD : p.timing,j.getEventActorUsername());
         }).toList();
     }
     private static long number(Object value) { return ((Number)value).longValue(); }

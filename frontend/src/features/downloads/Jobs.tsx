@@ -1,3 +1,4 @@
+import { dateBounds } from "../events/eventTypes";
 import { sortQuery } from "./TableControls";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
 import { useNotifications } from "../notifications/Notifications";
@@ -5,7 +6,7 @@ import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { CircleStop } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Select, Progress } from "@mantine/core";
+import { Alert, Button, Select, Progress, TextInput } from "@mantine/core";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -26,6 +27,10 @@ export function Jobs() {
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
   const [filter, setFilter] = useState("");
+  const [type, setType] = useState("");
+  const [username, setUsername] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [sort, setSort] = useState("createdAt,desc");
   const [refresh, setRefresh] = useState<
     "idle" | "pending" | "success" | "error"
@@ -37,14 +42,21 @@ export function Jobs() {
     return () => {
       refreshRequest.current++;
     };
-  }, [page, size, filter, sort]);
+  }, [page, size, filter, sort, type, username, from, to]);
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+  if (filter) params.set("status", filter);
+  if (type) params.set("type", type);
+  if (username.trim()) params.set("username", username.trim());
+  const bounds = dateBounds(from, to);
+  if (bounds.from) params.set("from", bounds.from);
+  if (bounds.before) params.set("before", bounds.before);
   const result = useQuery({
-    queryKey: ["jobs", page, size, filter, sort],
+    queryKey: ["jobs", params.toString(), sort],
     queryFn: ({ signal }) =>
-      get<Page<Job>>(
-        `/torrent/jobs?page=${page}&size=${size}&${sortQuery(sort)}${filter ? `&status=${filter}` : ""}`,
-        signal,
-      ),
+      get<Page<Job>>(`/torrent/jobs?${params}&${sortQuery(sort)}`, signal),
     refetchInterval: 5000,
   });
   async function refreshJobs() {
@@ -81,6 +93,7 @@ export function Jobs() {
       { field: "jobId", label: "downloads.job", width: 310 },
       { field: "type", label: "downloads.type", width: 140 },
       { field: "status", label: "downloads.status", width: 160 },
+      { field: "username", label: "events.user", width: 180 },
       { field: "progress", label: "downloads.progress", width: 180 },
       {
         field: "selectedBooks",
@@ -118,6 +131,19 @@ export function Jobs() {
       <p className="muted">{t("downloads.jobNote")}</p>
       <div className="filters jobs-filters">
         <Select
+          label={t("downloads.type")}
+          clearable
+          value={type || null}
+          data={["DOWNLOAD", "UPDATE"].map((value) => ({
+            value,
+            label: t(`historyActions.jobTypes.${value}`),
+          }))}
+          onChange={(value) => {
+            setType(value ?? "");
+            setPage(0);
+          }}
+        />
+        <Select
           label={t("downloads.status")}
           clearable
           value={filter || null}
@@ -127,6 +153,48 @@ export function Jobs() {
             setPage(0);
           }}
         />
+        <TextInput
+          label={t("events.user")}
+          value={username}
+          maxLength={64}
+          onChange={(event) => {
+            setUsername(event.currentTarget.value);
+            setPage(0);
+          }}
+        />
+        <TextInput
+          type="date"
+          label={t("filters.from")}
+          value={from}
+          max={to || undefined}
+          onChange={(event) => {
+            setFrom(event.currentTarget.value);
+            setPage(0);
+          }}
+        />
+        <TextInput
+          type="date"
+          label={t("filters.to")}
+          value={to}
+          min={from || undefined}
+          onChange={(event) => {
+            setTo(event.currentTarget.value);
+            setPage(0);
+          }}
+        />
+        <Button
+          variant="subtle"
+          onClick={() => {
+            setFilter("");
+            setType("");
+            setUsername("");
+            setFrom("");
+            setTo("");
+            setPage(0);
+          }}
+        >
+          {t("catalog.clear")}
+        </Button>
       </div>
       <section className="panel">
         <div className="table-toolbar">
@@ -167,6 +235,7 @@ export function Jobs() {
                           )}
                         </td>,
                         <td>{status(job.status)}</td>,
+                        <td>{job.username || "—"}</td>,
                         <td>
                           {number(job.processedItems)} /{" "}
                           {number(job.selectedItems)}

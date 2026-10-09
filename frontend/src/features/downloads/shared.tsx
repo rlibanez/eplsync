@@ -140,6 +140,7 @@ export interface Job {
     cancelled: number;
   } | null;
   jobId: string;
+  username?: string | null;
   status: string;
   client: string;
   selectedBooks: number;

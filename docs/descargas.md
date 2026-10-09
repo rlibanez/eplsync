@@ -14,6 +14,19 @@ utilice explícitamente ese campo. Los valores necesarios quedan congelados al
 preparar el trabajo: modificar o borrar el catálogo no cambia el envío pendiente.
 Esta reducción no elimina historial de descargas ni limpiezas pendientes.
 
+### Consulta de trabajos
+
+La tabla muestra el usuario que creó cada trabajo. El nombre queda guardado con
+el trabajo, aunque posteriormente se elimine la cuenta. La columna Usuario se
+puede ocultar, reordenar y utilizar como criterio de ordenación.
+
+`GET /api/torrent/jobs` admite filtros combinados: `status`, `type` (`DOWNLOAD` o
+`UPDATE`), `username` (parte del nombre, sin distinguir mayúsculas), `from` y
+`before` (instantes ISO 8601 sobre la fecha de creación; inicio inclusivo y fin
+exclusivo). En la interfaz, Hasta incluye todo el día seleccionado en la zona
+horaria del navegador. El filtrado y la ordenación se aplican antes de paginar.
+La ordenación por usuario utiliza `sort=username,asc` o `username,desc`.
+
 ### Retención de trabajos finalizados
 
 Por defecto, los trabajos completados o cancelados se conservan 90 días desde su
