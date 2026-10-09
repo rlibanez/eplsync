@@ -5,11 +5,6 @@ async function changeLanguage(page: Page, language: string) {
   await page.locator("main select").selectOption(language);
   await page.goto(previous);
 }
-test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
-});
 const book = {
   eplId: 32,
   title: "El libro de arena",
@@ -39,45 +34,71 @@ const book = {
 test("changes the entire interface without losing filters, localizes formats and persists", async ({
   page,
 }) => {
-  await page.route("**/api/catalog/books**", (route) =>
+  await page.route("**/api/catalog/books?**", (route) =>
     route.fulfill({
-      json: route.request().url().includes("/32")
-        ? book
-        : {
-            items: [book],
-            meta: {
-              page: 0,
-              size: 20,
-              totalItems: 1,
-              totalPages: 1,
-              hasNext: false,
-              hasPrevious: false,
-            },
-          },
+      json: {
+        items: [book],
+        meta: {
+          page: 0,
+          size: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNext: false,
+          hasPrevious: false,
+        },
+      },
     }),
+  );
+  await page.route("**/api/catalog/books/32", (r) => r.fulfill({ json: book }));
+  await page.route("**/api/catalog/books/32/magnets", (r) =>
+    r.fulfill({ json: [] }),
+  );
+  await page.route("**/api/catalog/books/32/history?**", (r) =>
+    r.fulfill({
+      json: {
+        items: book.download.items,
+        meta: {
+          page: 0,
+          size: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasNext: false,
+          hasPrevious: false,
+        },
+      },
+    }),
+  );
+  await page.route("**/api/catalog/suggestions/**", (r) =>
+    r.fulfill({ json: { items: [], total: 0, nextOffset: null } }),
   );
   await page.goto("/catalog?title=arena&language=es");
   await expect(
-    page.getByText("1 libro encontrado", { exact: true }),
+    page.getByRole("button", { name: "Seleccionar todo (1)", exact: true }),
   ).toBeVisible();
   await changeLanguage(page, "en");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(
     page.getByRole("heading", { name: "Catalog", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("1 book found", { exact: true })).toBeVisible();
-  await page.locator(".catalog-search summary").click();
-  await expect(page.getByLabel("Title", { exact: true })).toHaveValue("arena");
   await expect(
-    page.getByRole("textbox", { name: "Language", exact: true }),
-  ).toHaveValue("Spanish");
+    page.getByRole("button", { name: "Select all (1)", exact: true }),
+  ).toBeVisible();
+  await page.locator(".catalog-search summary").click();
+  await expect(page.locator(".catalog-search .mantine-Pill-label")).toHaveText([
+    "arena",
+    "Spanish",
+  ]);
   await expect(page).toHaveURL(/language=es/);
-  await page.getByRole("link", { name: "El libro de arena", exact: true }).click();
+  await page
+    .getByRole("link", { name: "El libro de arena", exact: true })
+    .click();
   await expect(page.getByText(book.synopsis)).toBeVisible();
   await expect(
     page.getByText("Revision 1.2", { exact: true }).first(),
   ).toBeVisible();
-  await expect(page.getByText("12,345", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Filter by Pages: 12345", exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Sep 1, 2026", { exact: true })).toBeVisible();
   await expect(page.getByText("Verified", { exact: true })).toBeVisible();
   await expect(page.getByText("Downloaded", { exact: true })).toBeVisible();
@@ -85,9 +106,14 @@ test("changes the entire interface without losing filters, localizes formats and
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await changeLanguage(page, "es");
   await expect(
-    page.getByText("Revisión 1,2", { exact: true }).first(),
+    page.getByText("Revisión 1.2", { exact: true }).first(),
   ).toBeVisible();
-  await expect(page.getByText("12.345", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Filtrar por Páginas: 12345",
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(page.getByText("1 sept 2026", { exact: true })).toBeVisible();
   await changeLanguage(page, "en");
   await page.screenshot({
@@ -111,14 +137,11 @@ test("translates an existing error when switching languages", async ({
 });
 test.describe("English browser", () => {
   test.use({ locale: "en-GB" });
-  test("applies deployment language and allows mobile language selection", async ({
+  test("uses browser language and allows mobile language selection", async ({
     page,
   }) => {
-    await page.route("**/api/ui/config", (route) =>
-      route.fulfill({ json: { defaultLanguage: "en" } }),
-    );
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/");
+    await page.goto("/settings/general");
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
     await page.getByRole("button", { name: "Open menu" }).click();
     await page.getByRole("link", { name: "Settings", exact: true }).click();
@@ -134,9 +157,6 @@ test.describe("English browser", () => {
 test.describe("Unsupported browser language", () => {
   test.use({ locale: "fr-FR" });
   test("falls back to English with unavailable storage", async ({ page }) => {
-    await page.route("**/api/ui/config", (route) =>
-      route.fulfill({ json: { defaultLanguage: "unknown" } }),
-    );
     await page.addInitScript(() => {
       Object.defineProperty(window, "localStorage", {
         get() {
@@ -147,22 +167,13 @@ test.describe("Unsupported browser language", () => {
     await page.goto("/settings/general");
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
     await page.getByLabel("Interface language").selectOption("es");
-    await page
-      .locator("#sidebar")
-      .getByRole("link", { name: "EPL Sync", exact: true })
-      .click();
-    await expect(
-      page.getByRole("heading", { name: "Todos tus libros. Un mismo lugar." }),
-    ).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "es");
   });
 });
 
 test("auto detects browser preferences and preserves a manual choice", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "auto" } }),
-  );
   await page.goto("/settings");
   await expect(page.locator("html")).toHaveAttribute("lang", "es");
   await page

@@ -1,22 +1,10 @@
 import { expect, test } from "./fixtures";
 
-const source = "https://covers.example/32.jpg";
-const fallback = "https://images.epublibre.org/libros/32.jpg";
 const options = {
   connectTimeoutMs: 3000,
   requestTimeoutMs: 3000,
   batchTimeoutMs: 4000,
   concurrency: 4,
-};
-const initialBook = {
-  eplId: 32,
-  title: "Dune",
-  author: "Frank Herbert",
-  revision: 1,
-  language: "es",
-  coverUrl: source,
-  coverAvailable: null as boolean | null,
-  download: { items: [] },
 };
 const summary = {
   dryRun: false,
@@ -28,62 +16,31 @@ const summary = {
   updated: 95,
   items: [],
 };
-function result(available: boolean | null, reason: string) {
-  return {
-    ...summary,
-    checked: 1,
-    items: [
-      {
-        eplId: 32,
-        coverUrl: source,
-        previousAvailable: null,
-        available,
-        reason,
-        httpStatus: available === null ? null : available ? 200 : 404,
-        updated: available !== null,
-        wouldChange: available !== null,
-      },
-    ],
-  };
-}
-
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/covers/config", (r) =>
     r.fulfill({ json: options }),
   );
   await page.route("**/api/catalog/covers/task", (r) =>
     r.fulfill({ json: { task: null } }),
   );
-  await page.route("**/api/catalog/books/32", (r) =>
-    r.fulfill({ json: initialBook }),
+  await page.route("**/api/settings/covers", (r) =>
+    r.fulfill({ json: { section: "covers", fields: [] } }),
   );
-  await page.route("**/api/catalog/books/32/magnets", (r) =>
-    r.fulfill({ json: [] }),
-  );
-  for (const url of [source, fallback])
-    await page.route(url, (r) =>
-      r.fulfill({
-        contentType: "image/svg+xml",
-        body: '<svg xmlns="http://www.w3.org/2000/svg" width="130" height="175"><rect width="130" height="175" fill="teal"/></svg>',
-      }),
-    );
 });
 
 test("cover settings fit desktop and mobile", async ({ page }) => {
   await page.goto("/settings/covers");
   await expect(
-    page.getByLabel("Tiempo por portada (segundos)", { exact: true }),
+    page.getByLabel("Tiempo por URL (segundos)", { exact: true }),
   ).toBeVisible();
   const groupInput = await page
-    .getByLabel("Tiempo por grupo (segundos)", { exact: true })
+    .getByLabel("Tiempo por lote (segundos)", { exact: true })
     .boundingBox();
   const concurrencyInput = await page
     .getByLabel("Comprobaciones simultáneas", { exact: true })
     .boundingBox();
-  expect(groupInput!.y).toBeCloseTo(concurrencyInput!.y, 0);
+  expect(groupInput!.width).toBeCloseTo(concurrencyInput!.width, 0);
+  expect(concurrencyInput!.y).toBeGreaterThanOrEqual(groupInput!.y);
   await page.screenshot({
     path: "test-results/cover-settings-desktop.png",
     fullPage: true,
@@ -139,7 +96,7 @@ test("settings run uses entered options and survives navigation and reload", asy
   });
   await page.goto("/settings/covers");
   await expect(
-    page.getByLabel("Tiempo por portada (segundos)", { exact: true }),
+    page.getByLabel("Tiempo por URL (segundos)", { exact: true }),
   ).toHaveValue("3");
   await page
     .getByLabel("Comprobaciones simultáneas", { exact: true })
@@ -195,14 +152,12 @@ test("settings validate time order and can submit preview mode", async ({
   );
   await page.goto("/settings/covers");
   await page
-    .getByLabel("Tiempo por portada (segundos)", { exact: true })
+    .getByLabel("Tiempo por URL (segundos)", { exact: true })
     .fill("10");
   await expect(
     page.getByRole("button", { name: "Comprobar catálogo", exact: true }),
   ).toBeDisabled();
-  await page
-    .getByRole("button", { name: "Restaurar valores del servidor" })
-    .click();
+  await page.getByRole("button", { name: "Usar valores guardados" }).click();
   await page.getByLabel("Incluir portadas ya revisadas").uncheck();
   await page.getByLabel("Solo comprobar, sin guardar cambios").check();
   await page

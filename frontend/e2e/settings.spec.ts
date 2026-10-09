@@ -1,7 +1,20 @@
 import { test, expect } from "./fixtures";
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
+  await page.route("**/api/catalog/covers/config", (r) =>
+    r.fulfill({
+      json: {
+        connectTimeoutMs: 3000,
+        requestTimeoutMs: 3000,
+        batchTimeoutMs: 4000,
+        concurrency: 4,
+      },
+    }),
+  );
+  await page.route("**/api/settings/covers", (r) =>
+    r.fulfill({ json: { section: "covers", fields: [] } }),
+  );
+  await page.route("**/api/settings/torrent", (r) =>
+    r.fulfill({ json: { section: "torrent", fields: [] } }),
   );
 });
 test("sidebar preserves icon positions, has separators and no language selector", async ({
@@ -123,7 +136,7 @@ test("legacy database URL redirects and settings work on mobile", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/maintenance/catalog");
-  await expect(page).toHaveURL(/\/settings\/database$/);
+  await expect(page).toHaveURL(/\/settings\/catalog$/);
   await page.getByRole("button", { name: "Abrir menú" }).click();
   await page
     .locator("#sidebar")
@@ -141,4 +154,67 @@ test("legacy database URL redirects and settings work on mobile", async ({
     fullPage: true,
     animations: "disabled",
   });
+});
+
+test("connection check uses edited form values while the integration is disabled without saving", async ({
+  page,
+}) => {
+  const calls: Record<string, unknown>[] = [];
+  let saves = 0;
+  await page.route("**/api/settings/torrent", (route) => {
+    if (route.request().method() !== "GET") saves++;
+    return route.fulfill({
+      json: {
+        section: "torrent",
+        fields: [
+          { key: "torrent.enabled", type: "boolean", value: false },
+          {
+            key: "torrent.base-url",
+            type: "text",
+            value: "http://old-client:8080",
+          },
+          {
+            key: "torrent.qbittorrent.auth.api-key",
+            type: "secret",
+            value: "",
+            configured: true,
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/settings/torrent/connection", (route) => {
+    expect(route.request().method()).toBe("POST");
+    calls.push(route.request().postDataJSON());
+    return route.fulfill({
+      json: {
+        enabled: false,
+        connected: true,
+        client: "qbittorrent",
+        authMode: "api-key",
+        version: "5.2.4",
+        apiVersion: "2.15.1",
+      },
+    });
+  });
+  await page.goto("/settings/torrent");
+  await page
+    .getByLabel("URL del cliente", { exact: true })
+    .fill("http://new-client:8080");
+  await page.getByLabel("API key", { exact: true }).fill("candidate-key");
+  await page
+    .getByRole("button", { name: "Comprobar conexión", exact: true })
+    .click();
+  await expect(page.locator(".connection-result")).toContainText("5.2.4");
+  expect(calls).toEqual([
+    {
+      "torrent.base-url": "http://new-client:8080",
+      "torrent.qbittorrent.auth.api-key": "candidate-key",
+      "torrent.qbittorrent.auth.username": "",
+    },
+  ]);
+  await expect(
+    page.getByLabel("Habilitar integración torrent"),
+  ).not.toBeChecked();
+  expect(saves).toBe(0);
 });

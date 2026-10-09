@@ -3,9 +3,6 @@ import { test, expect } from "./fixtures";
 test("server settings save only edited fields, keep secrets hidden and restore installation defaults", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   const original = [
     {
       key: "torrent.enabled",
@@ -85,9 +82,6 @@ test("server settings save only edited fields, keep secrets hidden and restore i
 test("cover execution and saved defaults use the same fields and layout", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (r) =>
-    r.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/covers/config", (r) =>
     r.fulfill({
       json: {
@@ -127,10 +121,11 @@ test("cover execution and saved defaults use the same fields and layout", async 
     }),
   );
   await page.goto("/settings/covers");
-  await expect(page.locator(".settings-section h2")).toHaveText([
-    "Comprobar portadas",
-    "Configuración de portadas",
-  ]);
+  await expect(
+    page
+      .locator(".settings-section h2")
+      .filter({ hasText: /^(Comprobar portadas|Configuración de portadas)$/ }),
+  ).toHaveText(["Comprobar portadas", "Configuración de portadas"]);
   await expect(page.locator(".cover-parameters")).toHaveCount(2);
   for (const label of [
     "Tiempo de conexión (segundos)",
@@ -150,99 +145,204 @@ test("cover execution and saved defaults use the same fields and layout", async 
   });
 });
 
-test('trackers and tags support adding editing and removing individual rows', async ({ page }) => {
-  await page.route('**/api/ui/config', r => r.fulfill({ json: { defaultLanguage: 'es' } }));
+test("trackers and tags support adding editing and removing individual rows", async ({
+  page,
+}) => {
   let saved: Record<string, unknown> = {};
-  await page.route('**/api/settings/torrent', r => {
-    if (r.request().method() === 'PUT') saved = r.request().postDataJSON();
-    return r.fulfill({ json: { section: 'torrent', fields: [
-      { key: 'torrent.trackers', type: 'list', value: ['https://tracker.example/announce'], overridden: false },
-      { key: 'torrent.qbittorrent.download.tags', type: 'list', value: ['EPLsync', '{language}'], overridden: false },
-    ] } });
+  await page.route("**/api/settings/torrent", (r) => {
+    if (r.request().method() === "PUT") saved = r.request().postDataJSON();
+    return r.fulfill({
+      json: {
+        section: "torrent",
+        fields: [
+          {
+            key: "torrent.trackers",
+            type: "list",
+            value: ["https://tracker.example/announce"],
+            overridden: false,
+          },
+          {
+            key: "torrent.qbittorrent.download.tags",
+            type: "list",
+            value: ["EPLsync", "{language}"],
+            overridden: false,
+          },
+        ],
+      },
+    });
   });
-  await page.goto('/settings/torrent');
-  const trackers = page.getByRole('group', { name: 'Trackers', exact: true });
-  await trackers.getByRole('textbox').fill('https://new.example/announce');
-  await trackers.getByRole('button', { name: 'Añadir fila' }).click();
-  await trackers.getByRole('textbox').last().fill('udp://tracker.example:1337');
-  const tags = page.getByRole('group', { name: 'Etiquetas', exact: true });
-  await tags.getByRole('button', { name: 'Eliminar Etiquetas 1' }).click();
-  await expect(tags.getByRole('textbox')).toHaveValue('{language}');
-  await page.getByRole('button', { name: 'Guardar', exact: true }).click();
-  await expect.poll(() => saved['torrent.trackers']).toEqual(['https://new.example/announce', 'udp://tracker.example:1337']);
-  expect(saved['torrent.qbittorrent.download.tags']).toEqual(['{language}']);
+  await page.goto("/settings/torrent");
+  const trackers = page.getByRole("group", { name: "Trackers", exact: true });
+  await trackers.getByRole("textbox").fill("https://new.example/announce");
+  await trackers.getByRole("button", { name: "Añadir fila" }).click();
+  await trackers.getByRole("textbox").last().fill("udp://tracker.example:1337");
+  const tags = page.getByRole("group", { name: "Etiquetas", exact: true });
+  await tags.getByRole("button", { name: "Eliminar Etiquetas 1" }).click();
+  await expect(tags.getByRole("textbox")).toHaveValue("{language}");
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect
+    .poll(() => saved["torrent.trackers"])
+    .toEqual(["https://new.example/announce", "udp://tracker.example:1337"]);
+  expect(saved["torrent.qbittorrent.download.tags"]).toEqual(["{language}"]);
 });
 
-test('dependent client defaults are grouped and preserve disabled values', async ({ page }) => {
-  await page.route('**/api/ui/config', r => r.fulfill({ json: { defaultLanguage: 'es' } }));
-  await page.route('**/api/settings/torrent', r => r.fulfill({ json: { section: 'torrent', fields: [
-    { key: 'torrent.qbittorrent.download.auto-management', type: 'boolean', value: true },
-    { key: 'torrent.download.save-path', type: 'text', value: '/downloads/books' },
-    { key: 'torrent.rename.enabled', type: 'boolean', value: false },
-    { key: 'torrent.rename.pattern', type: 'text', value: '{title}' },
-  ] } }));
-  await page.goto('/settings/torrent');
-  const location = page.getByRole('group', { name: 'Ubicación de descarga', exact: true });
-  const path = location.getByRole('textbox');
+test("dependent client defaults are grouped and preserve disabled values", async ({
+  page,
+}) => {
+  await page.route("**/api/settings/torrent", (r) =>
+    r.fulfill({
+      json: {
+        section: "torrent",
+        fields: [
+          {
+            key: "torrent.qbittorrent.download.auto-management",
+            type: "boolean",
+            value: true,
+          },
+          {
+            key: "torrent.download.save-path",
+            type: "text",
+            value: "/downloads/books",
+          },
+          { key: "torrent.rename.enabled", type: "boolean", value: false },
+          { key: "torrent.rename.pattern", type: "text", value: "{title}" },
+        ],
+      },
+    }),
+  );
+  await page.goto("/settings/torrent");
+  const location = page.getByRole("group", {
+    name: "Ubicación de descarga",
+    exact: true,
+  });
+  const path = location.getByRole("textbox");
   await expect(path).toBeDisabled();
-  await location.getByRole('checkbox').uncheck();
+  await location.getByRole("checkbox").uncheck();
   await expect(path).toBeEnabled();
-  await expect(path).toHaveValue('/downloads/books');
-  const naming = page.getByRole('group', { name: 'Nombre del torrent', exact: true });
-  const pattern = naming.getByRole('textbox');
+  await expect(path).toHaveValue("/downloads/books");
+  const naming = page.getByRole("group", {
+    name: "Nombre del torrent",
+    exact: true,
+  });
+  const pattern = naming.getByRole("textbox");
   await expect(pattern).toBeDisabled();
-  await naming.getByRole('checkbox').check();
-  await pattern.fill('{author} - {title}');
-  await naming.getByRole('checkbox').uncheck();
+  await naming.getByRole("checkbox").check();
+  await pattern.fill("{author} - {title}");
+  await naming.getByRole("checkbox").uncheck();
   await expect(pattern).toBeDisabled();
-  await naming.getByRole('checkbox').check();
-  await expect(pattern).toHaveValue('{author} - {title}');
+  await naming.getByRole("checkbox").check();
+  await expect(pattern).toHaveValue("{author} - {title}");
 });
 
 const connectionFields = [
   { key: "torrent.enabled", type: "boolean", value: true },
-  { key: "torrent.base-url", type: "text", value: "https://qbit.example:443/qbit/" },
+  {
+    key: "torrent.base-url",
+    type: "text",
+    value: "https://qbit.example:443/qbit/",
+  },
   { key: "torrent.qbittorrent.auth.username", type: "text", value: "old-user" },
-  { key: "torrent.qbittorrent.auth.password", type: "secret", value: "", configured: true },
-  { key: "torrent.qbittorrent.auth.api-key", type: "secret", value: "", configured: true },
+  {
+    key: "torrent.qbittorrent.auth.password",
+    type: "secret",
+    value: "",
+    configured: true,
+  },
+  {
+    key: "torrent.qbittorrent.auth.api-key",
+    type: "secret",
+    value: "",
+    configured: true,
+  },
   { key: "torrent.bulk.concurrency", type: "number", value: 1 },
 ];
 
-test("changing destination warns, disables integration and requires fresh credentials", async ({ page }) => {
+test("changing destination warns, preserves integration and requires fresh credentials", async ({
+  page,
+}) => {
   let saved: Record<string, unknown> = {};
-  await page.route("**/api/settings/torrent", route => {
-    if (route.request().method() === "PUT") saved = route.request().postDataJSON();
-    return route.fulfill({ json: { section: "torrent", fields: connectionFields } });
+  await page.route("**/api/settings/torrent", (route) => {
+    if (route.request().method() === "PUT")
+      saved = route.request().postDataJSON();
+    return route.fulfill({
+      json: { section: "torrent", fields: connectionFields },
+    });
   });
   await page.goto("/settings/torrent");
-  const url = page.getByRole("textbox", { name: "URL del cliente", exact: true });
+  const url = page.getByRole("textbox", {
+    name: "URL del cliente",
+    exact: true,
+  });
   await url.fill("https://QBIT.EXAMPLE/qbit");
-  await expect(page.getByRole("alert").filter({ hasText: "Al cambiar el servidor" })).toHaveCount(0);
-  await expect(page.getByRole("checkbox", { name: "Habilitar integración torrent" })).toBeChecked();
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Al cambiar la URL del cliente torrent" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("checkbox", { name: "Habilitar integración torrent" }),
+  ).toBeChecked();
   await url.fill("http://new-qbit:8090");
-  await expect(page.getByRole("alert").filter({ hasText: "Al cambiar el servidor" })).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: "Habilitar integración torrent" })).not.toBeChecked();
-  await expect(page.getByRole("textbox", { name: "Usuario", exact: true })).toHaveValue("");
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "Al cambiar la URL del cliente torrent" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: "Habilitar integración torrent" }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("textbox", { name: "Usuario", exact: true }),
+  ).toHaveValue("");
   await expect(page.getByLabel("Contraseña", { exact: true })).toHaveValue("");
-  await expect(page.getByLabel("Contraseña", { exact: true })).toHaveAttribute("placeholder", "Sin configurar");
+  await expect(page.getByLabel("Contraseña", { exact: true })).toHaveAttribute(
+    "placeholder",
+    "Sin configurar",
+  );
+  await page.getByLabel("API key", { exact: true }).fill("new-server-key");
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
-  await expect.poll(() => saved["torrent.base-url"]).toBe("http://new-qbit:8090");
-  expect(saved["torrent.enabled"]).toBe(false);
+  await expect
+    .poll(() => saved["torrent.base-url"])
+    .toBe("http://new-qbit:8090");
+  expect(saved).not.toHaveProperty("torrent.enabled");
   expect(saved["torrent.qbittorrent.auth.username"]).toBe("");
   expect(saved).not.toHaveProperty("torrent.qbittorrent.auth.password");
-  expect(saved).not.toHaveProperty("torrent.qbittorrent.auth.api-key");
+  expect(saved["torrent.qbittorrent.auth.api-key"]).toBe("new-server-key");
 });
 
-test("settings users can edit operational fields but cannot change connection credentials or restore", async ({ page }) => {
-  await page.route("**/api/auth/me", route => route.fulfill({ json: {
-    id: "settings-user", username: "operator", email: "operator@example.org", role: "USER", mustChangePassword: false,
-    permissions: ["SETTINGS_MANAGE"],
-  } }));
-  await page.route("**/api/settings/torrent", route => route.fulfill({ json: { section: "torrent", fields: connectionFields } }));
+test("settings users can edit operational fields but cannot change connection credentials or restore", async ({
+  page,
+}) => {
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        id: "settings-user",
+        username: "operator",
+        email: "operator@example.org",
+        role: "USER",
+        mustChangePassword: false,
+        permissions: ["SETTINGS_MANAGE"],
+      },
+    }),
+  );
+  await page.route("**/api/settings/torrent", (route) =>
+    route.fulfill({ json: { section: "torrent", fields: connectionFields } }),
+  );
   await page.goto("/settings/torrent");
-  await expect(page.getByRole("textbox", { name: "URL del cliente", exact: true })).toBeDisabled();
-  await expect(page.getByRole("textbox", { name: "Usuario", exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("textbox", { name: "URL del cliente", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("textbox", { name: "Usuario", exact: true }),
+  ).toBeDisabled();
   await expect(page.getByLabel("Contraseña", { exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Restaurar valores de instalación", exact: true })).toBeDisabled();
-  await expect(page.getByRole("spinbutton", { name: "Envíos simultáneos", exact: true })).toBeEnabled();
+  await expect(
+    page.getByRole("button", {
+      name: "Restaurar valores de instalación",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("spinbutton", { name: "Envíos simultáneos", exact: true }),
+  ).toBeEnabled();
 });

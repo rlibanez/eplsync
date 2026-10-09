@@ -1,4 +1,6 @@
 import { test, expect, emitEvent, type Page } from "./fixtures";
+test.use({ locale: "en-GB" });
+
 const summary = {
   success: true,
   recordsProcessed: 4,
@@ -31,6 +33,19 @@ async function previewUrl(page: Page) {
     .click();
 }
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/catalog/covers/config", (r) =>
+    r.fulfill({
+      json: {
+        connectTimeoutMs: 3000,
+        requestTimeoutMs: 3000,
+        batchTimeoutMs: 4000,
+        concurrency: 4,
+      },
+    }),
+  );
+  await page.route("**/api/settings/covers", (r) =>
+    r.fulfill({ json: { section: "covers", fields: [] } }),
+  );
   await page.route("**/api/catalog/import/source", (route) =>
     route.fulfill({
       json: { defaultUrl: "https://example.test/catalog.zip", archive: null },
@@ -48,9 +63,6 @@ test.beforeEach(async ({ page }) => {
   );
   await page.route("**/api/catalog/covers/task", (route) =>
     route.fulfill({ json: { task: null } }),
-  );
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "en" } }),
   );
 });
 test("editable URL wizard closes while importing and result survives navigation", async ({
@@ -98,7 +110,7 @@ test("editable URL wizard closes while importing and result survives navigation"
     .click();
   await page
     .getByRole("main")
-    .getByRole("link", { name: "Database", exact: true })
+    .getByRole("link", { name: "Catalog", exact: true })
     .click();
   await expect(page.getByRole("main").getByRole("status")).toContainText(
     "Updating catalog",
@@ -152,7 +164,7 @@ test("update failure warns about uncertain completion without automatic retry", 
 test("sidebar toggle and language preference survive reload", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/settings/general");
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
   await expect(page.locator(".shell")).toHaveClass(/sidebar-collapsed/);
   await expect(
@@ -195,12 +207,9 @@ test("sidebar toggle and language preference survive reload", async ({
     fullPage: true,
   });
 });
-test("invalid deployment language falls back to English even in a Spanish browser", async ({
+test("initial settings language follows English browser preferences", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "zz" } }),
-  );
   await page.goto("/settings");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(

@@ -3,9 +3,6 @@ import { test, expect } from "./fixtures";
 test("settings fields adapt to panel width and single fields share their size", async ({
   page,
 }) => {
-  await page.route("**/api/ui/config", (route) =>
-    route.fulfill({ json: { defaultLanguage: "es" } }),
-  );
   await page.route("**/api/catalog/covers/config", (route) =>
     route.fulfill({
       json: {
