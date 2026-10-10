@@ -39,7 +39,7 @@ class ApplicationUpdatesTests {
         assertThat(empty.version()).isEqualTo("unknown");assertThat(empty.commit()).isNull();
     }
     @Test void releaseNotesFollowInstalledVersionWithFallbackForDevelopmentBuilds() {
-        for(String value:java.util.List.of("1.0.0-rc.2","v1.0.0-rc.2","1.0.0","1.0.0-SNAPSHOT","unknown")) {
+        for(String value:java.util.List.of("1.0.0-rc.2","v1.0.0-rc.2","1.0.0-rc.3","v1.0.0-rc.3","1.0.0","1.0.0-SNAPSHOT","unknown")) {
             var properties=new Properties();properties.setProperty("version",value);
             var factory=new DefaultListableBeanFactory();factory.registerSingleton("build",new BuildProperties(properties));
             var info=new ApplicationVersion(factory.getBeanProvider(BuildProperties.class)).get();
