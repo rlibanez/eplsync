@@ -181,7 +181,7 @@ test("preview and execution show local searchable detail without repeating sync"
   await report.getByRole("button", { name: "Siguiente", exact: true }).click();
   await expect(report.locator("tbody tr")).toHaveCount(5);
   await report
-    .getByRole("button", { name: "Torrents ignorados", exact: true })
+    .getByRole("tab", { name: "Torrents ignorados", exact: true })
     .click();
   await expect(
     report.getByText("Torrent ajeno", { exact: true }),
@@ -324,7 +324,7 @@ test("ignored torrent can be linked with inferred editable identity", async ({
   );
   await report.locator("summary").first().click();
   await report
-    .getByRole("button", { name: "Torrents ignorados", exact: true })
+    .getByRole("tab", { name: "Torrents ignorados", exact: true })
     .click();
   await expect(
     report.getByText("Sin correspondencia con EPL Sync", { exact: true }),

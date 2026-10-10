@@ -6,7 +6,14 @@ import { LinkTorrent } from "./LinkTorrent";
 import { useEffect, useRef, useState } from "react";
 import { defaultSyncView, useSyncSession } from "./useSyncSession";
 import { X } from "lucide-react";
-import { ActionIcon, Button, Select, TextInput, Tooltip } from "@mantine/core";
+import {
+  ActionIcon,
+  Button,
+  Select,
+  Tabs,
+  TextInput,
+  Tooltip,
+} from "@mantine/core";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useLocale } from "../../locales/useLocale";
@@ -316,210 +323,216 @@ export function SyncReport({
               </section>
             )}
           </div>
-          <div
-            className="action-row"
-            role="group"
-            aria-label={t("syncReport.details")}
-          >
-            {["books", "ignored"].map((key) => (
-              <Button
-                key={key}
-                variant={tab === key ? "filled" : "default"}
-                aria-pressed={tab === key}
-                onClick={() => {
-                  setTab(key);
-                  setPage(0);
-                  setSearch("");
-                }}
-              >
-                {t(`syncReport.${key}`)}
-              </Button>
-            ))}
-          </div>
-          <div className="filters">
-            <TextInput
-              label={t("catalog.search")}
-              value={searchText}
-              onCompositionStart={() => {
-                composing.current = true;
-              }}
-              onCompositionEnd={(event) => {
-                composing.current = false;
-                setSearch(event.currentTarget.value);
-              }}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                setSearchText(value);
-                if (!composing.current) setView({ search: value, page: 0 });
-              }}
-            />
-            {tab === "books" && (
-              <>
-                <Select
-                  label={t("syncReport.action")}
-                  value={action}
-                  allowDeselect={false}
-                  onChange={(v) => {
-                    setAction(v!);
-                    setPage(0);
-                  }}
-                  data={["CHANGED", "ALL", "CREATE", "UPDATE", "UNCHANGED"].map(
-                    (value) => ({
-                      value,
-                      label: t(`syncReport.actions.${value}`),
-                    }),
-                  )}
-                />
-                <Select
-                  label={t("syncReport.outcome")}
-                  value={outcome}
-                  allowDeselect={false}
-                  onChange={(v) => {
-                    setOutcome(v!);
-                    if (v !== "ALL") setAction("ALL");
-                    setPage(0);
-                  }}
-                  data={[
-                    "ALL",
-                    "newlyCompleted",
-                    "notFound",
-                    "newlyNotFound",
-                  ].map((value) => ({
-                    value,
-                    label:
-                      value === "ALL"
-                        ? t("syncReport.actions.ALL")
-                        : t(`syncReport.counts.${value}`),
-                  }))}
-                />
-              </>
-            )}
-            <Button
-              variant="default"
-              onClick={() => {
-                setSearchText("");
-                setView({ ...defaultSyncView, tab });
-              }}
-            >
-              {t("catalog.clear")}
-            </Button>
-          </div>
-          {details.error && <p role="alert">{String(details.error)}</p>}
-          <div className="table-toolbar">
-            <div className="catalog-table-controls">{columns.controls}</div>
-          </div>
-          <div className="table-scroll">
-            <table
-              className="download-record-table"
-              style={{ width: columns.width }}
-            >
-              {columns.colgroup}
-              <thead>{columns.headings}</thead>
-              <tbody>
-                {tab === "books"
-                  ? visibleItems.map((item) => (
-                      <tr key={`${item.eplId}:${item.hash}`}>
-                        {bookColumns.cells([
-                          <td>
-                            <Link to={`/catalog/${item.eplId}`}>
-                              {item.eplId}
-                            </Link>
-                          </td>,
-                          <td>
-                            <DownloadBook book={item} />
-                          </td>,
-                          <td className="hash-text">{item.hash}</td>,
-                          <td>{t(`syncReport.actions.${item.action}`)}</td>,
-                          <td>
-                            {item.previousStatus
-                              ? status(item.previousStatus)
-                              : "—"}
-                          </td>,
-                          <td>{status(item.resultingStatus)}</td>,
-                          <td>
-                            {item.changedFields
-                              .map((field) => t(`syncReport.fields.${field}`))
-                              .join(", ")}
-                            {!item.changedFields.length &&
-                              !item.newlyCompleted &&
-                              !item.newlyNotFound &&
-                              "—"}
-                            {item.newlyCompleted && (
-                              <div>
-                                {t("syncReport.completionDetected")}:{" "}
-                                {date(item.resultingCompletedAt)}
-                              </div>
-                            )}
-                            {item.newlyNotFound && (
-                              <div>{t("syncReport.counts.newlyNotFound")}</div>
-                            )}
-                            {item.changedFields.includes("lastError") && (
-                              <div>
-                                {item.previousError || "—"} →{" "}
-                                {item.resultingError || "—"}
-                              </div>
-                            )}
-                          </td>,
-                        ])}
-                      </tr>
-                    ))
-                  : visibleIgnored.map((original) => {
-                      const item = {
-                        ...original,
-                        linked:
-                          original.linked ||
-                          linkedHashes.includes(original.hash),
-                      };
-                      return (
-                        <tr key={item.hash}>
-                          {ignoredColumns.cells([
-                            <td>{item.name || "—"}</td>,
-                            <td className="sync-hash">{item.hash}</td>,
-                            <td>
-                              {item.linked
-                                ? t("torrentLink.linked")
-                                : t(`syncReport.reasons.${item.reason}`, {
-                                    defaultValue: item.reason,
-                                  })}
-                            </td>,
-                            <td>
-                              <Button
-                                variant="light"
-                                disabled={item.linked}
-                                onClick={() => setLinking(item)}
-                              >
-                                {t(
-                                  item.linked
-                                    ? "torrentLink.linked"
-                                    : "torrentLink.link",
-                                )}
-                              </Button>
-                            </td>,
-                          ])}
-                        </tr>
-                      );
-                    })}
-              </tbody>
-            </table>
-          </div>
-          {total === 0 && <p className="empty-list">{t("syncReport.empty")}</p>}
-          <Paging
-            page={page}
-            size={size}
-            onPage={setPage}
-            onSize={(value) => {
-              setSize(value);
+          <Tabs
+            value={tab}
+            onChange={(value) => {
+              if (!value) return;
+              setTab(value);
               setPage(0);
+              setSearch("");
             }}
-            meta={{
-              page,
-              size,
-              totalItems: total,
-              totalPages,
-              hasNext: page + 1 < totalPages,
-              hasPrevious: page > 0,
-            }}
-          />
+          >
+            <Tabs.List aria-label={t("syncReport.details")}>
+              <Tabs.Tab value="books">{t("syncReport.books")}</Tabs.Tab>
+              <Tabs.Tab value="ignored">{t("syncReport.ignored")}</Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel key={tab} value={tab} pt="md">
+              <div className="filters">
+                <TextInput
+                  label={t("catalog.search")}
+                  value={searchText}
+                  onCompositionStart={() => {
+                    composing.current = true;
+                  }}
+                  onCompositionEnd={(event) => {
+                    composing.current = false;
+                    setSearch(event.currentTarget.value);
+                  }}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setSearchText(value);
+                    if (!composing.current) setView({ search: value, page: 0 });
+                  }}
+                />
+                {tab === "books" && (
+                  <>
+                    <Select
+                      label={t("syncReport.action")}
+                      value={action}
+                      allowDeselect={false}
+                      onChange={(v) => {
+                        setAction(v!);
+                        setPage(0);
+                      }}
+                      data={[
+                        "CHANGED",
+                        "ALL",
+                        "CREATE",
+                        "UPDATE",
+                        "UNCHANGED",
+                      ].map((value) => ({
+                        value,
+                        label: t(`syncReport.actions.${value}`),
+                      }))}
+                    />
+                    <Select
+                      label={t("syncReport.outcome")}
+                      value={outcome}
+                      allowDeselect={false}
+                      onChange={(v) => {
+                        setOutcome(v!);
+                        if (v !== "ALL") setAction("ALL");
+                        setPage(0);
+                      }}
+                      data={[
+                        "ALL",
+                        "newlyCompleted",
+                        "notFound",
+                        "newlyNotFound",
+                      ].map((value) => ({
+                        value,
+                        label:
+                          value === "ALL"
+                            ? t("syncReport.actions.ALL")
+                            : t(`syncReport.counts.${value}`),
+                      }))}
+                    />
+                  </>
+                )}
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setSearchText("");
+                    setView({ ...defaultSyncView, tab });
+                  }}
+                >
+                  {t("catalog.clear")}
+                </Button>
+              </div>
+              {details.error && <p role="alert">{String(details.error)}</p>}
+              <div className="table-toolbar">
+                <div className="catalog-table-controls">{columns.controls}</div>
+              </div>
+              <div className="table-scroll">
+                <table
+                  className="download-record-table"
+                  style={{ width: columns.width }}
+                >
+                  {columns.colgroup}
+                  <thead>{columns.headings}</thead>
+                  <tbody>
+                    {tab === "books"
+                      ? visibleItems.map((item) => (
+                          <tr key={`${item.eplId}:${item.hash}`}>
+                            {bookColumns.cells([
+                              <td>
+                                <Link to={`/catalog/${item.eplId}`}>
+                                  {item.eplId}
+                                </Link>
+                              </td>,
+                              <td>
+                                <DownloadBook book={item} />
+                              </td>,
+                              <td className="hash-text">{item.hash}</td>,
+                              <td>{t(`syncReport.actions.${item.action}`)}</td>,
+                              <td>
+                                {item.previousStatus
+                                  ? status(item.previousStatus)
+                                  : "—"}
+                              </td>,
+                              <td>{status(item.resultingStatus)}</td>,
+                              <td>
+                                {item.changedFields
+                                  .map((field) =>
+                                    t(`syncReport.fields.${field}`),
+                                  )
+                                  .join(", ")}
+                                {!item.changedFields.length &&
+                                  !item.newlyCompleted &&
+                                  !item.newlyNotFound &&
+                                  "—"}
+                                {item.newlyCompleted && (
+                                  <div>
+                                    {t("syncReport.completionDetected")}:{" "}
+                                    {date(item.resultingCompletedAt)}
+                                  </div>
+                                )}
+                                {item.newlyNotFound && (
+                                  <div>
+                                    {t("syncReport.counts.newlyNotFound")}
+                                  </div>
+                                )}
+                                {item.changedFields.includes("lastError") && (
+                                  <div>
+                                    {item.previousError || "—"} →{" "}
+                                    {item.resultingError || "—"}
+                                  </div>
+                                )}
+                              </td>,
+                            ])}
+                          </tr>
+                        ))
+                      : visibleIgnored.map((original) => {
+                          const item = {
+                            ...original,
+                            linked:
+                              original.linked ||
+                              linkedHashes.includes(original.hash),
+                          };
+                          return (
+                            <tr key={item.hash}>
+                              {ignoredColumns.cells([
+                                <td>{item.name || "—"}</td>,
+                                <td className="sync-hash">{item.hash}</td>,
+                                <td>
+                                  {item.linked
+                                    ? t("torrentLink.linked")
+                                    : t(`syncReport.reasons.${item.reason}`, {
+                                        defaultValue: item.reason,
+                                      })}
+                                </td>,
+                                <td>
+                                  <Button
+                                    variant="light"
+                                    disabled={item.linked}
+                                    onClick={() => setLinking(item)}
+                                  >
+                                    {t(
+                                      item.linked
+                                        ? "torrentLink.linked"
+                                        : "torrentLink.link",
+                                    )}
+                                  </Button>
+                                </td>,
+                              ])}
+                            </tr>
+                          );
+                        })}
+                  </tbody>
+                </table>
+              </div>
+              {total === 0 && (
+                <p className="empty-list">{t("syncReport.empty")}</p>
+              )}
+              <Paging
+                page={page}
+                size={size}
+                onPage={setPage}
+                onSize={(value) => {
+                  setSize(value);
+                  setPage(0);
+                }}
+                meta={{
+                  page,
+                  size,
+                  totalItems: total,
+                  totalPages,
+                  hasNext: page + 1 < totalPages,
+                  hasPrevious: page > 0,
+                }}
+              />
+            </Tabs.Panel>
+          </Tabs>
         </div>
       </details>
     </section>
