@@ -132,6 +132,19 @@ class SecurityIntegrationTests {
         org.junit.jupiter.api.Assertions.assertFalse(details.isEmpty());
         org.junit.jupiter.api.Assertions.assertTrue(details.stream().noneMatch(value -> value.contains(PASSWORD)||value.contains(initial.password())||value.contains("@")||value.contains("password_hash")));
     }
+    @Test void foreignKeysRejectOrphanPermissionsAndDirectUserDeletionButAccountDeletionIsSafe() {
+        var created=accounts.create("fkuser","fk@example.org","USER",initial.user().id());
+        jdbc.update("INSERT INTO user_permission_overrides VALUES(?,?,?)",created.user().id(),"TORRENT_SYNC","ALLOW");
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM users WHERE id=?",created.user().id()))
+            .isInstanceOf(org.springframework.dao.DataAccessException.class).hasMessageContaining("FOREIGN KEY");
+        assertThat(accounts.find(created.user().id())).isNotNull();
+        accounts.delete(created.user().id());
+        assertThat(accounts.find(created.user().id())).isNull();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_permission_overrides WHERE user_id=?",Integer.class,created.user().id())).isZero();
+        assertThatThrownBy(() -> jdbc.update("INSERT INTO user_permission_overrides VALUES(?,?,?)",created.user().id(),"TORRENT_SYNC","ALLOW"))
+            .isInstanceOf(org.springframework.dao.DataAccessException.class).hasMessageContaining("FOREIGN KEY");
+        assertThat(jdbc.queryForList("PRAGMA foreign_key_check")).isEmpty();
+    }
     @Test void deletionRequiresAdminCsrfAndConfirmationAndRevokesSessions() throws Exception {
         var administrator=admin();
         var created=accounts.create("deletable","delete@example.org","USER",initial.user().id());

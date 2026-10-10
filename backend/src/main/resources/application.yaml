@@ -18,6 +18,8 @@ spring:
         journal_mode: WAL
         synchronous: FULL
         busy_timeout: 10000
+        # Se aplica al abrir cada conexión, antes de cualquier transacción.
+        foreign_keys: true
 
   flyway:
     enabled: true

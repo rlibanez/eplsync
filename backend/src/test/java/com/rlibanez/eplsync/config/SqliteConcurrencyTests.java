@@ -40,12 +40,16 @@ class SqliteConcurrencyTests {
         try { assertThat(latch.await(5,TimeUnit.SECONDS)).isTrue(); }
         catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}
     }
-    @Test void everyConnectionUsesWalFullAndBusyTimeout() throws Exception {
+    @Test void everyConnectionUsesWalFullBusyTimeoutAndForeignKeys() throws Exception {
         try(var first=source.getConnection();var second=source.getConnection()) {
             for(var connection:java.util.List.of(first,second)) try(var statement=connection.createStatement()) {
                 try(var result=statement.executeQuery("PRAGMA journal_mode")) {assertThat(result.getString(1)).isEqualTo("wal");}
                 try(var result=statement.executeQuery("PRAGMA synchronous")) {assertThat(result.getInt(1)).isEqualTo(2);}
                 try(var result=statement.executeQuery("PRAGMA busy_timeout")) {assertThat(result.getInt(1)).isEqualTo(10000);}
+                try(var result=statement.executeQuery("PRAGMA foreign_keys")) {assertThat(result.getInt(1)).isEqualTo(1);}
+                assertThatThrownBy(() -> statement.executeUpdate("INSERT INTO user_permission_overrides(user_id,permission,effect) "
+                    + "VALUES('nonexistent-fk-user','CATALOG_READ','ALLOW')"))
+                    .isInstanceOf(java.sql.SQLException.class).hasMessageContaining("FOREIGN KEY");
             }
         }
     }

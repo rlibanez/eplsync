@@ -113,3 +113,27 @@ EPLSYNC_TEST_IMPORT_LOAD=true ./mvnw -Deplsync.test.sqlite-disk=true -Dtest=Bulk
 
 El modo solo afecta a esas pruebas y utiliza bases temporales independientes;
 no abre la base de datos de la instalación.
+
+## Claves foráneas y referencias históricas
+
+La configuración JDBC activa `foreign_keys=ON` al crear cada conexión del pool,
+antes de iniciar transacciones. Después de inicializar el esquema, EPL Sync
+comprueba `PRAGMA foreign_key_check`: si encuentra referencias huérfanas o la
+comprobación está desactivada, detiene el arranque sin borrar ni reparar datos.
+
+La migración actual declara una clave foránea: `user_permission_overrides.user_id`
+referencia `users.id`, sin borrado en cascada. El servicio de cuentas elimina
+primero los permisos individuales y después la cuenta; un borrado SQL directo
+que dejaría esos permisos huérfanos se rechaza.
+
+Las referencias a usuarios en eventos, trabajos, aprobaciones y limpiezas son
+instantáneas históricas, no dependencias con borrado en cascada. Los registros de
+descarga y los elementos de trabajos tampoco dependen de que el libro siga en el
+catálogo. Una limpieza persistida conserva sus datos aunque se elimine su usuario
+o su registro de historial; el reinicio completo y la retención de trabajos
+mantienen sus reglas explícitas de eliminación.
+
+Activar la comprobación solo aplica las claves declaradas: no crea relaciones
+nuevas entre trabajos, elementos o planes. Completar esas restricciones exige una
+nueva migración y revisar sus políticas de borrado; no se modifica la migración
+publicada `V0_0_1__initial_schema.sql`.
