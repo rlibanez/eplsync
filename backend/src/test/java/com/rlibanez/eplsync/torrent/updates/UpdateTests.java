@@ -127,7 +127,7 @@ class UpdateTests {
         assertThat(queue.runImmediate(100,Instant.now())).isZero();
         bulk.finish(sends.get(1).getId(),BulkItem.State.ALREADY_EXISTS,null,false,false);
         assertThat(only(job.jobId()).getReplacementAccepted()).isTrue();
-        items.deleteAll();jobs.deleteById(job.jobId());plans.deleteById(job.jobId());
+        items.deleteAll();plans.deleteById(job.jobId());jobs.deleteById(job.jobId());
         assertThat(queue.runImmediate(100,Instant.now())).isEqualTo(1);
         verify(stubClient).deleteTorrent(OLD,false);
         assertThat(cleanup.findByJobIdOrderByEplIdAsc(job.jobId()).getFirst().getState()).isEqualTo(UpdateCleanup.State.REMOVED);
@@ -309,7 +309,7 @@ class UpdateTests {
         when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,null),remote(OTHER,DownloadStatus.DOWNLOADED,null),
             remote("D".repeat(40),DownloadStatus.DOWNLOADED,null),remote(NEW,DownloadStatus.DOWNLOADING,null)));
         // Frozen cleanup requests no longer need either the job or its commands for execution.
-        items.deleteAll(); jobs.deleteById(job.jobId()); plans.deleteById(job.jobId());
+        items.deleteAll(); plans.deleteById(job.jobId()); jobs.deleteById(job.jobId());
         for(int i=0;i<3;i++) queue.runAutomatic(1);
         verify(stubClient,times(3)).listTorrents();
         assertThat(cleanup.findAll()).hasSize(3).allMatch(e -> e.getLastCheckedAt()!=null);

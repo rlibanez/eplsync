@@ -12,7 +12,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class DatabaseMigrationTests {
     @TempDir Path directory;
     private String url() { return "jdbc:sqlite:" + directory.resolve("database.db"); }
-    private JdbcTemplate jdbc() { return new JdbcTemplate(new DriverManagerDataSource(url())); }
+    private JdbcTemplate jdbc() {
+        var source=new DriverManagerDataSource(url());
+        var properties=new java.util.Properties();properties.setProperty("foreign_keys","true");
+        source.setConnectionProperties(properties);
+        return new JdbcTemplate(source);
+    }
     private Flyway flyway(String... locations) {
         return Flyway.configure().dataSource(url(), null, null).locations(locations)
                 .ignoreMigrationPatterns(new String[0]).baselineOnMigrate(false).validateOnMigrate(true).cleanDisabled(true).load();
@@ -35,6 +40,50 @@ class DatabaseMigrationTests {
         assertEquals(0, migration.migrate().migrationsExecuted);
         assertEquals("preserved", jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='sample'", String.class));
         assertThrows(FlywayException.class, migration::clean);
+    }
+    @Test void jobItemsAndPlansRequireExistingJobsAndUniquePositionsWithoutCascades() {
+        flyway("classpath:db/migration").migrate();
+        var jdbc=jdbc();
+        jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,state) VALUES('job',1,1,0,0,'QUEUED')");
+        jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,state) VALUES('item','job',0,0,'PENDING')");
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,state) VALUES('duplicate','job',0,0,'PENDING')"));
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,state) VALUES('orphan','missing',1,0,'PENDING')"));
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("INSERT INTO torrent_bulk_items(id,position,attempts,state) VALUES('no-job',1,0,'PENDING')"));
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,state) VALUES('negative','job',-1,0,'PENDING')"));
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("UPDATE torrent_bulk_items SET attempts=-1 WHERE id='item'"));
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,created_at,snapshot) VALUES('missing','client','KEEP',0,'{}')"));
+        jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,created_at,snapshot) VALUES('job','client','KEEP',0,'{}')");
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("DELETE FROM torrent_bulk_jobs WHERE id='job'"));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items",Integer.class));
+        jdbc.update("DELETE FROM torrent_bulk_items");
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("DELETE FROM torrent_bulk_jobs WHERE id='job'"));
+        jdbc.update("DELETE FROM torrent_update_plans");jdbc.update("DELETE FROM torrent_bulk_jobs");
+        assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
+    }
+    @Test void catalogRejectsInvalidIdsRevisionsAndTextButAcceptsLongAuthorsAndNegativeYears() {
+        flyway("classpath:db/migration").migrate();
+        var jdbc=jdbc();
+        String insert="INSERT INTO catalog_books(epl_id,revision,title,author,publication_year) VALUES(?,?,?,?,?)";
+        for(Object id: new Object[]{0,-1,1.5}) assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update(insert,id,1,"Title","Author",2026));
+        for(double revision: new double[]{0,-1,Double.POSITIVE_INFINITY,Double.NEGATIVE_INFINITY,Double.NaN})
+            assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update(insert,1,revision,"Title","Author",2026));
+        for(String blank:new String[]{"", " ", "\t\n", "\u00a0\u2003"}) {
+            assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update(insert,1,1,blank,"Author",2026));
+            assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update(insert,1,1,"Title",blank,2026));
+        }
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update(insert,1,1,"x".repeat(4097),"Author",2026));
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update(insert,1,1,"Title","x".repeat(16385),2026));
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update(insert,1,1,"Title\0hidden","Author",2026));
+        jdbc.update(insert,1,1,"Title","x".repeat(16384),-500);
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("UPDATE catalog_books SET synopsis=?","prefix\0hidden"));
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("UPDATE catalog_books SET genres=?","x".repeat(4097)));
+        assertEquals(16384,jdbc.queryForObject("SELECT length(author) FROM catalog_books",Integer.class));
+        // Historical download references survive removal of their catalog book.
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('history',1,1,'hash','qbittorrent','client','SUBMITTED','EPLSYNC',0)");
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("UPDATE torrent_downloads SET revision=?",Double.POSITIVE_INFINITY));
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("UPDATE torrent_downloads SET epl_id=0"));
+        jdbc.update("DELETE FROM catalog_books");
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM torrent_downloads",Integer.class));
     }
     @Test void upgradesWithDataAndRejectsModifiedPublishedMigration() throws Exception {
         flyway("classpath:db/migration").migrate();

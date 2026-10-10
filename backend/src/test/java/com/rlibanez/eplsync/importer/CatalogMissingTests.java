@@ -38,6 +38,8 @@ class CatalogMissingTests {
         tx = new TransactionTemplate(manager);
         tx.executeWithoutResult(s -> {
             em.createQuery("delete from BulkItem").executeUpdate();
+            em.createQuery("delete from UpdatePlan").executeUpdate();
+            em.createQuery("delete from BulkJob").executeUpdate();
             em.createQuery("delete from DownloadRecord").executeUpdate();
             em.createNativeQuery("DROP TRIGGER IF EXISTS fail_missing").executeUpdate();
         });
@@ -103,6 +105,7 @@ class CatalogMissingTests {
     @Test void rejectsPendingWorkAndRollsBackFailedDeletion() {
         var preview = missing.preview();
         tx.executeWithoutResult(s -> {
+            var job = new com.rlibanez.eplsync.torrent.bulk.BulkJob(); job.setId("job"); job.setState(com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED); em.persist(job);
             var item = new BulkItem(); item.setId("pending"); item.setJobId("job"); item.setEplId(1L); item.setState(BulkItem.State.PENDING); em.persist(item);
         });
         assertThatThrownBy(() -> missing.delete(preview.token(),true)).isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);

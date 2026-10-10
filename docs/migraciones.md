@@ -121,8 +121,11 @@ antes de iniciar transacciones. Después de inicializar el esquema, EPL Sync
 comprueba `PRAGMA foreign_key_check`: si encuentra referencias huérfanas o la
 comprobación está desactivada, detiene el arranque sin borrar ni reparar datos.
 
-La migración actual declara una clave foránea: `user_permission_overrides.user_id`
-referencia `users.id`, sin borrado en cascada. El servicio de cuentas elimina
+La migración inicial declara relaciones desde `user_permission_overrides.user_id`
+a `users.id`, y desde `torrent_bulk_items.job_id` y
+`torrent_update_plans.job_id` a `torrent_bulk_jobs.id`, sin borrado en cascada.
+Las relaciones de trabajos se comprueban al confirmar la transacción, permitiendo
+el orden de inserción de Hibernate sin admitir referencias huérfanas. El servicio de cuentas elimina
 primero los permisos individuales y después la cuenta; un borrado SQL directo
 que dejaría esos permisos huérfanos se rechaza.
 
@@ -133,7 +136,15 @@ catálogo. Una limpieza persistida conserva sus datos aunque se elimine su usuar
 o su registro de historial; el reinicio completo y la retención de trabajos
 mantienen sus reglas explícitas de eliminación.
 
-Activar la comprobación solo aplica las claves declaradas: no crea relaciones
-nuevas entre trabajos, elementos o planes. Completar esas restricciones exige una
-nueva migración y revisar sus políticas de borrado; no se modifica la migración
-publicada `V0_0_1__initial_schema.sql`.
+El esquema inicial incorpora unicidad de `(job_id, position)`, posiciones y
+reintentos no negativos, identificadores EPL enteros positivos y revisiones
+numéricas, finitas y positivas. La revisión de un elemento de trabajo puede ser
+nula cuando no hay metadatos, pero debe ser válida si se conoce. Los títulos y
+autores no admiten valores vacíos ni solo espacios Unicode; sus límites y los de
+los campos opcionales coinciden con el importador (autor: 16.384 caracteres).
+
+Antes de publicar el esquema se ha consolidado esta revisión en
+`V0_0_1__initial_schema.sql`, manteniendo la versión 0.0.1. Sus checksums cambian:
+las bases experimentales previas deben recrearse y Flyway sigue rechazando
+checksums distintos. No se añade una migración ni se intenta convertir esas bases.
+Después de publicar, la migración inicial será inmutable.

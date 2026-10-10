@@ -1,5 +1,6 @@
 -- Initial persistent schema for EPL Sync 0.0.1.
--- Published migrations are immutable. Subsequent changes require a new migration.
+-- Consolidated before publication for fresh installations; published migrations are immutable.
+-- Future schema changes after publication require a new migration.
 CREATE TABLE app_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at INTEGER NOT NULL,
@@ -26,22 +27,22 @@ CREATE TABLE catalog_books (
     publication_date date,
     publication_year integer,
     rating float,
-    revision float not null,
+    revision float not null CHECK(typeof(revision) IN ('integer','real') AND revision > 0 AND revision <= 1.7976931348623157e308),
     volume float,
     votes_count integer,
-    epl_id bigint not null,
+    epl_id bigint not null CHECK(typeof(epl_id)='integer' AND epl_id > 0),
     insert_date timestamp,
     last_modified_date timestamp,
     language varchar(50) check ((language in ('ESPANOL','INGLES','CATALAN','GALLEGO','EUSKERA','FRANCES','ITALIANO','PORTUGUES','ALEMAN','ESPERANTO','SUECO','OTRO'))),
     publication_status varchar(50) check ((publication_status in ('PUBLISHED','UPDATED','UNKNOWN'))),
     status varchar(50) check ((status in ('DISPONIBLE','VERIFICADO','DESCONOCIDO'))),
-    genres varchar(512),
-    title varchar(512) not null,
-    author varchar(255) not null,
-    collection varchar(255),
-    cover_url TEXT,
-    links TEXT,
-    synopsis TEXT,
+    genres varchar(4096) CHECK(genres IS NULL OR (typeof(genres)='text' AND instr(genres,char(0))=0 AND length(genres) <= 4096)),
+    title varchar(4096) not null CHECK(typeof(title)='text' AND length(title) <= 4096 AND length(trim(title,char(9,10,11,12,13,28,29,30,31,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288))) > 0 AND instr(title,char(0))=0),
+    author varchar(16384) not null CHECK(typeof(author)='text' AND length(author) <= 16384 AND length(trim(author,char(9,10,11,12,13,28,29,30,31,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288))) > 0 AND instr(author,char(0))=0),
+    collection varchar(4096) CHECK(collection IS NULL OR (typeof(collection)='text' AND instr(collection,char(0))=0 AND length(collection) <= 4096)),
+    cover_url TEXT CHECK(cover_url IS NULL OR (typeof(cover_url)='text' AND instr(cover_url,char(0))=0 AND length(cover_url) <= 8192)),
+    links TEXT CHECK(links IS NULL OR (typeof(links)='text' AND instr(links,char(0))=0 AND length(links) <= 65536)),
+    synopsis TEXT CHECK(synopsis IS NULL OR (typeof(synopsis)='text' AND instr(synopsis,char(0))=0 AND length(synopsis) <= 524288)),
     primary key (epl_id)
 );
 
@@ -81,16 +82,16 @@ CREATE TABLE security_policy (
 );
 
 CREATE TABLE torrent_bulk_items (
-    attempts integer not null,
-    revision float,
-    epl_id bigint,
-    position bigint not null,
+    attempts integer not null CHECK(typeof(attempts)='integer' AND attempts >= 0),
+    revision float CHECK(revision IS NULL OR (typeof(revision) IN ('integer','real') AND revision > 0 AND revision <= 1.7976931348623157e308)),
+    epl_id bigint CHECK(epl_id IS NULL OR (typeof(epl_id)='integer' AND epl_id > 0)),
+    position bigint not null CHECK(typeof(position)='integer' AND position >= 0),
     command_json TEXT,
     hash varchar(255),
-    id varchar(255) not null,
-    job_id varchar(255),
+    id varchar(255) not null CHECK(length(trim(id)) > 0),
+    job_id varchar(255) not null REFERENCES torrent_bulk_jobs(id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
     message varchar(255),
-    state varchar(255) check ((state in ('PENDING','IN_FLIGHT','ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED','CANCELLED'))),
+    state varchar(255) not null check ((state in ('PENDING','IN_FLIGHT','ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED','CANCELLED'))),
     primary key (id)
 );
 
@@ -100,29 +101,29 @@ CREATE TABLE torrent_bulk_jobs (
     created_at timestamp,
     interval_millis bigint not null,
     retry_at timestamp,
-    selected_books bigint not null,
+    selected_books bigint not null CHECK(typeof(selected_books)='integer' AND selected_books >= 0),
     updated_at timestamp,
     client varchar(255),
     event_actor_id varchar(255),
     event_actor_kind varchar(255),
     event_actor_username varchar(255),
     event_origin varchar(255),
-    id varchar(255) not null,
+    id varchar(255) not null CHECK(length(trim(id)) > 0),
     message varchar(255),
     multiple_hashes varchar(255) check ((multiple_hashes in ('ALL','SKIP','FIRST'))),
     previous_versions varchar(255) check ((previous_versions in ('KEEP','REMOVE_TORRENT','REMOVE_TORRENT_AND_FILES'))),
-    state varchar(255) check ((state in ('QUEUED','RUNNING','RETRY_WAIT','PAUSED','COMPLETED','CANCELLED'))),
+    state varchar(255) not null check ((state in ('QUEUED','RUNNING','RETRY_WAIT','PAUSED','COMPLETED','CANCELLED'))),
     target_fingerprint varchar(255),
     type varchar(255) check ((type in ('DOWNLOAD','UPDATE'))),
     primary key (id)
 );
 
 CREATE TABLE torrent_downloads (
-    revision float not null,
+    revision float not null CHECK(typeof(revision) IN ('integer','real') AND revision > 0 AND revision <= 1.7976931348623157e308),
     completed_at timestamp,
     created_at timestamp not null,
     discovered_at timestamp,
-    epl_id bigint not null,
+    epl_id bigint not null CHECK(typeof(epl_id)='integer' AND epl_id > 0),
     last_checked_at timestamp,
     last_seen_at timestamp,
     requested_at timestamp,
@@ -130,7 +131,7 @@ CREATE TABLE torrent_downloads (
     client_instance_id varchar(64) not null,
     hash varchar(64) not null,
     client varchar(255) not null,
-    id varchar(255) not null,
+    id varchar(255) not null CHECK(length(trim(id)) > 0),
     last_error varchar(255),
     origin varchar(255) not null check ((origin in ('EPLSYNC','DISCOVERED'))),
     status varchar(255) not null check ((status in ('SUBMITTED','ALREADY_EXISTS','UNKNOWN','QUEUED','DOWNLOADING','PAUSED','CHECKING','DOWNLOADED','ERROR','NOT_FOUND'))),
@@ -142,7 +143,7 @@ CREATE TABLE torrent_update_cleanup (
     immediate boolean,
     replacement_accepted boolean,
     created_at timestamp,
-    epl_id bigint not null,
+    epl_id bigint not null CHECK(typeof(epl_id)='integer' AND epl_id > 0),
     last_checked_at timestamp,
     updated_at timestamp,
     actor_id varchar(255),
@@ -151,7 +152,7 @@ CREATE TABLE torrent_update_cleanup (
     client_instance_id varchar(255),
     download_id varchar(255) not null,
     hash varchar(255) not null,
-    id varchar(255) not null,
+    id varchar(255) not null CHECK(length(trim(id)) > 0),
     job_id varchar(255),
     message varchar(255),
     previous_versions varchar(255) check ((previous_versions in ('KEEP','REMOVE_TORRENT','REMOVE_TORRENT_AND_FILES'))),
@@ -165,7 +166,7 @@ CREATE TABLE torrent_update_plans (
     created_at timestamp not null,
     cleanup_timing varchar(255) check ((cleanup_timing in ('IMMEDIATE','AFTER_DOWNLOAD'))),
     client_instance_id varchar(255) not null,
-    job_id varchar(255) not null,
+    job_id varchar(255) not null REFERENCES torrent_bulk_jobs(id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
     previous_versions varchar(255) not null check ((previous_versions in ('KEEP','REMOVE_TORRENT','REMOVE_TORRENT_AND_FILES'))),
     snapshot TEXT not null,
     primary key (job_id)
@@ -179,7 +180,7 @@ CREATE TABLE user_permission_overrides (
 );
 
 CREATE TABLE users (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL PRIMARY KEY CHECK(length(trim(id)) > 0),
     username TEXT NOT NULL,
     username_normalized TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL,
@@ -189,7 +190,7 @@ CREATE TABLE users (
     status TEXT NOT NULL CHECK(status IN ('PENDING','ACTIVE','DISABLED','REJECTED')),
     must_change_password INTEGER NOT NULL DEFAULT 0,
     temporary_password_expires_at TEXT,
-    security_version INTEGER NOT NULL DEFAULT 0,
+    security_version INTEGER NOT NULL DEFAULT 0 CHECK(typeof(security_version)='integer' AND security_version >= 0),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     password_changed_at TEXT,
@@ -235,3 +236,5 @@ CREATE INDEX idx_events_operation ON app_events(operation_id);
 CREATE UNIQUE INDEX uk_download_identity ON torrent_downloads(client_instance_id, epl_id, hash);
 
 CREATE UNIQUE INDEX uq_cleanup_job_download ON torrent_update_cleanup(job_id, download_id);
+
+CREATE UNIQUE INDEX uq_bulk_item_job_position ON torrent_bulk_items(job_id, position);

@@ -13,12 +13,12 @@ import lombok.Setter;
 @Getter @Setter
 public class BulkItem {
     @Id private String id;
-    private String jobId;
+    @Column(nullable = false) private String jobId;
     private long position;
     @Column(name = "epl_id") private Long eplId;
     private String hash;
     private Double revision;
-    @Enumerated(EnumType.STRING) private State state;
+    @Enumerated(EnumType.STRING) @Column(nullable = false) private State state;
     public enum State { PENDING, IN_FLIGHT, ACCEPTED, ALREADY_EXISTS, SKIPPED, FAILED, CANCELLED }
     private int attempts;
     private String message;

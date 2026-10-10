@@ -40,18 +40,18 @@ public class CatalogBook {
     @ToString.Include
     private Double revision;
 
-    @Column(name = "author", nullable = false, length = 255)
+    @Column(name = "author", nullable = false, length = 16384)
     @ToString.Include
     private String author;
 
-    @Column(name = "title", nullable = false, length = 512)
+    @Column(name = "title", nullable = false, length = 4096)
     @ToString.Include
     private String title;
 
-    @Column(name = "genres", length = 512)
+    @Column(name = "genres", length = 4096)
     private String genres;
 
-    @Column(name = "collection", length = 255)
+    @Column(name = "collection", length = 4096)
     private String collection;
 
     @Column(name = "volume")
