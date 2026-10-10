@@ -1,4 +1,4 @@
--- Initial persistent schema for EPL Sync 0.0.1.
+-- Initial persistent schema version 1.0.0 for EPL Sync.
 -- Consolidated before publication for fresh installations; published migrations are immutable.
 -- Future schema changes after publication require a new migration.
 CREATE TABLE app_events (
@@ -246,3 +246,8 @@ CREATE INDEX idx_catalog_insert_minute ON catalog_books (
 );
 -- Revision-update anti-join searches by book, independently of the submission job.
 CREATE INDEX idx_bulk_item_update_book ON torrent_bulk_items (epl_id, state, job_id);
+
+-- The application registers EPL_TEXT on each SQLite connection before Flyway runs.
+-- Linguistic order applies only to sorting; stored values, equality and uniqueness are unchanged.
+CREATE INDEX idx_catalog_title_alphabetical ON catalog_books (title COLLATE EPL_TEXT, epl_id);
+CREATE INDEX idx_catalog_author_alphabetical ON catalog_books (author COLLATE EPL_TEXT, epl_id);

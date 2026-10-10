@@ -4,7 +4,6 @@ import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import java.text.Collator;
 import java.text.Normalizer;
 import java.util.*;
 
@@ -52,8 +51,7 @@ public class CatalogSuggestionService {
             for (String text : source)
                 for (String value : (key.equals("collections") || key.equals("titles")) ? new String[]{text} : text.split(key.equals("authors") ? "&" : ","))
                     if (!value.isBlank()) unique.add(value.strip());
-            var collator = Collator.getInstance(Locale.forLanguageTag("es"));
-            return unique.stream().sorted(Comparator.comparing((String v) -> v, collator).thenComparing(Comparator.naturalOrder()))
+            return unique.stream().sorted(Comparator.comparing((String v) -> v, com.rlibanez.eplsync.ordering.TextOrdering::compare).thenComparing(Comparator.naturalOrder()))
                 .map(text -> new Value(text, normalize(text))).toList();
         });
     }

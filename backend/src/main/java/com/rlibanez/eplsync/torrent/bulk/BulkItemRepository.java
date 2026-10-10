@@ -7,7 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import java.util.List;
 
-public interface BulkItemRepository extends JpaRepository<BulkItem, String> {
+public interface BulkItemRepository extends JpaRepository<BulkItem, String>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<BulkItem> {
     List<BulkItem> findByJobIdAndStateOrderByPosition(String jobId, BulkItem.State state, Pageable pageable);
     Page<BulkItem> findByJobIdOrderByPosition(String jobId, Pageable pageable);
     Page<BulkItem> findByJobIdAndStateInOrderByPosition(String jobId, List<BulkItem.State> states, Pageable pageable);

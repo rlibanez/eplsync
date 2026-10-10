@@ -8,7 +8,7 @@ migraciones y sus pruebas cubren esos aspectos.
 
 ## Primera versión
 
-`backend/src/main/resources/db/migration/V0_0_1__initial_schema.sql` crea las
+`backend/src/main/resources/db/migration/V1_0_0__initial_schema.sql` crea las
 13 tablas actuales, sus índices y restricciones. Incluye catálogo, metadatos,
 ajustes, usuarios, permisos, política de seguridad, eventos, trabajos,
 descargas y planes de limpieza.
@@ -38,10 +38,8 @@ recrearse desde cero. La aplicación no elimina esas bases automáticamente.
 - Añadir un nuevo archivo SQL para cada cambio; nunca modificar, borrar o
   renombrar una migración publicada.
 - Usar la versión de la aplicación que introduce el cambio: por ejemplo,
-  `V0_0_2__add_column.sql`. Si hay varias, usar `V0_0_2_1`, `V0_0_2_2`, etc.
+  `V1_1_0__add_column.sql`. Si hay varias, usar `V1_1_0_1`, `V1_1_0_2`, etc.
 - Si una versión de la aplicación no cambia el esquema, no necesita migración.
-- Antes de publicar 1.0.0 puede consolidarse la migración experimental inicial
-  como `V1_0_0__initial_schema.sql`, recreando las bases de prueba.
 - Conservar datos y documentar expresamente cambios destructivos. Probar tanto
   instalación vacía como actualización de una base de la versión anterior.
 - En SQLite, cambios no soportados por ALTER TABLE requieren crear una tabla
@@ -144,7 +142,7 @@ autores no admiten valores vacíos ni solo espacios Unicode; sus límites y los 
 los campos opcionales coinciden con el importador (autor: 16.384 caracteres).
 
 Antes de publicar el esquema se ha consolidado esta revisión en
-`V0_0_1__initial_schema.sql`, manteniendo la versión 0.0.1. Sus checksums cambian:
+`V1_0_0__initial_schema.sql`, con la versión del esquema 1.0.0. Sus checksums cambian:
 las bases experimentales previas deben recrearse y Flyway sigue rechazando
 checksums distintos. No se añade una migración ni se intenta convertir esas bases.
 Después de publicar, la migración inicial será inmutable.

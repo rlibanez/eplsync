@@ -35,8 +35,8 @@ public class CatalogBookService {
     public Page<CatalogBook> search(CatalogBookFilter filter, Pageable pageable) {
         com.rlibanez.eplsync.config.QueryLimits.page(pageable.getPageNumber(), pageable.getPageSize());
         var spec = CatalogBookSpecifications.fromFilter(filter);
-        return repository.findAll(spec, org.springframework.data.domain.PageRequest.of(
-                pageable.getPageNumber(), pageable.getPageSize(), CatalogOrdering.normalize(pageable.getSort())));
+        return repository.findAll(com.rlibanez.eplsync.ordering.TextOrdering.sorted(spec, CatalogOrdering.normalize(pageable.getSort())), org.springframework.data.domain.PageRequest.of(
+                pageable.getPageNumber(), pageable.getPageSize()));
     }
 
 }

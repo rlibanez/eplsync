@@ -74,7 +74,8 @@ class CatalogDirectoryTests {
    assertThat(controller.list(kind,"alv",0,20,"A").items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("Álvaro");
    assertThat(controller.list(kind,"",0,20,"N").items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("Nora");
    assertThat(controller.list(kind,"",0,20,"Ñ").items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("Ñandú");
-   assertThat(controller.list(kind,"",0,20,"#").items()).hasSize(2);
+   assertThat(controller.list(kind,"",0,20,"E").items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("Émile","!Especial");
+   assertThat(controller.list(kind,"",0,20,"#").items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("123 libros");
    assertThat(controller.list(kind,"",1,10,"A").items()).isEmpty();
   }
   assertThatThrownBy(() -> controller.list("authors","",0,20,"AB")).isInstanceOf(IllegalArgumentException.class);

@@ -137,7 +137,7 @@ public class BulkStore {
             var predicate = spec.toPredicate(root, query, criteria);
             if (predicate != null) query.where(predicate);
             var orders = new ArrayList<jakarta.persistence.criteria.Order>();
-            for (var order : sort) orders.add(order.isAscending() ? criteria.asc(root.get(order.getProperty())) : criteria.desc(root.get(order.getProperty())));
+            for (var order : sort) orders.add(com.rlibanez.eplsync.ordering.TextOrdering.order(criteria,root,order));
             query.orderBy(orders);
             if (offset > Integer.MAX_VALUE) throw new com.rlibanez.eplsync.exception.UserInputException("Paginación fuera de rango");
             var batch = em.createQuery(query).setFirstResult((int) offset).setMaxResults(size).getResultList();
@@ -330,12 +330,12 @@ public class BulkStore {
             criteria.forEach(order -> orders.add(new Sort.Order(order.getDirection(), fields.get(order.getProperty()))));
             if (orders.stream().noneMatch(order -> order.getProperty().equals("createdAt"))) orders.add(Sort.Order.desc("createdAt"));
             if (orders.stream().noneMatch(order -> order.getProperty().equals("id"))) orders.add(Sort.Order.desc("id"));
-            var pageable = PageRequest.of(page, size, Sort.by(orders));
-            result = jobs.findAll(specification,pageable);
+            var pageable = PageRequest.of(page, size);
+            result = jobs.findAll(com.rlibanez.eplsync.ordering.TextOrdering.sorted(specification, Sort.by(orders)),pageable);
         } else {
             // Aggregate and order in SQLite before pagination, including secondary criteria.
             String processed = "SUM(CASE WHEN i.state IN ('ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED') THEN 1 ELSE 0 END)";
-            var expressions = Map.of("jobId", "j.id", "status", "j.state", "type", "j.type", "selectedBooks", "j.selected_books", "createdAt", "j.created_at", "username", "j.event_actor_username",
+            var expressions = Map.of("jobId", "j.id", "status", "j.state", "type", "j.type", "selectedBooks", "j.selected_books", "createdAt", "j.created_at", "username", com.rlibanez.eplsync.ordering.TextOrdering.sql("j.event_actor_username"),
                 "progress", "CASE WHEN COUNT(i.id)=0 THEN 0 ELSE 1.0*"+processed+"/COUNT(i.id) END",
                 "accepted", "SUM(CASE WHEN i.state='ACCEPTED' THEN 1 ELSE 0 END)", "failed", "SUM(CASE WHEN i.state='FAILED' THEN 1 ELSE 0 END)");
             String orderBy = criteria.stream().map(order -> expressions.get(order.getProperty())+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","));
@@ -379,9 +379,10 @@ public class BulkStore {
         var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, Set.of("position", "title", "eplId", "revision", "hash", "status", "attempts", "message"));
         var orders = criteria.stream().map(order -> new Sort.Order(order.getDirection(), order.getProperty().equals("title") ? "catalogBook.title" : order.getProperty().equals("status") ? "state" : order.getProperty())).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         if (orders.stream().noneMatch(order -> order.getProperty().equals("position"))) orders.add(Sort.Order.asc("position"));
-        var pageable = PageRequest.of(page, size, Sort.by(orders));
-        var result = states == null ? items.findByJobId(id, pageable)
-                : items.findByJobIdAndStateIn(id, states, pageable);
+        org.springframework.data.jpa.domain.Specification<BulkItem> filter=(root,query,cb)-> states==null
+            ? cb.equal(root.get("jobId"),id)
+            : cb.and(cb.equal(root.get("jobId"),id),root.get("state").in(states));
+        var result=items.findAll(com.rlibanez.eplsync.ordering.TextOrdering.sorted(filter,Sort.by(orders)),PageRequest.of(page,size));
         var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(em, result.getContent().stream().map((BulkItem entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).toList());
         result.forEach(row -> {
             var book = metadata.get(row.getEplId());

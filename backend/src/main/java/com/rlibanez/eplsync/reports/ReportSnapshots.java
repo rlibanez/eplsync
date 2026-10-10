@@ -141,10 +141,11 @@ public class ReportSnapshots implements AutoCloseable {
         for (var sort : sorts) {
             String[] parts=sort.split(",");
             if(parts.length!=2 || !Set.of("asc","desc").contains(parts[1])) throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación inválida");
-            order.add(expression(parts[0],fields)+" COLLATE NOCASE "+parts[1]);
+            order.add(expression(parts[0],fields)+(Set.of("title","name").contains(parts[0])?" COLLATE EPL_TEXT ":" ")+parts[1]);
         }
         order.add("seq ASC");
         try (var connection=DriverManager.getConnection("jdbc:sqlite:"+report.path)) {
+            com.rlibanez.eplsync.ordering.TextOrdering.register(connection);
             long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
             org.sqlite.ProgressHandler.setHandler(connection,1000,new org.sqlite.ProgressHandler() {
                 @Override protected int progress() {return Thread.currentThread().isInterrupted() || System.nanoTime()>=deadline?1:0;}

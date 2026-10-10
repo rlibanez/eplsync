@@ -1,3 +1,4 @@
+import { compareText } from "../../locales/textOrdering";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
 import { useQuery } from "@tanstack/react-query";
 import { get } from "../../api/catalog";
@@ -137,10 +138,6 @@ export function SyncReport({
     sort: string,
     value: (row: T, field: string) => string | number | null | undefined,
   ) {
-    const collator = new Intl.Collator(undefined, {
-      numeric: true,
-      sensitivity: "base",
-    });
     return [...rows].sort((left, right) => {
       for (const criterion of ordering(sort)) {
         const [field, direction] = criterion.split(",");
@@ -149,7 +146,7 @@ export function SyncReport({
         const comparison =
           typeof a === "number" && typeof b === "number"
             ? a - b
-            : collator.compare(String(a ?? ""), String(b ?? ""));
+            : compareText(String(a ?? ""), String(b ?? ""));
         if (comparison) return direction === "desc" ? -comparison : comparison;
       }
       return 0;

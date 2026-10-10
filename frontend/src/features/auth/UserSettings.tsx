@@ -1,3 +1,4 @@
+import { compareText } from "../../locales/textOrdering";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   Badge,
@@ -56,7 +57,7 @@ interface Temporary {
   expiresAt: string;
 }
 export function UserSettings() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [sort, setSort] = useState<{
     key: "username" | "role" | "status";
     descending: boolean;
@@ -86,14 +87,8 @@ export function UserSettings() {
   }
   const sortedUsers = [...users].sort((a, b) => {
     const comparison =
-      sortValue(a).localeCompare(sortValue(b), i18n.resolvedLanguage, {
-        numeric: true,
-        sensitivity: "base",
-      }) ||
-      a.username.localeCompare(b.username, i18n.resolvedLanguage, {
-        numeric: true,
-        sensitivity: "base",
-      });
+      compareText(sortValue(a), sortValue(b)) ||
+      compareText(a.username, b.username);
     return sort.descending ? -comparison : comparison;
   });
   async function load() {

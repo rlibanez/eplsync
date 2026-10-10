@@ -30,7 +30,7 @@ public class EventOperations {
             "duration","CASE WHEN outcome IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') AND start_at IS NOT NULL AND NOT (category='SECURITY' AND event_count=1) THEN MAX(0,created_at-start_at) END",
             "category","category","event","action","outcome","outcome","origin","origin","user","COALESCE(actor_username,actor_kind)");
         var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort,fields.keySet());
-        String orderBy = criteria.stream().map(order -> fields.get(order.getProperty())+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","))+", first_id DESC";
+        String orderBy = criteria.stream().map(order -> (Set.of("category","event","outcome","origin","user").contains(order.getProperty())?com.rlibanez.eplsync.ordering.TextOrdering.sql(fields.get(order.getProperty())):fields.get(order.getProperty()))+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","))+", first_id DESC";
         if (page < 0 || size < 1 || size > 200 || (snapshot != null && snapshot < 0))
             throw new com.rlibanez.eplsync.exception.UserInputException("page >= 0, size entre 1 y 200 y snapshot >= 0");
         return transactions.execute(tx -> {

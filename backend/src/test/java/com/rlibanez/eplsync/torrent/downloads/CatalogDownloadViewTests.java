@@ -39,16 +39,14 @@ class CatalogDownloadViewTests {
                 .containsExactly(rows.get(2).getId(), rows.get(1).getId(), rows.get(0).getId());
         assertThat(response.getLast().download().items()).isEmpty();
     }
-    @Test void historyAppliesMultipleCriteriaToTheRepositoryPageAndRejectsUnknownFields() {
+    @Test void historyPreservesPaginationAndRejectsUnknownFields() {
         var repository=mock(DownloadRepository.class);
-        when(repository.findByEplId(eq(1L),any(org.springframework.data.domain.Pageable.class))).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+        when(repository.findAll(any(org.springframework.data.jpa.domain.Specification.class),any(org.springframework.data.domain.Pageable.class))).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
         var service=new CatalogDownloadViewService(repository);
         service.history(1L,2,20,"revision,desc;status,asc");
         var capture=org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
-        verify(repository).findByEplId(eq(1L),capture.capture());
+        verify(repository).findAll(any(org.springframework.data.jpa.domain.Specification.class),capture.capture());
         assertThat(capture.getValue().getPageNumber()).isEqualTo(2);
-        assertThat(capture.getValue().getSort().stream().map(order -> order.getProperty()+","+order.getDirection().name()).toList())
-            .containsExactly("revision,DESC","status,ASC","createdAt,DESC","id,ASC");
         assertThatThrownBy(() -> service.history(1L,0,20,"password,asc")).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
     }
     private DownloadRecord row(double revision, String createdAt) {

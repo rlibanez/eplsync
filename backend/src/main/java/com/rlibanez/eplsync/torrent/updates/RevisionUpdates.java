@@ -37,7 +37,7 @@ public class RevisionUpdates {
         validate(input,page,size,sort);
         var fields=Map.of("eplId","b.eplId","title","b.title","registeredRevision","d.revision","availableRevision","b.revision","status","d.status");
         var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, fields.keySet());
-        var orderBy = criteria.stream().map(order -> fields.get(order.getProperty())+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","));
+        var orderBy = criteria.stream().map(order -> (order.getProperty().equals("title")?"collate(b.title as EPL_TEXT)":fields.get(order.getProperty()))+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","));
         if (criteria.stream().noneMatch(order -> order.getProperty().equals("eplId"))) orderBy += ", b.eplId asc";
         String from=" from CatalogBook b, DownloadRecord d where b.eplId=d.eplId and d.status in :states and d.revision<b.revision and "+evidence("d")
             +" and not exists (select x.id from DownloadRecord x where x.eplId=b.eplId and x.revision>=b.revision and "+evidence("x")+")"

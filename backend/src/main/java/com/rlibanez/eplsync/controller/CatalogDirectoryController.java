@@ -68,7 +68,7 @@ public class CatalogDirectoryController {
                 .replaceAll("").replace("\uE000", "Ñ");
     }
     private static String initial(String value) {
-        String normalized = normalize(value);
+        String normalized = normalize(com.rlibanez.eplsync.ordering.TextOrdering.key(value));
         String first = normalized.isEmpty() ? "#" : normalized.substring(0, 1);
         return LETTERS.contains(first) ? first : "#";
     }
@@ -100,8 +100,7 @@ public class CatalogDirectoryController {
                 @Override protected void xFunc() throws java.sql.SQLException { result(initial(value_text(0))); }
             }, 1, org.sqlite.Function.FLAG_DETERMINISTIC);
             org.sqlite.Collation.create(sqlite, "epl_spanish", new org.sqlite.Collation() {
-                private final java.text.Collator collator = java.text.Collator.getInstance(Locale.forLanguageTag("es"));
-                @Override protected int xCompare(String left, String right) { return collator.compare(left, right); }
+                @Override protected int xCompare(String left, String right) { return com.rlibanez.eplsync.ordering.TextOrdering.compare(left, right); }
             });
         });
         String filtered = "WITH names AS (" + sql + "), entries AS (SELECT DISTINCT epl_strip(value) AS value FROM names WHERE epl_strip(value) <> '') "

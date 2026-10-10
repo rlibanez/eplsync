@@ -38,8 +38,7 @@ public class CatalogMagnetService {
         var root = query.from(com.rlibanez.eplsync.model.CatalogBook.class);
         query.select(cb.tuple(root.get("eplId"), root.get("title"), root.get("links")));
         query.where(spec.toPredicate(root, query, cb));
-        query.orderBy(ordering.stream().map(order -> order.isAscending()
-                ? cb.asc(root.get(order.getProperty())) : cb.desc(root.get(order.getProperty()))).toList());
+        query.orderBy(ordering.stream().map(order -> com.rlibanez.eplsync.ordering.TextOrdering.order(cb,root,order)).toList());
         return em.unwrap(org.hibernate.Session.class).doReturningWork(connection -> {
             String table = "magnet_page_" + java.util.UUID.randomUUID().toString().replace("-", "");
             try (var ddl = connection.createStatement()) {

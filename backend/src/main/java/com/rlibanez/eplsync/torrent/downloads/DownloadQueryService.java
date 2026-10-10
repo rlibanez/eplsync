@@ -60,7 +60,7 @@ public class DownloadQueryService {
         com.rlibanez.eplsync.config.QueryLimits.sort(Sort.by(orders));
         if (orders.stream().noneMatch(order -> order.getProperty().equals("id"))) orders.add(Sort.Order.asc("id"));
         var spec = filters(params);
-        var result = repository.findAll(spec, PageRequest.of(page, size, Sort.by(orders)));
+        var result = repository.findAll(com.rlibanez.eplsync.ordering.TextOrdering.sorted(spec, Sort.by(orders)), PageRequest.of(page, size));
         var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager, result.getContent().stream().map((DownloadRecord entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).toList());
         result.forEach(row -> {
             var book = metadata.get(row.getEplId());

@@ -86,8 +86,7 @@ public class MagnetExportService {
                             var root = query.from(CatalogBook.class);
                             query.select(cb.tuple(root.get("eplId"), root.get("title"), root.get("links")));
                             query.where(spec.toPredicate(root, query, cb));
-                            query.orderBy(sort.stream().map(order -> order.isAscending()
-                                    ? cb.asc(root.get(order.getProperty())) : cb.desc(root.get(order.getProperty()))).toList());
+                            query.orderBy(sort.stream().map(order -> com.rlibanez.eplsync.ordering.TextOrdering.order(cb,root,order)).toList());
                             return em.createQuery(query).setHint("jakarta.persistence.query.timeout", remainingMillis(deadline))
                                     .setFirstResult(start).setMaxResults(BATCH_SIZE).getResultList().stream()
                                     .map(row -> new Book(row.get(0, Long.class), row.get(1, String.class), row.get(2, String.class))).toList();

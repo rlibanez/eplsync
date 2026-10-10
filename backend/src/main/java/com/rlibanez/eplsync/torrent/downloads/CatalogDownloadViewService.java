@@ -46,7 +46,7 @@ public class CatalogDownloadViewService {
         orders.add(org.springframework.data.domain.Sort.Order.desc("createdAt"));
         orders.add(org.springframework.data.domain.Sort.Order.asc("id"));
         var ordering=org.springframework.data.domain.Sort.by(orders);
-        var result=repository.findByEplId(id,org.springframework.data.domain.PageRequest.of(page,size,ordering));
+        var result=repository.findAll(com.rlibanez.eplsync.ordering.TextOrdering.sorted((root,query,cb)->cb.equal(root.get("eplId"),id),ordering),org.springframework.data.domain.PageRequest.of(page,size));
         return new com.rlibanez.eplsync.dto.PageResponse<>(result.getContent().stream().map(row -> new HistoryItem(
                 row.getId(),row.getRevision(),row.getStatus(),row.getCompletedAt()!=null,row.getHash(),row.getClient(),
                 row.getClientInstanceId(),row.getOrigin(),row.getLastCheckedAt(),row.getCompletedAt(),row.getLastError())).toList(),
