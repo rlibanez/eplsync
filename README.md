@@ -1,97 +1,245 @@
-# EPL Sync
+<p align="center">
+  <img src="frontend/public/brand/eplsync-app-icon-192.png" alt="Logo de EPL Sync" width="112" height="112">
+</p>
+<h1 align="center">EPL Sync</h1>
 
-Servicio para importar y consultar el catálogo de ePubLibre, generar enlaces
-magnet y gestionar envíos y actualizaciones con qBittorrent. Guarda el catálogo
-y el historial en SQLite.
+Consulta el catálogo de ePubLibre y gestiona tus descargas y actualizaciones de
+libros con qBittorrent.
 
-El esquema se gestiona con [migraciones versionadas](docs/migraciones.md).
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Home.png"><img src="docs/screenshots/Home.png" alt="Pantalla inicial" width="320"></a>
+      <br><sub>Pantalla inicial</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Catalogo_tabla.png"><img src="docs/screenshots/Catalogo_tabla.png" alt="Catálogo" width="320"></a>
+      <br><sub>Catálogo</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Catalogo_buscador.png"><img src="docs/screenshots/Catalogo_buscador.png" alt="Búsqueda avanzada" width="320"></a>
+      <br><sub>Búsqueda avanzada</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Catalogo_enviardescargar.png"><img src="docs/screenshots/Catalogo_enviardescargar.png" alt="Envío de libros" width="320"></a>
+      <br><sub>Envío de libros</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Directorio_colecciones.png"><img src="docs/screenshots/Directorio_colecciones.png" alt="Directorio de colecciones" width="320"></a>
+      <br><sub>Directorio de colecciones</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Estado_sincronizacion.png"><img src="docs/screenshots/Estado_sincronizacion.png" alt="Sincronización" width="320"></a>
+      <br><sub>Sincronización</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Actualizaciones_tabla.png"><img src="docs/screenshots/Actualizaciones_tabla.png" alt="Actualizaciones" width="320"></a>
+      <br><sub>Actualizaciones</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Actualizaciones_enviar.png"><img src="docs/screenshots/Actualizaciones_enviar.png" alt="Envío de actualizaciones" width="320"></a>
+      <br><sub>Envío de actualizaciones</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Eventos_tabla.png"><img src="docs/screenshots/Eventos_tabla.png" alt="Eventos" width="320"></a>
+      <br><sub>Eventos</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Ajustes_catalogo.png"><img src="docs/screenshots/Ajustes_catalogo.png" alt="Ajustes del catálogo" width="320"></a>
+      <br><sub>Ajustes del catálogo</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Ajustes_azul.png"><img src="docs/screenshots/Ajustes_azul.png" alt="Ajustes · tema azul" width="320"></a>
+      <br><sub>Ajustes · tema azul</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/screenshots/Ajustes_verdeclaro.png"><img src="docs/screenshots/Ajustes_verdeclaro.png" alt="Ajustes · tema verde claro" width="320"></a>
+      <br><sub>Ajustes · tema verde claro</sub>
+    </td>
+  </tr>
+</table>
+
+## Contenido
+
+- [Instalación con Docker](#instalación-con-docker)
+  - [Requisitos](#1-requisitos)
+  - [Prepara la carpeta de instalación](#2-prepara-la-carpeta-de-instalación)
+  - [Descarga Docker Compose](#3-descarga-docker-compose)
+  - [Configura `.env`](#4-configura-env)
+  - [Prepara las carpetas persistentes](#5-prepara-las-carpetas-persistentes)
+  - [Inicia EPL Sync](#6-inicia-epl-sync)
+- [Ejecutar sin Docker](#ejecutar-sin-docker)
+  - [Descarga y descomprime el paquete](#1-descarga-y-descomprime-el-paquete)
+  - [Configura la aplicación](#2-configura-la-aplicación)
+  - [Inicia EPL Sync](#3-inicia-epl-sync)
+  - [Abre la aplicación](#4-abre-la-aplicación)
+- [Primer uso](#primer-uso)
+- [Actualizar la instalación con Docker](#actualizar-la-instalación-con-docker)
+- [Documentación y ayuda](#documentación-y-ayuda)
 
 ## Instalación con Docker
 
-Necesitas Docker y Docker Compose v2 o posterior. Desde la raíz del repositorio:
+### 1. Requisitos
+
+Necesitas Docker y Docker Compose v2. Consulta la
+[documentación oficial para instalar Docker](https://docs.docker.com/get-started/get-docker/).
+
+### 2. Prepara la carpeta de instalación
 
 ```sh
-cp .env.example .env
+mkdir -p eplsync
+cd eplsync
+```
+
+### 3. Descarga Docker Compose
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.0.0/docker-compose.yml -o docker-compose.yml
+```
+
+### 4. Configura `.env`
+
+Después, descarga la plantilla de configuración:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.0.0/.env.example -o .env
+chmod 600 .env
+```
+
+Edita `.env`. Para empezar, revisa estas variables:
+
+| Variable | Descripción | Valor predeterminado |
+| --- | --- | --- |
+| `EPLSYNC_VERSION` | Versión de la imagen. | `1.0.0` |
+| `PUID` | ID del usuario que puede escribir en las carpetas. En Linux, consulta su valor con `id -u`. | `1000` |
+| `PGID` | ID del grupo que puede escribir en las carpetas. En Linux, consulta su valor con `id -g`. | `1000` |
+| `HOST_PORT` | Puerto publicado. | `8088` |
+| `DATA_DIR` | Carpeta persistente de datos. | `./data` |
+| `LOGS_DIR` | Carpeta persistente de logs. | `./logs` |
+| `TZ` | Zona horaria. | `Europe/Madrid` |
+| `EPLSYNC_SECRET_KEY` | Necesaria para guardar credenciales de qBittorrent desde Ajustes. Genera su valor con `openssl rand -base64 32`, cópialo en `.env` y consérvalo. | Sin valor |
+| `EPLSYNC_INITIAL_ADMIN_KEY` | Clave opcional para proteger la creación del primer administrador. Genera su valor con `openssl rand -hex 16`. Vacía no exige clave. | Sin valor |
+
+El resto puede conservar sus valores predeterminados, aunque es muy recomendable revisarlos.<br>
+Si necesitas personalizar otras opciones, consulta la [tabla de variables](docs/variables-entorno.md).<br>
+Los ajustes disponibles en la interfaz pueden configurarse desde **Ajustes**: los valores allí guardados tienen
+prioridad sobre los valores iniciales del entorno.<br>
+**Importante**: no todas las variables del archivo `.env` se pueden configurar desde **Ajustes**.
+
+### 5. Prepara las carpetas persistentes
+
+```sh
 mkdir -p data logs
 ```
 
-`docker-compose.yml` es la configuración mínima: utiliza los valores de la
-aplicación y permite configurar el resto desde **Ajustes**. Ajusta `PUID` y `PGID`
-al usuario que tiene permisos de escritura en `data/` y `logs/`.
+Si has cambiado `DATA_DIR` o `LOGS_DIR`, crea las carpetas correspondientes.
+Deben permitir escritura al usuario y grupo indicados en `PUID` y `PGID`.
 
-Para usar exclusivamente la imagen publicada (una vez disponible en GHCR),
-indica el archivo explícitamente para evitar cargar el override local:
+### 6. Inicia EPL Sync
 
 ```sh
-docker compose -f docker-compose.yml pull
-docker compose -f docker-compose.yml up -d
-curl http://localhost:8088/actuator/health
+docker compose up -d
 ```
 
-Para personalizar todos los valores iniciales mediante `.env`, utiliza
-`docker-compose-full.yml`:
+Abre `http://localhost:8088`, o la dirección y puerto que hayas configurado.
+Para acceso por red o mediante un proxy HTTPS, consulta la
+[guía de acceso y seguridad](docs/seguridad.md#acceso-remoto).
+
+## Ejecutar sin Docker
+
+Se recomienda encarecidamente la instalación en Docker. Aún así, se proporcionan
+instrucciones para su ejecución en Windows/Linux.
+
+### 1. Descarga y descomprime el paquete
+
+Instala [Java 25](https://adoptium.net/temurin/releases/?version=25) y descarga
+`EPL-Sync-1.0.0.zip` desde los archivos de la
+[Release 1.0.0](https://github.com/rlibanez/eplsync/releases/tag/v1.0.0).
+El mismo paquete sirve para Windows y Linux.
+
+Descomprímelo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
+`application.yaml` correspondiente a esa misma versión, además de las carpetas
+`data` y `logs`:
+
+```text
+EPL-Sync/
+├── eplsync-1.0.0.jar
+├── application.yaml
+├── data/
+└── logs/
+```
+
+### 2. Configura la aplicación
+
+Edita el `application.yaml` incluido en el paquete. Es una copia del mismo archivo
+utilizado para construir la aplicación.
+
+Antes de iniciar, revisa estos valores:
+
+- **Acceso local:** añade `address: 127.0.0.1` dentro del apartado `server`, con la
+  misma indentación que `port`. Sin esa opción, escucha en todas las interfaces.
+- **qBittorrent:** si está en el mismo equipo, cambia `eplsync.torrent.base-url` a
+  `"http://localhost:8080"`. También puedes configurarlo desde **Ajustes → Torrent**.
+- **Clave de cifrado:** para guardar credenciales desde Ajustes, configura
+  `eplsync.security.secret-key`. La interfaz permite generar una clave; cópiala
+  en este archivo y reinicia la aplicación.
+- **Clave inicial:** `eplsync.security.initial-admin-key` es opcional y protege la
+  creación del primer administrador.
+
+Las expresiones como `${EPLSYNC_SECRET_KEY:}` permiten utilizar variables del
+entorno. Para configurar una clave directamente en el archivo, sustituye toda
+la expresión por el valor entre comillas, por ejemplo `secret-key: "CLAVE_GENERADA"`.
+Conserva la configuración y no compartas sus claves.
+
+### 3. Inicia EPL Sync
+
+Abre una terminal en la carpeta del JAR y ejecuta, tanto en Windows como en Linux:
 
 ```sh
-docker compose -f docker-compose-full.yml pull
-docker compose -f docker-compose-full.yml up -d
+java --enable-native-access=ALL-UNNAMED -jar eplsync-1.0.0.jar --spring.config.additional-location=file:./application.yaml
 ```
 
-Para construir el código local, `docker-compose.override.yml` añade `build`,
-incluye toda la configuración del completo, utiliza la imagen `eplsync:local`
-y fuerza la construcción. Copia la plantilla versionada si aún no tienes el
-override local. Compose lo carga
-automáticamente cuando no indicas archivos con `-f`:
+El comando carga el archivo externo de configuración. En esta modalidad no se
+utiliza el archivo `.env` de Docker Compose.
 
-```sh
-cp -n docker-compose.override.example.yml docker-compose.override.yml
-REVISION=$(git rev-parse HEAD) docker compose up -d --build
-```
+### 4. Abre la aplicación
 
-Para construir localmente con la configuración completa, incluye ambos archivos:
+Accede a **http://localhost:8088** y sigue los pasos de [Primer uso](#primer-uso).
+Mantén la terminal abierta. Para detener EPL Sync, pulsa **Ctrl+C**.
 
-```sh
-REVISION=$(git rev-parse HEAD) docker compose -f docker-compose-full.yml -f docker-compose.override.yml up -d --build
-```
-
-`PUID` y `PGID` se aplican al ejecutar el contenedor; no requieren reconstruir
-la imagen. Las carpetas del host deben permitir escritura a esos identificadores.
-
-Son alternativas para la misma instalación. Usa el archivo elegido también para
-`logs`, `down` y posteriores actualizaciones. `.env.example` sirve para ambos;
-las variables exclusivas del completo no se aplican con el mínimo. Para activar
-qBittorrent desde `.env`, configura su URL y autenticación y establece
-`EPLSYNC_TORRENT_ENABLED=true` usando el Compose completo; con el mínimo, hazlo
-desde Ajustes.
-
-Consulta la [tabla de variables de instalación](docs/variables-entorno.md)
-para consultar sus descripciones y valores predeterminados.
-
-Abre `http://localhost:8088` para acceder a la interfaz web (Inicio, catálogo y
-fichas de libros, mantenimiento y ajustes).
-
-La imagen compila React/TypeScript y Java sin instalar Node, Java ni Maven en el host. El puerto por defecto
-es `8088` (configurable con `HOST_PORT`); los datos y logs persisten en `data/`
-y `logs/`. Incluye usuarios, permisos y sesiones. El puerto se publica únicamente
-en localhost por defecto; consulta [Seguridad](docs/seguridad.md) para acceso remoto.
+Para actualizar, detén la aplicación y descarga el paquete de la nueva Release.
+Sustituye el JAR y adapta su nombre en el comando de arranque. Conserva `data/`,
+`logs/` y tu configuración; revisa el YAML de la nueva versión para incorporar
+las opciones nuevas sin perder tus claves ni valores personalizados. Los ajustes
+guardados desde la interfaz tienen prioridad.
 
 ## Primer uso
 
-Abre la aplicación web y crea el primer administrador indicando username, email,
-contraseña y su confirmación. El asistente se cierra en cuanto existe la primera cuenta.
-Desde la interfaz, abre **Mantenimiento → Actualizar catálogo** para previsualizar
-e importar los libros. El idioma inicial se obtiene de las preferencias del navegador;
-si ninguna tiene traducción disponible, se utiliza inglés. Una elección manual
-guardada en el navegador tiene prioridad.
+1. Abre `http://localhost:8088` o la dirección y puerto que hayas configurado.
+2. Crea la primera cuenta de administrador con nombre de usuario, correo
+   electrónico, contraseña y, si está configurada, la clave de configuración inicial `EPLSYNC_INITIAL_ADMIN_KEY`.
+3. Importa el catálogo desde **Ajustes → Catálogo → Importar catálogo**.
+4. Configura qBittorrent desde **Ajustes → Torrent** y comprueba la conexión.
 
-Las llamadas de escritura a la API requieren sesión y token CSRF; consulta
-[Usuarios y seguridad](docs/seguridad.md).
+## Actualizar la instalación con Docker
 
-## Documentación
+Cambia `EPLSYNC_VERSION` en `.env` a la versión que quieras instalar y ejecuta:
 
-- [Instalación y configuración detallada](docs/instalacion.md).
-- [Variables de Docker Compose](docs/variables-entorno.md).
-- [Referencia de la API](docs/API.md).
-- [Novedades, revisiones nuevas y limpieza](docs/actualizaciones.md): envío combinado
-  mediante `GET/POST /api/torrent/refresh?language=es`.
-- [Todas las guías](docs/README.md): catálogo, qBittorrent, jobs, descargas,
-  actualizaciones, logs y desarrollo.
+```sh
+docker compose pull
+docker compose up -d
+```
+
+Conserva las carpetas persistentes y el valor de `EPLSYNC_SECRET_KEY`.
+Puedes consultar la versión instalada y buscar actualizaciones en
+**Ajustes → Acerca de**.
+
+## Documentación y ayuda
+
+- [Guías de uso](docs/README.md).

@@ -1,18 +1,18 @@
-# Documentación de EPL Sync
+# Guías de EPL Sync
 
-- [Usuarios y seguridad](seguridad.md): inicialización, recuperación, permisos, sesiones y HTTPS.
+[Volver al inicio](../README.md)
 
-[Volver al README](../README.md)
+## Instalación y configuración
 
-Guías de instalación, uso y mantenimiento. Los comandos parten de la raíz del repositorio salvo indicación contraria.
+- [Instalación](instalacion.md): carpetas, permisos, configuración y actualizaciones.
+- [Variables de entorno](variables-entorno.md): descripción y valores predeterminados.
+- [Usuarios y seguridad](seguridad.md): cuentas, recuperación de contraseña y acceso remoto.
+- [qBittorrent](torrent.md): conexión y opciones de envío.
 
-- [Instalación y despliegue](instalacion.md)
-- [Variables de entorno](variables-entorno.md): descripciones y valores predeterminados de las variables de ambos Compose.
-- [Logs y diagnóstico](logs.md)
-- [Catálogo y magnets](catalogo.md)
-- [Desarrollo y verificación](desarrollo.md)
-- [Integración con qBittorrent](torrent.md)
-- [Envíos masivos y jobs](jobs.md)
-- [Historial y sincronización de descargas](descargas.md)
-- [Novedades, actualización de revisiones y limpieza](actualizaciones.md)
-- [Referencia de la API](API.md): endpoints, parámetros y ejemplos de peticiones.
+## Uso
+
+- [Catálogo](catalogo.md): importación, búsqueda, Directorio y portadas.
+- [Trabajos](jobs.md): seguimiento, pausa y cancelación de envíos.
+- [Estado e historial de descargas](descargas.md): sincronización y gestión de registros.
+- [Actualizaciones de libros](actualizaciones.md): revisiones nuevas y limpieza de versiones anteriores.
+- [Logs y diagnóstico](logs.md): consultar errores y registros de acceso.

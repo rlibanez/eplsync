@@ -99,7 +99,7 @@ logging:
 # Restaurar valores de instalación elimina las personalizaciones del apartado.
 eplsync:
   updates:
-    automatic: ${EPLSYNC_UPDATE_CHECK_ENABLED:true}
+    automatic: true
   security:
     # Opcional: autoriza la creación del primer administrador. Generar: openssl rand -hex 16
     initial-admin-key: ${EPLSYNC_INITIAL_ADMIN_KEY:}
@@ -113,7 +113,7 @@ eplsync:
       max-count: 10000
       max-age-days: 365
   catalog:
-    zip-url: "https://epublibre.org/rssweb/csv/epub.zip"
+    zip-url: "https://www.dropbox.com/s/a9r4p7oyaftaz1b/csv_full_imgs.zip?dl=1"
     import:
       # Plazo compartido de la operación completa (positivo, máximo 24h).
       operation-timeout: ${EPLSYNC_CATALOG_IMPORT_OPERATION_TIMEOUT:30m}
@@ -123,7 +123,7 @@ eplsync:
       connect-timeout: 3s # Límite para establecer una conexión HTTP.
       request-timeout: 3s # Presupuesto por URL, incluyendo sus redirecciones.
       batch-timeout: 4s # Límite total del grupo paralelo. >= request-timeout.
-      concurrency: 4 # URLs simultáneas (1–32).
+      concurrency: 8 # URLs simultáneas (1–32).
 
   torrent:
     trackers:
@@ -134,16 +134,16 @@ eplsync:
       - "udp://tracker.internetwarriors.net:1337/announce"
     enabled: false
     client: qbittorrent
-    base-url: "http://qbittorrent:8090"
+    base-url: "http://qbittorrent:8080"
     connect-timeout: 5s
-    request-timeout: 10s
+    request-timeout: 60s
     max-response-size: ${EPLSYNC_TORRENT_MAX_RESPONSE_SIZE:256MB}
     max-remote-torrents: ${EPLSYNC_TORRENT_MAX_REMOTE_TORRENTS:500000}
 
     # Temporizador provisional; el ejecutor de limpieza es independiente de su programación.
     cleanup:
       enabled: ${EPLSYNC_TORRENT_CLEANUP_ENABLED:true}
-      interval: ${EPLSYNC_TORRENT_CLEANUP_INTERVAL:30s}
+      interval: ${EPLSYNC_TORRENT_CLEANUP_INTERVAL:60s}
       batch-size: ${EPLSYNC_TORRENT_CLEANUP_BATCH_SIZE:100}
 
     bulk:
