@@ -238,3 +238,11 @@ CREATE UNIQUE INDEX uk_download_identity ON torrent_downloads(client_instance_id
 CREATE UNIQUE INDEX uq_cleanup_job_download ON torrent_update_cleanup(job_id, download_id);
 
 CREATE UNIQUE INDEX uq_bulk_item_job_position ON torrent_bulk_items(job_id, position);
+
+-- Home sections and minute-level insertion ordering avoid sorting the whole catalogue.
+CREATE INDEX idx_catalog_publication ON catalog_books (publication_status, publication_date DESC, epl_id DESC);
+CREATE INDEX idx_catalog_insert_minute ON catalog_books (
+    cast((insert_date - ((insert_date % 60000 + 60000) % 60000)) / 60000 as integer) DESC, epl_id ASC
+);
+-- Revision-update anti-join searches by book, independently of the submission job.
+CREATE INDEX idx_bulk_item_update_book ON torrent_bulk_items (epl_id, state, job_id);

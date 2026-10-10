@@ -41,6 +41,20 @@ class DatabaseMigrationTests {
         assertEquals("preserved", jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='sample'", String.class));
         assertThrows(FlywayException.class, migration::clean);
     }
+    @Test void catalogueOrderingAndRevisionLookupsUseTheirIndexes() {
+        flyway("classpath:db/migration").migrate();
+        var jdbc=jdbc();
+        for (String sql : java.util.List.of(
+                "SELECT epl_id FROM catalog_books WHERE publication_status='PUBLISHED' ORDER BY publication_date DESC,epl_id DESC LIMIT 50",
+                "SELECT epl_id FROM catalog_books ORDER BY cast((insert_date - ((insert_date % 60000 + 60000) % 60000)) / 60000 as integer) DESC,epl_id ASC LIMIT 50")) {
+            String plan=jdbc.queryForList("EXPLAIN QUERY PLAN "+sql).toString();
+            assertTrue(plan.contains("idx_catalog_"), plan);
+            assertFalse(plan.contains("TEMP B-TREE"), plan);
+        }
+        String plan=jdbc.queryForList("EXPLAIN QUERY PLAN SELECT id FROM torrent_bulk_items WHERE epl_id=1 AND state IN ('PENDING','IN_FLIGHT')").toString();
+        assertTrue(plan.contains("SEARCH torrent_bulk_items USING INDEX idx_bulk_item_update_book"), plan);
+    }
+
     @Test void jobItemsAndPlansRequireExistingJobsAndUniquePositionsWithoutCascades() {
         flyway("classpath:db/migration").migrate();
         var jdbc=jdbc();

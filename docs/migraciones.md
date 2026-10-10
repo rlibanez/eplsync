@@ -148,3 +148,8 @@ Antes de publicar el esquema se ha consolidado esta revisión en
 las bases experimentales previas deben recrearse y Flyway sigue rechazando
 checksums distintos. No se añade una migración ni se intenta convertir esas bases.
 Después de publicar, la migración inicial será inmutable.
+
+La revisión de rendimiento añade también índices para publicación, ordenación
+por minuto de incorporación y búsqueda de elementos de trabajos por libro dentro
+del esquema inicial. Mediciones, costes y reproducción:
+[rendimiento de SQLite](rendimiento-base-datos.md).
