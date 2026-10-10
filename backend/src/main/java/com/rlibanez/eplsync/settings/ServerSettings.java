@@ -212,8 +212,18 @@ public class ServerSettings {
         }
         tx.executeWithoutResult(status -> {
             jdbc.execute("PRAGMA secure_delete=ON");
-            jdbc.update("delete from app_settings");
-            stored.forEach((key, value) -> jdbc.update("insert into app_settings(setting_key,setting_value) values (?,?)", key, JSON.writeValueAsString(value)));
+            // app_settings is shared: only this component's explicit keys belong to this snapshot.
+            var ownedKeys = new LinkedHashSet<>(installation.keySet());
+            ownedKeys.add(DESTINATION);
+            for (String key : ownedKeys) {
+                if (stored.containsKey(key)) {
+                    jdbc.update("insert into app_settings(setting_key,setting_value) values (?,?) "
+                            + "on conflict(setting_key) do update set setting_value=excluded.setting_value",
+                            key, JSON.writeValueAsString(stored.get(key)));
+                } else {
+                    jdbc.update("delete from app_settings where setting_key=?", key);
+                }
+            }
         });
         overrides = Map.copyOf(next); current = candidate;
     }

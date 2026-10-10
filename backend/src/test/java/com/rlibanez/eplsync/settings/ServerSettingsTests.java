@@ -31,6 +31,33 @@ class ServerSettingsTests {
     @Autowired Environment env;
     @Autowired PlatformTransactionManager manager;
     @AfterEach void restore() { for (String section : new String[]{"torrent","covers","catalog","events"}) settings.restore(section); }
+    @Test void savingRestoringAndReloadingPreserveOtherComponentsSettings() {
+        var updates = new com.rlibanez.eplsync.updates.ApplicationUpdateSettings(jdbc, true);
+        updates.save(new com.rlibanez.eplsync.updates.ApplicationUpdateSettings.Settings(false));
+        // Future components may use their own format and even a similar key prefix.
+        Map<String,String> foreign = Map.of("application.updates.automatic", "false",
+                "future.component.options", "opaque value", "torrent.future-component.option", "untouched");
+        foreign.forEach((key,value) -> jdbc.update("insert into app_settings values (?,?) "
+                + "on conflict(setting_key) do update set setting_value=excluded.setting_value",key,value));
+        try {
+            settings.save("events", Map.of("events.retention.max-count", 50));
+            assertThat(settings.snapshot().events().getRetention().getMaxCount()).isEqualTo(50);
+            assertForeignSettings(foreign);
+            settings.restore("events");
+            assertThat(jdbc.queryForList("select setting_value from app_settings where setting_key='events.retention.max-count'",String.class)).isEmpty();
+            assertForeignSettings(foreign);
+            var reloaded = reload(TEST_KEY);
+            reloaded.save("events", Map.of("events.retention.max-count", 60));
+            assertForeignSettings(foreign);
+            assertThat(new com.rlibanez.eplsync.updates.ApplicationUpdateSettings(jdbc,true).automatic()).isFalse();
+        } finally {
+            foreign.keySet().forEach(key -> jdbc.update("delete from app_settings where setting_key=?",key));
+        }
+    }
+    private void assertForeignSettings(Map<String,String> expected) {
+        expected.forEach((key,value) -> assertThat(jdbc.queryForObject(
+                "select setting_value from app_settings where setting_key=?",String.class,key)).isEqualTo(value));
+    }
     private static final String TEST_KEY="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
     private ServerSettings reload(String key) {
         var environment=new org.springframework.mock.env.MockEnvironment()
