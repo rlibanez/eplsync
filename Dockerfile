@@ -11,7 +11,7 @@ RUN npm run build
 
 FROM eclipse-temurin:25-jdk-noble AS build
 
-ARG VERSION=0.0.1
+ARG VERSION=1.0.0-rc.1
 ARG REVISION=unknown
 
 WORKDIR /build
@@ -33,7 +33,7 @@ RUN --mount=type=cache,target=/root/.m2 \
 
 FROM eclipse-temurin:25-jre-noble AS runtime
 
-ARG VERSION=0.0.1
+ARG VERSION=1.0.0-rc.1
 ARG REVISION=unknown
 
 LABEL org.opencontainers.image.title="EPL Sync" \

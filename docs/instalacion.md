@@ -207,7 +207,7 @@ construcción local, el comando con `REVISION=$(git rev-parse HEAD)` indicado ar
 incorpora el commit; si se omite, se muestra únicamente la versión.
 
 Los administradores pueden comprobar nuevas versiones estables publicadas en
-GitHub y abrir sus notas. Se aceptan etiquetas `v0.0.1` o `0.0.1`; no se anuncian
+GitHub y abrir sus notas. Se aceptan etiquetas estables como `v1.0.0` o `1.0.0`; no se anuncian
 versiones preliminares. La comprobación automática se realiza al iniciar y cada
 24 horas, y puede desactivarse en Acerca de. Su valor inicial procede de
 `EPLSYNC_UPDATE_CHECK_ENABLED` (por defecto `true`); los cambios de la interfaz
