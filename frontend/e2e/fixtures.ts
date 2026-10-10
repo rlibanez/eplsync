@@ -54,6 +54,15 @@ export const test = base.extend<{ eventTransport: void }>({
             })
           : route.fallback(),
       );
+      await context.route("**/api/home/summary", (route) =>
+        route.fulfill({
+          json: {
+            catalog: { total: 0, sourceModifiedAt: null },
+            downloads: { total: 0, byStatus: {} },
+            jobs: { byStatus: {} },
+          },
+        }),
+      );
       await context.route("**/api/application/version", (route) =>
         route.fulfill({
           json: {

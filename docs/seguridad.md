@@ -205,8 +205,9 @@ proyección mediante un cursor y se deduplica en una tabla temporal de SQLite;
 solo la página se materializa en Java. La tabla se elimina también ante fallos.
 Este recorrido sigue necesitando examinar los libros filtrados y ocupar la
 conexión durante la consulta. Las consultas y previsualizaciones costosas admiten como máximo cuatro solicitudes
-simultáneas por instalación. El exceso se rechaza con HTTP 429 y `Retry-After`,
-sin una cola adicional de trabajo.
+simultáneas por instalación, con hasta ocho lecturas GET en espera durante un máximo de dos segundos. Las solicitudes que modifican datos no esperan; el exceso de carga devuelve HTTP 429 y `Retry-After: 1`.
+
+La pantalla inicial agrupa sus contadores en `GET /api/home/summary`, con bloques independientes de catálogo, descargas y trabajos. Solo consulta y devuelve los bloques autorizados. Las listas de libros y eventos comparten una cola de lectura en el frontend, también reutilizable por futuras secciones, para evitar ráfagas al abrir Home. El resumen no se almacena en cachés HTTP y se invalida al recibir eventos de la aplicación.
 
 ### Exportaciones de magnets
 

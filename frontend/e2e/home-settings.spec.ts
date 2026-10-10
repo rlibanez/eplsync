@@ -18,11 +18,14 @@ test("home preferences support ordering, per-shelf counts, persistence and heade
       },
     });
   });
-  await page.route("**/api/torrent/downloads/summary", (r) =>
-    r.fulfill({ json: { total: 0, byStatus: {} } }),
-  );
-  await page.route("**/api/torrent/jobs?**", (r) =>
-    r.fulfill({ json: { items: [], meta: { totalItems: 0 } } }),
+  await page.route("**/api/home/summary", (r) =>
+    r.fulfill({
+      json: {
+        catalog: { total: 200, sourceModifiedAt: "2026-10-04T04:00:00" },
+        downloads: { total: 12, byStatus: { DOWNLOADED: 10, QUEUED: 2 } },
+        jobs: { byStatus: { RUNNING: 0 } },
+      },
+    }),
   );
   await page.route("**/api/events/operations?**", (r) => {
     const count = Number(new URL(r.request().url()).searchParams.get("size"));
@@ -177,6 +180,9 @@ test("home respects permissions even when all sections are enabled", async ({
   );
   await page.route("**/api/catalog/books?**", (r) =>
     r.fulfill({ json: { items: [], meta: { totalItems: 0 } } }),
+  );
+  await page.route("**/api/home/summary", (r) =>
+    r.fulfill({ json: { catalog: { total: 0, sourceModifiedAt: null } } }),
   );
   const requests: string[] = [];
   page.on("request", (r) => requests.push(r.url()));

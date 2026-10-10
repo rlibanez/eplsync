@@ -20,8 +20,7 @@ import { ActionIcon, Badge } from "@mantine/core";
 import { get, type BookPage } from "../../api/catalog";
 import { useLocale } from "../../locales/useLocale";
 import { BookCover } from "../catalog/BookCover";
-import { type Metadata } from "../maintenance/CatalogMetadata";
-import { type Page, type Job } from "../downloads/shared";
+import { homeReads } from "./homeReads";
 import { operationOutcome, type OperationPage } from "../events/eventTypes";
 import { Failure, Loading } from "../../components/Feedback";
 
@@ -52,12 +51,19 @@ export function Home() {
     });
   }
   const { date, status } = useLocale();
-  const books = useQuery({
-    queryKey: ["catalog", "home-total"],
-    enabled:
-      auth.can("CATALOG_READ") && (enabled("overview") || enabled("header")),
+  const summary = useQuery({
+    queryKey: ["home-summary"],
+    enabled: enabled("overview") || enabled("header"),
     queryFn: ({ signal }) =>
-      get<BookPage>("/catalog/books?page=0&size=1", signal),
+      homeReads.run(
+        () =>
+          get<{
+            catalog?: { total: number; sourceModifiedAt: string | null };
+            downloads?: { total: number; byStatus: Record<string, number> };
+            jobs?: { byStatus: Record<string, number> };
+          }>("/home/summary", signal),
+        signal,
+      ),
   });
   const recentBooks = useQueries({
     queries: bookSections.map((section) => ({
@@ -69,33 +75,14 @@ export function Home() {
       ],
       enabled: auth.can("CATALOG_READ") && enabled(section.title),
       queryFn: ({ signal }: { signal: AbortSignal }) =>
-        get<BookPage>(
-          `/catalog/books?page=0&size=${sectionConfig(section.title)?.bookCount ?? 10}&${bookSectionParams(section.status)}`,
+        homeReads.run(
+          () =>
+            get<BookPage>(
+              `/catalog/books?page=0&size=${sectionConfig(section.title)?.bookCount ?? 10}&${bookSectionParams(section.status)}`,
+              signal,
+            ),
           signal,
         ),
-    })),
-  });
-  const metadata = useQuery({
-    queryKey: ["catalog-metadata"],
-    enabled: auth.can("CATALOG_READ") && enabled("overview"),
-    queryFn: ({ signal }) =>
-      get<{ metadata: Metadata | null }>("/catalog/import/metadata", signal),
-  });
-  const downloads = useQuery({
-    queryKey: ["download-summary", ""],
-    enabled: auth.can("TORRENT_SYNC") && enabled("overview"),
-    queryFn: ({ signal }) =>
-      get<{ total: number; byStatus: Record<string, number> }>(
-        "/torrent/downloads/summary",
-        signal,
-      ),
-  });
-  const jobs = useQueries({
-    queries: activeStates.map((state) => ({
-      queryKey: ["jobs", "home", state],
-      enabled: auth.can("TORRENT_JOBS_MANAGE") && enabled("overview"),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        get<Page<Job>>(`/torrent/jobs?page=0&size=1&status=${state}`, signal),
     })),
   });
   const events = useQuery({
@@ -106,16 +93,18 @@ export function Home() {
     ],
     enabled: auth.can("EVENTS_MANAGE") && enabled("recentEvents"),
     queryFn: ({ signal }) =>
-      get<OperationPage>(
-        `/events/operations?page=0&size=${sectionConfig("recentEvents")?.eventCount ?? 10}`,
+      homeReads.run(
+        () =>
+          get<OperationPage>(
+            `/events/operations?page=0&size=${sectionConfig("recentEvents")?.eventCount ?? 10}`,
+            signal,
+          ),
         signal,
       ),
   });
-  const empty = books.data?.meta.totalItems === 0;
-  const jobError = jobs.find((query) => query.isError);
-  const jobsLoaded = jobs.every((query) => query.data);
-  const activeCount = jobs.reduce(
-    (total, query) => total + (query.data?.meta.totalItems ?? 0),
+  const empty = summary.data?.catalog?.total === 0;
+  const activeCount = activeStates.reduce(
+    (total, state) => total + (summary.data?.jobs?.byStatus[state] ?? 0),
     0,
   );
   if (preferences.isPending) return <Loading />;
@@ -179,26 +168,22 @@ export function Home() {
             <h2>{t("nav.catalog")}</h2>
             <ArrowRight size={16} />
           </Link>
-          {books.isPending ? (
+          {summary.isPending ? (
             <Loading />
-          ) : books.isError ? (
-            <Failure error={books.error} retry={() => books.refetch()} />
+          ) : summary.isError ? (
+            <Failure error={summary.error} retry={() => summary.refetch()} />
           ) : (
             <>
               <strong className="home-count">
-                {books.data.meta.totalItems}
+                {summary.data?.catalog?.total ?? 0}
               </strong>
               <span className="muted">{t("home.booksCount")}</span>
             </>
           )}
           <p className="muted home-small">
             {t("metadata.sourceModifiedAt")}:{" "}
-            {metadata.data?.metadata?.sourceModifiedAt?.replace("T", " ") ??
-              "—"}
+            {summary.data?.catalog?.sourceModifiedAt?.replace("T", " ") ?? "—"}
           </p>
-          {metadata.isError && (
-            <Failure error={metadata.error} retry={() => metadata.refetch()} />
-          )}
         </article>
       )}
       {auth.can("TORRENT_SYNC") && (
@@ -208,19 +193,18 @@ export function Home() {
             <h2>{t("nav.downloads")}</h2>
             <ArrowRight size={16} />
           </Link>
-          {downloads.isPending ? (
+          {summary.isPending ? (
             <Loading />
-          ) : downloads.isError ? (
-            <Failure
-              error={downloads.error}
-              retry={() => downloads.refetch()}
-            />
+          ) : summary.isError ? (
+            <Failure error={summary.error} retry={() => summary.refetch()} />
           ) : (
             <>
-              <strong className="home-count">{downloads.data.total}</strong>
+              <strong className="home-count">
+                {summary.data?.downloads?.total ?? 0}
+              </strong>
               <span className="muted">{t("home.downloadsCount")}</span>
               <div className="home-statuses">
-                {Object.entries(downloads.data.byStatus)
+                {Object.entries(summary.data?.downloads?.byStatus ?? {})
                   .filter(([, count]) => count > 0)
                   .map(([key, count]) => (
                     <span key={key}>
@@ -239,14 +223,9 @@ export function Home() {
             <h2>{t("nav.jobs")}</h2>
             <ArrowRight size={16} />
           </Link>
-          {jobError ? (
-            <Failure
-              error={jobError.error}
-              retry={() => {
-                jobs.forEach((query) => void query.refetch());
-              }}
-            />
-          ) : !jobsLoaded ? (
+          {summary.isError ? (
+            <Failure error={summary.error} retry={() => summary.refetch()} />
+          ) : summary.isPending ? (
             <Loading />
           ) : (
             <>
@@ -256,12 +235,12 @@ export function Home() {
                 <p className="muted home-small">{t("home.noJobs")}</p>
               ) : (
                 <div className="home-statuses">
-                  {jobs.map(
-                    (query, i) =>
-                      query.data!.meta.totalItems > 0 && (
-                        <span key={activeStates[i]}>
-                          {status(activeStates[i])}{" "}
-                          <b>{query.data!.meta.totalItems}</b>
+                  {activeStates.map(
+                    (state) =>
+                      (summary.data?.jobs?.byStatus[state] ?? 0) > 0 && (
+                        <span key={state}>
+                          {status(state)}{" "}
+                          <b>{summary.data?.jobs?.byStatus[state] ?? 0}</b>
                         </span>
                       ),
                   )}

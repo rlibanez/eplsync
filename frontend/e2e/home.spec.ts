@@ -29,20 +29,15 @@ async function setup(page: import("@playwright/test").Page, empty = false) {
       },
     }),
   );
-  await page.route("**/api/torrent/downloads/summary", (r) =>
-    r.fulfill({ json: { total: 12, byStatus: { DOWNLOADED: 10, QUEUED: 2 } } }),
-  );
-  await page.route("**/api/torrent/jobs?**", (r) =>
+  await page.route("**/api/home/summary", (r) =>
     r.fulfill({
       json: {
-        items: [],
-        meta: {
-          totalItems:
-            !empty &&
-            new URL(r.request().url()).searchParams.get("status") === "RUNNING"
-              ? 2
-              : 0,
+        catalog: {
+          total: empty ? 0 : 73726,
+          sourceModifiedAt: "2026-10-04T04:00:00",
         },
+        downloads: { total: 12, byStatus: { DOWNLOADED: 10, QUEUED: 2 } },
+        jobs: { byStatus: { RUNNING: empty ? 0 : 2 } },
       },
     }),
   );
@@ -131,7 +126,7 @@ test("a failed summary leaves the remaining home sections usable", async ({
   page,
 }) => {
   await setup(page);
-  await page.route("**/api/torrent/downloads/summary", (r) =>
+  await page.route("**/api/home/summary", (r) =>
     r.fulfill({ status: 503, json: {} }),
   );
   await page.goto("/");
