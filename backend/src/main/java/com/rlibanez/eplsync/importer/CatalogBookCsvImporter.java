@@ -8,6 +8,9 @@ import java.util.Objects;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.ArrayDeque;
+import java.util.Map;
+import java.util.HashMap;
 import com.rlibanez.eplsync.dto.ImportResult;
 import com.rlibanez.eplsync.dto.ImportPreviewResult;
 import com.rlibanez.eplsync.dto.ImportPreviewResult.BookUpdate;
@@ -146,16 +149,40 @@ public class CatalogBookCsvImporter {
                     })
                     .build();
             var it = parser.iterator();
+            var rows = new ArrayDeque<CatalogBookCsvRow>(BATCH_SIZE);
+            Map<Long, CatalogBook> existingBooks = Map.of();
 
             while (true) {
                 CatalogOperationBudget.check();
-                if (!it.hasNext()) break;
+                if (rows.isEmpty()) {
+                    // Flush before loading the next batch; managed entities remain available
+                    // throughout the current batch, including merges of updated books.
+                    if (!validateOnly) {
+                        if (!preview) repository.flush();
+                        em.clear();
+                    }
+                    while (rows.size() < BATCH_SIZE) {
+                        CatalogOperationBudget.check();
+                        if (!it.hasNext()) break;
+                        rows.addLast(it.next());
+                    }
+                    if (rows.isEmpty()) break;
+                    if (!validateOnly) {
+                        var ids = rows.stream().map(CatalogBookCsvRow::getEplId)
+                                .filter(id -> id != null && id > 0).distinct().toList();
+                        existingBooks = new HashMap<>();
+                        for (var book : repository.findAllById(ids)) {
+                            CatalogOperationBudget.check();
+                            existingBooks.put(book.getEplId(), book);
+                        }
+                    }
+                }
                 CatalogOperationBudget.check();
                 if (++rowNumber > CatalogImportLimits.RECORDS + 1)
                     throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV supera el máximo de 1000000 registros");
                 CatalogBookCsvRow row = null;
                 CatalogBook entity;
-                row = it.next(); // Los fallos de lectura abortan; los de conversión los captura OpenCSV.
+                row = rows.removeFirst(); // Los fallos de lectura abortan; los de conversión los captura OpenCSV.
                 try {
                     CatalogBookValidation.validate(row);
                     var pub = PublicationFieldParser.parse(row.getPublishedRaw());
@@ -206,7 +233,7 @@ public class CatalogBookCsvImporter {
 
                 // Los errores de persistencia abortan la transacción: no se cuentan como filas omitidas.
                 CatalogOperationBudget.check();
-                CatalogBook existing = repository.findById(entity.getEplId()).orElse(null);
+                CatalogBook existing = existingBooks.get(entity.getEplId());
                 if (existing == null) {
                     if (!preview) {
                         em.persist(entity);
@@ -233,12 +260,6 @@ public class CatalogBookCsvImporter {
                     }
                 }
                 processed++;
-                if (processed % BATCH_SIZE == 0) {
-                    if (!preview) {
-                        repository.flush();
-                    }
-                    em.clear();
-                }
                 if (processed % PROGRESS_EVERY == 0) {
                     log.info("Progreso importación: {} filas OK, {} errores", processed, errors);
                 }

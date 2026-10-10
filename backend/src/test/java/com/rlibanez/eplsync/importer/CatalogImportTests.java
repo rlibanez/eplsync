@@ -18,7 +18,9 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:sqlite::memory:",
         "spring.jpa.hibernate.ddl-auto=validate",
-        "spring.flyway.enabled=true"
+        "spring.flyway.enabled=true",
+        "spring.jpa.properties.hibernate.generate_statistics=true",
+        "logging.level.org.hibernate.engine.internal.StatisticalLoggingSessionEventListener=OFF"
 })
 class CatalogImportTests {
     @org.junit.jupiter.api.io.TempDir static java.nio.file.Path walDatabaseDirectory;
@@ -192,6 +194,48 @@ class CatalogImportTests {
         assertThat(importer.importFile(file, false))
                 .isEqualTo(new CatalogBookCsvImporter.ImportStats(1001, 0, 0, 0, 1001, 0L));
         assertThat(repository.findById(1001L).orElseThrow().getLastModifiedDate()).isNull();
+    }
+
+    @Autowired jakarta.persistence.EntityManagerFactory entityManagerFactory;
+
+    @Test void batchesLookupsAndKeepsValidationAndDuplicatesAcrossBoundaries() throws Exception {
+        StringBuilder rows = new StringBuilder();
+        for (int id=1; id<=2100; id++) rows.append(id).append(",1,Autor,Libro\n");
+        var source=csv(rows.toString());
+        importer.importFile(source,true);
+        var statistics=entityManagerFactory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        statistics.clear();
+        assertThat(importer.importFile(source,false).unchanged()).isEqualTo(2100);
+        // Three bounded lookups plus the missing-book projection, rather than one SELECT per row.
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(4);
+        rows.append("1,2,Autor,Duplicado\n2101,1,   ,Inválido\n2102,1,Autor,Nuevo\n");
+        source=csv(rows.toString());
+        var preview=importer.previewFile(source,0,50);
+        assertThat(preview.summary().errors()).isEqualTo(2);
+        assertThat(preview.summary().recordsUnchanged()).isEqualTo(2100);
+        assertThat(preview.createdBooks()).extracting("eplId").containsExactly(2102L);
+        var result=importer.importFile(source,false);
+        assertThat(result.errors()).isEqualTo(2);
+        assertThat(result.created()).isEqualTo(1);
+        assertThat(repository.findById(1L).orElseThrow().getRevision()).isEqualTo(1);
+    }
+
+    @Test void failureAfterAFlushedBatchRollsBackEarlierUpdatesAndReplacement() throws Exception {
+        StringBuilder original=new StringBuilder(), changed=new StringBuilder();
+        for(int id=1;id<=1001;id++) {
+            original.append(id).append(",1,Autor,Original\n");
+            changed.append(id).append(",2,Autor,Cambiado\n");
+        }
+        importer.importFile(csv(original.toString()),true);
+        jdbc.execute("CREATE TRIGGER fail_second_insert BEFORE UPDATE ON catalog_books WHEN NEW.epl_id=1001 BEGIN SELECT RAISE(ABORT, 'Persistence failure'); END");
+        var update=csv(changed.toString());
+        assertThatThrownBy(()->importer.importFile(update,false)).isInstanceOf(RuntimeException.class);
+        assertThat(repository.findById(1L).orElseThrow().getRevision()).isEqualTo(1);
+        jdbc.execute("DROP TRIGGER fail_second_insert");
+        jdbc.execute("CREATE TRIGGER fail_second_insert BEFORE INSERT ON catalog_books WHEN NEW.epl_id=1001 BEGIN SELECT RAISE(ABORT, 'Persistence failure'); END");
+        assertThatThrownBy(()->importer.importFile(update,true)).isInstanceOf(RuntimeException.class);
+        assertThat(repository.count()).isEqualTo(1001);
+        assertThat(repository.findById(1L).orElseThrow().getTitle()).isEqualTo("Original");
     }
 
     @Test
