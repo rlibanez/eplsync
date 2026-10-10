@@ -37,6 +37,9 @@ test("about shows build identity, checks stable releases and saves automatic che
   await expect(
     page.getByText("Versión 0.0.1 (0ef2d7b)", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Notas de la versión", exact: false }).first(),
+  ).toHaveAttribute("href", "https://github.com/rlibanez/eplsync/releases/tag/v0.0.1");
   await page
     .getByRole("button", { name: "Comprobar actualizaciones", exact: true })
     .click();

@@ -15,7 +15,10 @@ public class ApplicationVersion {
         String commit=build==null ? null : build.get("commit");
         if(commit==null || !commit.matches("[a-fA-F0-9]{7,40}")) commit=null;
         else commit=commit.substring(0,7).toLowerCase(java.util.Locale.ROOT);
-        info=new Info(version,commit,"https://github.com/rlibanez/eplsync/releases");
+        String releasesUrl="https://github.com/rlibanez/eplsync/releases";
+        if (version.matches("v?\\d+\\.\\d+\\.\\d+(?:-[A-Za-z0-9.-]+)?") && !version.endsWith("-SNAPSHOT"))
+            releasesUrl += "/tag/v" + version.replaceFirst("^v", "");
+        info=new Info(version,commit,releasesUrl);
     }
     public Info get() {return info;}
 }

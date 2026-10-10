@@ -33,9 +33,20 @@ class ApplicationUpdatesTests {
         properties.setProperty("commit","0ef2d7b"+"a".repeat(33));
         var factory=new DefaultListableBeanFactory();factory.registerSingleton("build",new BuildProperties(properties));
         var info=new ApplicationVersion(factory.getBeanProvider(BuildProperties.class)).get();
+        assertThat(info.releasesUrl()).isEqualTo("https://github.com/rlibanez/eplsync/releases/tag/v1.2.3");
         assertThat(info.version()).isEqualTo("1.2.3");assertThat(info.commit()).isEqualTo("0ef2d7b");
         var empty=new ApplicationVersion(new DefaultListableBeanFactory().getBeanProvider(BuildProperties.class)).get();
         assertThat(empty.version()).isEqualTo("unknown");assertThat(empty.commit()).isNull();
+    }
+    @Test void releaseNotesFollowInstalledVersionWithFallbackForDevelopmentBuilds() {
+        for(String value:java.util.List.of("1.0.0-rc.2","v1.0.0-rc.2","1.0.0","1.0.0-SNAPSHOT","unknown")) {
+            var properties=new Properties();properties.setProperty("version",value);
+            var factory=new DefaultListableBeanFactory();factory.registerSingleton("build",new BuildProperties(properties));
+            var info=new ApplicationVersion(factory.getBeanProvider(BuildProperties.class)).get();
+            String expected="https://github.com/rlibanez/eplsync/releases";
+            if(!value.equals("unknown") && !value.endsWith("-SNAPSHOT")) expected+="/tag/v"+value.replaceFirst("^v", "");
+            assertThat(info.releasesUrl()).isEqualTo(expected);
+        }
     }
     @Test void cachedGetDoesNotContactGitHubAndAutomaticCanBeDisabled() throws Exception {
         var service=service();assertThat(service.status().state()).isEqualTo("NOT_CHECKED");service.check(true);

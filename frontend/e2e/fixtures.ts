@@ -68,7 +68,7 @@ export const test = base.extend<{ eventTransport: void }>({
           json: {
             version: "0.0.1",
             commit: "0ef2d7b",
-            releasesUrl: "https://github.com/rlibanez/eplsync/releases",
+            releasesUrl: "https://github.com/rlibanez/eplsync/releases/tag/v0.0.1",
           },
         }),
       );

@@ -64,7 +64,7 @@ export function About() {
         )}
         <a
           className="back-link"
-          href="https://github.com/rlibanez/eplsync/releases"
+          href={version.data?.releasesUrl ?? "https://github.com/rlibanez/eplsync/releases"}
           target="_blank"
           rel="noopener noreferrer"
         >
