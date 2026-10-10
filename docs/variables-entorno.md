@@ -24,6 +24,7 @@ No hay variables obligatorias para arrancar la aplicación y utilizar el catálo
 | `EPLSYNC_SECRET_KEY` | Necesaria para guardar contraseñas/API keys de qBittorrent en SQLite. Base64 estándar de 32 bytes (44 caracteres). Generar con `openssl rand -base64 32`; conservar y no cambiar si hay credenciales guardadas. Ambos Compose la transmiten. | Vacío |
 | `PUID` | UID del usuario del contenedor; se aplica al ejecutarlo. Debe poder escribir en los montajes. | `1000` |
 | `PGID` | GID del usuario del contenedor; se aplica al ejecutarlo. | `1000` |
+| `EPLSYNC_UPDATE_CHECK_ENABLED` | Valor inicial de la comprobación automática de versiones estables en GitHub. La opción guardada por un administrador en Acerca de tiene prioridad. No instala actualizaciones. | `true` |
 | `TZ` | Zona horaria del contenedor. | `Europe/Madrid` |
 | `HOST_PORT` | Puerto publicado en el host; el puerto interno sigue siendo 8088. | `8088` |
 | `HOST_BIND` | IP del host donde se publica el puerto. Loopback limita el acceso al propio servidor; una IP LAN permite esa interfaz; 0.0.0.0 publica en todas. | `127.0.0.1` |

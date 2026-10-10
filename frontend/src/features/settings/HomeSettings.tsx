@@ -44,7 +44,7 @@ function HomeSettingsForm({ initial }: { initial: HomePreferences }) {
   return (
     <section className="panel settings-section">
       <h2>{t("homeSettings.sections")}</h2>
-      <p className="muted">{t("homeSettings.help")}</p>
+      <p>{t("homeSettings.help")}</p>
       <form
         onSubmit={(event) => {
           event.preventDefault();

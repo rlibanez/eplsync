@@ -40,6 +40,29 @@ export const test = base.extend<{ eventTransport: void }>({
           });
         },
       );
+      await context.route("**/api/application/updates", (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({
+              json: {
+                automatic: false,
+                state: "NOT_CHECKED",
+                latestVersion: null,
+                releaseUrl: null,
+                checkedAt: null,
+                checking: false,
+              },
+            })
+          : route.fallback(),
+      );
+      await context.route("**/api/application/version", (route) =>
+        route.fulfill({
+          json: {
+            version: "0.0.1",
+            commit: "0ef2d7b",
+            releasesUrl: "https://github.com/rlibanez/eplsync/releases",
+          },
+        }),
+      );
       await context.route("**/api/auth/status", (route) => {
         if (route.request().method() !== "GET") return route.fallback();
         return route.fulfill({

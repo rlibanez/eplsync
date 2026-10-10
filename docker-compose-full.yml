@@ -12,6 +12,7 @@ services:
     environment:
       # General
       TZ: "${TZ:-Europe/Madrid}"
+      EPLSYNC_UPDATE_CHECK_ENABLED: "${EPLSYNC_UPDATE_CHECK_ENABLED:-true}"
 
       # Seguridad
       EPLSYNC_INITIAL_ADMIN_KEY: "${EPLSYNC_INITIAL_ADMIN_KEY:-}"

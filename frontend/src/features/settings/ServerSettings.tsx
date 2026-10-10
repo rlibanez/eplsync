@@ -60,7 +60,7 @@ export function ServerSettings({
   return (
     <section className="panel settings-section">
       <h2>{t(`serverSettings.sections.${section}`)}</h2>
-      <p className="muted">{t("serverSettings.description")}</p>
+      <p>{t("serverSettings.description")}</p>
       {result.isPending ? (
         <Loading />
       ) : result.isError ? (

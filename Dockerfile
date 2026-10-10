@@ -11,6 +11,9 @@ RUN npm run build
 
 FROM eclipse-temurin:25-jdk-noble AS build
 
+ARG VERSION=0.0.1
+ARG REVISION=unknown
+
 WORKDIR /build
 
 COPY backend/.mvn/ .mvn/
@@ -24,14 +27,14 @@ COPY backend/src/ src/
 COPY --from=frontend /frontend/dist/ src/main/resources/static/
 
 RUN --mount=type=cache,target=/root/.m2 \
-    ./mvnw -B -ntp -Dmaven.test.skip=true package \
+    ./mvnw -B -ntp -Dmaven.test.skip=true -Deplsync.build.version="${VERSION}" -Deplsync.build.commit="${REVISION}" package \
     && cp target/eplsync-*.jar /build/app.jar
 
 
 FROM eclipse-temurin:25-jre-noble AS runtime
 
 ARG VERSION=0.0.1
-ARG REVISION
+ARG REVISION=unknown
 
 LABEL org.opencontainers.image.title="EPL Sync" \
       org.opencontainers.image.description="Aplicación para gestionar el catálogo de ePubLibre y las descargas mediante un cliente torrent." \

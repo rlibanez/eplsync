@@ -197,3 +197,24 @@ y sus copias de seguridad; no se cifran por esta funcionalidad.
 El reinicio conserva las cuentas y `app_settings` por defecto. La opción de borrar
 usuarios y toda la configuración elimina también esos datos y recupera los valores de instalación. La retención de eventos se aplica en la limpieza automática
 por lotes cada minuto; la conservación de un ZIP se fija cuando se descarga o carga.
+
+## Versión instalada y actualizaciones
+
+Ajustes > Acerca de muestra la versión instalada y el identificador corto del commit,
+cuando está disponible. La imagen incorpora los argumentos de construcción `VERSION`
+y `REVISION` en los metadatos del backend, además de las etiquetas OCI. En una
+construcción local, el comando con `REVISION=$(git rev-parse HEAD)` indicado arriba
+incorpora el commit; si se omite, se muestra únicamente la versión.
+
+Los administradores pueden comprobar nuevas versiones estables publicadas en
+GitHub y abrir sus notas. Se aceptan etiquetas `v0.0.1` o `0.0.1`; no se anuncian
+versiones preliminares. La comprobación automática se realiza al iniciar y cada
+24 horas, y puede desactivarse en Acerca de. Su valor inicial procede de
+`EPLSYNC_UPDATE_CHECK_ENABLED` (por defecto `true`); los cambios de la interfaz
+se guardan en la base de datos. La comprobación manual reutiliza el resultado
+durante un minuto para evitar consultas repetidas.
+
+La consulta envía a GitHub únicamente una solicitud de la última versión pública.
+Un fallo de conexión no impide usar EPL Sync. Los avisos se muestran a administradores
+y no instalan actualizaciones: la imagen se actualiza mediante el procedimiento
+habitual de la instalación.

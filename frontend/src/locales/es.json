@@ -454,7 +454,7 @@
     "empty": "No hay resultados.",
     "refresh": "Actualizar vista",
     "report": "Informe del trabajo",
-    "jobNote": "Estos trabajos controlan los envíos de EPL Sync. Un envío aceptado no implica una descarga terminada. Pausar o cancelar un trabajo no detiene torrents ya enviados.",
+    "jobNote": "Controlan los envíos de EPL Sync. Un envío aceptado no implica una descarga terminada. Pausar o cancelar un trabajo no detiene torrents ya enviados.",
     "job": "Trabajo",
     "progress": "Progreso de envío",
     "selectedBooks": "Libros seleccionados",
@@ -1299,5 +1299,27 @@
   },
   "common": {
     "close": "Cerrar"
+  },
+  "applicationVersion": {
+    "installed": "Versión instalada",
+    "version": "Versión {{version}}",
+    "releaseNotes": "Notas de la versión",
+    "updates": "Actualizaciones",
+    "links": "Enlaces",
+    "automatic": "Comprobar actualizaciones automáticamente",
+    "automaticHelp": "Consulta GitHub al arrancar y cada 24 horas. Solo comprueba versiones estables; no instala actualizaciones.",
+    "check": "Comprobar actualizaciones",
+    "checkHelp": "El resultado de una comprobación manual se conserva durante un minuto.",
+    "checkedAt": "Última comprobación: {{date}}",
+    "updateTitle": "Actualización de EPL Sync",
+    "available": "EPL Sync {{version}} está disponible.",
+    "states": {
+      "NOT_CHECKED": "Todavía no se han comprobado las actualizaciones.",
+      "AVAILABLE": "Hay una nueva versión disponible.",
+      "UP_TO_DATE": "No hay una versión estable más reciente.",
+      "NO_RELEASE": "Todavía no hay versiones estables publicadas en GitHub.",
+      "UNKNOWN_VERSION": "No se conoce la versión instalada; no se puede comparar con la última publicación.",
+      "UNAVAILABLE": "No se pudo comprobar la última versión. Inténtalo de nuevo más tarde."
+    }
   }
 }

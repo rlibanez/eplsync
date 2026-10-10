@@ -1,3 +1,4 @@
+import { ApplicationUpdateNotice } from "../features/settings/applicationUpdates";
 import { useAuth } from "../features/auth/Auth";
 import { RouteAccess } from "../features/auth/RouteAccess";
 import { useUnreadEvents } from "../features/events/useUnreadEvents";
@@ -241,15 +242,13 @@ function ShellContent() {
                 <AccountMenu.Item
                   leftSection={<LogOut size={16} />}
                   onClick={() =>
-                    void auth
-                      .logout()
-                      .catch(() =>
-                        notify({
-                          title: t("auth.logout"),
-                          message: t("auth.unavailable"),
-                          tone: "error",
-                        }),
-                      )
+                    void auth.logout().catch(() =>
+                      notify({
+                        title: t("auth.logout"),
+                        message: t("auth.unavailable"),
+                        tone: "error",
+                      }),
+                    )
                   }
                 >
                   {t("auth.logout")}
@@ -284,6 +283,7 @@ function ShellContent() {
         {auth.can("EVENTS_MANAGE") && <EventConnection />}
         <TorrentActivity />
         {auth.can("COVERS_MANAGE") && <CoverActivity />}
+        {auth.user?.role === "ADMIN" && <ApplicationUpdateNotice />}
         <RouteAccess>
           <Outlet />
         </RouteAccess>

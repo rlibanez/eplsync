@@ -96,6 +96,8 @@ logging:
 # los ajustes guardados desde la interfaz tienen prioridad.
 # Restaurar valores de instalación elimina las personalizaciones del apartado.
 eplsync:
+  updates:
+    automatic: ${EPLSYNC_UPDATE_CHECK_ENABLED:true}
   security:
     # Opcional: autoriza la creación del primer administrador. Generar: openssl rand -hex 16
     initial-admin-key: ${EPLSYNC_INITIAL_ADMIN_KEY:}

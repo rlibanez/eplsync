@@ -73,7 +73,7 @@ function CoverSettingsForm({ defaults }: { defaults: CoverOptions }) {
     <section className="panel settings-section">
       <h2>{t("covers.title")}</h2>
       <p>{t("covers.description")}</p>
-      <p className="muted">{t("covers.parametersNote")}</p>
+      <p>{t("covers.parametersNote")}</p>
       <form
         onSubmit={(event) => {
           event.preventDefault();

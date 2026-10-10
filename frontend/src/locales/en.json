@@ -1299,5 +1299,27 @@
   },
   "common": {
     "close": "Close"
+  },
+  "applicationVersion": {
+    "installed": "Installed version",
+    "version": "Version {{version}}",
+    "releaseNotes": "Release notes",
+    "updates": "Updates",
+    "links": "Links",
+    "automatic": "Check for updates automatically",
+    "automaticHelp": "Checks GitHub at startup and every 24 hours. Only checks stable releases; does not install updates.",
+    "check": "Check for updates",
+    "checkHelp": "Manual check results are cached for one minute.",
+    "checkedAt": "Last checked: {{date}}",
+    "updateTitle": "EPL Sync update",
+    "available": "EPL Sync {{version}} is available.",
+    "states": {
+      "NOT_CHECKED": "Updates have not been checked yet.",
+      "AVAILABLE": "A new version is available.",
+      "UP_TO_DATE": "There is no newer stable release.",
+      "NO_RELEASE": "No stable releases have been published on GitHub yet.",
+      "UNKNOWN_VERSION": "The installed version is unknown and cannot be compared with the latest release.",
+      "UNAVAILABLE": "Could not check the latest release. Try again later."
+    }
   }
 }

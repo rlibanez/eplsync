@@ -2001,3 +2001,27 @@ summary {
 .mobile-brand { display: flex; align-items: center; gap: 10px; }
 .mobile-brand svg, .auth-setup-title svg { color: var(--accent); flex-shrink: 0; }
 .auth-setup-title { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+/* About panels use consistent gaps instead of paragraph and navigation margins. */
+.about-section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.about-section h2,
+.about-section p,
+.about-section .back-link {
+  margin: 0;
+}
+.about-section p {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.about-section .action-row {
+  margin-top: 4px;
+}
+.about-link-group {
+  display: grid;
+  gap: 6px;
+}
