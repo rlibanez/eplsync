@@ -33,6 +33,7 @@ public class SessionAccess {
         context.setAuthentication(org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(a,null,authorities));
         SecurityContextHolder.setContext(context);
         new HttpSessionSecurityContextRepository().saveContext(context,request,response);
+        AuthenticationLog.login(a,request.getRemoteAddr());
     }
     public void logout(HttpServletRequest request) {
         var session=request.getSession(false); if(session!=null) session.invalidate(); SecurityContextHolder.clearContext();

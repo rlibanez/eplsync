@@ -50,10 +50,18 @@ public class AuthController {
         public Login { if (username != null) username = username.strip(); }
     }
     @PostMapping("/login") public Account login(@Valid @RequestBody Login input,HttpServletRequest request,HttpServletResponse response) {
-        throttle.check("login:"+request.getRemoteAddr(),30);
-        throttle.check("account:"+input.username().toLowerCase(Locale.ROOT),10);
+        try {
+            throttle.check("login:"+request.getRemoteAddr(),30);
+            throttle.check("account:"+input.username().toLowerCase(Locale.ROOT),10);
+        } catch (ResponseStatusException ex) {
+            AuthenticationLog.rejected(true,request.getRemoteAddr());
+            throw ex;
+        }
         var account=accounts.authenticate(input.username(),input.password());
-        if(account==null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Usuario o contraseña incorrectos, cuenta no activa o contraseña temporal caducada");
+        if(account==null) {
+            AuthenticationLog.rejected(false,request.getRemoteAddr());
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Usuario o contraseña incorrectos, cuenta no activa o contraseña temporal caducada");
+        }
         sessions.login(request,response,account);return account;
     }
     public record Register(@NotBlank String username,@NotBlank @jakarta.validation.constraints.Email String email,@NotBlank @Size(max=256) String password) {}
@@ -64,7 +72,7 @@ public class AuthController {
     }
     @GetMapping("/me") @PreAuthorize("isAuthenticated()") public Account me() { var previous=sessions.current(); var a=accounts.find(previous.id());
         return new Account(a.id(),a.username(),a.email(),a.role(),a.status(),a.mustChangePassword(),a.temporaryExpiresAt(),a.securityVersion(),a.permissions(),previous.authenticatedAt()); }
-    @PostMapping("/logout") @PreAuthorize("isAuthenticated()") public Map<String,Boolean> logout(HttpServletRequest request) { sessions.logout(request);return Map.of("success",true); }
+    @PostMapping("/logout") @PreAuthorize("isAuthenticated()") public Map<String,Boolean> logout(HttpServletRequest request) { var account=sessions.current();sessions.logout(request);AuthenticationLog.logout(account);return Map.of("success",true); }
     public record Password(@NotBlank @Size(max=256) String currentPassword,@NotBlank @Size(max=256) String newPassword) {}
     @PostMapping("/password") @PreAuthorize("isAuthenticated()") public Map<String,Boolean> password(@Valid @RequestBody Password input,HttpServletRequest request) {
         throttle.check("password:"+sessions.current().id(),10);

@@ -162,6 +162,7 @@ public class AccountStore {
         jdbc.update("UPDATE users SET password_hash=?,must_change_password=1,temporary_password_expires_at=?,security_version=security_version+1,updated_at=? WHERE id=?",
             encoder.encode(secret),expiry.toString(),Instant.now().toString(),id);
         audit("USER_PASSWORD_RESET",id,a.username(),null);
+        AuthenticationLog.invalidated(a,"PASSWORD_RESET");
         return new Temporary(view(id),secret,expiry);
     }
     @Transactional public void changePassword(Account actor,String oldPassword,String newPassword) {
@@ -173,6 +174,7 @@ public class AccountStore {
         int changed=jdbc.update("UPDATE users SET password_hash=?,must_change_password=0,temporary_password_expires_at=NULL,password_changed_at=?,updated_at=?,security_version=security_version+1 WHERE id=? AND security_version=?",
             encoder.encode(newPassword),Instant.now().toString(),Instant.now().toString(),actor.id(),actor.securityVersion());
         if(changed!=1) throw new org.springframework.security.access.AccessDeniedException("La cuenta ha cambiado");
+        AuthenticationLog.invalidated(actor,"PASSWORD_CHANGED");
     }
     @Transactional public void email(Account actor,String email) {
         lockMutations();
@@ -194,6 +196,7 @@ public class AccountStore {
         jdbc.update("DELETE FROM user_permission_overrides WHERE user_id=?",id);
         overrides.forEach((key,value)->jdbc.update("INSERT INTO user_permission_overrides(user_id,permission,effect) VALUES(?,?,?)",id,key,value));
         audit("USER_UPDATE",id,previous.username(),actor);
+        AuthenticationLog.invalidated(previous,!status.equals(previous.status()) ? "ACCOUNT_STATUS_CHANGED" : "PRIVILEGES_UPDATED");
     }
     @Transactional public void approve(String id,String actor) {
         lockMutations();
@@ -212,6 +215,7 @@ public class AccountStore {
         jdbc.update("DELETE FROM user_permission_overrides WHERE user_id=?",id);
         jdbc.update("DELETE FROM users WHERE id=?",id);
         audit("USER_DELETE",id,user.username(),null);
+        AuthenticationLog.invalidated(user,"ACCOUNT_DELETED");
     }
     public List<UserView> users() { return jdbc.queryForList("SELECT id FROM users ORDER BY username_normalized",String.class).stream().map(this::view).toList(); }
     public UserView view(String id) {
@@ -226,6 +230,7 @@ public class AccountStore {
     public void clear() {
         jdbc.update("DELETE FROM user_permission_overrides"); jdbc.update("DELETE FROM users");
         jdbc.update("UPDATE security_policy SET registration_enabled=0,approval_required=1,idle_minutes=30,maximum_hours=12,password_minimum_length=? WHERE id=1", defaultPasswordMinimumLength);
+        AuthenticationLog.allInvalidated();
     }
     private String randomPassword() {
         byte[] bytes=new byte[Math.max(24, (policy().passwordMinimumLength() * 3 + 3) / 4)]; new java.security.SecureRandom().nextBytes(bytes);

@@ -361,3 +361,19 @@ leer el JSON y no requiere migraciones del esquema ni reescrituras al consultar.
 
 `TORRENT_SYNC` unifica la consulta del historial global, sincronización y vinculación de descargas.
 Los envíos y borrados mantienen sus permisos específicos.
+
+### Logs de autenticación
+
+El log principal (`eplsync.log`, con el nivel INFO predeterminado) registra los
+inicios de sesión correctos y los cierres explícitos con el identificador y el
+nombre del usuario. Los inicios de sesión incluyen además la IP del cliente. La IP procede de `getRemoteAddr()`;
+tras un proxy, se aplican las opciones de cabeceras reenviadas y proxies de
+confianza de Tomcat. No se interpreta directamente `X-Forwarded-For`.
+Los intentos rechazados se registran en WARN con un motivo
+general (`AUTHENTICATION_REJECTED` o `RATE_LIMIT`) y la IP, sin revelar si la cuenta existe.
+
+También se registran las invalidaciones por cambio o restablecimiento de
+contraseña, cambios de estado o privilegios, eliminación de cuentas y reinicio
+completo. Las entradas de cambios de cuenta se emiten después de confirmar la
+transacción. No incluyen contraseñas, correos, cookies ni tokens, y no crean nuevos
+Eventos. La expiración de una sesión no se registra como cierre explícito.

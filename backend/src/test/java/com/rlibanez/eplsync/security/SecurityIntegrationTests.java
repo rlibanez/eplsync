@@ -57,6 +57,30 @@ class SecurityIntegrationTests {
         return login("admin",PASSWORD);
     }
     String json(Object value) {return tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(value);}
+    @Test void authenticationActionsWriteApplicationLogsWithoutSecrets() throws Exception {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(AuthenticationLog.class);
+        var appender=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        appender.start();logger.addAppender(appender);
+        try {
+            mvc.perform(post("/api/auth/login").with(csrf()).contentType("application/json")
+                .header("X-Forwarded-For","203.0.113.99")
+                .with(request -> {request.setRemoteAddr("192.0.2.10");return request;})
+                .content(json(Map.of("username","admin","password","wrong-secret-password")))).andExpect(status().isUnauthorized());
+            var session=login("admin",initial.password());
+            mvc.perform(post("/api/auth/logout").session(session).with(csrf())).andExpect(status().isOk());
+            session=login("admin",initial.password());
+            mvc.perform(post("/api/auth/password").session(session).with(csrf()).contentType("application/json")
+                .content(json(Map.of("currentPassword",initial.password(),"newPassword",PASSWORD)))).andExpect(status().isOk());
+            var messages=appender.list.stream().map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage).toList();
+            assertThat(messages).anyMatch(message -> message.contains("AUTHENTICATION_REJECTED, IP=192.0.2.10"))
+                .anyMatch(message -> message.startsWith("Inicio de sesión: userId=") && message.contains("IP=127.0.0.1"))
+                .anyMatch(message -> message.startsWith("Cierre de sesión explícito: userId="))
+                .anyMatch(message -> message.contains("PASSWORD_CHANGED"));
+            assertThat(messages).allSatisfy(message -> assertThat(message)
+                .doesNotContain(initial.password(),PASSWORD,"wrong-secret-password","admin@example.org","203.0.113.99"));
+            assertThat(messages).filteredOn(message -> message.startsWith("Cierre de sesión explícito:")).hasSize(1);
+        } finally {logger.detachAppender(appender);appender.stop();}
+    }
     @Test void loginIgnoresSurroundingUsernameWhitespaceButPreservesPassword() throws Exception {
         assertThat(accounts.authenticate(" admin ",initial.password()).username()).isEqualTo("admin");
         var session=login(" ADMIN ",initial.password());
