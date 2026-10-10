@@ -1,6 +1,6 @@
 services:
   eplsync:
-    image: ghcr.io/rlibanez/eplsync:1.0.0-rc.1
+    image: ghcr.io/rlibanez/eplsync:1.0.0-rc.2
     user: "${PUID:-1000}:${PGID:-1000}"
     container_name: eplsync
     ports:

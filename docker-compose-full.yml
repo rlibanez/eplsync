@@ -1,7 +1,7 @@
 # Configuración completa. Ejecutar con docker compose -f docker-compose-full.yml up -d.
 services:
   eplsync:
-    image: ghcr.io/rlibanez/eplsync:1.0.0-rc.1
+    image: ghcr.io/rlibanez/eplsync:1.0.0-rc.2
     user: "${PUID:-1000}:${PGID:-1000}"
     container_name: eplsync
     ports:
