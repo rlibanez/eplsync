@@ -1,6 +1,46 @@
 import { test, expect } from "./fixtures";
 import { checkTableControls } from "./table-controls";
 
+test("revision search shows the torrent connection error and can retry", async ({
+  page,
+}) => {
+  await page.route("**/api/settings/downloads/updates", (route) =>
+    route.fulfill({ json: { states: ["DOWNLOADED"] } }),
+  );
+  const details =
+    "No se puede conectar con el cliente torrent; revisa la URL y que el cliente esté disponible";
+  let attempts = 0;
+  await page.route("**/api/torrent/revision-updates/search?**", (route) => {
+    attempts++;
+    return attempts === 1
+      ? route.fulfill({ status: 502, json: { details } })
+      : route.fulfill({
+          json: {
+            items: [],
+            meta: {
+              page: 0,
+              size: 20,
+              totalItems: 0,
+              totalPages: 0,
+              hasNext: false,
+              hasPrevious: false,
+            },
+          },
+        });
+  });
+  await page.goto("/downloads/updates");
+  await page
+    .getByRole("button", { name: "Buscar actualizaciones", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText(details);
+  await expect(dialog).not.toContainText("Se ha producido un error inesperado");
+  await dialog.getByRole("button", { name: "Reintentar" }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(attempts).toBe(2);
+});
+
 test("revision search synchronizes, uses temporary options, sorts and sends selected books", async ({
   page,
 }) => {

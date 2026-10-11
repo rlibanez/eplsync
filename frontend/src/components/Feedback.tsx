@@ -1,4 +1,5 @@
 import { ApiError, NetworkError } from "../api/catalog";
+import { ActionError } from "../features/downloads/shared";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { Alert, Button, Group, Loader } from "@mantine/core";
@@ -23,25 +24,24 @@ export function Failure({
   actions?: ReactNode;
 }) {
   const { t } = useTranslation();
+  const responseError =
+    error instanceof ApiError || error instanceof ActionError;
   return (
     <Alert
       color="red"
-      title={
-        error instanceof ApiError && error.details
-          ? undefined
-          : t("feedback.title")
-      }
+      title={responseError && error.details ? undefined : t("feedback.title")}
       role="alert"
     >
       <p>
-        {error instanceof ApiError && error.details
+        {responseError && error.details
           ? error.details
-          : error instanceof ApiError
+          : responseError && error.status !== 0
             ? t(error.status === 404 ? notFoundKey : "errors.http", {
                 status: error.status,
               })
             : t(
-                error instanceof NetworkError
+                error instanceof NetworkError ||
+                  (error instanceof ActionError && error.status === 0)
                   ? "errors.network"
                   : "errors.unexpected",
               )}
