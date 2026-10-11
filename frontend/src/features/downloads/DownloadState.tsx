@@ -118,6 +118,7 @@ function DownloadHistory() {
       { field: "revision", label: "downloads.revision", width: 110 },
       { field: "status", label: "downloads.status", width: 160 },
       { field: "client", label: "downloads.client", width: 180 },
+      { field: "origin", label: "downloads.origin", width: 180 },
       { field: "lastCheckedAt", label: "downloads.lastChecked", width: 200 },
       { field: "completedAt", label: "downloads.completed", width: 200 },
       { field: "lastError", label: "downloads.error", width: 240 },
@@ -243,10 +244,8 @@ function DownloadHistory() {
                         <td>
                           <span className="badge">{status(d.status)}</span>
                         </td>,
-                        <td title={d.clientInstanceId}>
-                          {d.client}
-                          <small className="hash-text">{d.origin}</small>
-                        </td>,
+                        <td title={d.clientInstanceId}>{d.client}</td>,
+                        <td>{d.origin}</td>,
                         <td>{date(d.lastCheckedAt)}</td>,
                         <td>{date(d.completedAt)}</td>,
                         <td>{d.lastError || "—"}</td>,
