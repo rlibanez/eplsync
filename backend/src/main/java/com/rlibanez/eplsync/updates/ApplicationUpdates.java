@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class ApplicationUpdates {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(ApplicationUpdates.class);
     public record Status(boolean automatic,String state,String latestVersion,String releaseUrl,Instant checkedAt,boolean checking) {}
     private record Result(String state,String version,String url,Instant checkedAt) {}
     private final ApplicationVersion installed;
@@ -33,17 +34,28 @@ public class ApplicationUpdates {
             // Another completed request may have populated the cache before we acquired the turn.
             last=result.checkedAt;
             if(last!=null && clock.instant().isBefore(last.plus(interval))) return status();
+            log.info("Comprobando actualizaciones de EPL Sync: origen={}, versión instalada={}",
+                    automatic ? "automático" : "manual",installed.get().version());
             var release=releases.latest();
             if(release==null) result=new Result("NO_RELEASE",null,null,clock.instant());
             else {
                 var newer=newer(installed.get().version(),release.version());
                 result=new Result(newer==null ? "UNKNOWN_VERSION" : newer ? "AVAILABLE" : "UP_TO_DATE",release.version(),release.url(),clock.instant());
             }
+            String outcome=switch(result.state) {
+                case "AVAILABLE" -> "actualización disponible";
+                case "UP_TO_DATE" -> "sin actualizaciones";
+                case "NO_RELEASE" -> "sin versiones estables publicadas";
+                default -> "versión instalada no comparable";
+            };
+            log.info("Comprobación de actualizaciones de EPL Sync finalizada: resultado={}, versión instalada={}, última versión={}",
+                    outcome,installed.get().version(),result.version);
         } catch(InterruptedException ex) {
             Thread.currentThread().interrupt();result=new Result("UNAVAILABLE",result.version,result.url,clock.instant());
+            log.warn("Comprobación de actualizaciones de EPL Sync interrumpida: origen={}",automatic ? "automático" : "manual");
         } catch(Exception ex) {
             result=new Result("UNAVAILABLE",result.version,result.url,clock.instant());
-            org.slf4j.LoggerFactory.getLogger(getClass()).warn("No se pudo comprobar la última versión de EPL Sync ({})",ex.getClass().getSimpleName());
+            log.warn("No se pudo comprobar la última versión de EPL Sync: origen={}, error={}",automatic ? "automático" : "manual",ex.getClass().getSimpleName());
         } finally {checking.set(false);}
         return status();
     }
