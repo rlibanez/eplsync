@@ -2,7 +2,7 @@ import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { CalibreTable, calibreColumns, type CalibreBook } from "./CalibreTable";
 import { useNotifications } from "../notifications/Notifications";
 import { useState } from "react";
-import { Button, Select, TextInput } from "@mantine/core";
+import { Button, MultiSelect, TextInput } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -141,29 +141,33 @@ export function CalibreLibrary() {
             setPage(0);
           }}
         />
-        <Select
+        <MultiSelect
+          searchable
+          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("calibre.comparison")}
           clearable
-          value={comparison || null}
+          value={comparison ? comparison.split(",") : []}
           data={["CURRENT", "OUTDATED", "NEWER", "UNKNOWN"].map((value) => ({
             value,
             label: t(`calibre.filter.${value}`),
           }))}
           onChange={(v) => {
-            setComparison(v ?? "");
+            setComparison(v.join(","));
             setPage(0);
           }}
         />
-        <Select
+        <MultiSelect
+          searchable
+          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("calibre.presence")}
           clearable
-          value={presence || null}
+          value={presence ? presence.split(",") : []}
           data={["PRESENT", "MISSING", "UNIDENTIFIED"].map((value) => ({
             value,
             label: t(`calibre.presenceValues.${value}`),
           }))}
           onChange={(v) => {
-            setPresence(v ?? "");
+            setPresence(v.join(","));
             setPage(0);
           }}
         />

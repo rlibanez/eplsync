@@ -34,6 +34,10 @@ public class RevisionUpdates {
     }
     @Transactional(readOnly=true,timeout=120)
     public PageResponse<Row> search(UpdatePreferences.Preferences input,int page,int size,String sort,Long onlyId,DownloadStatus status) {
+        return searchStatuses(input,page,size,sort,onlyId,status == null ? List.of() : List.of(status));
+    }
+    @Transactional(readOnly=true,timeout=120)
+    public PageResponse<Row> searchStatuses(UpdatePreferences.Preferences input,int page,int size,String sort,Long onlyId,List<DownloadStatus> statuses) {
         validate(input,page,size,sort);
         var fields=Map.of("eplId","b.eplId","title","b.title","registeredRevision","d.revision","availableRevision","b.revision","status","d.status");
         var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, fields.keySet());
@@ -47,12 +51,14 @@ public class RevisionUpdates {
             +" and cast(function('json_extract',i.commandJson,'$.book.revision') as Double)>=b.revision"
             +" and i.state in (com.rlibanez.eplsync.torrent.bulk.BulkItem.State.PENDING,com.rlibanez.eplsync.torrent.bulk.BulkItem.State.IN_FLIGHT)"
             +" and j.state not in (com.rlibanez.eplsync.torrent.bulk.BulkJob.State.COMPLETED,com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED))";
-        if(status!=null) from += " and d.status=com.rlibanez.eplsync.torrent.downloads.DownloadStatus."+status.name();
+        if(!statuses.isEmpty()) from += " and d.status in :selectedStatuses";
         if(onlyId!=null) from += " and b.eplId="+onlyId.longValue();
-        long total=em.createQuery("select count(d.id)"+from,Long.class).setParameter("states",input.states())
-            .setHint("jakarta.persistence.query.timeout",120000).getSingleResult();
-        var rows=em.createQuery("select b.eplId,b.title,d.revision,b.revision,d.status,b.coverUrl,b.coverAvailable"+from+" order by "+orderBy,Object[].class)
-            .setParameter("states",input.states()).setHint("jakarta.persistence.query.timeout",120000)
+        var countQuery=em.createQuery("select count(d.id)"+from,Long.class).setParameter("states",input.states());
+        var rowQuery=em.createQuery("select b.eplId,b.title,d.revision,b.revision,d.status,b.coverUrl,b.coverAvailable"+from+" order by "+orderBy,Object[].class)
+            .setParameter("states",input.states());
+        if(!statuses.isEmpty()) { countQuery.setParameter("selectedStatuses",statuses); rowQuery.setParameter("selectedStatuses",statuses); }
+        long total=countQuery.setHint("jakarta.persistence.query.timeout",120000).getSingleResult();
+        var rows=rowQuery.setHint("jakarta.persistence.query.timeout",120000)
             .setFirstResult(Math.toIntExact((long)page*size)).setMaxResults(size).getResultList().stream()
             .map(r -> new Row((Long)r[0],(String)r[1],(Double)r[2],(Double)r[3],(DownloadStatus)r[4],(String)r[5],(Boolean)r[6])).toList();
         int pages=Math.toIntExact((total+size-1)/size);

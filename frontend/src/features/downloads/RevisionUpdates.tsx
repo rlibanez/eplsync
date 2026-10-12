@@ -4,7 +4,7 @@ import { BookCover } from "../catalog/BookCover";
 import { useDownloadColumns } from "./DownloadTable";
 import { sortQuery } from "./TableControls";
 import { useEffect, useState } from "react";
-import { Button, Checkbox, Select } from "@mantine/core";
+import { Button, Checkbox, MultiSelect } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -176,17 +176,19 @@ export function RevisionUpdates() {
         </p>
       )}
       <div className="filters jobs-filters">
-        <Select
+        <MultiSelect
+          searchable
+          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("revisionUpdates.status")}
           clearable
-          value={registeredStatus}
+          value={registeredStatus ? registeredStatus.split(",") : []}
           disabled={!search || find.isPending}
           data={downloadStates.map((value) => ({
             value,
             label: status(value),
           }))}
           onChange={(value) => {
-            setRegisteredStatus(value);
+            setRegisteredStatus(value.join(",") || null);
             setPage(0);
             setSelected([]);
           }}

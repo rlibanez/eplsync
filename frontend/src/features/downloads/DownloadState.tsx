@@ -11,7 +11,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Select, TextInput } from "@mantine/core";
+import { Button, Select, MultiSelect, TextInput } from "@mantine/core";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -174,15 +174,17 @@ function DownloadHistory() {
           value={draftEplId}
           onChange={(e) => setDraftEplId(e.currentTarget.value)}
         />
-        <Select
+        <MultiSelect
+          searchable
+          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("downloads.status")}
           clearable
-          value={filters.status || null}
+          value={filters.status ? filters.status.split(",") : []}
           data={downloadStates.map((value) => ({
             value,
             label: status(value),
           }))}
-          onChange={(v) => filter("status", v ?? "")}
+          onChange={(values) => filter("status", values.join(","))}
         />
         <Select
           label={t("downloads.origin")}

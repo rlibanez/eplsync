@@ -7,7 +7,7 @@ import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { CircleStop } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Select, Progress, TextInput } from "@mantine/core";
+import { Alert, Button, Select, MultiSelect, Progress, TextInput } from "@mantine/core";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -145,13 +145,15 @@ export function Jobs() {
             setPage(0);
           }}
         />
-        <Select
+        <MultiSelect
+          searchable
+          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("downloads.status")}
           clearable
-          value={filter || null}
+          value={filter ? filter.split(",") : []}
           data={jobStates.map((value) => ({ value, label: status(value) }))}
           onChange={(v) => {
-            setFilter(v ?? "");
+            setFilter(v.join(","));
             setPage(0);
           }}
         />

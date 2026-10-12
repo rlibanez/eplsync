@@ -146,6 +146,12 @@ class CalibreCatalogTests {
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4)).andExpect(jsonPath("$.items[0].calibreId").value(4));
         mvc.perform(get("/api/calibre/books").param("comparison","OUTDATED"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].catalogRevision").value(2));
+        mvc.perform(get("/api/calibre/books").param("comparison","OUTDATED,CURRENT").param("presence","PRESENT,MISSING"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(get("/api/calibre/books").param("presence","MISSING,UNIDENTIFIED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(get("/api/calibre/books").param("comparison","CURRENT,invalid")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/calibre/books").param("presence","PRESENT,")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/calibre/books").param("presence","MISSING"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].eplId").value(99));
         mvc.perform(get("/api/calibre/books").param("eplId","1").param("size","1000").param("sort","authors,asc","title,desc"))

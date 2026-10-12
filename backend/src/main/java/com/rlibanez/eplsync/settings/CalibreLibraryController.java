@@ -43,13 +43,14 @@ public class CalibreLibraryController {
         if(!title.isBlank()) { base+=" AND instr(lower(title),lower(?))>0"; args.add(title.trim()); }
         if(!author.isBlank()) { base+=" AND instr(lower(authors),lower(?))>0"; args.add(author.trim()); }
         if(eplId!=null) { base+=" AND epl_id=?"; args.add(eplId); }
-        if(!comparison.isEmpty()) {
-            if(!Set.of("UNKNOWN","OUTDATED","NEWER","CURRENT").contains(comparison)) throw new UserInputException("Comparación inválida");
-            base+=" AND comparison=?";args.add(comparison);
-        }
-        if(!presence.isEmpty()) {
-            if(!Set.of("UNIDENTIFIED","MISSING","PRESENT").contains(presence)) throw new UserInputException("Presencia inválida");
-            base+=" AND presence=?";args.add(presence);
+        for (var filter : Map.of("comparison", comparison, "presence", presence).entrySet()) {
+            if (filter.getValue().isEmpty()) continue;
+            var allowed = filter.getKey().equals("comparison") ? Set.of("UNKNOWN","OUTDATED","NEWER","CURRENT") : Set.of("UNIDENTIFIED","MISSING","PRESENT");
+            var selected = Arrays.asList(filter.getValue().split(",", -1));
+            if (selected.size() > allowed.size() || !allowed.containsAll(selected))
+                throw new UserInputException("Filtro de Calibre inválido: " + filter.getKey());
+            base += " AND " + filter.getKey() + " IN (" + String.join(",", Collections.nCopies(selected.size(), "?")) + ")";
+            args.addAll(selected);
         }
         var fields=Map.of("title","title COLLATE EPL_TEXT","authors","authors COLLATE EPL_TEXT","eplId","epl_id","revision","revision","catalogRevision","catalog_revision","comparison","comparison","presence","presence","calibreId","calibre_id");
         var order=new ArrayList<String>();

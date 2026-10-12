@@ -64,6 +64,9 @@ class RevisionUpdatesTests {
         book(1,2);history(1,1,DownloadStatus.SUBMITTED,true);history(1,1.5,DownloadStatus.DOWNLOADED,true);
         book(2,2);history(2,1,DownloadStatus.SUBMITTED,true);
         book(3,2);history(3,1,DownloadStatus.SUBMITTED,true);
+        var multiple=updates.searchStatuses(UpdatePreferences.defaults(),0,20,"eplId,asc",null,List.of(DownloadStatus.SUBMITTED,DownloadStatus.DOWNLOADED));
+        assertThat(multiple.meta().totalItems()).isEqualTo(3);
+        assertThat(multiple.items()).extracting(RevisionUpdates.Row::eplId).containsExactly(1L,2L,3L);
         var result=updates.search(UpdatePreferences.defaults(),1,1,"eplId,asc",null,DownloadStatus.SUBMITTED);
         assertThat(result.meta().totalItems()).isEqualTo(2);
         assertThat(result.items()).extracting((RevisionUpdates.Row entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).containsExactly(3L);
@@ -92,6 +95,12 @@ class RevisionUpdatesTests {
     }
     @Test void synchronizationPrecedesSearchAndFailuresAbortIt() throws Exception {
         book(1,2);history(1,1,DownloadStatus.SUBMITTED,true);
+        mvc.perform(post("/api/torrent/revision-updates/search").param("status","SUBMITTED,DOWNLOADED")
+            .contentType("application/json").content("{\"states\":[\"SUBMITTED\"]}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1));
+        mvc.perform(post("/api/torrent/revision-updates/search?synchronize=true").param("status","SUBMITTED,invalid")
+            .contentType("application/json").content("{\"states\":[\"SUBMITTED\"]}"))
+            .andExpect(status().isBadRequest());verifyNoInteractions(client);
         mvc.perform(post("/api/torrent/revision-updates/search?synchronize=true").contentType("application/json").content("{\"states\":[\"SUBMITTED\"]}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].eplId").value(1));
         verify(client).syncDownloads(false,false);

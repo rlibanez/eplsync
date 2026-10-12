@@ -203,6 +203,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
       ),
     )
     .toBe(true);
+  await statusFilter.press("Escape");
   await page.getByRole("checkbox", { name: "EPL 123", exact: true }).check();
   await page
     .getByRole("button", { name: "Enviar actualizaciones (1)", exact: true })
@@ -351,7 +352,7 @@ test("last search, page, filter and ordering survive route changes and covers ma
     .getByRole("link", { name: "Actualizaciones", exact: true })
     .click();
   await expect(title).toBeVisible();
-  await expect(filter).toHaveValue("No encontrado");
+  await expect(page.locator(".filters .mantine-Pill-label").filter({hasText:"No encontrado"})).toBeVisible();
   await expect(
     page.getByRole("columnheader", { name: /Revisión disponible/ }),
   ).toHaveAttribute("aria-sort", "ascending");

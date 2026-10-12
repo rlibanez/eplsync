@@ -18,18 +18,26 @@ public class RevisionUpdatesController {
     @PostMapping("/search")
     public PageResponse<RevisionUpdates.Row> search(@RequestBody UpdatePreferences.Preferences input,
         @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,@RequestParam(defaultValue="title,asc") String sort,
-        @RequestParam(required=false) com.rlibanez.eplsync.torrent.downloads.DownloadStatus status,
+        @RequestParam(required=false) String status,
         @RequestParam(defaultValue="false") boolean synchronize, jakarta.servlet.http.HttpServletRequest request) {
         if(!java.util.Set.of("page","size","sort","synchronize","status").containsAll(request.getParameterMap().keySet()))
             throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro de búsqueda desconocido");
         com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
         sort = com.rlibanez.eplsync.config.TableOrdering.request(request, "title,asc");
+        java.util.List<com.rlibanez.eplsync.torrent.downloads.DownloadStatus> statuses = java.util.List.of();
+        if(status != null) {
+            try {
+                var parts = status.split(",", -1);
+                if(parts.length > com.rlibanez.eplsync.torrent.downloads.DownloadStatus.values().length) throw new IllegalArgumentException();
+                statuses = java.util.Arrays.stream(parts).map(com.rlibanez.eplsync.torrent.downloads.DownloadStatus::valueOf).distinct().toList();
+            } catch(IllegalArgumentException ex) { throw new com.rlibanez.eplsync.exception.UserInputException("Estado registrado inválido"); }
+        }
         RevisionUpdates.validate(input,page,size,sort);
         if(synchronize) {
             com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_SYNC);
             client.syncDownloads(false,false);
         }
-        return updates.search(input,page,size,sort,null,status);
+        return updates.searchStatuses(input,page,size,sort,null,statuses);
     }
     @PostMapping("/send")
     @PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('TORRENT_SYNC') and hasAuthority('TORRENT_SEND')")
