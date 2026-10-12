@@ -15,8 +15,7 @@ export function RouteAccess({ children }: { children: ReactNode }) {
   else if (pathname === "/downloads/updates") permission = "TORRENT_SYNC";
   else if (pathname.startsWith("/downloads/jobs"))
     permission = "TORRENT_JOBS_MANAGE";
-  else if (pathname === "/downloads")
-    permission = "TORRENT_SYNC";
+  else if (pathname === "/downloads") permission = "TORRENT_SYNC";
   else if (pathname === "/events") permission = "EVENTS_MANAGE";
   else if (
     pathname === "/settings/catalog" &&
@@ -33,7 +32,9 @@ export function RouteAccess({ children }: { children: ReactNode }) {
   else if (pathname === "/settings/torrent") permission = "SETTINGS_MANAGE";
   else if (pathname === "/settings/events") permission = "EVENTS_MANAGE";
   else if (
-    ["/settings/users", "/settings/database"].includes(pathname) &&
+    ["/settings/users", "/settings/database", "/settings/calibre"].includes(
+      pathname,
+    ) &&
     auth.user?.role !== "ADMIN"
   )
     return <Alert color="red">{t("auth.forbidden")}</Alert>;

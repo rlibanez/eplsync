@@ -293,7 +293,8 @@
     "about": "Acerca de",
     "repository": "Repositorio del proyecto",
     "events": "Eventos",
-    "downloads": "Descargas"
+    "downloads": "Descargas",
+    "calibre": "Calibre"
   },
   "import": {
     "description": "Descarga el catálogo de ePubLibre y crea o actualiza tu biblioteca local.",
@@ -1321,5 +1322,34 @@
       "UNKNOWN_VERSION": "No se conoce la versión instalada; no se puede comparar con la última publicación.",
       "UNAVAILABLE": "No se pudo comprobar la última versión. Inténtalo de nuevo más tarde."
     }
+  },
+  "calibre": {
+    "configuration": "Configuración de Calibre",
+    "description": "Conecta con el servidor de contenido de Calibre para consultar su biblioteca. Esta integración no modifica libros ni archivos.",
+    "connection": "Conexión",
+    "url": "URL del servidor de contenido",
+    "username": "Usuario",
+    "password": "Contraseña",
+    "passwordSaved": "Contraseña guardada",
+    "library": "Biblioteca",
+    "clearPassword": "Eliminar contraseña guardada",
+    "destinationChanged": "Al cambiar la URL o el usuario debes introducir las credenciales correspondientes antes de guardar.",
+    "save": "Guardar",
+    "check": "Comprobar conexión",
+    "connected_one": "Conexión correcta. {{count}} biblioteca disponible.",
+    "connected_other": "Conexión correcta. {{count}} bibliotecas disponibles.",
+    "saved": "Configuración guardada.",
+    "books": "Libros de Calibre",
+    "booksDescription": "Consulta la biblioteca guardada. Los identificadores EPL y revisión permiten reconocer los libros; no se buscan coincidencias por título.",
+    "load": "Consultar biblioteca",
+    "id": "ID de Calibre",
+    "title": "Libro",
+    "authors": "Autores",
+    "epl": "EPL ID",
+    "revision": "Revisión",
+    "link": "Identificación EPL",
+    "identified": "Identificado",
+    "unlinked": "Sin vincular",
+    "empty": "No hay libros en esta biblioteca."
   }
 }

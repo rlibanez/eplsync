@@ -53,12 +53,14 @@ export function Paging({
   size,
   onPage,
   onSize,
+  maxSize = 1000,
 }: {
   meta?: Page<unknown>["meta"];
   page: number;
   size: number;
   onPage: (n: number) => void;
   onSize: (n: number) => void;
+  maxSize?: number;
 }) {
   const { t } = useTranslation();
   const { number } = useLocale();
@@ -69,7 +71,9 @@ export function Paging({
         withCheckIcon={false}
         aria-label={t("downloads.pageSize")}
         value={String(size)}
-        data={[10, 20, 50, 100, 200, 500, 1000].map(String)}
+        data={[10, 20, 50, 100, 200, 500, 1000]
+          .filter((n) => n <= maxSize)
+          .map(String)}
         onChange={(v) => onSize(Number(v) || 20)}
         allowDeselect={false}
       />

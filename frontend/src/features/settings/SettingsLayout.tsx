@@ -19,11 +19,13 @@ export function SettingsLayout() {
           "events",
           "downloads",
           "torrent",
+          "calibre",
           "users",
           "database",
           "about",
         ]
           .filter((key) => {
+            if (key === "calibre") return auth.user?.role === "ADMIN";
             if (key === "users") return auth.user?.role === "ADMIN";
             if (key === "database") return auth.user?.role === "ADMIN";
             if (key === "catalog")

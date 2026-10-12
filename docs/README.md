@@ -8,6 +8,7 @@
 - [Variables de entorno](variables-entorno.md): descripción y valores predeterminados.
 - [Usuarios y seguridad](seguridad.md): cuentas, recuperación de contraseña y acceso remoto.
 - [qBittorrent](torrent.md): conexión y opciones de envío.
+- [Calibre](calibre.md): conexión al servidor de contenido y consulta de bibliotecas.
 
 ## Uso
 

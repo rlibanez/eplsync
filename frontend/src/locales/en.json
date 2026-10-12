@@ -293,7 +293,8 @@
     "about": "About",
     "repository": "Project repository",
     "events": "Events",
-    "downloads": "Downloads"
+    "downloads": "Downloads",
+    "calibre": "Calibre"
   },
   "import": {
     "description": "Download the ePubLibre catalog and create or update your local library.",
@@ -1321,5 +1322,34 @@
       "UNKNOWN_VERSION": "The installed version is unknown and cannot be compared with the latest release.",
       "UNAVAILABLE": "Could not check the latest release. Try again later."
     }
+  },
+  "calibre": {
+    "configuration": "Calibre configuration",
+    "description": "Connect to the Calibre Content server to browse its library. This integration does not modify books or files.",
+    "connection": "Connection",
+    "url": "Content server URL",
+    "username": "Username",
+    "password": "Password",
+    "passwordSaved": "Password saved",
+    "library": "Library",
+    "clearPassword": "Remove saved password",
+    "destinationChanged": "When changing the URL or username, enter the corresponding credentials before saving.",
+    "save": "Save",
+    "check": "Check connection",
+    "connected_one": "Connection successful. {{count}} library available.",
+    "connected_other": "Connection successful. {{count}} libraries available.",
+    "saved": "Configuration saved.",
+    "books": "Calibre books",
+    "booksDescription": "Browse the saved library. EPL and revision identifiers identify books; titles are not used to infer matches.",
+    "load": "Browse library",
+    "id": "Calibre ID",
+    "title": "Book",
+    "authors": "Authors",
+    "epl": "EPL ID",
+    "revision": "Revision",
+    "link": "EPL identification",
+    "identified": "Identified",
+    "unlinked": "Unlinked",
+    "empty": "There are no books in this library."
   }
 }

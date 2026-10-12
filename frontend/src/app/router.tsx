@@ -99,6 +99,13 @@ export const router = createBrowserRouter([
             }),
           },
           {
+            path: "calibre",
+            lazy: async () => ({
+              Component: (await import("../features/settings/CalibreSettings"))
+                .CalibreSettings,
+            }),
+          },
+          {
             path: "torrent",
             lazy: async () => ({
               Component: (await import("../features/settings/TorrentSettings"))
