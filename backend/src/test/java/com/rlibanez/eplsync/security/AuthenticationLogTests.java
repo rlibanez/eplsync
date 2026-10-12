@@ -27,7 +27,7 @@ class AuthenticationLogTests {
             assertThat(event.getLevel()).isEqualTo(Level.WARN);
             assertThat(event.getFormattedMessage()).doesNotContain(account.email(), account.username());
         });
-        assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage)
+        assertThat(appender.list).extracting((ILoggingEvent entryValue) -> java.util.Objects.requireNonNull(entryValue).getFormattedMessage())
                 .containsExactly("Inicio de sesión rechazado: motivo=AUTHENTICATION_REJECTED, IP=192.0.2.10", "Inicio de sesión rechazado: motivo=RATE_LIMIT, IP=2001:db8::10");
     }
     @Test void invalidationsAreLoggedOnlyAfterCommitAndNotOnRollback() {

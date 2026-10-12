@@ -31,7 +31,7 @@ class CatalogImportControllerTests {
             .andExpect(jsonPath("$.details").value("La carga ha superado el tiempo máximo"));
         reset(service);
         when(service.importCatalog(null)).thenThrow(new org.springframework.transaction.TransactionTimedOutException("private query detail"));
-        try(var budget=new com.rlibanez.eplsync.importer.CatalogOperationBudget(java.time.Duration.ofSeconds(10))) {
+        try(var _=new com.rlibanez.eplsync.importer.CatalogOperationBudget(java.time.Duration.ofSeconds(10))) {
             mvc.perform(post("/api/catalog/import/reset")).andExpect(status().isRequestTimeout())
                 .andExpect(jsonPath("$.details").value("La operación de catálogo superó el tiempo disponible para la base de datos; los cambios no se han confirmado"));
         }

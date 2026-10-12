@@ -98,7 +98,7 @@ class CalibreTests {
     @Test @org.junit.jupiter.api.condition.EnabledIfSystemProperty(named="calibre.test.url", matches=".+")
     void readsActualCalibreWithoutChangingIt() {
         var c = new CalibreSettings.Connection(CalibreSettings.normalize(System.getProperty("calibre.test.url")), "", "", "calibre");
-        assertThat(client.check(c).libraries()).extracting(CalibreClient.Library::id).contains("calibre");
+        assertThat(client.check(c).libraries()).extracting((CalibreClient.Library entryValue) -> java.util.Objects.requireNonNull(entryValue).id()).contains("calibre");
         assertThat(client.books(c, 0, 20).items()).anyMatch(b -> Long.valueOf(80899).equals(b.eplId()) && b.linked());
     }
     @Test void encryptsPasswordsAndBindsThemToDestination() {

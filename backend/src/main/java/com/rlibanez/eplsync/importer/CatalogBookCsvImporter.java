@@ -168,7 +168,7 @@ public class CatalogBookCsvImporter {
                     }
                     if (rows.isEmpty()) break;
                     if (!validateOnly) {
-                        var ids = rows.stream().map(CatalogBookCsvRow::getEplId)
+                        var ids = rows.stream().map((CatalogBookCsvRow entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId())
                                 .filter(id -> id != null && id > 0).distinct().toList();
                         existingBooks = new HashMap<>();
                         for (var book : repository.findAllById(ids)) {

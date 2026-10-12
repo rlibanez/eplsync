@@ -76,7 +76,8 @@ public class CalibreSettings {
     }
     static String normalize(String value) {
         try {
-            var uri = URI.create(value == null ? "" : value.trim()).normalize();
+            if (value == null) throw new IllegalArgumentException();
+            var uri = URI.create(value.trim()).normalize();
             String scheme = uri.getScheme();
             if (!("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) || uri.getHost() == null
                     || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null

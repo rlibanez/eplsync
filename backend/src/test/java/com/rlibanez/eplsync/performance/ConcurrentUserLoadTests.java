@@ -99,7 +99,7 @@ class ConcurrentUserLoadTests {
         var token=json.readTree(csrf.body());
         var response=client.send(HttpRequest.newBuilder(uri("/api/auth/login"))
             .header("Content-Type","application/json")
-            .header(token.get("headerName").asText(),token.get("token").asText())
+            .header(token.get("headerName").asString(),token.get("token").asString())
             .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(Map.of("username","load-user-"+index,"password",PASSWORD))))
             .build(),HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).describedAs("login for account %d",index).isEqualTo(200);
@@ -208,12 +208,12 @@ class ConcurrentUserLoadTests {
         return values.get(Math.min(values.size()-1,(int)Math.ceil(values.size()*fraction)-1));
     }
     Map<String,Object> metrics(Collection<Sample> samples) {
-        var times=samples.stream().map(Sample::milliseconds).sorted().toList();
-        var codes=new TreeMap<Integer,Long>();for(var sample:samples) codes.merge(sample.status(),1L,Long::sum);
+        var times=samples.stream().map((Sample entryValue) -> java.util.Objects.requireNonNull(entryValue).milliseconds()).sorted().toList();
+        var codes=new TreeMap<Integer,Long>();for(var sample:samples) codes.merge(sample.status(),1L,(left, right) -> java.util.Objects.requireNonNull(left) + java.util.Objects.requireNonNull(right));
         var result=new LinkedHashMap<String,Object>();
         result.put("requests",samples.size()); result.put("statusCounts",codes);
         result.put("errors",samples.stream().filter(s -> s.error()!=null).count());
-        result.put("meanMs",times.stream().mapToDouble(Double::doubleValue).average().orElse(0));
+        result.put("meanMs",times.stream().mapToDouble((Double entryValue) -> java.util.Objects.requireNonNull(entryValue).doubleValue()).average().orElse(0));
         result.put("p50Ms",percentile(times,0.5));result.put("p95Ms",percentile(times,0.95));
         result.put("p99Ms",percentile(times,0.99));result.put("maxMs",times.getLast());
         return result;
@@ -249,7 +249,7 @@ class ConcurrentUserLoadTests {
         result.put("throughputRequestsPerSecond",samples.size()/elapsed);result.put("peakHeapMiB",peak.get()/1048576.0);
         result.put("averageCpuCores",(os.getProcessCpuTime()-cpuBefore)/1e9/elapsed);result.put("overall",metrics(samples));
         var operations=new TreeMap<String,Object>();
-        for(String operation:samples.stream().map(Sample::operation).distinct().sorted().toList())
+        for(String operation:samples.stream().map((Sample entryValue) -> java.util.Objects.requireNonNull(entryValue).operation()).distinct().sorted().toList())
             operations.put(operation,metrics(samples.stream().filter(s -> s.operation().equals(operation)).toList()));
         result.put("operations",operations);result.put("errorExamples",samples.stream().filter(s -> s.error()!=null).limit(20).toList());
         System.out.println("USER_LOAD "+json.writeValueAsString(result));

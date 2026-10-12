@@ -230,7 +230,7 @@ class CoverCheckTests {
                 .andExpect(jsonPath("$.hasMore").value(false))
                 .andExpect(jsonPath("$.nextAfterId").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.updated").value(0)).andReturn();
-        var id=tools.jackson.databind.json.JsonMapper.builder().build().readTree(response.getResponse().getContentAsString()).get("detailsId").asText();
+        var id=tools.jackson.databind.json.JsonMapper.builder().build().readTree(response.getResponse().getContentAsString()).get("detailsId").asString();
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/catalog/covers/check/reports/"+id)
             .param("coverAvailable","false").param("page","3").param("size","20"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(62))

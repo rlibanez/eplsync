@@ -23,13 +23,13 @@ class CatalogTextOrderingTests {
         for(int i=0;i<TextOrderingTests.INPUT.size();i++) books.save(CatalogBook.builder().eplId((long)i+1).revision(1d).author(TextOrderingTests.INPUT.get(i)).title(TextOrderingTests.INPUT.get(i)).build());
         for(String field:List.of("title","author")) {
             var actual=new ArrayList<String>();
-            for(int page=0;page<4;page++) actual.addAll(catalog.search(new CatalogBookFilter(),PageRequest.of(page,4,Sort.by(field))).getContent().stream().map(CatalogBook::getTitle).toList());
+            for(int page=0;page<4;page++) actual.addAll(catalog.search(new CatalogBookFilter(),PageRequest.of(page,4,Sort.by(field))).getContent().stream().map((CatalogBook entryValue) -> java.util.Objects.requireNonNull(entryValue).getTitle()).toList());
             assertThat(actual).isEqualTo(TextOrderingTests.EXPECTED);
-            var descending=catalog.search(new CatalogBookFilter(),PageRequest.of(0,20,Sort.by(Sort.Direction.DESC,field))).getContent().stream().map(CatalogBook::getTitle).toList();
+            var descending=catalog.search(new CatalogBookFilter(),PageRequest.of(0,20,Sort.by(Sort.Direction.DESC,field))).getContent().stream().map((CatalogBook entryValue) -> java.util.Objects.requireNonNull(entryValue).getTitle()).toList();
             assertThat(descending).isEqualTo(TextOrderingTests.EXPECTED.reversed());
         }
         books.save(CatalogBook.builder().eplId(100L).revision(1d).author("Autor").title("arbol").build());
-        assertThat(catalog.search(new CatalogBookFilter(),PageRequest.of(0,4,Sort.by("title"))).getContent()).extracting(CatalogBook::getEplId).startsWith(7L,100L);
+        assertThat(catalog.search(new CatalogBookFilter(),PageRequest.of(0,4,Sort.by("title"))).getContent()).extracting((CatalogBook entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).startsWith(7L,100L);
         books.deleteAllInBatch();
     }
     @Test void downloadAndHistoryTextOrderingRetainsSecondaryCriteriaBeforePaging() {
@@ -44,17 +44,17 @@ class CatalogTextOrderingTests {
         }
         var params=new org.springframework.util.LinkedMultiValueMap<String,String>();
         params.add("size","1");params.add("sort","title,asc");
-        assertThat(queries.search(params).items()).extracting(com.rlibanez.eplsync.torrent.downloads.DownloadRecord::getEplId).containsExactly(2L);
+        assertThat(queries.search(params).items()).extracting((com.rlibanez.eplsync.torrent.downloads.DownloadRecord entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).containsExactly(2L);
         params.set("page","1");
-        assertThat(queries.search(params).items()).extracting(com.rlibanez.eplsync.torrent.downloads.DownloadRecord::getEplId).containsExactly(3L);
+        assertThat(queries.search(params).items()).extracting((com.rlibanez.eplsync.torrent.downloads.DownloadRecord entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).containsExactly(3L);
         for(int i=0;i<2;i++) {
             var row=new com.rlibanez.eplsync.torrent.downloads.DownloadRecord();
             row.setEplId(1L);row.setRevision(2d);row.setHash("new-"+i);row.setClient(i==0?"Árbol":"Zeta");row.setClientInstanceId("test");
             row.setCreatedAt(java.time.Instant.EPOCH);row.setStatus(com.rlibanez.eplsync.torrent.downloads.DownloadStatus.SUBMITTED);
             row.setOrigin(com.rlibanez.eplsync.torrent.downloads.DownloadRecord.Origin.EPLSYNC);downloads.save(row);
         }
-        assertThat(history.history(1L,0,1,"revision,desc;client,asc").items()).extracting(com.rlibanez.eplsync.torrent.downloads.CatalogDownloadViewService.HistoryItem::client).containsExactly("Árbol");
-        assertThat(history.history(1L,1,1,"revision,desc;client,asc").items()).extracting(com.rlibanez.eplsync.torrent.downloads.CatalogDownloadViewService.HistoryItem::client).containsExactly("Zeta");
+        assertThat(history.history(1L,0,1,"revision,desc;client,asc").items()).extracting((com.rlibanez.eplsync.torrent.downloads.CatalogDownloadViewService.HistoryItem entryValue) -> java.util.Objects.requireNonNull(entryValue).client()).containsExactly("Árbol");
+        assertThat(history.history(1L,1,1,"revision,desc;client,asc").items()).extracting((com.rlibanez.eplsync.torrent.downloads.CatalogDownloadViewService.HistoryItem entryValue) -> java.util.Objects.requireNonNull(entryValue).client()).containsExactly("Zeta");
         downloads.deleteAllInBatch();books.deleteAllInBatch();
     }
 

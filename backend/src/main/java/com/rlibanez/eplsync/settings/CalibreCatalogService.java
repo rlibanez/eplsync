@@ -98,7 +98,7 @@ public class CalibreCatalogService {
         var grouped=new HashMap<Long,List<CatalogBookResponse.CalibreItem>>();
         var totals=new HashMap<Long,Long>();
         var revisions=new HashMap<Long,Double>();
-        var ids=books.stream().map(CatalogBookResponse::eplId).distinct().toList();
+        var ids=books.stream().map((CatalogBookResponse entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).distinct().toList();
         for(int start=0;start<ids.size();start+=500) {
             var batch=ids.subList(start,Math.min(start+500,ids.size()));
             String placeholders=String.join(",",Collections.nCopies(batch.size(),"?"));

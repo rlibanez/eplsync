@@ -405,7 +405,7 @@ class BulkTests {
             assertThat(result.items().getFirst().jobId()).isEqualTo("alice");
             assertThat(result.items().getFirst().username()).isEqualTo("Alice");
         }
-        assertThat(store.list(0,20,null,"username,desc").items()).extracting(BulkStore.View::username).containsExactly("Bob","Alice");
+        assertThat(store.list(0,20,null,"username,desc").items()).extracting((BulkStore.View entryValue) -> java.util.Objects.requireNonNull(entryValue).username()).containsExactly("Bob","Alice");
         assertThat(store.list(0,20,null,"progress,asc",null,"%",null,null).items()).isEmpty();
         assertThat(store.list(0,20,null,"progress,asc",null,null,null,alice.getCreatedAt()).items()).isEmpty();
         assertThatThrownBy(() -> store.list(0,20,null,"username,asc",null,null,bob.getCreatedAt(),alice.getCreatedAt()))

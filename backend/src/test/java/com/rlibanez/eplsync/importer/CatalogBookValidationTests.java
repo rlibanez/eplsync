@@ -11,13 +11,13 @@ import static org.assertj.core.api.Assertions.*;
 class CatalogBookValidationTests {
     record Field(String name, int maximum, BiConsumer<CatalogBookCsvRow,String> setter) {}
     static Stream<Field> fields() {
-        return Stream.of(new Field("Autor",16_384,CatalogBookCsvRow::setAuthor),
-            new Field("Título",4_096,CatalogBookCsvRow::setTitle),
-            new Field("Colección",4_096,CatalogBookCsvRow::setCollection),
-            new Field("Géneros",4_096,CatalogBookCsvRow::setGenres),
-            new Field("Sinopsis",524_288,CatalogBookCsvRow::setSynopsis),
-            new Field("Enlace(s)",65_536,CatalogBookCsvRow::setLinks),
-            new Field("Portada",8_192,CatalogBookCsvRow::setCoverUrl));
+        return Stream.of(new Field("Autor",16_384,(row, value) -> java.util.Objects.requireNonNull(row).setAuthor(value)),
+            new Field("Título",4_096,(row, value) -> java.util.Objects.requireNonNull(row).setTitle(value)),
+            new Field("Colección",4_096,(row, value) -> java.util.Objects.requireNonNull(row).setCollection(value)),
+            new Field("Géneros",4_096,(row, value) -> java.util.Objects.requireNonNull(row).setGenres(value)),
+            new Field("Sinopsis",524_288,(row, value) -> java.util.Objects.requireNonNull(row).setSynopsis(value)),
+            new Field("Enlace(s)",65_536,(row, value) -> java.util.Objects.requireNonNull(row).setLinks(value)),
+            new Field("Portada",8_192,(row, value) -> java.util.Objects.requireNonNull(row).setCoverUrl(value)));
     }
     private CatalogBookCsvRow valid() {
         var row=new CatalogBookCsvRow();row.setEplId(1L);row.setRevision(1.1);

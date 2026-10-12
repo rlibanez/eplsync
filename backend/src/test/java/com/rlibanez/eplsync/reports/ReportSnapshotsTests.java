@@ -40,7 +40,7 @@ class ReportSnapshotsTests {
             var actual=new ArrayList<String>();
             for(int page=0;page<4;page++) {
                 int current=page;
-                actual.addAll(EventContext.withActor(owner,()->store.page(id,"books",current,2,List.of("title,asc"),Set.of("title"),List.of(),Item.class)).items().stream().map(Item::title).toList());
+                actual.addAll(EventContext.withActor(owner,()->store.page(id,"books",current,2,List.of("title,asc"),Set.of("title"),List.of(),Item.class)).items().stream().map((Item entryValue) -> java.util.Objects.requireNonNull(entryValue).title()).toList());
             }
             assertThat(actual).containsExactly("Árbol 2","Árbol 10","Éxodo","Nube","Ñandú","Órbita","¿Quién?","Zeta");
         }

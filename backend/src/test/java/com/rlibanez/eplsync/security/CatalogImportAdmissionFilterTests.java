@@ -16,7 +16,7 @@ class CatalogImportAdmissionFilterTests {
         var gate=new CatalogOperationGate(new CatalogImportProperties());
         var held=new CountDownLatch(1);var release=new CountDownLatch(1);
         try(var executor=Executors.newSingleThreadExecutor()) {
-            var holder=executor.submit(() -> {try(var lease=gate.acquire()) {held.countDown();release.await();}catch(InterruptedException ex) {Thread.currentThread().interrupt();}});
+            var holder=executor.submit(() -> {try(var _=gate.acquire()) {held.countDown();release.await();}catch(InterruptedException ex) {Thread.currentThread().interrupt();}});
             try {
                 assertThat(held.await(1,TimeUnit.SECONDS)).isTrue();
                 SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("admin","unused","CATALOG_IMPORT"));

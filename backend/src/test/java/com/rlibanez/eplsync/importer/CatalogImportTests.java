@@ -58,7 +58,7 @@ class CatalogImportTests {
         for(boolean replace:new boolean[]{true,false}) {
             var clock=new java.util.concurrent.atomic.AtomicLong();
             var source=csv("1,2,Autor,Cambiado\n2,1,Autor,Nuevo\n");
-            try(var budget=new CatalogOperationBudget(java.time.Duration.ofSeconds(1),clock::get)) {
+            try(var _=new CatalogOperationBudget(java.time.Duration.ofSeconds(1),clock::get)) {
                 assertThatThrownBy(() -> transactions.execute(tx -> {
                     try { importer.importFile(source,replace); }
                     catch(IOException ex) {throw new java.io.UncheckedIOException(ex);}
@@ -75,7 +75,7 @@ class CatalogImportTests {
         importer.importFile(csv("1,1,Autor,Original\n"),true);
         var source=csv("2,1,Autor,Nuevo\n".repeat(100));
         var clock=new java.util.concurrent.atomic.AtomicLong();
-        try(var budget=new CatalogOperationBudget(java.time.Duration.ofSeconds(1),() -> clock.addAndGet(100_000_000))) {
+        try(var _=new CatalogOperationBudget(java.time.Duration.ofSeconds(1),() -> clock.addAndGet(100_000_000))) {
             assertThatThrownBy(() -> importer.importFile(source,false)).isInstanceOf(com.rlibanez.eplsync.exception.CatalogOperationException.class);
         }
         assertThat(repository.count()).isEqualTo(1);

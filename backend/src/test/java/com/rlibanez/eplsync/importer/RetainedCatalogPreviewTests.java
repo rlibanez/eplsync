@@ -64,7 +64,7 @@ class RetainedCatalogPreviewTests {
             clock.set(Duration.ofSeconds(2).toNanos());return zip;
         });
         long cursor=serviceEvents.cursor();
-        try(var budget=new CatalogOperationBudget(Duration.ofSeconds(1),clock::get)) {
+        try(var _=new CatalogOperationBudget(Duration.ofSeconds(1),clock::get)) {
             assertThatThrownBy(() -> service.importCatalog(null)).isInstanceOf(com.rlibanez.eplsync.exception.CatalogOperationException.class);
         }
         assertThat(books.count()).isEqualTo(1);

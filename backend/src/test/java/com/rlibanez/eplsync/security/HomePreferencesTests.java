@@ -116,7 +116,7 @@ class HomePreferencesTests {
         String json=stored(input);
         var loaded=preferences.get(userId);
         assertThat(loaded.sections().subList(0,3)).isEqualTo(input.sections());
-        assertThat(loaded.sections()).extracting(HomePreferences.Section::id)
+        assertThat(loaded.sections()).extracting((HomePreferences.Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id())
             .containsExactly("recentEvents","newReleases","header","overview","recentUpdates","recentBooks");
         assertThat(loaded.sections().subList(3,6)).containsExactly(
             new HomePreferences.Section("overview",true,null),
@@ -139,7 +139,7 @@ class HomePreferencesTests {
             new HomePreferences.Section(null,true,null),
             new HomePreferences.Section("overview",false,null))));
         var loaded=preferences.get(userId);
-        assertThat(loaded.sections()).extracting(HomePreferences.Section::id)
+        assertThat(loaded.sections()).extracting((HomePreferences.Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id())
             .containsExactly("recentBooks","overview","header","newReleases","recentUpdates","recentEvents");
         assertThat(loaded.sections().getFirst()).isEqualTo(new HomePreferences.Section("recentBooks",false,7));
         assertThat(loaded.sections().get(1).enabled()).isFalse();

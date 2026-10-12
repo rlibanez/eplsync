@@ -2,6 +2,8 @@ package com.rlibanez.eplsync.torrent.downloads;
 
 import com.rlibanez.eplsync.model.CatalogBook;
 import org.junit.jupiter.api.Test;
+import org.jspecify.annotations.NonNull;
+import org.springframework.data.jpa.domain.Specification;
 import java.time.Instant;
 import java.util.List;
 import java.util.stream.LongStream;
@@ -41,11 +43,11 @@ class CatalogDownloadViewTests {
     }
     @Test void historyPreservesPaginationAndRejectsUnknownFields() {
         var repository=mock(DownloadRepository.class);
-        when(repository.findAll(any(org.springframework.data.jpa.domain.Specification.class),any(org.springframework.data.domain.Pageable.class))).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
+        when(repository.findAll(org.mockito.ArgumentMatchers.<@NonNull Specification<DownloadRecord>>any(),any(org.springframework.data.domain.Pageable.class))).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
         var service=new CatalogDownloadViewService(repository);
         service.history(1L,2,20,"revision,desc;status,asc");
         var capture=org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
-        verify(repository).findAll(any(org.springframework.data.jpa.domain.Specification.class),capture.capture());
+        verify(repository).findAll(org.mockito.ArgumentMatchers.<@NonNull Specification<DownloadRecord>>any(),capture.capture());
         assertThat(capture.getValue().getPageNumber()).isEqualTo(2);
         assertThatThrownBy(() -> service.history(1L,0,20,"password,asc")).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
     }

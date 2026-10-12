@@ -15,7 +15,7 @@ final class BulkSummaries {
     private record Plan(PreviousVersions policy,CleanupTiming timing) {}
     static List<BulkStore.View> load(EntityManager em,List<BulkJob> jobs) {
         if(jobs.isEmpty()) return List.of();
-        var ids=jobs.stream().map(BulkJob::getId).toList();
+        var ids=jobs.stream().map((BulkJob entryValue) -> java.util.Objects.requireNonNull(entryValue).getId()).toList();
         var counts=new HashMap<String,Counts>();
         // Grouping by book/hash first preserves the rule that every sibling must be finished.
         var query=em.createNativeQuery("""

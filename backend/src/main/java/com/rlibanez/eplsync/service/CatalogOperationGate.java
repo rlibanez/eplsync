@@ -24,7 +24,7 @@ public class CatalogOperationGate {
             return new Lease(budget);
         } catch(RuntimeException ex) { if(budget!=null) budget.close(); lock.unlock(); throw ex; }
     }
-    public <T> T run(Supplier<T> work) { try(var lease=acquire()) { return work.get(); } }
+    public <T> T run(Supplier<T> work) { try(var _=acquire()) { return work.get(); } }
     public final class Lease implements AutoCloseable {
         private final CatalogOperationBudget budget;
         private Lease(CatalogOperationBudget budget) { this.budget=budget; }

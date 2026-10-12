@@ -56,6 +56,8 @@ class CoverTaskTests {
 
     @Test void backgroundTaskChecksAllPreviouslyCheckedBooksWithIsolatedOptions() throws Exception {
         long cursor = events.cursor();
+        int originalConcurrency = defaults.getConcurrency();
+        int originalRequestTimeoutMs = Math.toIntExact(defaults.getRequestTimeout().toMillis());
         seed(61);
         mvc.perform(post("/api/catalog/covers/task").contentType("application/json").content("""
                 {"dryRun":false,"options":{"connectTimeoutMs":1000,"requestTimeoutMs":2000,"batchTimeoutMs":3000,"concurrency":2}}
@@ -75,12 +77,12 @@ class CoverTaskTests {
         verify(factory).create(captured.capture());
         assertThat(captured.getValue().getConcurrency()).isEqualTo(2);
         assertThat(captured.getValue().getRequestTimeout()).isEqualTo(java.time.Duration.ofSeconds(2));
-        assertThat(defaults.getConcurrency()).isEqualTo(4);
+        assertThat(defaults.getConcurrency()).isEqualTo(originalConcurrency);
         mvc.perform(get("/api/catalog/covers/task")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.task.state").value("COMPLETED"))
                 .andExpect(jsonPath("$.task.summary.updated").value(61));
         mvc.perform(get("/api/catalog/covers/config")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.requestTimeoutMs").value(3000));
+                .andExpect(jsonPath("$.requestTimeoutMs").value(originalRequestTimeoutMs));
     }
 
     @Test void dryRunNeverWritesAndPreventsConcurrentTasksAndReset() throws Exception {

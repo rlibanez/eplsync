@@ -71,7 +71,7 @@ class SecurityIntegrationTests {
             session=login("admin",initial.password());
             mvc.perform(post("/api/auth/password").session(session).with(csrf()).contentType("application/json")
                 .content(json(Map.of("currentPassword",initial.password(),"newPassword",PASSWORD)))).andExpect(status().isOk());
-            var messages=appender.list.stream().map(ch.qos.logback.classic.spi.ILoggingEvent::getFormattedMessage).toList();
+            var messages=appender.list.stream().map((ch.qos.logback.classic.spi.ILoggingEvent entryValue) -> java.util.Objects.requireNonNull(entryValue).getFormattedMessage()).toList();
             assertThat(messages).anyMatch(message -> message.contains("AUTHENTICATION_REJECTED, IP=192.0.2.10"))
                 .anyMatch(message -> message.startsWith("Inicio de sesión: userId=") && message.contains("IP=127.0.0.1"))
                 .anyMatch(message -> message.startsWith("Cierre de sesión explícito: userId="))
@@ -104,7 +104,7 @@ class SecurityIntegrationTests {
     @Test void staleCsrfIsDistinguishedFromPermissionDenial() throws Exception {
         var oldSession=admin();
         var mapper=tools.jackson.databind.json.JsonMapper.builder().build();
-        var oldToken=mapper.readTree(mvc.perform(get("/api/auth/csrf").session(oldSession)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token").asText();
+        var oldToken=mapper.readTree(mvc.perform(get("/api/auth/csrf").session(oldSession)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token").asString();
         var newSession=login("admin",PASSWORD);
         mvc.perform(put("/api/auth/email").session(newSession).header("X-CSRF-TOKEN",oldToken)
             .contentType("application/json").content("{\"email\":\"changed@example.org\"}"))
@@ -112,7 +112,7 @@ class SecurityIntegrationTests {
         accounts.policy(new AccountStore.Policy(true,false,30,12));
         accounts.register("reader","reader@example.org",PASSWORD);
         var reader=login("reader",PASSWORD);
-        var token=mapper.readTree(mvc.perform(get("/api/auth/csrf").session(reader)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token").asText();
+        var token=mapper.readTree(mvc.perform(get("/api/auth/csrf").session(reader)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token").asString();
         mvc.perform(put("/api/settings/torrent").session(reader).header("X-CSRF-TOKEN",token)
             .contentType("application/json").content("{}"))
             .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));

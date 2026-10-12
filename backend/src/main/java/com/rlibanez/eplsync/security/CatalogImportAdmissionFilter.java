@@ -36,7 +36,7 @@ final class CatalogImportAdmissionFilter extends OncePerRequestFilter {
         }
         var permission=path(request).startsWith("/api/catalog/import/missing") ? Permission.CATALOG_DELETE : Permission.CATALOG_IMPORT;
         if(!Permission.has(permission)) { SecurityConfiguration.error(request,response,403,"ACCESS_DENIED");return; }
-        try(var lease=gate.acquire()) {
+        try(var _=gate.acquire()) {
             chain.doFilter(new HttpServletRequestWrapper(request) {
                 @Override public Collection<Part> getParts() throws IOException,ServletException {
                     CatalogOperationBudget.check();

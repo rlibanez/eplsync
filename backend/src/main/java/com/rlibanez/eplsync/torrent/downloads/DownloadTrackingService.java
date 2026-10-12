@@ -234,7 +234,7 @@ public class DownloadTrackingService {
         known += batch.size();
         recordCursor = batch.getLast().getId();
         var metadata = report == null ? Map.<Long,com.rlibanez.eplsync.torrent.DownloadBookMetadata.Book>of() :
-            com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager,batch.stream().map(DownloadRecord::getEplId).toList());
+            com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager,batch.stream().map((DownloadRecord entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).toList());
         for (var original : batch) {
             // Work on detached copies: a dry-run must not trigger Hibernate dirty checking.
             var row = new DownloadRecord();

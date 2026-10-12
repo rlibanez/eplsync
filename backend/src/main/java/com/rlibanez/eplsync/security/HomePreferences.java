@@ -18,7 +18,7 @@ public class HomePreferences {
             new Section("newReleases",true,10),new Section("recentUpdates",true,10),
             new Section("recentBooks",true,10),new Section("recentEvents",true,null,10));
     private static final Map<String,Section> AVAILABLE=DEFAULTS.stream()
-            .collect(java.util.stream.Collectors.toUnmodifiableMap(Section::id,section -> section));
+            .collect(java.util.stream.Collectors.toUnmodifiableMap((Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id(),section -> section));
     private final JdbcTemplate jdbc;
     private final tools.jackson.databind.json.JsonMapper mapper=tools.jackson.databind.json.JsonMapper.builder().build();
     public HomePreferences(JdbcTemplate jdbc) {

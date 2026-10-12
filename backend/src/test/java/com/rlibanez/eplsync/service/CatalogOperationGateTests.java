@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.*;
 class CatalogOperationGateTests {
     @Test void busyRequestsDoNotWaitOrRunWorkAndNestedCallsAreAllowed() throws Exception {
         var gate=new CatalogOperationGate(new CatalogImportProperties());
-        try(var executor=Executors.newSingleThreadExecutor();var lease=gate.acquire()) {
+        try(var executor=Executors.newSingleThreadExecutor();var _=gate.acquire()) {
             assertThat(gate.run(() -> 42)).isEqualTo(42);
             var result=executor.submit(() -> {
                 assertThatThrownBy(() -> gate.run(() -> {throw new AssertionError("Rejected work executed");}))
