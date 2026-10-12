@@ -18,22 +18,43 @@ public class CalibreSettings {
         @Override public String toString() { return "Calibre connection input [redacted]"; }
     }
     public record View(String url, String username, boolean passwordConfigured, String library, String browserUrl) {}
-    record Stored(String url, String username, String password, String library, String browserUrl) {}
+    record Stored(String url, String username, String password, String library, String browserUrl, Boolean externalPassword) {}
     record Connection(String url, String username, String password, String library) {
         @Override public String toString() { return "Calibre connection [redacted]"; }
     }
     private final JdbcTemplate jdbc;
     private final String key;
+    private final Stored defaults;
+    private final String environmentPassword;
     private final JsonMapper json = JsonMapper.builder().build();
-    public CalibreSettings(JdbcTemplate jdbc, @Value("${eplsync.security.secret-key:}") String key) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public CalibreSettings(JdbcTemplate jdbc, @Value("${eplsync.security.secret-key:}") String key,
+            @Value("${eplsync.calibre.url:}") String url,
+            @Value("${eplsync.calibre.browser-url:}") String browserUrl,
+            @Value("${eplsync.calibre.username:}") String username,
+            @Value("${eplsync.calibre.password:}") String password,
+            @Value("${eplsync.calibre.library:}") String library) {
         this.jdbc = jdbc; this.key = key;
+        this.defaults = new Stored(url.isBlank() ? "" : normalize(url), username.trim(), "", library,
+                browserUrl.isBlank() ? "" : normalize(browserUrl), true);
+        this.environmentPassword = password;
+        if (username.length() > 256 || library.length() > 256 || library.indexOf('/') >= 0
+                || library.indexOf('\\') >= 0 || password.length() > 4096)
+            throw new UserInputException("Usuario, contraseña o biblioteca de Calibre inválidos");
+    }
+    public CalibreSettings(JdbcTemplate jdbc, String key) {
+        this(jdbc, key, "", "", "", "", "");
+    }
+    private boolean usesEnvironmentPassword(Stored value) {
+        return Boolean.TRUE.equals(value.externalPassword()) && value.url().equals(defaults.url())
+                && value.username().equals(defaults.username());
     }
     private Stored stored() {
         var values = jdbc.queryForList("SELECT setting_value FROM app_settings WHERE setting_key=?", String.class, KEY);
-        return values.isEmpty() ? new Stored("", "", "", "", "") : json.readValue(values.getFirst(), Stored.class);
+        return values.isEmpty() ? defaults : json.readValue(values.getFirst(), Stored.class);
     }
     public synchronized View view() {
-        var s = stored(); return new View(s.url(), s.username(), !s.password().isEmpty(), s.library(), s.browserUrl()==null ? "" : s.browserUrl());
+        var s = stored(); return new View(s.url(), s.username(), (!s.password().isEmpty() || (usesEnvironmentPassword(s) && !environmentPassword.isEmpty())), s.library(), s.browserUrl()==null ? "" : s.browserUrl());
     }
     synchronized Connection resolve(Input input) {
         if (input == null) throw new UserInputException("Indica la conexión con Calibre");
@@ -46,10 +67,12 @@ public class CalibreSettings {
             throw new UserInputException("Usuario o biblioteca de Calibre inválidos");
         String password = input.password() == null ? "" : input.password();
         if (password.length() > 4096) throw new UserInputException("La contraseña de Calibre es demasiado larga");
-        if (password.isEmpty() && !Boolean.TRUE.equals(input.clearPassword()) && url.equals(old.url()) && username.equals(old.username()) && !old.password().isEmpty()) {
-            if (key.isBlank()) throw new UserInputException("No se pueden recuperar las credenciales de Calibre; revisa EPLSYNC_SECRET_KEY");
-            try { password = new CredentialCipher(key).decrypt(PASSWORD, old.password()); }
-            catch (IllegalStateException ex) { throw new UserInputException("No se pueden recuperar las credenciales de Calibre; revisa EPLSYNC_SECRET_KEY"); }
+        if (password.isEmpty() && !Boolean.TRUE.equals(input.clearPassword()) && url.equals(old.url()) && username.equals(old.username())) {
+            if (!old.password().isEmpty()) {
+                if (key.isBlank()) throw new UserInputException("No se pueden recuperar las credenciales de Calibre; revisa EPLSYNC_SECRET_KEY");
+                try { password = new CredentialCipher(key).decrypt(PASSWORD, old.password()); }
+                catch (IllegalStateException ex) { throw new UserInputException("No se pueden recuperar las credenciales de Calibre; revisa EPLSYNC_SECRET_KEY"); }
+            } else if (usesEnvironmentPassword(old)) password = environmentPassword;
         }
         return new Connection(url, username, password, library);
     }
@@ -61,12 +84,16 @@ public class CalibreSettings {
         var previous = stored();
         var c = resolve(input);
         if (c.library().isBlank()) throw new UserInputException("Selecciona una biblioteca de Calibre");
+        boolean external = (input.password() == null || input.password().isEmpty())
+                && !Boolean.TRUE.equals(input.clearPassword()) && previous.password().isEmpty()
+                && usesEnvironmentPassword(previous) && c.url().equals(previous.url())
+                && c.username().equals(previous.username());
         String encrypted = "";
-        if (!c.password().isEmpty()) {
+        if (!c.password().isEmpty() && !external) {
             if (key.isBlank()) throw new SecretKeyRequiredException();
             encrypted = new CredentialCipher(key).encrypt(PASSWORD, c.password());
         }
-        var value = json.writeValueAsString(new Stored(c.url(), c.username(), encrypted, c.library(), input.browserUrl()==null || input.browserUrl().isBlank() ? "" : normalize(input.browserUrl())));
+        var value = json.writeValueAsString(new Stored(c.url(), c.username(), encrypted, c.library(), input.browserUrl()==null || input.browserUrl().isBlank() ? "" : normalize(input.browserUrl()), external));
         jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value", KEY, value);
         if (!previous.url().equals(c.url()) || !previous.username().equals(c.username()) || !previous.library().equals(c.library())) {
             jdbc.update("DELETE FROM calibre_books WHERE active=true");

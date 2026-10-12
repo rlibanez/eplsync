@@ -71,6 +71,27 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 | `EPLSYNC_EVENTS_RETENTION_MAX_COUNT` | Número máximo de eventos conservados; se aplica junto con el límite por antigüedad. | `10000` |
 | `EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS` | Antigüedad máxima de los eventos, en días; se aplica junto con el límite por cantidad. | `365` |
 
+## Calibre
+
+| Variable | Descripción | Valor predeterminado |
+| --- | --- | --- |
+| `EPLSYNC_CALIBRE_URL` | URL del servidor de contenido de Calibre, HTTP o HTTPS. | Vacío |
+| `EPLSYNC_CALIBRE_BROWSER_URL` | URL opcional accesible desde el navegador para abrir libros. Vacía utiliza la URL del servidor de contenido. | Vacío |
+| `EPLSYNC_CALIBRE_USERNAME` | Usuario del servidor de contenido. | Vacío |
+| `EPLSYNC_CALIBRE_PASSWORD` | Contraseña del servidor de contenido. No se copia a la base de datos. | Vacío |
+| `EPLSYNC_CALIBRE_LIBRARY` | Identificador de biblioteca, disponible al comprobar la conexión en Ajustes > Calibre. | Vacío |
+
+Los ajustes guardados desde la interfaz tienen prioridad sobre estos valores de
+instalación. Las variables se aplican inicialmente cuando todavía no hay una
+configuración guardada. Guardar sin introducir una contraseña nueva conserva la
+contraseña de entorno para el mismo servidor y usuario; cambiar cualquiera de
+ellos impide reutilizarla. Eliminar la contraseña desde Ajustes impide su
+reutilización también después de reiniciar. Guardar una contraseña nueva desde
+la interfaz requiere `EPLSYNC_SECRET_KEY` y la almacena cifrada.
+
+Cambiar las variables requiere recrear el contenedor. Configurarlas no ejecuta
+una sincronización: se realiza desde Calibre > Biblioteca.
+
 ## Valores sin la plantilla
 
 El Compose utiliza los mismos valores de reserva que `.env.example`.

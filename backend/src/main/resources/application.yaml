@@ -125,6 +125,13 @@ eplsync:
       batch-timeout: 4s # Límite total del grupo paralelo. >= request-timeout.
       concurrency: 8 # URLs simultáneas (1–32).
 
+  calibre:
+    url: ${EPLSYNC_CALIBRE_URL:}
+    browser-url: ${EPLSYNC_CALIBRE_BROWSER_URL:}
+    username: ${EPLSYNC_CALIBRE_USERNAME:}
+    password: ${EPLSYNC_CALIBRE_PASSWORD:}
+    library: ${EPLSYNC_CALIBRE_LIBRARY:}
+
   torrent:
     trackers:
       - "udp://tracker.opentrackr.org:1337/announce"

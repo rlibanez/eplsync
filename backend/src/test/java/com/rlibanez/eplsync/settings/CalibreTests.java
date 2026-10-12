@@ -119,6 +119,38 @@ class CalibreTests {
             assertThatThrownBy(() -> new CalibreSettings(jdbc, "").save(new CalibreSettings.Input(url, "reader", "secret", false, "main"))).isInstanceOf(SecretKeyRequiredException.class);
         } finally { source.destroy(); }
     }
+    @Test void environmentCredentialsStayExternalAndRespectOverridesAndDestination() {
+        var source = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
+        try {
+            var jdbc = new JdbcTemplate(source);
+            jdbc.execute("CREATE TABLE calibre_books(active boolean)");
+            jdbc.execute("CREATE TABLE app_settings(setting_key TEXT PRIMARY KEY,setting_value TEXT)");
+            var settings = new CalibreSettings(jdbc, "", url + "/", "https://books.example", "reader", "env-secret", "main");
+            assertThat(settings.view().url()).isEqualTo(url);
+            assertThat(settings.view().browserUrl()).isEqualTo("https://books.example");
+            assertThat(settings.view().passwordConfigured()).isTrue();
+            assertThat(settings.connection().password()).isEqualTo("env-secret");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM app_settings", Integer.class)).isZero();
+            settings.save(new CalibreSettings.Input(url, "reader", "", false, "main", "https://public.example"));
+            assertThat(jdbc.queryForObject("SELECT setting_value FROM app_settings", String.class)).doesNotContain("env-secret");
+            assertThat(settings.connection().password()).isEqualTo("env-secret");
+            assertThat(settings.resolve(new CalibreSettings.Input("http://other:8080", "reader", "", false, "main")).password()).isEmpty();
+            assertThat(settings.resolve(new CalibreSettings.Input(url, "other", "", false, "main")).password()).isEmpty();
+            var restarted = new CalibreSettings(jdbc, "", "http://other:8080", "", "reader", "new-secret", "other");
+            assertThat(restarted.view().url()).isEqualTo(url);
+            assertThat(restarted.view().library()).isEqualTo("main");
+            assertThat(restarted.connection().password()).isEmpty();
+            settings.save(new CalibreSettings.Input(url, "reader", "", true, "main"));
+            assertThat(settings.view().passwordConfigured()).isFalse();
+            assertThat(new CalibreSettings(jdbc, "", url, "", "reader", "env-secret", "main").connection().password()).isEmpty();
+            assertThatThrownBy(() -> settings.save(new CalibreSettings.Input(url, "reader", "new-password", false, "main")))
+                    .isInstanceOf(SecretKeyRequiredException.class);
+            var encrypted = new CalibreSettings(jdbc, Base64.getEncoder().encodeToString(new byte[32]), url, "", "reader", "env-secret", "main");
+            encrypted.save(new CalibreSettings.Input(url, "reader", "ui-secret", false, "main"));
+            assertThat(encrypted.connection().password()).isEqualTo("ui-secret");
+            assertThat(jdbc.queryForObject("SELECT setting_value FROM app_settings", String.class)).doesNotContain("env-secret", "ui-secret");
+        } finally { source.destroy(); }
+    }
     @Test void validatesUrls() {
         assertThat(CalibreSettings.normalize("HTTP://LOCALHOST:80/calibre/")).isEqualTo("http://localhost/calibre");
         for (String bad : List.of("file:///tmp/library", "http://user:password@host", "http://host?token=secret", "http://host/#library"))
