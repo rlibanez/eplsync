@@ -66,7 +66,7 @@ class RevisionUpdatesTests {
         book(3,2);history(3,1,DownloadStatus.SUBMITTED,true);
         var multiple=updates.searchStatuses(UpdatePreferences.defaults(),0,20,"eplId,asc",null,List.of(DownloadStatus.SUBMITTED,DownloadStatus.DOWNLOADED));
         assertThat(multiple.meta().totalItems()).isEqualTo(3);
-        assertThat(multiple.items()).extracting(RevisionUpdates.Row::eplId).containsExactly(1L,2L,3L);
+        assertThat(multiple.items()).extracting((RevisionUpdates.Row entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).containsExactly(1L,2L,3L);
         var result=updates.search(UpdatePreferences.defaults(),1,1,"eplId,asc",null,DownloadStatus.SUBMITTED);
         assertThat(result.meta().totalItems()).isEqualTo(2);
         assertThat(result.items()).extracting((RevisionUpdates.Row entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).containsExactly(3L);
