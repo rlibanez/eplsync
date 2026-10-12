@@ -1,3 +1,4 @@
+import { useSettingsSaved } from "./useSettingsSaved";
 import { useAuth } from "../auth/Auth";
 import { useState } from "react";
 import { Button, Checkbox } from "@mantine/core";
@@ -39,13 +40,14 @@ function UpdateSettingsForm({ initial }: { initial: Preferences }) {
   const canEdit = useAuth().can("SETTINGS_MANAGE");
   const { status } = useLocale();
   const cache = useQueryClient();
+  const settingsSaved = useSettingsSaved();
   const [selected, setSelected] = useState(initial.states);
   const save = useMutation({
     mutationFn: () =>
       authRequest<Preferences>("/settings/downloads/updates", "PUT", {
         states: selected,
       }),
-    onSuccess: (data) => cache.setQueryData(["update-preferences"], data),
+    onSuccess: (data) => { cache.setQueryData(["update-preferences"], data); settingsSaved(); },
   });
   return (
     <section className="panel settings-section">
@@ -102,9 +104,7 @@ function UpdateSettingsForm({ initial }: { initial: Preferences }) {
       {save.isError && (
         <Failure error={save.error} retry={() => save.mutate()} />
       )}
-      {save.isSuccess && (
-        <small className="muted" role="status">{t("updateSettings.saved")}</small>
-      )}
+
     </section>
   );
 }

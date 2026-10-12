@@ -364,7 +364,17 @@
     "back": "Back",
     "next": "Next",
     "result": "Update results",
-    "closeResult": "Close results"
+    "closeResult": "Close results",
+    "progressPhases": {
+      "PREPARING": "Preparing",
+      "DOWNLOADING": "Downloading ZIP",
+      "VALIDATING": "Validating CSV",
+      "ANALYZING": "Analyzing records",
+      "IMPORTING": "Importing records",
+      "FINALIZING": "Finalizing",
+      "EXTRACTING": "Extracting ZIP"
+    },
+    "processedProgress": "{{number}} records processed"
   },
   "breadcrumbs": {
     "label": "Breadcrumbs",

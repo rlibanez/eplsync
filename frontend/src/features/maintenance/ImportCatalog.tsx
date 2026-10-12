@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { get } from "../../api/catalog";
 import { CoverSettings } from "../settings/CoverSettings";
 import { useAuth } from "../auth/Auth";
 import { ServerSettings } from "../settings/ServerSettings";
@@ -35,6 +37,13 @@ export function ImportCatalog() {
     }
   }, [search, setSearch]);
   const pending = restoring || (operation?.pending ?? false);
+  const progress = useQuery({
+    queryKey: ["catalog-import-progress", operation?.startedAt],
+    queryFn: ({ signal }) => get<{ active: boolean; phase: string; processedRows: number }>("/catalog/import/progress", signal),
+    enabled: auth.can("CATALOG_IMPORT") && !!operation?.pending && operation.mode !== "reset",
+    refetchInterval: operation?.pending ? 1000 : false,
+    retry: false,
+  });
   return (
     <>
       {auth.can("CATALOG_READ") && <CurrentCatalog />}
@@ -55,6 +64,9 @@ export function ImportCatalog() {
                         : "import.updatePending",
                 )}
               </span>
+              {progress.data?.active && (
+                <span>{t(`import.progressPhases.${progress.data.phase}`)}{progress.data.processedRows > 0 ? ` · ${t("import.processedProgress", { count: progress.data.processedRows, number: number(progress.data.processedRows) })}` : ""}</span>
+              )}
             </div>
           )}
           <p>{t("import.sourceDescription")}</p>

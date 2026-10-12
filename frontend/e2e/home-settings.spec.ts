@@ -94,7 +94,7 @@ test("home preferences support ordering, per-shelf counts, persistence and heade
     "Novedades",
   );
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Cambios guardados.");
+  await expect(page.locator(".notification-toasts")).toContainText("Ajustes guardados.");
   await page.reload();
   await expect(rows.nth(0).getByRole("checkbox")).toHaveAccessibleName(
     "Novedades",
@@ -134,7 +134,7 @@ test("home preferences support ordering, per-shelf counts, persistence and heade
     }),
   ).toBeChecked();
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("Cambios guardados.");
+  await expect(page.locator(".notification-toasts")).toContainText("Ajustes guardados.");
   await expect(
     page.getByRole("textbox", { name: "Número de eventos" }),
   ).toHaveValue("10");

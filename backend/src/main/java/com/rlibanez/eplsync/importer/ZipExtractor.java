@@ -39,6 +39,7 @@ public class ZipExtractor {
     }
 
     public ExtractedCsv extractCsvWithMetadata(Path zipFile) throws IOException {
+        CatalogOperationBudget.progress("EXTRACTING", 0);
         CatalogImportLimits.checkZip(zipFile);
         long deadline = System.nanoTime() + timeout.toNanos();
         ZipArchiveValidator.validate(zipFile, maxEntries, deadline);

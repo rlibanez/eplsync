@@ -1,3 +1,4 @@
+import { useSettingsSaved } from "../settings/useSettingsSaved";
 import {
   createContext,
   useContext,
@@ -661,6 +662,7 @@ export function PasswordChange({ required = false }: { required?: boolean }) {
   );
 }
 export function AccountSettings() {
+  const settingsSaved = useSettingsSaved();
   const { t } = useTranslation();
   const auth = useAuth();
   const [email, setEmail] = useState(auth.user?.email ?? "");
@@ -684,7 +686,8 @@ export function AccountSettings() {
             void authRequest("/auth/email", "PUT", { email })
               .then(async () => {
                 await auth.refresh();
-                setMessage(t("auth.saved"));
+                setMessage("");
+                settingsSaved();
               })
               .catch((e) => setMessage(String(e)))
           }

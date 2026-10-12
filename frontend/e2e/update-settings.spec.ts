@@ -16,7 +16,7 @@ test("update preferences persist and covers move into catalog settings", async (
   await boxes.last().check();
   await page.getByRole("button", {name:"Guardar",exact:true}).click();
   await expect.poll(() => saved.states).toContain("NOT_FOUND");
-  await expect(page.getByRole("status").filter({hasText:"Configuración guardada."})).toHaveClass("muted");
+  await expect(page.locator(".notification-toasts")).toContainText("Ajustes guardados.");
   await page.reload();
   await expect(boxes.last()).toBeChecked();
   await page.getByRole("button", {name:"Restablecer valores predeterminados"}).click();

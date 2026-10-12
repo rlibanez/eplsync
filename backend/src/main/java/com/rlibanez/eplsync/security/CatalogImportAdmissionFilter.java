@@ -25,7 +25,8 @@ final class CatalogImportAdmissionFilter extends OncePerRequestFilter {
     }
     @Override protected boolean shouldNotFilter(HttpServletRequest request) {
         String path=path(request);
-        return !path.startsWith("/api/catalog/import") || path.equals("/api/catalog/import/metadata");
+        return !path.startsWith("/api/catalog/import") || path.equals("/api/catalog/import/metadata")
+                || ("GET".equals(request.getMethod()) && path.equals("/api/catalog/import/progress"));
     }
     @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain)
             throws IOException,ServletException {

@@ -48,6 +48,7 @@ export interface ResetResult {
   events: number;
 }
 interface Operation {
+  startedAt?: number;
   mode: ImportMode;
   pending: boolean;
   result?: ImportResult;
@@ -138,7 +139,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
     const token = preview?.preview?.token;
     if (retainedAction && !token) return;
     running.current = true;
-    setOperation({ mode, pending: true });
+    setOperation({ mode, pending: true, startedAt: Date.now() });
     setPreviewIssue(null);
     if ((mode === "preview" || mode === "update") && source) remember(null);
     const title = t(

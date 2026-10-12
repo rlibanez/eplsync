@@ -69,7 +69,7 @@ export function MetadataDetails({ metadata }: { metadata: Metadata }) {
         return (
           <div key={key}>
             <dt>{t(`metadata.${key}`)}</dt>
-            <dd>{display}</dd>
+            <dd className={key === "sourceZipSha256" ? "catalog-checksum" : undefined}>{display}</dd>
           </div>
         );
       })}

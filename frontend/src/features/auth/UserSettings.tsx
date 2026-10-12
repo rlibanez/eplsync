@@ -1,3 +1,4 @@
+import { useSettingsSaved } from "../settings/useSettingsSaved";
 import { compareText } from "../../locales/textOrdering";
 import { useEffect, useState, type FormEvent } from "react";
 import {
@@ -57,6 +58,7 @@ interface Temporary {
   expiresAt: string;
 }
 export function UserSettings() {
+  const settingsSaved = useSettingsSaved();
   const { t } = useTranslation();
   const [sort, setSort] = useState<{
     key: "username" | "role" | "status";
@@ -406,7 +408,7 @@ export function UserSettings() {
               disabled={pending}
               onClick={() =>
                 void action(() =>
-                  authRequest("/security/policy", "PUT", policy),
+                  authRequest("/security/policy", "PUT", policy).then((result) => { settingsSaved(); return result; }),
                 )
               }
             >

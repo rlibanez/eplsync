@@ -11,6 +11,7 @@ import java.util.Set;
 final class CatalogCsvValidator {
     private CatalogCsvValidator() {}
     static void validate(Path path, long deadline) throws IOException {
+        CatalogOperationBudget.progress("VALIDATING", 0);
         if (Files.size(path) > CatalogImportLimits.CSV_BYTES)
             throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV supera el máximo de 512 MiB");
         CatalogImportLimits.checkDeadline(deadline);

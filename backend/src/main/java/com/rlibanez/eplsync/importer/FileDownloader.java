@@ -36,6 +36,7 @@ public class FileDownloader {
     public static URI validateUrl(String value) { return CatalogDownloadPolicy.validateUrl(value); }
 
     public Path download(String url,String filePrefix,String fileSuffix) throws IOException,InterruptedException {
+        CatalogOperationBudget.progress("DOWNLOADING", 0);
         if(Thread.currentThread().isInterrupted()) throw new InterruptedException("Descarga del catálogo interrumpida");
         URI uri = validateUrl(url);
         var budget = new DownloadBudget(CatalogOperationBudget.remaining(timeout));

@@ -115,6 +115,7 @@ public class CatalogBookCsvImporter {
 
     private ProcessResult processFile(Path csvPath, boolean preview, int page, int size, boolean validateOnly) throws IOException {
         CatalogOperationBudget.enlist();
+        CatalogOperationBudget.progress(preview || validateOnly ? "ANALYZING" : "IMPORTING", 0);
         List<CatalogBook> createdBooks = new ArrayList<>();
         List<BookUpdate> updatedBooks = new ArrayList<>();
         var seenIds = new HashSet<Long>();
@@ -228,6 +229,7 @@ public class CatalogBookCsvImporter {
 
                 if (validateOnly) {
                     processed++;
+                if (processed % 100 == 0) CatalogOperationBudget.progress(preview || validateOnly ? "ANALYZING" : "IMPORTING", processed);
                     continue;
                 }
 
@@ -260,11 +262,13 @@ public class CatalogBookCsvImporter {
                     }
                 }
                 processed++;
+                if (processed % 100 == 0) CatalogOperationBudget.progress(preview || validateOnly ? "ANALYZING" : "IMPORTING", processed);
                 if (processed % PROGRESS_EVERY == 0) {
                     log.info("Progreso importación: {} filas OK, {} errores", processed, errors);
                 }
             }
             CatalogOperationBudget.check();
+            CatalogOperationBudget.progress("FINALIZING", processed);
             for (var error : parser.getCapturedExceptions()) {
                 errors++;
                 if (errors <= 20) {

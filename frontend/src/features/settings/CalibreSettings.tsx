@@ -1,3 +1,4 @@
+import { useSettingsSaved } from "./useSettingsSaved";
 import { OptionLabel } from "../downloads/SendOptions";
 import { useState } from "react";
 import {
@@ -63,6 +64,7 @@ export function CalibreSettings() {
 function Form({ initial }: { initial: View }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
+  const settingsSaved = useSettingsSaved();
   const [browserUrl, setBrowserUrl] = useState(initial.browserUrl ?? "");
   const [url, setUrl] = useState(initial.url);
   const [username, setUsername] = useState(initial.username);
@@ -107,6 +109,7 @@ function Form({ initial }: { initial: View }) {
       setLibrary(data.library);
       setPassword("");
       setClearPassword(false);
+      settingsSaved();
     },
     onError: (error) => {
       if ((error as { code?: string }).code === "SECRET_KEY_REQUIRED")
@@ -237,7 +240,7 @@ function Form({ initial }: { initial: View }) {
               {t("calibre.connected", { count: check.data.libraries.length })}
             </small>
           )}
-          {save.isSuccess && <small role="status">{t("calibre.saved")}</small>}
+
           {check.isError && (
             <Failure error={check.error} retry={() => check.mutate()} />
           )}

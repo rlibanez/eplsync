@@ -37,6 +37,12 @@ public class CatalogImportController {
                         .orElse(null)));
     }
 
+    @GetMapping("/progress")
+    public ResponseEntity<?> progress() {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(com.rlibanez.eplsync.importer.CatalogOperationBudget.progress());
+    }
+
     /**
      * Reemplaza todo el catálogo local por el catálogo importado.
      * Si no se proporciona URL, usa eplsync.catalog.zip-url.

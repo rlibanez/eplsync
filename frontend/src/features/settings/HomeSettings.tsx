@@ -1,3 +1,4 @@
+import { useSettingsSaved } from "./useSettingsSaved";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -31,6 +32,7 @@ function HomeSettingsForm({ initial }: { initial: HomePreferences }) {
   useEffect(() => setDraft(initial), [initial]);
   const [dragged, setDragged] = useState<HomeSectionId | null>(null);
   const save = useSaveHomePreferences();
+  const settingsSaved = useSettingsSaved();
   function move(id: HomeSectionId, to: number) {
     setDraft((current) => {
       const sections = [...current.sections];
@@ -48,7 +50,7 @@ function HomeSettingsForm({ initial }: { initial: HomePreferences }) {
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          save.mutate(draft);
+          save.mutate(draft, { onSuccess: settingsSaved });
         }}
       >
         <ol className="home-section-settings">
@@ -183,7 +185,7 @@ function HomeSettingsForm({ initial }: { initial: HomePreferences }) {
         {save.isError && (
           <Failure error={save.error} retry={() => save.mutate(draft)} />
         )}
-        {save.isSuccess && <p role="status">{t("homeSettings.saved")}</p>}
+
       </form>
     </section>
   );

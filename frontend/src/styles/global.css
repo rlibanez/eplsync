@@ -2028,3 +2028,8 @@ summary {
 
 .detail-related-sections { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
 .calibre-book-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+
+.catalog-metadata { max-width: 850px; }
+.catalog-metadata .catalog-checksum { white-space: nowrap; overflow-x: auto; overflow-wrap: normal; }
+.catalog-metadata dt { flex-shrink: 0; }
+.catalog-metadata .catalog-checksum { min-width: 0; }

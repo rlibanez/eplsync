@@ -7,6 +7,19 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class CatalogOperationBudgetTests {
+    @Test void progressIsVisibleAcrossThreadsAndClearedAfterFailure() throws Exception {
+        assertThat(CatalogOperationBudget.progress().active()).isFalse();
+        try (var _ = new CatalogOperationBudget(Duration.ofMinutes(1))) {
+            CatalogOperationBudget.progress("IMPORTING", 12300);
+            assertThat(java.util.concurrent.CompletableFuture.supplyAsync(CatalogOperationBudget::progress).get())
+                    .isEqualTo(new CatalogOperationBudget.Progress(true, "IMPORTING", 12300));
+            try (var _ = new CatalogOperationBudget(Duration.ofSeconds(10))) {
+                CatalogOperationBudget.progress("VALIDATING", 0);
+            }
+            assertThat(CatalogOperationBudget.progress().processedRows()).isEqualTo(12300);
+        }
+        assertThat(CatalogOperationBudget.progress().active()).isFalse();
+    }
     @Test void phasesShareRemainingTimeAndExpiryDoesNotLeakToNextOperation() {
         var clock=new AtomicLong();
         try(var _=new CatalogOperationBudget(Duration.ofSeconds(10),clock::get)) {

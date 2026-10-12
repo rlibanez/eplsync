@@ -10,6 +10,17 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 /** A monotonic deadline shared by every phase on the operation's thread. */
 public final class CatalogOperationBudget implements AutoCloseable {
     private static final ThreadLocal<CatalogOperationBudget> CURRENT = new ThreadLocal<>();
+    private static final java.util.concurrent.atomic.AtomicReference<CatalogOperationBudget> LIVE = new java.util.concurrent.atomic.AtomicReference<>();
+    public record Progress(boolean active, String phase, long processedRows) {}
+    private volatile Progress progress = new Progress(true, "PREPARING", 0);
+    public static Progress progress() {
+        var current = LIVE.get();
+        return current == null ? new Progress(false, "IDLE", 0) : current.progress;
+    }
+    public static void progress(String phase, long rows) {
+        var current = CURRENT.get();
+        if (current != null) current.progress = new Progress(true, phase, rows);
+    }
     private final CatalogOperationBudget previous;
     private final LongSupplier clock;
     private final long deadline;
@@ -19,7 +30,7 @@ public final class CatalogOperationBudget implements AutoCloseable {
         if(timeout==null || timeout.isNegative() || timeout.isZero() || timeout.compareTo(Duration.ofDays(1))>0)
             throw new IllegalArgumentException("El plazo debe ser positivo y no superar 24 horas");
         this.timeout=timeout; this.clock=clock; previous=CURRENT.get();
-        deadline=clock.getAsLong()+timeout.toNanos(); CURRENT.set(this);
+        deadline=clock.getAsLong()+timeout.toNanos(); CURRENT.set(this); if (previous == null) LIVE.set(this);
     }
     public static boolean active() { return CURRENT.get()!=null; }
     public static void check() {
@@ -54,5 +65,5 @@ public final class CatalogOperationBudget implements AutoCloseable {
     private record CommitGuard(CatalogOperationBudget budget) implements TransactionSynchronization {
         @Override public void beforeCommit(boolean readOnly) { budget.checkOwn(); if(Thread.currentThread().isInterrupted()) check(); }
     }
-    @Override public void close() { if(previous==null) CURRENT.remove(); else CURRENT.set(previous); }
+    @Override public void close() { if(previous==null) { LIVE.compareAndSet(this, null); CURRENT.remove(); } else CURRENT.set(previous); }
 }

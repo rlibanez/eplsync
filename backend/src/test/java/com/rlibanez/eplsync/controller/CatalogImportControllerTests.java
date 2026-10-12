@@ -10,9 +10,23 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class CatalogImportControllerTests {
+    @Test void progressDoesNotQueryTheDatabaseAndIsNotCached() throws Exception {
+        var service = mock(CatalogImportService.class);
+        var metadata = mock(com.rlibanez.eplsync.repository.CatalogMetadataRepository.class);
+        var mvc = MockMvcBuilders.standaloneSetup(new CatalogImportController(service, metadata)).build();
+        try (var _ = new com.rlibanez.eplsync.importer.CatalogOperationBudget(java.time.Duration.ofMinutes(1))) {
+            com.rlibanez.eplsync.importer.CatalogOperationBudget.progress("IMPORTING", 10000);
+            mvc.perform(get("/api/catalog/import/progress")).andExpect(status().isOk())
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(jsonPath("$.phase").value("IMPORTING"))
+                    .andExpect(jsonPath("$.processedRows").value(10000));
+        }
+        verifyNoInteractions(service, metadata);
+    }
     @Test void timeoutAndBusyErrorsExposeSafeSpecificDetails() throws Exception {
         var service=mock(CatalogImportService.class);
         var mvc=MockMvcBuilders.standaloneSetup(new CatalogImportController(service,mock(com.rlibanez.eplsync.repository.CatalogMetadataRepository.class)))

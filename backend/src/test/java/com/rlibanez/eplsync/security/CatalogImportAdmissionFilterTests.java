@@ -12,6 +12,23 @@ import static org.mockito.Mockito.*;
 
 class CatalogImportAdmissionFilterTests {
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
+    @Test void progressRequestsDoNotAcquireTheImportReservation() throws Exception {
+        var gate = new CatalogOperationGate(new CatalogImportProperties());
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var reserved = new CountDownLatch(1);
+            var release = new CountDownLatch(1);
+            var holder = executor.submit(() -> { try (var _ = gate.acquire()) { reserved.countDown(); release.await(); } return null; });
+            assertThat(reserved.await(1, TimeUnit.SECONDS)).isTrue();
+            try {
+                var request = new MockHttpServletRequest("GET", "/api/catalog/import/progress");
+                var response = new MockHttpServletResponse();
+                var called = new java.util.concurrent.atomic.AtomicBoolean();
+                new CatalogImportAdmissionFilter(gate).doFilter(request, response, (req, res) -> called.set(true));
+                assertThat(called.get()).isTrue();
+                assertThat(response.getStatus()).isEqualTo(200);
+            } finally { release.countDown(); holder.get(1, TimeUnit.SECONDS); }
+        }
+    }
     @Test void busyUploadIsRejectedBeforeReadingOrCreatingParts() throws Exception {
         var gate=new CatalogOperationGate(new CatalogImportProperties());
         var held=new CountDownLatch(1);var release=new CountDownLatch(1);

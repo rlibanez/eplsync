@@ -364,7 +364,17 @@
     "back": "Atrás",
     "next": "Siguiente",
     "result": "Resultado de la actualización",
-    "closeResult": "Cerrar resultado"
+    "closeResult": "Cerrar resultado",
+    "progressPhases": {
+      "PREPARING": "Preparando",
+      "DOWNLOADING": "Descargando ZIP",
+      "VALIDATING": "Validando CSV",
+      "ANALYZING": "Analizando registros",
+      "IMPORTING": "Importando registros",
+      "FINALIZING": "Finalizando",
+      "EXTRACTING": "Descomprimiendo ZIP"
+    },
+    "processedProgress": "{{number}} registros procesados"
   },
   "breadcrumbs": {
     "label": "Ruta de navegación",

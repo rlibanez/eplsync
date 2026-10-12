@@ -159,7 +159,7 @@ function SettingsForm({
       ])
         void cache.invalidateQueries({ queryKey });
       notify({
-        title: t("serverSettings.title"),
+        title: t("nav.settings"),
         message: t(
           restore ? "serverSettings.restored" : "serverSettings.saved",
         ),
@@ -356,11 +356,8 @@ function SettingsForm({
   }
   function renderField(f: Field, className?: string) {
     return (
-      <div key={f.key} className={className}>
+      <div key={f.key} className={className} title={f.overridden ? t("serverSettings.customized") : undefined}>
         {field(f)}
-        {view.section !== "covers" && f.overridden && (
-          <small className="muted">{t("serverSettings.customized")}</small>
-        )}
       </div>
     );
   }
