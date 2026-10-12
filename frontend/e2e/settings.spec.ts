@@ -24,7 +24,7 @@ test("sidebar preserves icon positions, has separators and no language selector"
   const sidebar = page.locator("#sidebar");
   await expect(sidebar.locator("select")).toHaveCount(0);
   const icons = sidebar.locator("nav a svg");
-  await expect(icons).toHaveCount(5);
+  await expect(icons).toHaveCount(6);
   const before = await icons.evaluateAll((nodes) =>
     nodes.map((n) => n.getBoundingClientRect().y),
   );
@@ -33,7 +33,7 @@ test("sidebar preserves icon positions, has separators and no language selector"
     nodes.map((n) => n.getBoundingClientRect().y),
   );
   expect(after).toEqual(before);
-  await expect(sidebar.locator(".nav-group-label")).toHaveCount(2);
+  await expect(sidebar.locator(".nav-group-label")).toHaveCount(3);
   await expect(
     sidebar.getByRole("link", { name: "Inicio", exact: true }),
   ).toHaveCount(0);

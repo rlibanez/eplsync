@@ -46,7 +46,7 @@ it("broadcasts only a signal and receives remote changes without rebroadcasting"
 it("uses storage without BroadcastChannel and removes its listener", () => {
   vi.stubGlobal("BroadcastChannel", undefined);
   const setItem = vi.fn();
-  vi.stubGlobal("localStorage", { setItem });
+  vi.stubGlobal("localStorage", { getItem: vi.fn(() => null), setItem });
   const changed = vi.fn();
   unsubscribe = subscribeSessionChanges(changed);
   announceSessionChange();

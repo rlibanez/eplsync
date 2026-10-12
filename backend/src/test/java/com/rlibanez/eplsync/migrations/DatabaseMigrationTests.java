@@ -41,15 +41,25 @@ class DatabaseMigrationTests {
         assertEquals("preserved", jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='sample'", String.class));
         assertThrows(FlywayException.class, migration::clean);
     }
-    @Test void upgradesThePublishedSchemaWithoutLosingExistingData() {
+    @Test void upgradesRelease101To110WithoutLosingExistingData() {
         var source=new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()));
-        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("1.0.0").load().migrate();
+        Flyway.configure().dataSource(source).locations("classpath:migrations/released-1.0.1").load().migrate();
+        // Fixture copied verbatim from tag v1.0.1; that release used schema 1.0.0.
         jdbc().update("INSERT INTO app_settings VALUES('preserved','value')");
+        jdbc().update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(123,1.2,'Preserved book','Author')");
+        jdbc().update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('user','alice','alice','alice@example.org','hash','USER','ACTIVE','now','now')");
+        jdbc().update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('history',123,1,'hash','qbittorrent','client','DOWNLOADED','EPLSYNC',0)");
         var upgrade=flyway("classpath:db/migration");
         assertEquals(1,upgrade.migrate().migrationsExecuted);
         assertEquals("1.1.0",upgrade.info().current().getVersion().toString());
         assertEquals("value",jdbc().queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='preserved'",String.class));
         assertEquals(0,jdbc().queryForObject("SELECT count(*) FROM calibre_books",Integer.class));
+        assertEquals("Preserved book",jdbc().queryForObject("SELECT title FROM catalog_books WHERE epl_id=123",String.class));
+        assertEquals("alice",jdbc().queryForObject("SELECT username FROM users WHERE id='user'",String.class));
+        assertEquals("DOWNLOADED",jdbc().queryForObject("SELECT status FROM torrent_downloads WHERE id='history'",String.class));
+        assertTrue(jdbc().queryForList("PRAGMA foreign_key_check").isEmpty());
+        upgrade.validate();
+        assertEquals(0,upgrade.migrate().migrationsExecuted);
     }
     @Test void catalogueOrderingAndRevisionLookupsUseTheirIndexes() {
         flyway("classpath:db/migration").migrate();

@@ -109,7 +109,7 @@ test("all sidebar icon centers remain fixed including logo and settings", async 
   const icons = page.locator(
     ".brand-icon svg, #sidebar nav a svg, .settings-link svg, .sidebar-toggle svg",
   );
-  await expect(icons).toHaveCount(10);
+  await expect(icons).toHaveCount(11);
   const positions = () =>
     icons.evaluateAll((nodes) =>
       nodes.map((node) => {
