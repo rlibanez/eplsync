@@ -297,7 +297,7 @@ export function DownloadBook({
           eplId: book.eplId,
           title,
           coverUrl: book.coverUrl ?? null,
-          coverAvailable: book.coverAvailable ?? false,
+          coverAvailable: book.coverAvailable ?? null,
         }}
       />
       <span>{title}</span>
