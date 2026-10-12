@@ -1175,7 +1175,9 @@
       "CATALOG_DELETE": "Delete missing books",
       "COVERS_MANAGE": "Manage covers",
       "EVENTS_MANAGE": "Read and delete events",
-      "SETTINGS_MANAGE": "Read and edit settings"
+      "SETTINGS_MANAGE": "Read and edit settings",
+      "CALIBRE_READ": "View Calibre library",
+      "CALIBRE_SYNC": "Synchronize Calibre library"
     },
     "statuses": {
       "PENDING": "Pending approval",
@@ -1212,7 +1214,8 @@
     "permissionGroups": {
       "catalog": "Catalog",
       "torrent": "Torrent client",
-      "system": "System"
+      "system": "System",
+      "calibre": "Calibre"
     },
     "resetPasswordNamed": "Reset password for {{username}}",
     "resetPasswordWarning": "Reset the password for {{username}}? The current password will be replaced and all sessions will close. A temporary password valid for 24 hours will be generated and must be changed on the next sign-in.",
@@ -1365,6 +1368,19 @@
       "CURRENT": "Same revision as the catalog",
       "NEWER": "Newer revision than the catalog",
       "UNKNOWN": "No identified revision"
-    }
+    },
+    "libraryTitle": "Library",
+    "libraryDescription": "Browse books in the synchronized Calibre library.",
+    "search": "Title or author",
+    "catalogRevision": "Catalog revision",
+    "comparison": "Comparison",
+    "presence": "In the catalog",
+    "presenceValues": {
+      "PRESENT": "Yes",
+      "MISSING": "No",
+      "UNIDENTIFIED": "No EPL identifier"
+    },
+    "libraryRevision": "Calibre revision",
+    "libraryHeading": "Calibre library"
   }
 }

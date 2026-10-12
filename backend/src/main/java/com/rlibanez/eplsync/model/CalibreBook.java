@@ -12,5 +12,7 @@ public class CalibreBook {
     @Column(name="calibre_id") private Long calibreId;
     @Column(name="epl_id") private Long eplId;
     private Double revision;
+    @Column(length=4096) private String title;
+    @Column(length=16384) private String authors;
     protected CalibreBook() {}
 }

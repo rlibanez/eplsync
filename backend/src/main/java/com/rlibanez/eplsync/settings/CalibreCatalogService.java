@@ -56,13 +56,16 @@ public class CalibreCatalogService {
                 for(var book:result.items()) if(book.eplId()!=null) identified++;
                 tx.executeWithoutResult(s -> {
                     checkDeadline(deadline);
-                    var counts=jdbc.batchUpdate("INSERT OR IGNORE INTO calibre_books(id,generation,active,calibre_id,epl_id,revision) VALUES(?,?,false,?,?,?)",
+                    var counts=jdbc.batchUpdate("INSERT OR IGNORE INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES(?,?,false,?,?,?,?,?)",
                         result.items(),100,(statement,book) -> {
                             statement.setString(1,generation+":"+book.calibreId());
                             statement.setString(2,generation);
                             statement.setLong(3,book.calibreId());
                             statement.setObject(4,book.eplId());
                             statement.setObject(5,book.revision()==null ? null : book.revision().doubleValue());
+                            if(book.title().length()>4096 || String.join(", ",book.authors()).length()>16384) throw new UserInputException("Los metadatos de Calibre superan el tamaño permitido");
+                            statement.setString(6,book.title());
+                            statement.setString(7,String.join(", ",book.authors()));
                         });
                     for(var batch:counts) for(int count:batch) if(count==0)
                         throw new UserInputException("Calibre devolvió identificadores duplicados; vuelve a sincronizar la biblioteca");

@@ -30,13 +30,14 @@ export function useDownloadColumns(
   options: {
     defaults: string;
     selection?: boolean;
+    hidden?: string[];
     extraSort?: TableColumn[];
   } = { defaults: "createdAt,desc" },
 ) {
   const { t } = useTranslation();
   const fields = columns.map((column) => column.field);
   const [settings, setSettings] = useState<ColumnSettings>(() => {
-    const initial = { order: fields, hidden: [], widths: {} };
+    const initial = { order: fields, hidden: options.hidden ?? [], widths: {} };
     try {
       const saved = JSON.parse(
         localStorage.getItem(`${key}.settings.v1`) || "null",

@@ -12,7 +12,6 @@ import { get, ApiError, NetworkError } from "../../api/catalog";
 import { secureFetch } from "../auth/transport";
 import { Loading, Failure } from "../../components/Feedback";
 import { SecretKeyDialog } from "./SecretKeyDialog";
-import { useLocale } from "../../locales/useLocale";
 
 interface View {
   url: string;
@@ -62,7 +61,6 @@ export function CalibreSettings() {
 function Form({ initial }: { initial: View }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
-  const { date } = useLocale();
   const [url, setUrl] = useState(initial.url);
   const [username, setUsername] = useState(initial.username);
   const [password, setPassword] = useState("");
@@ -74,11 +72,9 @@ function Form({ initial }: { initial: View }) {
     mutationFn: () => request<Check>("POST", input(), "/connection"),
     onMutate: (): void => {
       save.reset();
-      sync.reset();
     },
     retry: false,
     onSuccess: (data) => {
-      if (snapshot.isError) void snapshot.refetch();
       if (!data.libraries.some((l) => l.id === library))
         setLibrary(data.defaultLibrary || data.libraries[0]?.id || "");
     },
@@ -87,12 +83,12 @@ function Form({ initial }: { initial: View }) {
     mutationFn: () => request<View>("PUT", input()),
     onMutate: (): void => {
       check.reset();
-      sync.reset();
     },
     retry: false,
     onSuccess: (data) => {
       cache.setQueryData(["calibre-settings"], data);
       void cache.invalidateQueries({ queryKey: ["calibre-snapshot"] });
+      void cache.invalidateQueries({ queryKey: ["calibre-library"] });
       void cache.invalidateQueries({ queryKey: ["catalog"] });
       void cache.invalidateQueries({ queryKey: ["book"] });
       setUrl(data.url);
@@ -106,40 +102,7 @@ function Form({ initial }: { initial: View }) {
         setKeyDialog(true);
     },
   });
-  const snapshot = useQuery({
-    queryKey: ["calibre-snapshot"],
-    queryFn: ({ signal }) =>
-      get<{
-        snapshot: {
-          library: string;
-          syncedAt: string;
-          total: number;
-          identified: number;
-        } | null;
-      }>("/settings/calibre/snapshot", signal).then((data) => data.snapshot),
-  });
-  const sync = useMutation({
-    mutationFn: () =>
-      request<{
-        library: string;
-        syncedAt: string;
-        total: number;
-        identified: number;
-      }>("POST", {}, "/sync"),
-    retry: false,
-    onSuccess: (data) => {
-      cache.setQueryData(["calibre-snapshot"], data);
-      void cache.invalidateQueries({ queryKey: ["catalog"] });
-      void cache.invalidateQueries({ queryKey: ["book"] });
-    },
-  });
-  const busy = sync.isPending || check.isPending || save.isPending;
-  const changed =
-    url !== initial.url ||
-    username !== initial.username ||
-    password !== "" ||
-    clearPassword ||
-    library !== initial.library;
+  const busy = check.isPending || save.isPending;
   const reset = () => {
     check.reset();
     save.reset();
@@ -259,47 +222,6 @@ function Form({ initial }: { initial: View }) {
           )}
         </div>
       </section>
-      {initial.library && (
-        <section className="panel settings-section">
-          <h2>{t("calibre.catalogSync")}</h2>
-          <p>{t("calibre.syncDescription")}</p>
-          {snapshot.data && (
-            <p>
-              {t("calibre.syncSummary", {
-                total: snapshot.data.total,
-                identified: snapshot.data.identified,
-                date: date(snapshot.data.syncedAt),
-              })}
-            </p>
-          )}
-          {!snapshot.data && !snapshot.isError && (
-            <p>{t("calibre.notSynced")}</p>
-          )}
-          <div className="action-row">
-            <Button
-              disabled={busy || changed}
-              loading={sync.isPending}
-              onClick={() => sync.mutate()}
-            >
-              {t("calibre.sync")}
-            </Button>
-          </div>
-          <div style={{ marginTop: 12 }}>
-            {snapshot.isError && (
-              <Failure
-                error={snapshot.error}
-                retry={() => snapshot.refetch()}
-              />
-            )}
-            {sync.isError && (
-              <Failure error={sync.error} retry={() => sync.mutate()} />
-            )}
-            {sync.isSuccess && (
-              <small role="status">{t("calibre.synced")}</small>
-            )}
-          </div>
-        </section>
-      )}
       {keyDialog && <SecretKeyDialog onClose={() => setKeyDialog(false)} />}
     </>
   );

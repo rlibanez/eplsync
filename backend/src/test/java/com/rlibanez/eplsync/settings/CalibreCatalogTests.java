@@ -32,7 +32,7 @@ class CalibreCatalogTests {
         jdbc.update("DELETE FROM catalog_books");
         settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"main"));
     }
-    @Test @WithMockUser(authorities={"ROLE_ADMIN"}) void missingSnapshotReturnsJsonInsteadOfAnEmptyBody() throws Exception {
+    @Test @WithMockUser(authorities={"ROLE_ADMIN", "CALIBRE_READ", "CALIBRE_SYNC"}) void missingSnapshotReturnsJsonInsteadOfAnEmptyBody() throws Exception {
         mvc.perform(get("/api/settings/calibre/snapshot")).andExpect(status().isOk())
             .andExpect(content().contentTypeCompatibleWith("application/json"))
             .andExpect(content().json("{\"snapshot\":null}"));
@@ -41,7 +41,7 @@ class CalibreCatalogTests {
         mvc.perform(get("/api/settings/calibre/snapshot")).andExpect(status().isOk())
             .andExpect(jsonPath("$.snapshot.total").value(1)).andExpect(jsonPath("$.snapshot.library").value("main"));
     }
-    @Test @WithMockUser(authorities={"CATALOG_READ", "ROLE_ADMIN"}) void publishesCompleteLibraryForIndividualBooks() throws Exception {
+    @Test @WithMockUser(authorities={"CATALOG_READ", "ROLE_ADMIN", "CALIBRE_READ", "CALIBRE_SYNC"}) void publishesCompleteLibraryForIndividualBooks() throws Exception {
         for(int id=1;id<=5;id++) jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(?,2,?,'Author')",id,"Book "+id);
         var items=List.of(book(1,1L,1d),book(2,1L,1.5),book(3,2L,2d),book(4,3L,3d),book(5,4L,null),book(6,null,null));
         when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(items,6,0,100));
@@ -77,7 +77,7 @@ class CalibreCatalogTests {
         assertThat(snapshots.sync().total()).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books",Integer.class)).isZero();
     }
-    @Test @WithMockUser(authorities={"CATALOG_READ"}) void limitsCopiesWithoutLosingTheLatestRevision() throws Exception {
+    @Test @WithMockUser(authorities={"CATALOG_READ", "CALIBRE_READ"}) void limitsCopiesWithoutLosingTheLatestRevision() throws Exception {
         jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,30,'Book','Author')");
         var books=java.util.stream.IntStream.rangeClosed(1,25).mapToObj(id -> book(id,1L,(double)id)).toList();
         when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(books,25,0,100));
@@ -102,7 +102,7 @@ class CalibreCatalogTests {
         when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(),500001,0,100));
         assertThatThrownBy(snapshots::sync).hasMessageContaining("500000");
     }
-    @Test @WithMockUser(authorities={"CATALOG_READ"}) void readersSeeLocalMetadataWithoutAccessToTheConnection() throws Exception {
+    @Test @WithMockUser(authorities={"CATALOG_READ", "CALIBRE_READ"}) void readersSeeLocalMetadataWithoutAccessToTheConnection() throws Exception {
         jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,2,'Book','Author')");
         when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100));
         snapshots.sync();
@@ -136,5 +136,39 @@ class CalibreCatalogTests {
     }
     private static CalibreClient.Book book(long id, Long eplId, Double revision) {
         return new CalibreClient.Book(id,"Book",List.of("Author"),eplId,revision==null?null:java.math.BigDecimal.valueOf(revision),eplId!=null&&revision!=null);
+    }
+
+    @Test @WithMockUser(authorities={"CALIBRE_READ"}) void libraryFiltersSortsAndPaginatesWithoutCatalogPermission() throws Exception {
+        jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,2,'Catalog title','Author')");
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d),book(2,1L,2d),book(3,99L,1d),book(4,null,null)),4,0,100));
+        snapshots.sync();
+        mvc.perform(get("/api/calibre/books").param("size","1").param("sort","calibreId,desc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4)).andExpect(jsonPath("$.items[0].calibreId").value(4));
+        mvc.perform(get("/api/calibre/books").param("comparison","OUTDATED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].catalogRevision").value(2));
+        mvc.perform(get("/api/calibre/books").param("presence","MISSING"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].eplId").value(99));
+        mvc.perform(get("/api/calibre/books").param("eplId","1").param("size","1000").param("sort","authors,asc","title,desc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(get("/api/calibre/books").param("author","missing author"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(0));
+        mvc.perform(get("/api/calibre/books").param("title","not present"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(0));
+        mvc.perform(get("/api/calibre/books").param("sort","title; DROP TABLE calibre_books,asc")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/calibre/books").param("size","1001")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/settings/calibre/snapshot")).andExpect(status().isOk());
+        mvc.perform(post("/api/settings/calibre/sync").with(csrf())).andExpect(status().isForbidden());
+        mvc.perform(get("/api/catalog/books/1")).andExpect(status().isForbidden());
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ"}) void catalogReadersCannotSeeCalibreWithoutItsPermission() throws Exception {
+        jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,2,'Book','Author')");
+        mvc.perform(get("/api/calibre/books")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/catalog/books/1")).andExpect(status().isOk()).andExpect(jsonPath("$.calibre").isEmpty());
+    }
+    @Test @WithMockUser(authorities={"CALIBRE_READ","CALIBRE_SYNC"}) void synchronizersCannotReadCredentials() throws Exception {
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(),0,0,100));
+        mvc.perform(post("/api/settings/calibre/sync")).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/calibre/sync").with(csrf())).andExpect(status().isOk());
+        mvc.perform(get("/api/settings/calibre")).andExpect(status().isForbidden());
     }
 }

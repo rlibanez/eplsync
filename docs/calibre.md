@@ -18,7 +18,7 @@ Un administrador configura la conexión en **Ajustes → Calibre**:
    sin guardarlos, y se muestran las bibliotecas accesibles.
 4. Selecciona la biblioteca y pulsa **Guardar**. Se comprueba nuevamente que
    está disponible antes de guardar la configuración compartida.
-5. Pulsa **Sincronizar biblioteca** para actualizar los datos de Calibre en la ficha de los libros.
+5. Abre **Calibre → Biblioteca** y pulsa **Sincronizar biblioteca**.
 
 Ejemplos de URL:
 
@@ -56,8 +56,8 @@ configura la URL final. Se admite autenticación Basic y Digest.
 
 ## Información en la ficha del libro
 
-Pulsa **Sincronizar biblioteca** en Ajustes → Calibre después de guardar la
-conexión. EPL Sync guarda una copia local de los identificadores EPL y las
+Pulsa **Sincronizar biblioteca** en Calibre → Biblioteca después de guardar la
+conexión. EPL Sync guarda una copia local de los títulos, autores, identificadores EPL y las
 revisiones, sin descargar EPUB ni modificar Calibre. Repite la sincronización
 cuando cambie tu biblioteca; no se consulta Calibre al navegar por el catálogo.
 
@@ -68,7 +68,7 @@ Se muestran hasta 20 copias, indicando el total cuando hay más.
 
 El resumen compara la revisión más alta de Calibre con la del catálogo.
 La fecha de la última sincronización se muestra como tooltip de la biblioteca.
-La biblioteca seleccionada es compartida con los lectores del catálogo;
+Los datos de la biblioteca requieren el permiso `CALIBRE_READ`;
 la URL y las credenciales siguen restringidas al administrador.
 
 Las columnas y los filtros de Calibre en la tabla Catálogo quedan para una fase
@@ -82,3 +82,25 @@ sincronizar otra vez. Las importaciones del catálogo no eliminan esa copia.
 
 Descargas → Estado mantiene su funcionamiento. El envío de libros a Calibre y la
 sustitución de revisiones quedan para una fase posterior.
+
+## Biblioteca de Calibre
+
+La sección **Calibre > Biblioteca** consulta la copia local sincronizada. Muestra
+una fila por registro de Calibre, incluidos los libros con el mismo EPL ID y
+revisiones distintas. Incluye EPL ID, libro con portada del catálogo, autor, revisión en Calibre,
+revisión del catálogo, comparación y presencia en el catálogo. El ID de Calibre es la primera columna por defecto; no dispone de filtro propio.
+
+Puedes buscar por EPL ID, título o autor y filtrar por comparación y presencia. Las
+columnas se pueden ordenar, ocultar, reordenar y redimensionar. La consulta está
+paginada, con un máximo de 1000 registros por página.
+
+- **Consultar biblioteca de Calibre (`CALIBRE_READ`)** permite consultar esta
+  vista y los datos de Calibre de las fichas de libros.
+- **Sincronizar biblioteca de Calibre (`CALIBRE_SYNC`)** permite actualizar la
+  copia local e implica el permiso de consulta.
+
+La configuración de conexión continúa siendo exclusiva de administradores.
+Abrir una ficha del catálogo requiere además `CATALOG_READ`. Esta funcionalidad
+no envía libros ni modifica la biblioteca de Calibre.
+
+Las copias anteriores deben volver a sincronizarse para completar título y autores.

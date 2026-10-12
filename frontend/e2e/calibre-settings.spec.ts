@@ -52,8 +52,9 @@ test("checks form credentials and saves the selected library", async ({
   await expect(page.getByRole("status")).toContainText("Conexión correcta");
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(page.getByLabel("Contraseña", { exact: true })).toHaveValue("");
-  await expect(page.getByRole("heading", {name: "Libros de Calibre", exact: true})).toHaveCount(0);
-  await expect(page.getByRole("button", {name: "Sincronizar biblioteca", exact: true})).toBeEnabled();
+  await expect(
+    page.getByRole("heading", { name: "Libros de Calibre", exact: true }),
+  ).toHaveCount(0);
   await page
     .getByRole("textbox", {
       name: "URL del servidor de contenido",
@@ -66,8 +67,11 @@ test("checks form credentials and saves the selected library", async ({
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Sincronizar biblioteca", exact: true }),
-  ).toBeDisabled();
+    page.getByRole("heading", {
+      name: "Sincronización con el catálogo",
+      exact: true,
+    }),
+  ).toHaveCount(0);
 });
 
 test("shows only the latest error when saving and checking cleared credentials", async ({
@@ -115,24 +119,4 @@ test("shows only the latest error when saving and checking cleared credentials",
   );
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveCount(1);
-});
-
-test("clears an earlier sync failure after checking the connection successfully", async ({ page }) => {
-  await page.route("**/api/settings/calibre", route => route.fulfill({json: {
-    url: "http://localhost:8080", username: "reader", passwordConfigured: true, library: "main",
-  }}));
-  await page.route("**/api/settings/calibre/sync", route => route.fulfill({status: 502, json: {details: "Calibre ha rechazado el acceso"}}));
-  let connected = false;
-  await page.route("**/api/settings/calibre/connection", route => route.fulfill(connected
-    ? {json: {connected: true, libraries: [{id: "main", name: "Main"}], defaultLibrary: "main"}}
-    : {status: 502, json: {details: "Calibre ha rechazado el acceso"}}));
-  await page.goto("/settings/calibre");
-  await page.getByRole("button", {name: "Sincronizar biblioteca", exact: true}).click();
-  await expect(page.getByRole("alert")).toHaveCount(1);
-  await page.getByRole("button", {name: "Comprobar conexión", exact: true}).click();
-  await expect(page.getByRole("alert")).toHaveCount(1);
-  connected = true;
-  await page.getByRole("button", {name: "Comprobar conexión", exact: true}).click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page.getByRole("status")).toContainText("Conexión correcta");
 });

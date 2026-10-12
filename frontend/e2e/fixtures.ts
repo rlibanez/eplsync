@@ -102,6 +102,8 @@ export const test = base.extend<{ eventTransport: void }>({
             role: "ADMIN",
             mustChangePassword: false,
             permissions: [
+              "CALIBRE_READ",
+              "CALIBRE_SYNC",
               "CATALOG_READ",
               "BOOK_HISTORY_READ",
               "DOWNLOADS_DELETE",

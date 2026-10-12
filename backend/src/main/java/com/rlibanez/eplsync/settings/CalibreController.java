@@ -12,7 +12,9 @@ public class CalibreController {
     private final CalibreCatalogService catalog;
     public CalibreController(CalibreSettings settings, CalibreClient client, CalibreCatalogService catalog) { this.settings = settings; this.client = client; this.catalog = catalog; }
     public record SnapshotState(CalibreCatalogService.Snapshot snapshot) {}
+    @PreAuthorize("hasAuthority('CALIBRE_READ')")
     @GetMapping("/snapshot") public SnapshotState snapshot() { return new SnapshotState(catalog.snapshot()); }
+    @PreAuthorize("hasAuthority('CALIBRE_SYNC')")
     @PostMapping("/sync") public CalibreCatalogService.Snapshot sync() { return catalog.sync(); }
     @GetMapping public CalibreSettings.View view() { return settings.view(); }
     @PutMapping public CalibreSettings.View save(@RequestBody CalibreSettings.Input input) {

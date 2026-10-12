@@ -24,6 +24,7 @@ import { useState } from "react";
 import { Link, NavLink, Outlet, ScrollRestoration } from "react-router-dom";
 import {
   Library,
+  BookOpen,
   FolderOpen,
   Download,
   RefreshCw,
@@ -167,6 +168,22 @@ function ShellContent() {
               <span className="nav-text">{t(label)}</span>
             </NavLink>
           ))}
+          {auth.can("CALIBRE_READ") && (
+            <>
+              <div className="nav-group-label">
+                <span>Calibre</span>
+              </div>
+              <NavLink
+                to="/calibre"
+                aria-label={t("calibre.libraryTitle")}
+                title={t("calibre.libraryTitle")}
+                onClick={() => setOpen(false)}
+              >
+                <BookOpen size={19} />
+                <span className="nav-text">{t("calibre.libraryTitle")}</span>
+              </NavLink>
+            </>
+          )}
         </nav>
         <div className="sidebar-bottom">
           {auth.can("EVENTS_MANAGE") && (

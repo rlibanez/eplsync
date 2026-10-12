@@ -36,7 +36,7 @@ public class CatalogBookController {
     @GetMapping("/{eplId}")
     public ResponseEntity<CatalogBookResponse> getByEplId(@PathVariable Long eplId) {
         return catalogBookService.getByEplId(eplId)
-                .map(book -> ResponseEntity.ok(calibre.enrich(downloads.enrich(List.of(book))).getFirst()))
+                .map(book -> ResponseEntity.ok((com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.CALIBRE_READ) ? calibre.enrich(downloads.enrich(List.of(book))) : downloads.enrich(List.of(book))).getFirst()))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 

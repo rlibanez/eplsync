@@ -1175,7 +1175,9 @@
       "CATALOG_DELETE": "Eliminar libros ausentes",
       "COVERS_MANAGE": "Gestionar portadas",
       "EVENTS_MANAGE": "Consultar y eliminar eventos",
-      "SETTINGS_MANAGE": "Consultar y modificar ajustes"
+      "SETTINGS_MANAGE": "Consultar y modificar ajustes",
+      "CALIBRE_READ": "Consultar biblioteca de Calibre",
+      "CALIBRE_SYNC": "Sincronizar biblioteca de Calibre"
     },
     "statuses": {
       "PENDING": "Pendiente de aprobación",
@@ -1212,7 +1214,8 @@
     "permissionGroups": {
       "catalog": "Catálogo",
       "torrent": "Cliente torrent",
-      "system": "Sistema"
+      "system": "Sistema",
+      "calibre": "Calibre"
     },
     "resetPasswordNamed": "Reiniciar contraseña de {{username}}",
     "resetPasswordWarning": "¿Reiniciar la contraseña de {{username}}? Se sustituirá la contraseña actual y se cerrarán todas sus sesiones. Se generará una contraseña temporal válida durante 24 horas que deberá cambiar en su próximo acceso.",
@@ -1365,6 +1368,19 @@
       "CURRENT": "Misma revisión que el catálogo",
       "NEWER": "Revisión posterior al catálogo",
       "UNKNOWN": "Sin revisión identificada"
-    }
+    },
+    "libraryTitle": "Biblioteca",
+    "libraryDescription": "Consulta los libros de la biblioteca sincronizada de Calibre.",
+    "search": "Título o autor",
+    "catalogRevision": "Revisión del catálogo",
+    "comparison": "Comparación",
+    "presence": "En el catálogo",
+    "presenceValues": {
+      "PRESENT": "Sí",
+      "MISSING": "No",
+      "UNIDENTIFIED": "Sin identificador EPL"
+    },
+    "libraryRevision": "Revisión en Calibre",
+    "libraryHeading": "Biblioteca de Calibre"
   }
 }

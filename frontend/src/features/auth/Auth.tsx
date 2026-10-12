@@ -22,6 +22,8 @@ import {
 } from "./sessionChanges";
 import { authRequest, resetCsrf, secureFetch } from "./transport";
 export type Permission =
+  | "CALIBRE_READ"
+  | "CALIBRE_SYNC"
   | "CATALOG_READ"
   | "BOOK_HISTORY_READ"
   | "DOWNLOADS_DELETE"

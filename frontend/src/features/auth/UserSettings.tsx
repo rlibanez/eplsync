@@ -648,6 +648,11 @@ function UserEditor({
       ),
     },
     {
+      name: "calibre",
+      icon: BookOpen,
+      values: permissions.filter((p) => p.startsWith("CALIBRE_")),
+    },
+    {
       name: "system",
       icon: Shield,
       values: permissions.filter((p) =>
@@ -732,8 +737,17 @@ function UserEditor({
                       <Select
                         key={permission}
                         label={t(`auth.permissionLabels.${permission}`)}
-                        value={overrides[permission] ?? "INHERIT"}
+                        value={
+                          permission === "CALIBRE_READ" &&
+                          overrides.CALIBRE_SYNC === "ALLOW"
+                            ? "ALLOW"
+                            : (overrides[permission] ?? "INHERIT")
+                        }
                         allowDeselect={false}
+                        disabled={
+                          permission === "CALIBRE_READ" &&
+                          overrides.CALIBRE_SYNC === "ALLOW"
+                        }
                         data={[
                           {
                             value: "INHERIT",
@@ -751,6 +765,11 @@ function UserEditor({
                             const next = { ...previous };
                             if (value === "INHERIT") delete next[permission];
                             else next[permission] = value ?? "DENY";
+                            if (
+                              permission === "CALIBRE_SYNC" &&
+                              value === "ALLOW"
+                            )
+                              next.CALIBRE_READ = "ALLOW";
                             return next;
                           })
                         }
