@@ -701,6 +701,7 @@
     "sourceZipSha256": "SHA-256 del ZIP"
   },
   "filters": {
+    "clearRange": "Limpiar intervalo",
     "pages": "Páginas",
     "minimum": "Mínimo",
     "maximum": "Máximo",

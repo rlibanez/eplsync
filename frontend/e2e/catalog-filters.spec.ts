@@ -48,7 +48,7 @@ test("advanced filters are collapsed and convert complete local days across DST"
   await expect(dates.getByLabel("Hasta", { exact: true })).toHaveValue(
     "2026-02-20",
   );
-  await dates.getByRole("button", { name: "Limpiar" }).click();
+  await dates.getByRole("button", { name: "Limpiar intervalo", exact: true }).click();
   await expect(
     dates.getByRole("button", { name: "Igualar fechas" }),
   ).toHaveAttribute("aria-pressed", "false");

@@ -33,7 +33,7 @@ test("pasted multiline IDs remain separate and number ranges use one grid column
   });
   await expect(ids).toHaveValue("123 456 789");
   const first = await search.locator(".catalog-filter-grid > :first-child").first().boundingBox();
-  for (const label of ["Páginas", "Año de publicación"]) {
+  for (const label of ["Páginas", "Año de publicación", "Publicado en EPL", "Añadido a EPL Sync"]) {
     const range = search.getByRole("group", {name: label, exact: true});
     const box = await range.boundingBox();
     expect(Math.abs(box!.width - first!.width)).toBeLessThan(2);

@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Button, TextInput, MultiSelect } from "@mantine/core";
 import { useTranslation } from "react-i18next";
@@ -284,7 +285,7 @@ export function CatalogFilters({
         </div>
         <div className="catalog-filter-grid catalog-range-grid">
         {ranges.map(([from, to, label]) => (
-          <fieldset className={`catalog-date-range ${label === "pages" || label === "years" ? "catalog-number-range" : "catalog-full-range"}`} key={from}>
+          <fieldset className="catalog-date-range catalog-compact-range" key={from}>
             <legend>{t(`filters.${label}`)}</legend>
             {[from, to].map((key, index) => (
               <Fragment key={key}>
@@ -369,9 +370,12 @@ export function CatalogFilters({
             <Button
               variant="subtle"
               size="compact-sm"
+              aria-label={t("filters.clearRange")}
+              title={t("filters.clearRange")}
+              disabled={!values[from] && !values[to]}
               onClick={() => clearRange(from, to)}
             >
-              {t("catalog.clear")}
+              <X size={16} aria-hidden="true" />
             </Button>
           </fieldset>
         ))}

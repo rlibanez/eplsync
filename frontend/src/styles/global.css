@@ -2035,11 +2035,10 @@ summary {
 .catalog-metadata .catalog-checksum { min-width: 0; }
 
 .catalog-filter-grid > .catalog-date-range { margin: 0; min-width: 0; }
-.catalog-filter-grid > .catalog-full-range { grid-column: 1 / -1; }
-.catalog-filter-grid > .catalog-number-range { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; padding: 12px; }
-.catalog-number-range > button:last-child { grid-column: 1 / -1; justify-self: end; margin: 0; }
+.catalog-filter-grid > .catalog-compact-range { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 8px; padding: 12px; }
+.catalog-compact-range > button:last-child { justify-self: end; margin: 0 0 4px; height: 28px; min-width: 28px; width: 28px; padding: 0; }
 @media (max-width: 500px) {
-  .catalog-filter-grid > .catalog-number-range > .mantine-InputWrapper-root { grid-column: auto; }
+  .catalog-filter-grid > .catalog-compact-range > .mantine-InputWrapper-root { grid-column: auto; }
 }
 
 .catalog-range-grid { margin-top: 16px; }

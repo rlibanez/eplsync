@@ -20,7 +20,8 @@ test("page range supports equal values, independent clearing and URL restoration
   await expect(page).toHaveURL(/pagesFrom=150&pagesTo=150/);
   await page.locator(".catalog-search summary").click();
   await expect(equal).toHaveAttribute("aria-pressed", "true");
-  await range.getByRole("button", { name: "Limpiar", exact: true }).click();
+  await range.getByRole("button", { name: "Limpiar intervalo", exact: true }).click();
+  await expect(range.getByRole("button", { name: "Limpiar intervalo", exact: true })).toBeDisabled();
   await expect(minimum).toHaveValue("");
   await expect(maximum).toHaveValue("");
   await expect(equal).toHaveAttribute("aria-pressed", "false");
