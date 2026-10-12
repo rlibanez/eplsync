@@ -54,8 +54,10 @@ export function BookHistory({ id }: { id: number }) {
     },
     { defaults: "revision,desc", selection: selectable },
   );
-  const result = useQuery({
+  const result = useQuery<Page<HistoryItem>>({
     queryKey: ["book-history", id, page, size, sort],
+    placeholderData: (previous, query) =>
+      query?.queryKey[1] === id ? previous : undefined,
     queryFn: ({ signal }) =>
       get<Page<HistoryItem>>(
         `/catalog/books/${id}/history?page=${page}&size=${size}&${sortQuery(sort)}`,
@@ -73,13 +75,15 @@ export function BookHistory({ id }: { id: number }) {
     <section className="panel book-history">
       <div className="table-toolbar book-history-toolbar">
         <h2>{t("detail.history")}</h2>
-        <div className="catalog-table-controls">{columns.controls}</div>
+        {result.data && result.data.meta.totalItems > 0 && (
+          <div className="catalog-table-controls">{columns.controls}</div>
+        )}
       </div>
       {result.isPending ? (
         <Loading />
       ) : result.isError ? (
         <Failure error={result.error} retry={() => result.refetch()} />
-      ) : (
+      ) : result.data.meta.totalItems === 0 ? null : (
         <>
           <HistorySelection
             eplId={id}
@@ -169,11 +173,6 @@ export function BookHistory({ id }: { id: number }) {
               </tbody>
             </table>
           </div>
-          {!result.data.items.length && (
-            <p className="empty-list book-history-empty">
-              {t("detail.noDownloads")}
-            </p>
-          )}
           <Paging
             meta={result.data.meta}
             page={page}
