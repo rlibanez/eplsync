@@ -1381,6 +1381,10 @@
       "UNIDENTIFIED": "No EPL identifier"
     },
     "libraryRevision": "Calibre revision",
-    "libraryHeading": "Calibre library"
+    "libraryHeading": "Calibre library",
+    "browserUrl": "Browser URL",
+    "browserUrlHelp": "Optional. Uses the content server URL when empty.",
+    "open": "View in Calibre",
+    "copyLabel": "Revision {{revision}} · Calibre ID {{id}}"
   }
 }

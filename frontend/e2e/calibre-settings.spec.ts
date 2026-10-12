@@ -14,11 +14,13 @@ test("checks form credentials and saves the selected library", async ({
       const input = route.request().postDataJSON();
       expect(input.library).toBe("main");
       expect(input.password).toBe("example-password");
+      expect(input.browserUrl).toBe("https://books.example/calibre");
       saved = {
         url: input.url,
         username: input.username,
         passwordConfigured: true,
         library: input.library,
+        browserUrl: input.browserUrl,
       };
     }
     return route.fulfill({ json: saved });
@@ -44,6 +46,7 @@ test("checks form credentials and saves the selected library", async ({
       exact: true,
     })
     .fill("http://localhost:8080");
+  await page.getByLabel("URL para abrir en el navegador", {exact:true}).fill("https://books.example/calibre");
   await page.getByLabel("Usuario", { exact: true }).fill("reader");
   await page.getByLabel("Contraseña", { exact: true }).fill("example-password");
   await page

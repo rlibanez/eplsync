@@ -1,3 +1,4 @@
+import { OpenInCalibre } from "../calibre/OpenInCalibre";
 import { useAuth } from "../auth/Auth";
 import type { Book } from "../../api/catalog";
 import { RepairCover } from "./RepairCover";
@@ -113,6 +114,7 @@ export function BookActions({ book }: { book: Book }) {
         >
           {t("detail.epublibre")}
         </Button>
+        {auth.can("CALIBRE_READ") && <OpenInCalibre book={book} />}
         {auth.can("COVERS_MANAGE") && <RepairCover book={book} />}
       </div>
       {magnets.isError && (

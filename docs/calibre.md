@@ -107,3 +107,22 @@ Abrir una ficha del catálogo requiere además `CATALOG_READ`. Esta funcionalida
 no envía libros ni modifica la biblioteca de Calibre.
 
 Las copias anteriores deben volver a sincronizarse para completar título y autores.
+
+## Abrir libros en Calibre
+
+En la ficha del catálogo, **Ver en Calibre** abre una nueva pestaña. Si hay
+varias copias del mismo EPL ID, permite elegir la revisión y su Calibre ID.
+El desplegable incluye paginación para consultar todas las copias. El enlace
+**Calibre ID** de cada fila abre directamente esa copia, tanto en Biblioteca
+como en la ficha individual. Se requiere `CALIBRE_READ`.
+
+En **Ajustes → Calibre**, la **URL para abrir en el navegador** es opcional.
+Si está vacía, se utiliza la URL del servidor de contenido. Configúrala cuando
+el navegador necesite una dirección distinta de la utilizada por el backend,
+por ejemplo una dirección pública en lugar del nombre de un contenedor.
+Puede incluir el prefijo de un proxy, como `https://books.example/calibre`.
+
+Esta URL no cambia la conexión del backend ni invalida la biblioteca
+sincronizada. Los enlaces no incluyen las credenciales guardadas; Calibre
+puede pedir iniciar sesión al abrirlos. Ambas URL admiten HTTP/HTTPS y rechazan
+credenciales, parámetros y fragmentos.

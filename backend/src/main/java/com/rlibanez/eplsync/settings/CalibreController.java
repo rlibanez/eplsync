@@ -23,7 +23,7 @@ public class CalibreController {
         if (check.libraries().stream().noneMatch(l -> l.id().equals(input.library())))
             throw new com.rlibanez.eplsync.exception.UserInputException("La biblioteca seleccionada no está disponible para esta cuenta");
         // Persist exactly the credentials that were checked, even if another admin saved concurrently.
-        return settings.save(new CalibreSettings.Input(connection.url(), connection.username(), connection.password(), true, connection.library()));
+        return settings.save(new CalibreSettings.Input(connection.url(), connection.username(), connection.password(), true, connection.library(), input.browserUrl()));
     }
     @PostMapping("/connection") public CalibreClient.Check check(@RequestBody CalibreSettings.Input input) {
         return client.check(settings.resolve(input));

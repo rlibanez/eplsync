@@ -1381,6 +1381,10 @@
       "UNIDENTIFIED": "Sin identificador EPL"
     },
     "libraryRevision": "Revisión en Calibre",
-    "libraryHeading": "Biblioteca de Calibre"
+    "libraryHeading": "Biblioteca de Calibre",
+    "browserUrl": "URL para abrir en el navegador",
+    "browserUrlHelp": "Opcional. Si está vacía, se utiliza la URL del servidor de contenido.",
+    "open": "Ver en Calibre",
+    "copyLabel": "Revisión {{revision}} · Calibre ID {{id}}"
   }
 }

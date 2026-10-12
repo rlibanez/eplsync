@@ -53,7 +53,15 @@ export function CalibreTable({
           {items.map((book) => (
             <tr key={book.calibreId}>
               {columns.cells([
-                <td>{book.calibreId}</td>,
+                <td>
+                  <a
+                    href={`/api/calibre/books/${book.calibreId}/open`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {book.calibreId}
+                  </a>
+                </td>,
                 <td>
                   {book.eplId ? (
                     book.presence === "PRESENT" && auth.can("CATALOG_READ") ? (

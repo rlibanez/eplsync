@@ -1,3 +1,4 @@
+import { OptionLabel } from "../downloads/SendOptions";
 import { useState } from "react";
 import {
   Button,
@@ -18,6 +19,7 @@ interface View {
   username: string;
   passwordConfigured: boolean;
   library: string;
+  browserUrl?: string;
 }
 interface Check {
   connected: boolean;
@@ -61,13 +63,21 @@ export function CalibreSettings() {
 function Form({ initial }: { initial: View }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
+  const [browserUrl, setBrowserUrl] = useState(initial.browserUrl ?? "");
   const [url, setUrl] = useState(initial.url);
   const [username, setUsername] = useState(initial.username);
   const [password, setPassword] = useState("");
   const [clearPassword, setClearPassword] = useState(false);
   const [library, setLibrary] = useState(initial.library);
   const [keyDialog, setKeyDialog] = useState(false);
-  const input = () => ({ url, username, password, clearPassword, library });
+  const input = () => ({
+    url,
+    username,
+    password,
+    clearPassword,
+    library,
+    browserUrl,
+  });
   const check = useMutation({
     mutationFn: () => request<Check>("POST", input(), "/connection"),
     onMutate: (): void => {
@@ -92,6 +102,7 @@ function Form({ initial }: { initial: View }) {
       void cache.invalidateQueries({ queryKey: ["catalog"] });
       void cache.invalidateQueries({ queryKey: ["book"] });
       setUrl(data.url);
+      setBrowserUrl(data.browserUrl ?? "");
       setUsername(data.username);
       setLibrary(data.library);
       setPassword("");
@@ -129,6 +140,19 @@ function Form({ initial }: { initial: View }) {
                 onChange={(e) => {
                   setUrl(e.currentTarget.value);
                   setLibrary("");
+                  reset();
+                }}
+              />
+              <TextInput
+                label={
+                  <OptionLabel
+                    text={t("calibre.browserUrl")}
+                    help={t("calibre.browserUrlHelp")}
+                  />
+                }
+                value={browserUrl}
+                onChange={(e) => {
+                  setBrowserUrl(e.currentTarget.value);
                   reset();
                 }}
               />

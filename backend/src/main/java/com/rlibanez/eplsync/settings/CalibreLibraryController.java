@@ -12,7 +12,20 @@ import com.rlibanez.eplsync.exception.UserInputException;
 @PreAuthorize("hasAuthority('CALIBRE_READ')")
 public class CalibreLibraryController {
     private final JdbcTemplate jdbc;
-    public CalibreLibraryController(JdbcTemplate jdbc) { this.jdbc=jdbc; }
+    private final CalibreSettings settings;
+    public CalibreLibraryController(JdbcTemplate jdbc,CalibreSettings settings) { this.jdbc=jdbc; this.settings=settings; }
+    @GetMapping("/{calibreId}/open")
+    @Transactional(readOnly=true)
+    public org.springframework.http.ResponseEntity<Void> open(@PathVariable long calibreId) {
+        if(calibreId<=0 || jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true AND calibre_id=?",Long.class,calibreId)==0)
+            return org.springframework.http.ResponseEntity.notFound().build();
+        var view=settings.view();
+        String base=view.browserUrl().isBlank() ? view.url() : view.browserUrl();
+        base=CalibreSettings.normalize(base);
+        String library=java.net.URLEncoder.encode(view.library(),java.nio.charset.StandardCharsets.UTF_8).replace("+","%20");
+        var target=java.net.URI.create(base+"/#book_id="+calibreId+"&library_id="+library+"&panel=book_details");
+        return org.springframework.http.ResponseEntity.status(302).cacheControl(org.springframework.http.CacheControl.noStore()).location(target).build();
+    }
     public record Book(long calibreId, String title, String authors, Long eplId, Double revision,
                        Double catalogRevision, String comparison, String presence, String coverUrl, Boolean coverAvailable) {}
     public record Meta(int page,int size,long totalItems,long totalPages,boolean hasPrevious,boolean hasNext) {}

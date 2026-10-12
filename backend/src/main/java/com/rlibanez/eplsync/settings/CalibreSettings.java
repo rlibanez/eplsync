@@ -13,11 +13,12 @@ import tools.jackson.databind.json.JsonMapper;
 public class CalibreSettings {
     static final String KEY = "calibre.connection";
     static final String PASSWORD = "calibre.password";
-    public record Input(String url, String username, String password, Boolean clearPassword, String library) {
+    public record Input(String url, String username, String password, Boolean clearPassword, String library, String browserUrl) {
+        public Input(String url,String username,String password,Boolean clearPassword,String library) { this(url,username,password,clearPassword,library,""); }
         @Override public String toString() { return "Calibre connection input [redacted]"; }
     }
-    public record View(String url, String username, boolean passwordConfigured, String library) {}
-    record Stored(String url, String username, String password, String library) {}
+    public record View(String url, String username, boolean passwordConfigured, String library, String browserUrl) {}
+    record Stored(String url, String username, String password, String library, String browserUrl) {}
     record Connection(String url, String username, String password, String library) {
         @Override public String toString() { return "Calibre connection [redacted]"; }
     }
@@ -29,13 +30,14 @@ public class CalibreSettings {
     }
     private Stored stored() {
         var values = jdbc.queryForList("SELECT setting_value FROM app_settings WHERE setting_key=?", String.class, KEY);
-        return values.isEmpty() ? new Stored("", "", "", "") : json.readValue(values.getFirst(), Stored.class);
+        return values.isEmpty() ? new Stored("", "", "", "", "") : json.readValue(values.getFirst(), Stored.class);
     }
     public synchronized View view() {
-        var s = stored(); return new View(s.url(), s.username(), !s.password().isEmpty(), s.library());
+        var s = stored(); return new View(s.url(), s.username(), !s.password().isEmpty(), s.library(), s.browserUrl()==null ? "" : s.browserUrl());
     }
     synchronized Connection resolve(Input input) {
         if (input == null) throw new UserInputException("Indica la conexión con Calibre");
+        if(input.browserUrl()!=null && !input.browserUrl().isBlank()) normalize(input.browserUrl());
         var old = stored();
         String url = normalize(input.url());
         String username = input.username() == null ? "" : input.username().trim();
@@ -64,7 +66,7 @@ public class CalibreSettings {
             if (key.isBlank()) throw new SecretKeyRequiredException();
             encrypted = new CredentialCipher(key).encrypt(PASSWORD, c.password());
         }
-        var value = json.writeValueAsString(new Stored(c.url(), c.username(), encrypted, c.library()));
+        var value = json.writeValueAsString(new Stored(c.url(), c.username(), encrypted, c.library(), input.browserUrl()==null || input.browserUrl().isBlank() ? "" : normalize(input.browserUrl())));
         jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value", KEY, value);
         if (!previous.url().equals(c.url()) || !previous.username().equals(c.username()) || !previous.library().equals(c.library())) {
             jdbc.update("DELETE FROM calibre_books WHERE active=true");

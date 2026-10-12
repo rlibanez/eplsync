@@ -76,6 +76,11 @@ test("shows Calibre copies in the individual book", async ({ page }) => {
   await expect(section).not.toContainText("Biblioteca: main");
   await expect(section).toContainText("Revisión anterior al catálogo");
   await expect(section.locator("tbody tr")).toHaveCount(2);
+  await expect(section.getByRole("link",{name:"3",exact:true})).toHaveAttribute("href","/api/calibre/books/3/open");
+  await page.getByRole("button",{name:"Ver en Calibre",exact:true}).click();
+  await expect(page.getByRole("menuitem").filter({hasText:"Calibre ID 3"})).toHaveAttribute("href","/api/calibre/books/3/open");
+  await expect(page.getByRole("menuitem").filter({hasText:"Calibre ID 8"})).toHaveAttribute("target","_blank");
+  await page.keyboard.press("Escape");
   await expect(section.getByRole("columnheader")).toHaveCount(8);
   await expect(section.getByRole("columnheader").first()).toContainText(
     "Calibre ID",
