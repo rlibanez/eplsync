@@ -27,6 +27,7 @@ export type Permission =
   | "CALIBRE_SYNC"
   | "CATALOG_READ"
   | "BOOK_HISTORY_READ"
+  | "DOWNLOADS_FILES_READ"
   | "DOWNLOADS_DELETE"
   | "TORRENT_SEND"
   | "TORRENT_SYNC"

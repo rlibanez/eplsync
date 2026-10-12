@@ -172,11 +172,13 @@ function SettingsForm({
       ? ""
       : f.key.includes(".auth.")
         ? "auth"
-        : f.key.includes(".bulk.")
-          ? "execution"
-          : f.key.includes(".download.") || f.key.includes(".rename.")
-            ? "defaults"
-            : "connection";
+        : f.key.includes(".files.")
+          ? "files"
+          : f.key.includes(".bulk.")
+            ? "execution"
+            : f.key.includes(".download.") || f.key.includes(".rename.")
+              ? "defaults"
+              : "connection";
   const groups = [...new Set(view.fields.map(groupOf))];
   const currentValue = (key: string) =>
     values[key] ?? view.fields.find((f) => f.key === key)?.value;
@@ -224,7 +226,9 @@ function SettingsForm({
       disabled:
         mutation.isPending ||
         (!connectionAdmin &&
-          (f.key === "torrent.base-url" || f.key.includes(".auth."))) ||
+          (f.key === "torrent.base-url" ||
+            f.key.includes(".auth.") ||
+            f.key.includes(".files."))) ||
         (f.key === "torrent.download.save-path" &&
           currentValue("torrent.qbittorrent.download.auto-management") ===
             true) ||
@@ -356,7 +360,11 @@ function SettingsForm({
   }
   function renderField(f: Field, className?: string) {
     return (
-      <div key={f.key} className={className} title={f.overridden ? t("serverSettings.customized") : undefined}>
+      <div
+        key={f.key}
+        className={className}
+        title={f.overridden ? t("serverSettings.customized") : undefined}
+      >
         {field(f)}
       </div>
     );

@@ -23,10 +23,10 @@ public class SettingsController {
         }
     }
     private void requireConnectionAdmin(String section, java.util.Set<String> keys) {
-        if (!section.equals("torrent") || keys.stream().noneMatch(key -> key.equals("torrent.base-url") || key.startsWith("torrent.qbittorrent.auth."))) return;
+        if (!section.equals("torrent") || keys.stream().noneMatch(key -> key.equals("torrent.base-url") || key.startsWith("torrent.qbittorrent.auth.") || key.startsWith("torrent.files."))) return;
         var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || authentication.getAuthorities().stream().noneMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN")))
-            throw new org.springframework.security.access.AccessDeniedException("Solo ADMIN puede modificar el destino o la autenticación de qBittorrent");
+            throw new org.springframework.security.access.AccessDeniedException("Solo ADMIN puede modificar el destino, la autenticación o las carpetas de qBittorrent");
     }
     private ResponseEntity<ServerSettings.View> response(ServerSettings.View view) { return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(view); }
 }

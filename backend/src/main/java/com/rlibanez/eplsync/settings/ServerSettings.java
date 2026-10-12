@@ -66,6 +66,8 @@ public class ServerSettings {
         add("torrent", "torrent.bulk.batch-size", "number", t.getBulk().getBatchSize());
         add("torrent", "torrent.bulk.concurrency", "number", t.getBulk().getConcurrency());
         add("torrent", "torrent.bulk.interval", "duration", t.getBulk().getInterval());
+        add("torrent", "torrent.files.remote-root", "text", t.getFiles().getRemoteRoot());
+        add("torrent", "torrent.files.local-root", "text", t.getFiles().getLocalRoot());
         add("torrent", "torrent.download.start", "boolean", t.getDownload().isStart());
         add("torrent", "torrent.download.save-path", "text", t.getDownload().getSavePath());
         add("torrent", "torrent.rename.enabled", "boolean", t.getRename().isEnabled());

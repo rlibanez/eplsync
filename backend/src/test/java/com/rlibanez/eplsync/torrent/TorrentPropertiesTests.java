@@ -43,6 +43,18 @@ class TorrentPropertiesTests {
         runner("").run(context -> assertThat(context.getBean(TorrentProperties.class).getTrackers()).isEmpty());
     }
 
+    @Test void validatesAndBindsSharedDownloadFolders() {
+        runner(null).withPropertyValues("eplsync.torrent.files.remote-root=/downloads", "eplsync.torrent.files.local-root=/app/downloads")
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context.getBean(TorrentProperties.class).getFiles().getRemoteRoot()).isEqualTo("/downloads");
+            });
+        runner(null).withPropertyValues("eplsync.torrent.files.local-root=/app/downloads").run(context -> assertThat(context).hasNotFailed());
+        runner(null).withPropertyValues("eplsync.torrent.files.remote-root=/downloads").run(context -> assertThat(context).hasFailed());
+        runner(null).withPropertyValues("eplsync.torrent.files.remote-root=/downloads", "eplsync.torrent.files.local-root=relative")
+            .run(context -> assertThat(context).hasFailed());
+    }
+
     @Test
     void rejectsInvalidConfigurationAtStartup() {
         for (String tracker : new String[] {"ftp://example.com/file", "not-a-url", "udp://example.com", "https://example.com:99999/announce"}) {

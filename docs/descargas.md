@@ -43,3 +43,38 @@ operaciones sobre destinos o archivos compartidos.
 Si se elimina un torrent del cliente y se conserva su historial, su ausencia
 confirmada queda como **No encontrado**. Las solicitudes de limpieza relacionadas
 se actualizan para evitar repetir operaciones ya resueltas.
+
+## Descargar los EPUB al navegador
+
+En Estado y en el historial de descargas de cada libro, el botón **Descargar EPUB**
+permite descargar los archivos completos del torrent. Requiere el permiso
+**Descargar archivos EPUB**, además del permiso para consultar esa vista.
+Si hay un único EPUB, se descarga directamente. Si hay varios, se abre un selector
+para elegir el archivo. No se modifica el contenido del
+cliente torrent ni se envía a Calibre.
+
+Configura en **Ajustes > Torrent > Archivos descargados** las dos carpetas:
+
+- **Carpeta base en el cliente torrent**: ruta vista por qBittorrent, por ejemplo `/downloads`.
+- **Carpeta accesible en EPL Sync**: la misma carpeta vista por EPL Sync, por ejemplo `/app/downloads`.
+
+También puedes definir `EPLSYNC_TORRENT_FILES_REMOTE_ROOT` y
+`EPLSYNC_TORRENT_FILES_LOCAL_ROOT`. En Docker, la ruta local predeterminada es
+`/app/downloads`. La carpeta base de qBittorrent vacía desactiva el acceso,
+aunque la ruta local esté configurada. En ejecución nativa, configura también
+la ruta local absoluta correspondiente en `application.yaml` o en Ajustes.
+Las subcarpetas y los nombres se obtienen de qBittorrent para cada hash al descargar.
+Solo ADMIN puede cambiar estas rutas desde Ajustes.
+
+En Docker, añade un montaje a `volumes` del servicio de EPL Sync:
+
+```yaml
+- /ruta/real/de/descargas:/app/downloads:ro
+```
+
+Esa ruta del host debe contener los mismos archivos que la carpeta `/downloads`
+de qBittorrent. El montaje `:ro` concede solo lectura. En instalaciones nativas,
+usa la ruta absoluta de la carpeta accesible al proceso de Java.
+Los archivos fuera de la carpeta configurada, incompletos, inaccesibles o
+con enlaces simbólicos en su ruta se rechazan. Si el archivo se mueve mediante
+qBittorrent, se consulta su ubicación actual.

@@ -1038,7 +1038,9 @@
       "torrent_connect-timeout": "Tiempo máximo para establecer la conexión. Ejemplos: 500ms, 5s.",
       "torrent_request-timeout": "Tiempo máximo de espera por petición. Ejemplos: 500ms, 30s.",
       "catalog_zip-url": "Dirección de descarga directa del archivo zip.",
-      "catalog_import_retention": "Tiempo que permanecerá guardado el zip antes de ser borrado.\nEjemplos: 600s, 24h."
+      "catalog_import_retention": "Tiempo que permanecerá guardado el zip antes de ser borrado.\nEjemplos: 600s, 24h.",
+      "torrent_files_remote-root": "Ruta absoluta vista por qBittorrent, por ejemplo /downloads. Déjala vacía para desactivar las descargas, aunque la carpeta de EPL Sync esté configurada.",
+      "torrent_files_local-root": "La misma carpeta vista desde EPL Sync. En Docker se utiliza /app/downloads por defecto y necesita un montaje de solo lectura."
     },
     "title": "Ajustes del servidor",
     "description": "Valores predeterminados de la aplicación.",
@@ -1082,7 +1084,9 @@
       "torrent_qbittorrent_auth_mode": "Modo de autenticación",
       "torrent_qbittorrent_auth_username": "Usuario",
       "torrent_qbittorrent_auth_password": "Contraseña",
-      "torrent_qbittorrent_auth_api-key": "API key"
+      "torrent_qbittorrent_auth_api-key": "API key",
+      "torrent_files_remote-root": "Carpeta base en el cliente torrent",
+      "torrent_files_local-root": "Carpeta accesible en EPL Sync"
     },
     "sections": {
       "catalog": "Configuración de importación",
@@ -1096,7 +1100,8 @@
       "execution": "Ejecución del envío",
       "defaults": "Opciones predeterminadas del cliente",
       "location": "Ubicación de descarga",
-      "naming": "Nombre del torrent"
+      "naming": "Nombre del torrent",
+      "files": "Archivos descargados"
     },
     "choices": {
       "qbittorrent": "qBittorrent",
@@ -1189,7 +1194,8 @@
       "EVENTS_MANAGE": "Consultar y eliminar eventos",
       "SETTINGS_MANAGE": "Consultar y modificar ajustes",
       "CALIBRE_READ": "Consultar biblioteca de Calibre",
-      "CALIBRE_SYNC": "Sincronizar biblioteca de Calibre"
+      "CALIBRE_SYNC": "Sincronizar biblioteca de Calibre",
+      "DOWNLOADS_FILES_READ": "Descargar archivos EPUB"
     },
     "statuses": {
       "PENDING": "Pendiente de aprobación",
@@ -1398,5 +1404,10 @@
     "browserUrlHelp": "Opcional. Si está vacía, se utiliza la URL del servidor de contenido.",
     "open": "Ver en Calibre",
     "copyLabel": "Revisión {{revision}} · Calibre ID {{id}}"
+  },
+  "epubDownload": {
+    "button": "Descargar EPUB",
+    "title": "Archivos EPUB",
+    "choose": "Selecciona el archivo que quieres descargar."
   }
 }

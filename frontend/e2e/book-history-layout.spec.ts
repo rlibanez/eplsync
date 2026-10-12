@@ -121,7 +121,7 @@ test("book history shares catalog pagination spacing and aligns heading with pag
     await expect(
       history.locator('th[data-table-column="revision"]'),
     ).toHaveAttribute("aria-sort", "descending");
-    await expect(history.locator("tbody tr td").nth(6)).toHaveText(
+    await expect(history.locator("tbody tr td").nth(6).locator(".hash-text")).toHaveText(
       "A".repeat(40),
     );
     await expect(

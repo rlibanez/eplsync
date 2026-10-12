@@ -1,3 +1,4 @@
+import { EpubDownload } from "../downloads/EpubDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { HistorySelection } from "./HistorySelection";
 import { useAuth } from "../auth/Auth";
@@ -167,6 +168,7 @@ export function BookHistory({ id }: { id: number }) {
                         <small className="hash-text" title={item.hash}>
                           {item.hash || "—"}
                         </small>
+                        <EpubDownload id={item.id} />
                       </td>,
                       <td>{item.lastError || "—"}</td>,
                     ])}

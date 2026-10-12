@@ -1,3 +1,4 @@
+import { EpubDownload } from "./EpubDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { ordering } from "./TableControls";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
@@ -246,7 +247,10 @@ function DownloadHistory() {
                         <td className="catalog-title-cell">
                           <DownloadBook book={d} />
                         </td>,
-                        <td className="hash-text">{d.hash}</td>,
+                        <td>
+                          <small className="hash-text">{d.hash}</small>
+                          <EpubDownload id={d.id} />
+                        </td>,
                         <td>{number(d.revision)}</td>,
                         <td>
                           <span className="badge">{status(d.status)}</span>

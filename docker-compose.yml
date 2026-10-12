@@ -11,6 +11,8 @@ services:
     volumes:
       - "${DATA_DIR:-./data}:/app/data"
       - "${LOGS_DIR:-./logs}:/app/logs"
+      # Opcional: carpeta de EPUB compartida con qBittorrent, solo lectura.
+      # - "/ruta/real/de/descargas:/app/downloads:ro"
     environment:
       # General
       TZ: "${TZ:-Europe/Madrid}"
@@ -38,6 +40,9 @@ services:
       EPLSYNC_CALIBRE_USERNAME: "${EPLSYNC_CALIBRE_USERNAME:-}"
       EPLSYNC_CALIBRE_PASSWORD: "${EPLSYNC_CALIBRE_PASSWORD:-}"
       EPLSYNC_CALIBRE_LIBRARY: "${EPLSYNC_CALIBRE_LIBRARY:-}"
+
+      # Acceso a los EPUB descargados (requiere un montaje de solo lectura).
+      EPLSYNC_TORRENT_FILES_REMOTE_ROOT: "${EPLSYNC_TORRENT_FILES_REMOTE_ROOT:-}"
 
       # Conexión con el cliente torrent
       EPLSYNC_TORRENT_ENABLED: "${EPLSYNC_TORRENT_ENABLED:-false}"

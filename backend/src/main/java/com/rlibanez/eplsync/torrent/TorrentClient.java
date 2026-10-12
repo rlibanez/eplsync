@@ -38,6 +38,11 @@ public interface TorrentClient {
                 "El cliente seleccionado no admite consultar categorías");
     }
 
+    record TorrentFile(int index, String name, long size, double progress, String savePath) {}
+    default java.util.List<TorrentFile> listFiles(String hash) {
+        throw new TorrentOperationException(HttpStatus.CONFLICT, "El cliente no admite consultar archivos");
+    }
+
     String type();
     TorrentConnectionStatus checkConnection();
 

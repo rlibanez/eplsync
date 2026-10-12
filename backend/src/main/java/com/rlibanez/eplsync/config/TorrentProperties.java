@@ -39,6 +39,14 @@ public class TorrentProperties {
     private String baseUrl = "http://localhost:8080";
     private Duration connectTimeout = Duration.ofSeconds(5);
     private Duration requestTimeout = Duration.ofSeconds(10);
+    private Files files = new Files();
+    public Files getFiles() { var current = effective(); return current == this ? files : current.getFiles(); }
+    @Getter @Setter
+    public static class Files {
+        private String remoteRoot = "";
+        private String localRoot = "";
+    }
+
     private Rename rename = new Rename();
     private Download download = new Download();
     private Bulk bulk = new Bulk();
@@ -73,6 +81,12 @@ public class TorrentProperties {
     public void validate() {
         if (maxResponseSize == null || maxResponseSize.toBytes() < 1024 || maxResponseSize.toBytes() > 1073741824L
                 || maxRemoteTorrents < 1 || maxRemoteTorrents > 1000000) throw invalid("límites de respuesta inválidos (1KiB–1GiB, 1–1000000 torrents)");
+        if (files == null || files.remoteRoot == null || files.localRoot == null)
+            throw invalid("configuración de carpetas inválida");
+        if (!files.remoteRoot.isBlank() && files.localRoot.isBlank()) throw invalid("configura la carpeta accesible en EPL Sync para activar las descargas de archivos");
+        if ((!files.localRoot.isBlank() && !java.nio.file.Path.of(files.localRoot).isAbsolute())
+                || (!files.remoteRoot.isBlank() && !(files.remoteRoot.startsWith("/") || files.remoteRoot.matches("[A-Za-z]:[\\\\/].*"))))
+            throw invalid("las carpetas de descarga deben ser rutas absolutas");
         if (!enabled) return;
         com.rlibanez.eplsync.qbittorrent.QBittorrentDestination.normalize(baseUrl);
         if (connectTimeout == null || connectTimeout.isNegative() || connectTimeout.isZero()

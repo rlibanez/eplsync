@@ -50,6 +50,8 @@ ARG PGID=1000
 RUN mkdir -p -m 700 /app/data /app/logs \
     && chown -R ${PUID}:${PGID} /app
 
+ENV EPLSYNC_TORRENT_FILES_LOCAL_ROOT=/app/downloads
+
 WORKDIR /app
 
 COPY --from=build \

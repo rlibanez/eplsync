@@ -118,3 +118,18 @@ conserva ese significado.
 - En `.env`, encierra entre comillas simples los valores que contengan un `$` literal, especialmente contraseñas. No guardes `.env` en Git.
 - Compose traduce `EPLSYNC_EVENTS_RETENTION_MAX_COUNT` y `EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS` a `EPLSYNC_EVENTS_RETENTION_MAXCOUNT` y `EPLSYNC_EVENTS_RETENTION_MAXAGEDAYS` dentro del contenedor. La tabla usa los nombres de `.env`.
 - Las opciones avanzadas del proxy (`server.forward-headers-strategy` y `server.tomcat.remoteip.internal-proxies`) permanecen documentadas en `application.yaml` y fuera del Compose. Consulta [Usuarios y seguridad](seguridad.md) para configurarlas mediante un YAML externo o variables adicionales.
+
+### ARCHIVOS EPUB DESCARGADOS
+
+| Variable | Valor predeterminado | Uso |
+| --- | --- | --- |
+| `EPLSYNC_TORRENT_FILES_REMOTE_ROOT` | Vacío | Carpeta base absoluta vista por qBittorrent, por ejemplo `/downloads`. |
+| `EPLSYNC_TORRENT_FILES_LOCAL_ROOT` | `/app/downloads` en Docker; vacío en el JAR | La misma carpeta vista por EPL Sync, por ejemplo `/app/downloads`. |
+
+Se pueden modificar en Ajustes > Torrent. La variable de ruta local se admite
+como configuración opcional, pero no se incluye en Compose ni en `.env.example`:
+la imagen Docker ya define `/app/downloads`. La carpeta base de qBittorrent vacía
+desactiva el acceso. Para activarlo,
+ambas rutas deben estar configuradas.
+Docker necesita además un montaje de esa carpeta de solo lectura; las variables
+no crean el montaje. Consulta [Descargas](descargas.md#descargar-los-epub-al-navegador).

@@ -37,6 +37,7 @@ class QBittorrentClientTests {
     private final CopyOnWriteArrayList<Call> calls = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> torrentQueries = new CopyOnWriteArrayList<>();
     private volatile String torrentInfo = "[]";
+    private volatile String torrentFiles = "[]";
     private volatile int generatedTorrents;
     private volatile boolean chunked;
     private volatile long bodyDelay;
@@ -54,6 +55,18 @@ class QBittorrentClientTests {
     private volatile long delay;
 
     record Call(String method, String path, String authorization, String cookie, String body, String origin) {}
+
+    @Test void readsActualFilePathsAndProgressUsingOneHashWithApiKey() {
+        qbittorrent.getAuth().setMode(QBittorrentProperties.AuthMode.API_KEY);
+        qbittorrent.getAuth().setApiKey("test-key");
+        torrentInfo="[{\"hash\":\""+"A".repeat(40)+"\",\"save_path\":\"/downloads/books/spanish\"}]";
+        torrentFiles="[{\"index\":7,\"name\":\"folder/book.epub\",\"size\":12,\"progress\":1}]";
+        assertThat(client().listFiles("A".repeat(40))).containsExactly(new com.rlibanez.eplsync.torrent.TorrentClient.TorrentFile(7,"folder/book.epub",12,1,"/downloads/books/spanish"));
+        assertThat(calls).filteredOn(c -> Objects.requireNonNull(c).path().endsWith("/torrents/files")).hasSize(1);
+        assertThat(torrentQueries).allMatch(q -> q.contains("hashes="+"A".repeat(40)));
+        torrentFiles="[{\"index\":7,\"name\":\"book.epub\",\"size\":12,\"progress\":2}]";
+        assertThatThrownBy(() -> client.listFiles("A".repeat(40))).isInstanceOf(QBittorrentConnectionException.class);
+    }
 
     @Test void boundsChunkedBytesAndTorrentCountAndRejectsTruncatedSnapshots() {
         chunked=true;
@@ -259,6 +272,7 @@ class QBittorrentClientTests {
                             output.write(torrentInfo.getBytes(StandardCharsets.UTF_8));
                         }
                     } else respond(exchange, 200, torrentInfo); }
+                else if (call.path().endsWith("/torrents/files")) respond(exchange, 200, torrentFiles);
                 else if (call.path().endsWith("/torrents/categories")) respond(exchange, 200, categories);
                 else if (call.path().endsWith("/torrents/add")) respond(exchange, addStatus, addBody);
                 else if (call.path().endsWith("/torrents/rename")) respond(exchange, renameStatus, "");

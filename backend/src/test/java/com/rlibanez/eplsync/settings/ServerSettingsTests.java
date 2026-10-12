@@ -31,6 +31,19 @@ class ServerSettingsTests {
     @Autowired Environment env;
     @Autowired PlatformTransactionManager manager;
     @AfterEach void restore() { for (String section : new String[]{"torrent","covers","catalog","events"}) settings.restore(section); }
+    @Test void persistsAndRestoresDownloadFolderMappings() {
+        settings.save("torrent",Map.of("torrent.files.remote-root","/downloads","torrent.files.local-root","/app/downloads"));
+        assertThat(torrent.getFiles().getRemoteRoot()).isEqualTo("/downloads");
+        assertThat(reload(TEST_KEY).snapshot().torrent().getFiles().getLocalRoot()).isEqualTo("/app/downloads");
+        assertThatThrownBy(() -> settings.save("torrent",Map.of("torrent.files.local-root","relative"))).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        settings.restore("torrent");assertThat(torrent.getFiles().getRemoteRoot()).isEmpty();
+    }
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"SETTINGS_MANAGE"})
+    void onlyAdminCanChangeFileRoots() {
+        assertThatThrownBy(() -> controller.save("torrent",Map.of("torrent.files.remote-root","/downloads","torrent.files.local-root","/app/downloads")))
+            .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
+
     @Test void savingRestoringAndReloadingPreserveOtherComponentsSettings() {
         var updates = new com.rlibanez.eplsync.updates.ApplicationUpdateSettings(jdbc, true);
         updates.save(new com.rlibanez.eplsync.updates.ApplicationUpdateSettings.Settings(false));

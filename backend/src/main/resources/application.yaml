@@ -133,6 +133,9 @@ eplsync:
     library: ${EPLSYNC_CALIBRE_LIBRARY:}
 
   torrent:
+    files:
+      remote-root: ${EPLSYNC_TORRENT_FILES_REMOTE_ROOT:}
+      local-root: ${EPLSYNC_TORRENT_FILES_LOCAL_ROOT:}
     trackers:
       - "udp://tracker.opentrackr.org:1337/announce"
       - "udp://www.torrent.eu.org:451/announce"

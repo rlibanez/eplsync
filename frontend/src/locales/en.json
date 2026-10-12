@@ -1038,7 +1038,9 @@
       "torrent_connect-timeout": "Maximum time to establish the connection. Examples: 500ms, 5s.",
       "torrent_request-timeout": "Maximum wait time per request. Examples: 500ms, 30s.",
       "catalog_zip-url": "Direct download URL of the ZIP file.",
-      "catalog_import_retention": "Time the ZIP will remain stored before being deleted.\nExamples: 600s, 24h."
+      "catalog_import_retention": "Time the ZIP will remain stored before being deleted.\nExamples: 600s, 24h.",
+      "torrent_files_remote-root": "Absolute path seen by qBittorrent, e.g. /downloads. Leave this folder empty to disable downloads, even if the EPL Sync folder is configured.",
+      "torrent_files_local-root": "The same folder as seen by EPL Sync. Docker defaults to /app/downloads and requires a read-only mount."
     },
     "title": "Server settings",
     "description": "Application defaults.",
@@ -1082,7 +1084,9 @@
       "torrent_qbittorrent_auth_mode": "Authentication mode",
       "torrent_qbittorrent_auth_username": "Username",
       "torrent_qbittorrent_auth_password": "Password",
-      "torrent_qbittorrent_auth_api-key": "API key"
+      "torrent_qbittorrent_auth_api-key": "API key",
+      "torrent_files_remote-root": "Torrent client base folder",
+      "torrent_files_local-root": "Folder accessible to EPL Sync"
     },
     "sections": {
       "catalog": "Import settings",
@@ -1096,7 +1100,8 @@
       "execution": "Submission execution",
       "defaults": "Default client options",
       "location": "Download location",
-      "naming": "Torrent name"
+      "naming": "Torrent name",
+      "files": "Downloaded files"
     },
     "choices": {
       "qbittorrent": "qBittorrent",
@@ -1189,7 +1194,8 @@
       "EVENTS_MANAGE": "Read and delete events",
       "SETTINGS_MANAGE": "Read and edit settings",
       "CALIBRE_READ": "View Calibre library",
-      "CALIBRE_SYNC": "Synchronize Calibre library"
+      "CALIBRE_SYNC": "Synchronize Calibre library",
+      "DOWNLOADS_FILES_READ": "Download EPUB files"
     },
     "statuses": {
       "PENDING": "Pending approval",
@@ -1398,5 +1404,10 @@
     "browserUrlHelp": "Optional. Uses the content server URL when empty.",
     "open": "View in Calibre",
     "copyLabel": "Revision {{revision}} · Calibre ID {{id}}"
+  },
+  "epubDownload": {
+    "button": "Download EPUB",
+    "title": "EPUB files",
+    "choose": "Choose the file to download."
   }
 }

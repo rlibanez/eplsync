@@ -280,6 +280,29 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
         return result.stream().filter(t -> t.aliases().stream().anyMatch(normalized::contains)).distinct().toList();
     }
 
+    @Override
+    public java.util.List<TorrentFile> listFiles(String hash) {
+        if (dynamic()) return configured(c -> c.listFiles(hash));
+        if (!hash.matches("(?i)[0-9a-f]{40}|[0-9a-f]{64}")) throw new com.rlibanez.eplsync.exception.UserInputException("Hash inválido");
+        var info = readAuthenticatedJson("torrents/info?hashes=" + encode(hash));
+        if (!info.isArray() || info.size() != 1) throw new TorrentOperationException(HttpStatus.NOT_FOUND, "El torrent ya no está en el cliente");
+        if (!torrentHashes(info.get(0)).contains(hash.toUpperCase(java.util.Locale.ROOT)))
+            throw new QBittorrentConnectionException(UPSTREAM);
+        var savePath = info.get(0).path("save_path").asString("");
+        var files = readAuthenticatedJson("torrents/files?hash=" + encode(hash));
+        if (!files.isArray() || files.size() > 10000) throw new QBittorrentConnectionException(UPSTREAM);
+        var result = new java.util.ArrayList<TorrentFile>();
+        for (var file : files) {
+            int index = file.path("index").asInt(-1);
+            long size = file.path("size").asLong(-1);
+            double progress = file.path("progress").asDouble(-1);
+            if (index < 0 || size < 0 || !Double.isFinite(progress) || progress < 0 || progress > 1)
+                throw new QBittorrentConnectionException(UPSTREAM);
+            result.add(new TorrentFile(index, file.path("name").asString(""), size, progress, savePath));
+        }
+        return java.util.List.copyOf(result);
+    }
+
     private java.util.List<RemoteTorrent> readTorrents(String path) {
         var hashes = new java.util.HashSet<String>();
         return readArray(path, item -> {
