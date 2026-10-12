@@ -9,12 +9,12 @@ class FrontendControllerTests {
     @Test
     void forwardsOnlyKnownFrontendRoutes() throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(new FrontendController(new org.springframework.core.io.ByteArrayResource(new byte[0]))).build();
-        for (var path : new String[]{"/", "/events", "/catalog", "/catalog/32", "/maintenance/catalog", "/settings", "/settings/general", "/settings/home", "/settings/catalog", "/settings/database", "/settings/events", "/settings/torrent", "/settings/covers", "/settings/about", "/directory", "/downloads", "/downloads/jobs", "/downloads/jobs/abc-123"}) {
+        for (var path : new String[]{"/downloads/sync", "/events", "/maintenance/catalog", "/settings", "/settings/database", "/settings/home", "/settings/account", "/settings/users", "/settings/reset", "/settings/missing", "/settings/general", "/settings/catalog", "/settings/events", "/settings/covers", "/settings/downloads", "/settings/about", "/settings/calibre", "/settings/torrent", "/directory", "/calibre", "/downloads", "/downloads/updates", "/downloads/jobs", "/downloads/jobs/abc-123", "/", "/catalog", "/catalog/32"}) {
             mvc.perform(get(path)).andExpect(status().isOk())
                     .andExpect(forwardedUrl("/index.html"))
                     .andExpect(header().string("Cache-Control","no-cache"));
         }
-        for (var path : new String[]{"/notifications", "/api/unknown", "/api/events", "/api/events/stream", "/events/unknown", "/assets/missing.js", "/catalog/not-an-id"}) {
+        for (var path : new String[]{"/notifications", "/api/unknown", "/api/events", "/api/events/stream", "/events/unknown", "/assets/missing.js", "/catalog/not-an-id", "/calibre/unknown", "/settings/unknown", "/api/calibre/unknown"}) {
             mvc.perform(get(path)).andExpect(status().isNotFound());
         }
     }
