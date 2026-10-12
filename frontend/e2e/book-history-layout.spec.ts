@@ -84,7 +84,7 @@ test("book history shares catalog pagination spacing and aligns heading with pag
     await page.goto("/catalog/1");
     const history = page.locator(".book-history");
     await expect(
-      history.getByRole("heading", { name: "Historial asociado", exact: true }),
+      history.getByRole("heading", { name: "Historial de descargas", exact: true }),
     ).toBeVisible();
     const paging = history.locator(".pagination");
     await expect(
@@ -105,7 +105,7 @@ test("book history shares catalog pagination spacing and aligns heading with pag
       await history.evaluate((element) => getComputedStyle(element).padding),
     ).toBe("0px");
     const titleBox = (await history
-      .getByRole("heading", { name: "Historial asociado", exact: true })
+      .getByRole("heading", { name: "Historial de descargas", exact: true })
       .boundingBox())!;
     const sizeBox = (await paging.getByRole("textbox").first().boundingBox())!;
     expect(Math.abs(titleBox.x - sizeBox.x)).toBeLessThan(1);

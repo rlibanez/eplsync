@@ -12,7 +12,7 @@ import { get, ApiError, NetworkError } from "../../api/catalog";
 import { secureFetch } from "../auth/transport";
 import { Loading, Failure } from "../../components/Feedback";
 import { SecretKeyDialog } from "./SecretKeyDialog";
-import { Paging } from "../downloads/shared";
+import { useLocale } from "../../locales/useLocale";
 
 interface View {
   url: string;
@@ -24,19 +24,6 @@ interface Check {
   connected: boolean;
   libraries: { id: string; name: string }[];
   defaultLibrary: string;
-}
-interface Books {
-  items: {
-    calibreId: number;
-    title: string;
-    authors: string[];
-    eplId: number | null;
-    revision: number | null;
-    linked: boolean;
-  }[];
-  total: number;
-  page: number;
-  size: number;
 }
 async function request<T>(
   method: string,
@@ -75,18 +62,19 @@ export function CalibreSettings() {
 function Form({ initial }: { initial: View }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
+  const { date } = useLocale();
   const [url, setUrl] = useState(initial.url);
   const [username, setUsername] = useState(initial.username);
   const [password, setPassword] = useState("");
   const [clearPassword, setClearPassword] = useState(false);
   const [library, setLibrary] = useState(initial.library);
   const [keyDialog, setKeyDialog] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(20);
   const input = () => ({ url, username, password, clearPassword, library });
   const check = useMutation({
     mutationFn: () => request<Check>("POST", input(), "/connection"),
+    onMutate: (): void => {
+      save.reset();
+    },
     retry: false,
     onSuccess: (data) => {
       if (!data.libraries.some((l) => l.id === library))
@@ -95,31 +83,54 @@ function Form({ initial }: { initial: View }) {
   });
   const save = useMutation({
     mutationFn: () => request<View>("PUT", input()),
+    onMutate: (): void => {
+      check.reset();
+    },
     retry: false,
     onSuccess: (data) => {
       cache.setQueryData(["calibre-settings"], data);
-      cache.removeQueries({ queryKey: ["calibre-books"] });
+      void cache.invalidateQueries({ queryKey: ["calibre-snapshot"] });
+      void cache.invalidateQueries({ queryKey: ["catalog"] });
+      void cache.invalidateQueries({ queryKey: ["book"] });
       setUrl(data.url);
       setUsername(data.username);
       setLibrary(data.library);
       setPassword("");
       setClearPassword(false);
-      setLoaded(false);
-      setPage(0);
     },
     onError: (error) => {
       if ((error as { code?: string }).code === "SECRET_KEY_REQUIRED")
         setKeyDialog(true);
     },
   });
-  const books = useQuery({
-    queryKey: ["calibre-books", initial.url, initial.library, page, size],
+  const snapshot = useQuery({
+    queryKey: ["calibre-snapshot"],
     queryFn: ({ signal }) =>
-      get<Books>(`/settings/calibre/books?page=${page}&size=${size}`, signal),
-    enabled: loaded,
-    retry: false,
+      get<{
+        snapshot: {
+          library: string;
+          syncedAt: string;
+          total: number;
+          identified: number;
+        } | null;
+      }>("/settings/calibre/snapshot", signal).then((data) => data.snapshot),
   });
-  const busy = check.isPending || save.isPending;
+  const sync = useMutation({
+    mutationFn: () =>
+      request<{
+        library: string;
+        syncedAt: string;
+        total: number;
+        identified: number;
+      }>("POST", {}, "/sync"),
+    retry: false,
+    onSuccess: (data) => {
+      cache.setQueryData(["calibre-snapshot"], data);
+      void cache.invalidateQueries({ queryKey: ["catalog"] });
+      void cache.invalidateQueries({ queryKey: ["book"] });
+    },
+  });
+  const busy = sync.isPending || check.isPending || save.isPending;
   const changed =
     url !== initial.url ||
     username !== initial.username ||
@@ -196,6 +207,7 @@ function Form({ initial }: { initial: View }) {
             </div>
             {initial.passwordConfigured && (
               <Checkbox
+                mt="md"
                 label={t("calibre.clearPassword")}
                 checked={clearPassword}
                 onChange={(e) => {
@@ -244,84 +256,36 @@ function Form({ initial }: { initial: View }) {
       </section>
       {initial.library && (
         <section className="panel settings-section">
-          <h2>{t("calibre.books")}</h2>
-          <p>{t("calibre.booksDescription")}</p>
+          <h2>{t("calibre.catalogSync")}</h2>
+          <p>{t("calibre.syncDescription")}</p>
           <div className="action-row">
             <Button
               disabled={busy || changed}
-              loading={books.isFetching}
-              onClick={() => {
-                setLoaded(true);
-                if (loaded) void books.refetch();
-              }}
+              loading={sync.isPending}
+              onClick={() => sync.mutate()}
             >
-              {t("calibre.load")}
+              {t("calibre.sync")}
             </Button>
           </div>
-          {loaded &&
-            (books.isPending ? (
-              <Loading />
-            ) : books.isError ? (
-              <Failure error={books.error} retry={() => books.refetch()} />
-            ) : (
-              <>
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        {[
-                          "id",
-                          "title",
-                          "authors",
-                          "epl",
-                          "revision",
-                          "link",
-                        ].map((k) => (
-                          <th key={k}>{t(`calibre.${k}`)}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {books.data.items.map((b) => (
-                        <tr key={b.calibreId}>
-                          <td>{b.calibreId}</td>
-                          <td>{b.title}</td>
-                          <td>{b.authors.join(", ")}</td>
-                          <td>{b.eplId ?? "—"}</td>
-                          <td>{b.revision ?? "—"}</td>
-                          <td>
-                            {t(
-                              b.linked
-                                ? "calibre.identified"
-                                : "calibre.unlinked",
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {!books.data.items.length && <p>{t("calibre.empty")}</p>}
-                <Paging
-                  maxSize={100}
-                  page={page}
-                  size={size}
-                  onPage={setPage}
-                  onSize={(n) => {
-                    setSize(Math.min(n, 100));
-                    setPage(0);
-                  }}
-                  meta={{
-                    page,
-                    size,
-                    totalItems: books.data.total,
-                    totalPages: Math.ceil(books.data.total / size),
-                    hasNext: (page + 1) * size < books.data.total,
-                    hasPrevious: page > 0,
-                  }}
-                />
-              </>
-            ))}
+          {snapshot.data && (
+            <p>
+              {t("calibre.syncSummary", {
+                total: snapshot.data.total,
+                identified: snapshot.data.identified,
+                date: date(snapshot.data.syncedAt),
+              })}
+            </p>
+          )}
+          {!snapshot.data && !snapshot.isError && (
+            <p>{t("calibre.notSynced")}</p>
+          )}
+          {snapshot.isError && (
+            <Failure error={snapshot.error} retry={() => snapshot.refetch()} />
+          )}
+          {sync.isError && (
+            <Failure error={sync.error} retry={() => sync.mutate()} />
+          )}
+          {sync.isSuccess && <small role="status">{t("calibre.synced")}</small>}
         </section>
       )}
       {keyDialog && <SecretKeyDialog onClose={() => setKeyDialog(false)} />}

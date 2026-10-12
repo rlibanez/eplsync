@@ -24,10 +24,10 @@ class DatabaseMigrationTests {
     }
     @Test void createsCompleteSchemaAndDoesNotRepeatMigrations() {
         var migration = flyway("classpath:db/migration");
-        assertEquals(1, migration.migrate().migrationsExecuted);
-        assertEquals("1.0.0", migration.info().current().getVersion().toString());
+        assertEquals(2, migration.migrate().migrationsExecuted);
+        assertEquals("1.1.0", migration.info().current().getVersion().toString());
         var jdbc = jdbc();
-        assertEquals(13, jdbc.queryForObject("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT IN ('sqlite_sequence','flyway_schema_history')", Integer.class));
+        assertEquals(14, jdbc.queryForObject("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT IN ('sqlite_sequence','flyway_schema_history')", Integer.class));
         var indexes = jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='index'", String.class);
         assertTrue(indexes.containsAll(java.util.List.of("idx_catalog_title", "idx_events_operation",
                 "idx_bulk_item_queue", "idx_cleanup_state_checked", "uk_download_identity", "uq_cleanup_job_download")));
@@ -40,6 +40,16 @@ class DatabaseMigrationTests {
         assertEquals(0, migration.migrate().migrationsExecuted);
         assertEquals("preserved", jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='sample'", String.class));
         assertThrows(FlywayException.class, migration::clean);
+    }
+    @Test void upgradesThePublishedSchemaWithoutLosingExistingData() {
+        var source=new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()));
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("1.0.0").load().migrate();
+        jdbc().update("INSERT INTO app_settings VALUES('preserved','value')");
+        var upgrade=flyway("classpath:db/migration");
+        assertEquals(1,upgrade.migrate().migrationsExecuted);
+        assertEquals("1.1.0",upgrade.info().current().getVersion().toString());
+        assertEquals("value",jdbc().queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='preserved'",String.class));
+        assertEquals(0,jdbc().queryForObject("SELECT count(*) FROM calibre_books",Integer.class));
     }
     @Test void catalogueOrderingAndRevisionLookupsUseTheirIndexes() {
         flyway("classpath:db/migration").migrate();
@@ -103,7 +113,7 @@ class DatabaseMigrationTests {
         flyway("classpath:db/migration").migrate();
         jdbc().update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('user','alice','alice','alice@example.org','hash','USER','ACTIVE','now','now')");
         var scripts = Files.createDirectory(directory.resolve("migrations"));
-        var next = scripts.resolve("V1_0_1__test_upgrade.sql");
+        var next = scripts.resolve("V1_1_1__test_upgrade.sql");
         Files.writeString(next, "ALTER TABLE users ADD COLUMN migration_test TEXT; UPDATE users SET migration_test='retained';");
         var upgrade = flyway("classpath:db/migration", "filesystem:" + scripts);
         assertEquals(1, upgrade.migrate().migrationsExecuted);
@@ -116,7 +126,7 @@ class DatabaseMigrationTests {
     @Test void rejectsDowngradeToAnApplicationMissingAppliedMigrations() throws Exception {
         flyway("classpath:db/migration").migrate();
         var scripts = Files.createDirectory(directory.resolve("future"));
-        Files.writeString(scripts.resolve("V1_0_1__future.sql"), "CREATE TABLE future_data(id INTEGER);");
+        Files.writeString(scripts.resolve("V1_1_1__future.sql"), "CREATE TABLE future_data(id INTEGER);");
         flyway("classpath:db/migration", "filesystem:" + scripts).migrate();
         assertThrows(FlywayException.class, () -> flyway("classpath:db/migration").migrate());
     }
@@ -129,10 +139,10 @@ class DatabaseMigrationTests {
         flyway("classpath:db/migration").migrate();
         jdbc().update("INSERT INTO app_settings VALUES('sample','original')");
         var scripts = Files.createDirectory(directory.resolve("broken"));
-        Files.writeString(scripts.resolve("V1_0_1__broken.sql"), "CREATE TABLE test_partial(id INTEGER); UPDATE app_settings SET setting_value='changed'; INSERT INTO nonexistent VALUES(1);");
+        Files.writeString(scripts.resolve("V1_1_1__broken.sql"), "CREATE TABLE test_partial(id INTEGER); UPDATE app_settings SET setting_value='changed'; INSERT INTO nonexistent VALUES(1);");
         assertThrows(FlywayException.class, () -> flyway("classpath:db/migration", "filesystem:" + scripts).migrate());
         assertEquals("original", jdbc().queryForObject("SELECT setting_value FROM app_settings", String.class));
         assertEquals(0, jdbc().queryForObject("SELECT count(*) FROM sqlite_master WHERE name='test_partial'", Integer.class));
-        assertEquals("1.0.0", flyway("classpath:db/migration").info().current().getVersion().toString());
+        assertEquals("1.1.0", flyway("classpath:db/migration").info().current().getVersion().toString());
     }
 }

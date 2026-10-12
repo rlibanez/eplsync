@@ -157,7 +157,7 @@
     "publicationDate": "Publicado en EPL",
     "insertDate": "Añadido a EPL Sync",
     "lastModifiedDate": "Última modificación",
-    "history": "Historial asociado",
+    "history": "Historial de descargas",
     "completed": "Finalización registrada",
     "noDownloads": "No hay descargas registradas para este libro.",
     "actions": "Acciones del libro",
@@ -1324,6 +1324,7 @@
     }
   },
   "calibre": {
+    "bookAbsent": "Este libro no está en la biblioteca de Calibre sincronizada.",
     "configuration": "Configuración de Calibre",
     "description": "Conecta con el servidor de contenido de Calibre para consultar su biblioteca. Esta integración no modifica libros ni archivos.",
     "connection": "Conexión",
@@ -1350,6 +1351,20 @@
     "link": "Identificación EPL",
     "identified": "Identificado",
     "unlinked": "Sin vincular",
-    "empty": "No hay libros en esta biblioteca."
+    "empty": "No hay libros en esta biblioteca.",
+    "notSynced": "La biblioteca de Calibre todavía no se ha sincronizado.",
+    "lastSync": "Última sincronización",
+    "catalogSync": "Sincronización con el catálogo",
+    "syncDescription": "Actualiza la copia local de la biblioteca para consultar su presencia y sus revisiones en el catálogo. No modifica los libros de Calibre.",
+    "sync": "Sincronizar biblioteca",
+    "synced": "Biblioteca sincronizada.",
+    "syncSummary": "{{total}} libros; {{identified}} con identificador EPL. Última sincronización: {{date}}.",
+    "moreCopies": "Hay {{count}} registros en Calibre. Se muestran los primeros 20.",
+    "filter": {
+      "OUTDATED": "Revisión anterior al catálogo",
+      "CURRENT": "Misma revisión que el catálogo",
+      "NEWER": "Revisión posterior al catálogo",
+      "UNKNOWN": "Sin revisión identificada"
+    }
   }
 }

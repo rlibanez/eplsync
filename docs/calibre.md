@@ -18,7 +18,7 @@ Un administrador configura la conexión en **Ajustes → Calibre**:
    sin guardarlos, y se muestran las bibliotecas accesibles.
 4. Selecciona la biblioteca y pulsa **Guardar**. Se comprueba nuevamente que
    está disponible antes de guardar la configuración compartida.
-5. Pulsa **Consultar biblioteca** para leer los libros con los datos guardados.
+5. Pulsa **Sincronizar biblioteca** para actualizar los datos de Calibre en la ficha de los libros.
 
 Ejemplos de URL:
 
@@ -40,22 +40,45 @@ formulario ofrece el diálogo de generación antes de poder guardar una contrase
 
 ## Consulta
 
-La tabla muestra el ID de Calibre, título, autores, EPL ID, revisión e identificación
-EPL. Los identificadores se leen de los metadatos de Calibre:
+Los identificadores EPL y las revisiones se leen de los metadatos de Calibre:
 
 ```json
 {"identifiers": {"epl": "80899", "revision": "1.0"}}
 ```
 
-Los libros sin ambos identificadores válidos aparecen como **Sin vincular**. No se
-infieren coincidencias por título. La identificación solo indica que los metadatos
-EPL son válidos; no confirma que el libro exista en el catálogo de EPL Sync.
+No se infieren coincidencias por título. Los libros sin identificador EPL válido
+no se vinculan al catálogo.
 
 Las consultas están paginadas (máximo 100 libros) y los metadatos se solicitan en
 lotes. Se admiten hasta dos operaciones simultáneas, respuestas de hasta 2 MiB y
 un plazo de 10 segundos por petición. No se siguen redirecciones con credenciales:
 configura la URL final. Se admite autenticación Basic y Digest.
 
-Esta primera fase no modifica Calibre, no descarga EPUB y no persiste sus libros
-en EPL Sync. El envío de libros y la sustitución de revisiones quedan para una
-fase posterior.
+## Información en la ficha del libro
+
+Pulsa **Sincronizar biblioteca** en Ajustes → Calibre después de guardar la
+conexión. EPL Sync guarda una copia local de los identificadores EPL y las
+revisiones, sin descargar EPUB ni modificar Calibre. Repite la sincronización
+cuando cambie tu biblioteca; no se consulta Calibre al navegar por el catálogo.
+
+La ficha del libro muestra la biblioteca y las copias vinculadas mediante
+`identifiers.epl`, con sus IDs y revisiones de Calibre. Una revisión inválida o
+ausente no impide identificar el libro, pero no permite comparar versiones.
+Se muestran hasta 20 copias, indicando el total cuando hay más.
+
+El resumen compara la revisión más alta de Calibre con la del catálogo.
+La fecha de la última sincronización se muestra como tooltip de la biblioteca.
+La biblioteca seleccionada es compartida con los lectores del catálogo;
+la URL y las credenciales siguen restringidas al administrador.
+
+Las columnas y los filtros de Calibre en la tabla Catálogo quedan para una fase
+posterior.
+
+La sincronización procesa páginas de 100 libros, con un máximo de 500000 libros y
+10 minutos. Solo puede ejecutarse una a la vez. Los datos se publican juntos al
+completarla: un error conserva la copia anterior y elimina los datos incompletos.
+Al cambiar URL, usuario o biblioteca, se descarta la copia anterior y es necesario
+sincronizar otra vez. Las importaciones del catálogo no eliminan esa copia.
+
+Descargas → Estado mantiene su funcionamiento. El envío de libros a Calibre y la
+sustitución de revisiones quedan para una fase posterior.

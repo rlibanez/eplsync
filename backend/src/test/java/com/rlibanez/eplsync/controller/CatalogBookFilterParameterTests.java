@@ -15,7 +15,7 @@ class CatalogBookFilterParameterTests {
         var service = mock(CatalogBookService.class);
         var downloads = mock(CatalogDownloadViewService.class);
         when(service.search(any(), any())).thenReturn(org.springframework.data.domain.Page.empty());
-        var mvc = MockMvcBuilders.standaloneSetup(new CatalogBookController(service, downloads))
+        var mvc = MockMvcBuilders.standaloneSetup(new CatalogBookController(service, downloads, mock(com.rlibanez.eplsync.settings.CalibreCatalogService.class)))
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         for (String parameter : new String[]{"EplId", "titel"})
@@ -32,7 +32,7 @@ class CatalogBookFilterParameterTests {
         var service = mock(CatalogBookService.class);
         var downloads = mock(CatalogDownloadViewService.class);
         when(service.search(any(), any())).thenReturn(org.springframework.data.domain.Page.empty());
-        var mvc = MockMvcBuilders.standaloneSetup(new CatalogBookController(service, downloads))
+        var mvc = MockMvcBuilders.standaloneSetup(new CatalogBookController(service, downloads, mock(com.rlibanez.eplsync.settings.CalibreCatalogService.class)))
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         mvc.perform(get("/api/catalog/books").param("eplid", "32")).andExpect(status().isOk());

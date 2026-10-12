@@ -30,7 +30,12 @@ public record CatalogBookResponse(
         String links,
         String coverUrl,
         Boolean coverAvailable,
-        Download download) {
+        Download download, Calibre calibre) {
+    public record CalibreItem(long calibreId, Double revision) {}
+    public record Calibre(String library, Instant syncedAt, long totalItems, Double revision, List<CalibreItem> items) {}
+    public CatalogBookResponse withCalibre(Calibre value) {
+        return new CatalogBookResponse(eplId,revision,author,title,genres,collection,volume,publicationYear,synopsis,pages,language,publicationStatus,publicationDate,insertDate,lastModifiedDate,status,rating,votesCount,links,coverUrl,coverAvailable,download,value);
+    }
     public record Download(List<DownloadItem> items,long totalItems,List<DownloadStatus> statuses) {
         public Download(List<DownloadItem> items) { this(items,items.size()); }
         public Download(List<DownloadItem> items,long totalItems) { this(items,totalItems,items.stream().map((DownloadItem entryValue) -> java.util.Objects.requireNonNull(entryValue).status()).distinct().toList()); }
@@ -57,6 +62,6 @@ public record CatalogBookResponse(
                 book.getStatus(),
                 book.getRating(),
                 book.getVotesCount(),
-                book.getLinks(), book.getCoverUrl(), book.getCoverAvailable(), download);
+                book.getLinks(), book.getCoverUrl(), book.getCoverAvailable(), download, null);
     }
 }

@@ -1,0 +1,140 @@
+package com.rlibanez.eplsync.settings;
+
+import java.util.*;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.web.servlet.*;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.Mockito.*;
+import static org.assertj.core.api.Assertions.*;
+
+@SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.security.require-https=false","eplsync.torrent.enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
+class CalibreCatalogTests {
+    @Autowired WebApplicationContext context;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired CalibreSettings settings;
+    @Autowired CalibreCatalogService snapshots;
+    @Autowired com.rlibanez.eplsync.maintenance.DatabaseResetService reset;
+    @MockitoBean CalibreClient client;
+    MockMvc mvc;
+    @BeforeEach void initialize() {
+        mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        jdbc.update("DELETE FROM app_settings WHERE setting_key IN ('calibre.connection','calibre.snapshot')");
+        jdbc.update("DELETE FROM calibre_books");
+        jdbc.update("DELETE FROM catalog_books");
+        settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"main"));
+    }
+    @Test @WithMockUser(authorities={"ROLE_ADMIN"}) void missingSnapshotReturnsJsonInsteadOfAnEmptyBody() throws Exception {
+        mvc.perform(get("/api/settings/calibre/snapshot")).andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith("application/json"))
+            .andExpect(content().json("{\"snapshot\":null}"));
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100));
+        snapshots.sync();
+        mvc.perform(get("/api/settings/calibre/snapshot")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.snapshot.total").value(1)).andExpect(jsonPath("$.snapshot.library").value("main"));
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ", "ROLE_ADMIN"}) void publishesCompleteLibraryForIndividualBooks() throws Exception {
+        for(int id=1;id<=5;id++) jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(?,2,?,'Author')",id,"Book "+id);
+        var items=List.of(book(1,1L,1d),book(2,1L,1.5),book(3,2L,2d),book(4,3L,3d),book(5,4L,null),book(6,null,null));
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(items,6,0,100));
+        mvc.perform(post("/api/settings/calibre/sync").contentType("application/json").content("{}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/calibre/sync").with(csrf()).contentType("application/json").content("{}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(6)).andExpect(jsonPath("$.identified").value(5));
+        mvc.perform(get("/api/catalog/books/1")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.calibre.totalItems").value(2)).andExpect(jsonPath("$.calibre.revision").value(1.5))
+            .andExpect(jsonPath("$.calibre.items[0].calibreId").value(2)).andExpect(jsonPath("$.calibre.url").doesNotExist())
+            .andExpect(jsonPath("$.calibre.username").doesNotExist());
+        mvc.perform(get("/api/catalog/books").param("size","1"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(5))
+            .andExpect(jsonPath("$.items[0].calibre").isEmpty());
+        verify(client,times(1)).books(any(),eq(0),eq(100));
+        settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"other"));
+        assertThat(snapshots.snapshot()).isNull();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Integer.class)).isZero();
+    }
+    @Test void failureRetainsPublishedSnapshotAndCleansStaging() {
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100));
+        var previous=snapshots.sync();
+        var first=java.util.stream.IntStream.rangeClosed(1,100).mapToObj(id -> book(id,(long)id,1d)).toList();
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(first,101,0,100));
+        when(client.books(any(),eq(1),eq(100))).thenThrow(new com.rlibanez.eplsync.exception.UserInputException("Connection failed"));
+        assertThatThrownBy(snapshots::sync).hasMessage("Connection failed");
+        assertThat(snapshots.snapshot()).isEqualTo(previous);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books",Integer.class)).isEqualTo(1);
+        when(client.books(any(),eq(1),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(101,1L,2d)),102,1,100));
+        assertThatThrownBy(snapshots::sync).hasMessageContaining("cambió");
+        assertThat(snapshots.snapshot()).isEqualTo(previous);
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(),0,0,100));
+        assertThat(snapshots.sync().total()).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books",Integer.class)).isZero();
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ"}) void limitsCopiesWithoutLosingTheLatestRevision() throws Exception {
+        jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,30,'Book','Author')");
+        var books=java.util.stream.IntStream.rangeClosed(1,25).mapToObj(id -> book(id,1L,(double)id)).toList();
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(books,25,0,100));
+        snapshots.sync();
+        mvc.perform(get("/api/catalog/books/1")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.calibre.totalItems").value(25)).andExpect(jsonPath("$.calibre.revision").value(25))
+            .andExpect(jsonPath("$.calibre.items.length()").value(20)).andExpect(jsonPath("$.calibre.items[0].calibreId").value(25));
+    }
+    @Test void changedConnectionCannotPublishDataFromThePreviousLibrary() {
+        when(client.books(any(),eq(0),eq(100))).thenAnswer(invocation -> {
+            settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"different"));
+            return new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100);
+        });
+        assertThatThrownBy(snapshots::sync).hasMessageContaining("conexión de Calibre cambió");
+        assertThat(snapshots.snapshot()).isNull();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books",Integer.class)).isZero();
+    }
+    @Test void rejectsDuplicateAndOversizedLibraries() {
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d),book(1,2L,2d)),2,0,100));
+        assertThatThrownBy(snapshots::sync).hasMessageContaining("duplicados");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books",Integer.class)).isZero();
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(),500001,0,100));
+        assertThatThrownBy(snapshots::sync).hasMessageContaining("500000");
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ"}) void readersSeeLocalMetadataWithoutAccessToTheConnection() throws Exception {
+        jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,2,'Book','Author')");
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100));
+        snapshots.sync();
+        mvc.perform(get("/api/catalog/books/1")).andExpect(status().isOk()).andExpect(jsonPath("$.calibre.revision").value(1));
+        mvc.perform(get("/api/settings/calibre")).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/calibre/sync").with(csrf()).contentType("application/json").content("{}"))
+            .andExpect(status().isForbidden());
+    }
+    @Test void publishesMultiplePagesTogetherAndRejectsConcurrentSync() {
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100));
+        var previous=snapshots.sync();
+        var first=java.util.stream.IntStream.rangeClosed(1,100).mapToObj(id -> book(id,(long)id,1d)).toList();
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(first,101,0,100));
+        when(client.books(any(),eq(1),eq(100))).thenAnswer(invocation -> {
+            assertThat(snapshots.snapshot()).isEqualTo(previous);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Integer.class)).isEqualTo(1);
+            assertThatThrownBy(snapshots::sync).hasMessageContaining("en curso");
+            return new CalibreClient.Books(List.of(book(101,1L,2d)),101,1,100);
+        });
+        assertThat(snapshots.sync().total()).isEqualTo(101);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Integer.class)).isEqualTo(101);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=false",Integer.class)).isZero();
+    }
+    @Test void resettingTheDatabaseClearsTheSnapshotButPreservesTheConnection() {
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100));
+        snapshots.sync();
+        reset.reset(false);
+        assertThat(snapshots.snapshot()).isNull();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books",Integer.class)).isZero();
+        assertThat(settings.view().library()).isEqualTo("main");
+    }
+    private static CalibreClient.Book book(long id, Long eplId, Double revision) {
+        return new CalibreClient.Book(id,"Book",List.of("Author"),eplId,revision==null?null:java.math.BigDecimal.valueOf(revision),eplId!=null&&revision!=null);
+    }
+}

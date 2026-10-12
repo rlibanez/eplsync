@@ -21,6 +21,13 @@ export interface Book {
   links: string | null;
   coverUrl: string | null;
   coverAvailable: boolean | null;
+  calibre?: {
+    library: string;
+    syncedAt: string;
+    totalItems: number;
+    revision: number | null;
+    items: { calibreId: number; revision: number | null }[];
+  } | null;
   download: {
     totalItems: number;
     statuses: string[];

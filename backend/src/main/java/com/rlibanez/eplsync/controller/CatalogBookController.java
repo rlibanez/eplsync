@@ -21,10 +21,12 @@ public class CatalogBookController {
     private final CatalogBookService catalogBookService;
 
     private final CatalogDownloadViewService downloads;
+    private final com.rlibanez.eplsync.settings.CalibreCatalogService calibre;
 
     public CatalogBookController(CatalogBookService catalogBookService,
-            CatalogDownloadViewService downloads) {
+            CatalogDownloadViewService downloads, com.rlibanez.eplsync.settings.CalibreCatalogService calibre) {
         this.downloads = downloads;
+        this.calibre = calibre;
         this.catalogBookService = catalogBookService;
     }
 
@@ -34,7 +36,7 @@ public class CatalogBookController {
     @GetMapping("/{eplId}")
     public ResponseEntity<CatalogBookResponse> getByEplId(@PathVariable Long eplId) {
         return catalogBookService.getByEplId(eplId)
-                .map(book -> ResponseEntity.ok(downloads.enrich(List.of(book)).getFirst()))
+                .map(book -> ResponseEntity.ok(calibre.enrich(downloads.enrich(List.of(book))).getFirst()))
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 

@@ -157,7 +157,7 @@
     "publicationDate": "Published on EPL",
     "insertDate": "Added to EPL Sync",
     "lastModifiedDate": "Last modified",
-    "history": "Associated history",
+    "history": "Download history",
     "completed": "Completion recorded",
     "noDownloads": "No downloads recorded for this book.",
     "actions": "Book actions",
@@ -1324,6 +1324,7 @@
     }
   },
   "calibre": {
+    "bookAbsent": "This book is not in the synchronized Calibre library.",
     "configuration": "Calibre configuration",
     "description": "Connect to the Calibre Content server to browse its library. This integration does not modify books or files.",
     "connection": "Connection",
@@ -1350,6 +1351,20 @@
     "link": "EPL identification",
     "identified": "Identified",
     "unlinked": "Unlinked",
-    "empty": "There are no books in this library."
+    "empty": "There are no books in this library.",
+    "notSynced": "The Calibre library has not been synchronized yet.",
+    "lastSync": "Last synchronized",
+    "catalogSync": "Catalog synchronization",
+    "syncDescription": "Refresh the local library snapshot to check presence and revisions in the catalog. This does not modify books in Calibre.",
+    "sync": "Synchronize library",
+    "synced": "Library synchronized.",
+    "syncSummary": "{{total}} books; {{identified}} with an EPL identifier. Last synchronized: {{date}}.",
+    "moreCopies": "There are {{count}} Calibre records. The first 20 are shown.",
+    "filter": {
+      "OUTDATED": "Older revision than the catalog",
+      "CURRENT": "Same revision as the catalog",
+      "NEWER": "Newer revision than the catalog",
+      "UNKNOWN": "No identified revision"
+    }
   }
 }

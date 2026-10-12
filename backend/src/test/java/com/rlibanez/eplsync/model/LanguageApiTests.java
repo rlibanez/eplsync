@@ -39,8 +39,10 @@ class LanguageApiTests {
         when(service.search(any(), any())).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(book)));
         var conversion = new DefaultFormattingConversionService();
         new LanguageWebConfiguration().addFormatters(conversion);
+        var calibre = mock(com.rlibanez.eplsync.settings.CalibreCatalogService.class);
+        when(calibre.enrich(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
         var mvc = MockMvcBuilders.standaloneSetup(new CatalogBookController(service, new com.rlibanez.eplsync.torrent.downloads.CatalogDownloadViewService(
-                org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.downloads.DownloadRepository.class))))
+                org.mockito.Mockito.mock(com.rlibanez.eplsync.torrent.downloads.DownloadRepository.class)), calibre))
                 .setConversionService(conversion)
                 .setCustomArgumentResolvers(new PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler()).build();

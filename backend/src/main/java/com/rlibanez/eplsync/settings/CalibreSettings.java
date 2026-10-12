@@ -56,6 +56,7 @@ public class CalibreSettings {
     }
     @org.springframework.transaction.annotation.Transactional
     public synchronized View save(Input input) {
+        var previous = stored();
         var c = resolve(input);
         if (c.library().isBlank()) throw new UserInputException("Selecciona una biblioteca de Calibre");
         String encrypted = "";
@@ -65,6 +66,10 @@ public class CalibreSettings {
         }
         var value = json.writeValueAsString(new Stored(c.url(), c.username(), encrypted, c.library()));
         jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value", KEY, value);
+        if (!previous.url().equals(c.url()) || !previous.username().equals(c.username()) || !previous.library().equals(c.library())) {
+            jdbc.update("DELETE FROM calibre_books WHERE active=true");
+            jdbc.update("DELETE FROM app_settings WHERE setting_key=?", CalibreCatalogService.KEY);
+        }
         return view();
     }
     static String normalize(String value) {

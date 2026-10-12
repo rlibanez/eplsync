@@ -29,6 +29,9 @@ class CalibreApiTests {
         mvc.perform(get("/api/settings/calibre/books")).andExpect(status().isForbidden());
         mvc.perform(post("/api/settings/calibre/connection").with(csrf()).contentType("application/json")
             .content("{\"url\":\"http://localhost:8080\"}")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/settings/calibre/snapshot")).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/calibre/sync").with(csrf()).contentType("application/json").content("{}"))
+            .andExpect(status().isForbidden());
         verifyNoInteractions(client);
     }
     @Test @WithMockUser(authorities={"SETTINGS_MANAGE", "ROLE_ADMIN"}) void masksSavedCredentialsAndRequiresCsrf() throws Exception {

@@ -105,6 +105,7 @@ class CalibreTests {
         var source = new SingleConnectionDataSource("jdbc:sqlite::memory:", true);
         try {
             var jdbc = new JdbcTemplate(source);
+            jdbc.execute("CREATE TABLE calibre_books(active boolean)");
             jdbc.execute("CREATE TABLE app_settings(setting_key TEXT PRIMARY KEY,setting_value TEXT)");
             var settings = new CalibreSettings(jdbc, Base64.getEncoder().encodeToString(new byte[32]));
             settings.save(new CalibreSettings.Input(url, "reader", "private-password", false, "main"));

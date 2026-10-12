@@ -1,6 +1,11 @@
 import { test, expect } from "./fixtures";
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/settings/calibre/snapshot", (route) =>
+    route.fulfill({ json: { snapshot: null } }),
+  );
+});
 
-test("checks form credentials, selects a library and reads EPL identifiers", async ({
+test("checks form credentials and saves the selected library", async ({
   page,
 }) => {
   let saved = { url: "", username: "", passwordConfigured: false, library: "" };
@@ -32,33 +37,6 @@ test("checks form credentials, selects a library and reads EPL identifiers", asy
       },
     });
   });
-  await page.route("**/api/settings/calibre/books?**", (route) =>
-    route.fulfill({
-      json: {
-        items: [
-          {
-            calibreId: 3,
-            title: "El reino del lenguaje",
-            authors: ["Tom Wolfe"],
-            eplId: 80899,
-            revision: 1,
-            linked: true,
-          },
-          {
-            calibreId: 9,
-            title: "Other",
-            authors: [],
-            eplId: null,
-            revision: null,
-            linked: false,
-          },
-        ],
-        total: 2,
-        page: 0,
-        size: 20,
-      },
-    }),
-  );
   await page.goto("/settings/calibre");
   await page
     .getByRole("textbox", {
@@ -74,11 +52,8 @@ test("checks form credentials, selects a library and reads EPL identifiers", asy
   await expect(page.getByRole("status")).toContainText("Conexión correcta");
   await page.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(page.getByLabel("Contraseña", { exact: true })).toHaveValue("");
-  await page
-    .getByRole("button", { name: "Consultar biblioteca", exact: true })
-    .click();
-  await expect(page.getByRole("table")).toContainText("80899");
-  await expect(page.getByRole("table")).toContainText("Sin vincular");
+  await expect(page.getByRole("heading", {name: "Libros de Calibre", exact: true})).toHaveCount(0);
+  await expect(page.getByRole("button", {name: "Sincronizar biblioteca", exact: true})).toBeEnabled();
   await page
     .getByRole("textbox", {
       name: "URL del servidor de contenido",
@@ -91,35 +66,53 @@ test("checks form credentials, selects a library and reads EPL identifiers", asy
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Consultar biblioteca", exact: true }),
+    page.getByRole("button", { name: "Sincronizar biblioteca", exact: true }),
   ).toBeDisabled();
 });
 
-test("shows a concrete connection error", async ({ page }) => {
+test("shows only the latest error when saving and checking cleared credentials", async ({
+  page,
+}) => {
+  const error = {
+    status: 502,
+    json: {
+      details:
+        "Calibre ha rechazado el acceso; revisa el usuario, la contraseña y los permisos de biblioteca",
+    },
+  };
   await page.route("**/api/settings/calibre", (route) =>
-    route.fulfill({
-      json: {
-        url: "http://localhost:8080",
-        username: "",
-        passwordConfigured: false,
-        library: "",
-      },
-    }),
+    route.fulfill(
+      route.request().method() === "PUT"
+        ? error
+        : {
+            json: {
+              url: "http://localhost:8080",
+              username: "reader",
+              passwordConfigured: true,
+              library: "main",
+            },
+          },
+    ),
   );
   await page.route("**/api/settings/calibre/connection", (route) =>
-    route.fulfill({
-      status: 502,
-      json: {
-        details:
-          "Calibre ha rechazado el acceso; revisa el usuario, la contraseña y los permisos de biblioteca",
-      },
-    }),
+    route.fulfill(error),
   );
   await page.goto("/settings/calibre");
   await page
+    .getByRole("checkbox", {
+      name: "Eliminar contraseña guardada",
+      exact: true,
+    })
+    .check();
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(1);
+  await page
     .getByRole("button", { name: "Comprobar conexión", exact: true })
     .click();
+  await expect(page.getByRole("alert")).toHaveCount(1);
   await expect(page.getByRole("alert")).toContainText(
     "Calibre ha rechazado el acceso",
   );
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveCount(1);
 });

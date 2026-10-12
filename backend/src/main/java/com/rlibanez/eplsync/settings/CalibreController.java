@@ -9,7 +9,11 @@ import org.springframework.web.bind.annotation.*;
 public class CalibreController {
     private final CalibreSettings settings;
     private final CalibreClient client;
-    public CalibreController(CalibreSettings settings, CalibreClient client) { this.settings = settings; this.client = client; }
+    private final CalibreCatalogService catalog;
+    public CalibreController(CalibreSettings settings, CalibreClient client, CalibreCatalogService catalog) { this.settings = settings; this.client = client; this.catalog = catalog; }
+    public record SnapshotState(CalibreCatalogService.Snapshot snapshot) {}
+    @GetMapping("/snapshot") public SnapshotState snapshot() { return new SnapshotState(catalog.snapshot()); }
+    @PostMapping("/sync") public CalibreCatalogService.Snapshot sync() { return catalog.sync(); }
     @GetMapping public CalibreSettings.View view() { return settings.view(); }
     @PutMapping public CalibreSettings.View save(@RequestBody CalibreSettings.Input input) {
         var connection = settings.resolve(input);

@@ -21,6 +21,7 @@ public class DatabaseResetService {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.service.CatalogImportStore previews;
     @org.springframework.beans.factory.annotation.Autowired(required = false) private com.rlibanez.eplsync.settings.ServerSettings settings;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.security.AccountStore accounts;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.settings.CalibreCatalogService calibre;
     private final com.rlibanez.eplsync.service.CatalogOperationGate catalogOperations;
     private final BulkStore bulk;
     private final ObjectProvider<BulkWorker> workers;
@@ -45,7 +46,7 @@ public class DatabaseResetService {
         return reset(false);
     }
     public ResetResult reset(boolean eraseUsersAndSettings) {
-        return catalogOperations.run(() -> resetAdmitted(eraseUsersAndSettings));
+        return calibre.exclusive(() -> catalogOperations.run(() -> resetAdmitted(eraseUsersAndSettings)));
     }
     private ResetResult resetAdmitted(boolean eraseUsersAndSettings) {
         // Worker dispatch and job creation use this same monitor. Do not hold a
@@ -69,6 +70,8 @@ public class DatabaseResetService {
                     int books = delete("CatalogBook");
                     if (suggestions != null) suggestions.invalidateAfterCommit();
                     int metadata = delete("CatalogMetadata");
+                    delete("CalibreBook");
+                    em.createNativeQuery("DELETE FROM app_settings WHERE setting_key='calibre.snapshot'").executeUpdate();
                     int settingsCount = eraseUsersAndSettings ? delete("StoredSetting") : 0;
                     if (eraseUsersAndSettings) {
                         em.createNativeQuery("DELETE FROM revision_update_settings").executeUpdate();
