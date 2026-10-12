@@ -74,9 +74,11 @@ function Form({ initial }: { initial: View }) {
     mutationFn: () => request<Check>("POST", input(), "/connection"),
     onMutate: (): void => {
       save.reset();
+      sync.reset();
     },
     retry: false,
     onSuccess: (data) => {
+      if (snapshot.isError) void snapshot.refetch();
       if (!data.libraries.some((l) => l.id === library))
         setLibrary(data.defaultLibrary || data.libraries[0]?.id || "");
     },
@@ -85,6 +87,7 @@ function Form({ initial }: { initial: View }) {
     mutationFn: () => request<View>("PUT", input()),
     onMutate: (): void => {
       check.reset();
+      sync.reset();
     },
     retry: false,
     onSuccess: (data) => {
@@ -241,32 +244,25 @@ function Form({ initial }: { initial: View }) {
             </Button>
           </div>
         </form>
-        {check.isSuccess && (
-          <small role="status">
-            {t("calibre.connected", { count: check.data.libraries.length })}
-          </small>
-        )}
-        {save.isSuccess && <small role="status">{t("calibre.saved")}</small>}
-        {check.isError && (
-          <Failure error={check.error} retry={() => check.mutate()} />
-        )}
-        {save.isError && (
-          <Failure error={save.error} retry={() => save.mutate()} />
-        )}
+        <div style={{ marginTop: 12 }}>
+          {check.isSuccess && (
+            <small role="status">
+              {t("calibre.connected", { count: check.data.libraries.length })}
+            </small>
+          )}
+          {save.isSuccess && <small role="status">{t("calibre.saved")}</small>}
+          {check.isError && (
+            <Failure error={check.error} retry={() => check.mutate()} />
+          )}
+          {save.isError && (
+            <Failure error={save.error} retry={() => save.mutate()} />
+          )}
+        </div>
       </section>
       {initial.library && (
         <section className="panel settings-section">
           <h2>{t("calibre.catalogSync")}</h2>
           <p>{t("calibre.syncDescription")}</p>
-          <div className="action-row">
-            <Button
-              disabled={busy || changed}
-              loading={sync.isPending}
-              onClick={() => sync.mutate()}
-            >
-              {t("calibre.sync")}
-            </Button>
-          </div>
           {snapshot.data && (
             <p>
               {t("calibre.syncSummary", {
@@ -279,13 +275,29 @@ function Form({ initial }: { initial: View }) {
           {!snapshot.data && !snapshot.isError && (
             <p>{t("calibre.notSynced")}</p>
           )}
-          {snapshot.isError && (
-            <Failure error={snapshot.error} retry={() => snapshot.refetch()} />
-          )}
-          {sync.isError && (
-            <Failure error={sync.error} retry={() => sync.mutate()} />
-          )}
-          {sync.isSuccess && <small role="status">{t("calibre.synced")}</small>}
+          <div className="action-row">
+            <Button
+              disabled={busy || changed}
+              loading={sync.isPending}
+              onClick={() => sync.mutate()}
+            >
+              {t("calibre.sync")}
+            </Button>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            {snapshot.isError && (
+              <Failure
+                error={snapshot.error}
+                retry={() => snapshot.refetch()}
+              />
+            )}
+            {sync.isError && (
+              <Failure error={sync.error} retry={() => sync.mutate()} />
+            )}
+            {sync.isSuccess && (
+              <small role="status">{t("calibre.synced")}</small>
+            )}
+          </div>
         </section>
       )}
       {keyDialog && <SecretKeyDialog onClose={() => setKeyDialog(false)} />}
