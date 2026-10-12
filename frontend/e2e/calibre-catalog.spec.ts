@@ -89,7 +89,9 @@ test("shows Calibre copies in the individual book", async ({ page }) => {
     page.getByRole("menuitem").filter({ hasText: "Calibre ID 8" }),
   ).toHaveAttribute("target", "_blank");
   await page.keyboard.press("Escape");
-  await expect(section.getByRole("columnheader")).toHaveCount(8);
+  await expect(section.getByRole("columnheader")).toHaveCount(4);
+  expect(await section.locator("th[data-table-column]").evaluateAll(cells => cells.map(cell => (cell as HTMLElement).dataset.tableColumn)))
+    .toEqual(["calibreId","revision","catalogRevision","comparison"]);
   await expect(section.getByRole("columnheader").first()).toContainText(
     "Calibre ID",
   );

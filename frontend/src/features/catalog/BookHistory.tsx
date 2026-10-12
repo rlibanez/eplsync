@@ -39,14 +39,14 @@ export function BookHistory({ id }: { id: number }) {
     [size, setSize] = useState(20);
   const pageSizeChoice = usePageSizeChoice(size);
   const columns = useDownloadColumns(
-    "eplsync.history.columns",
+    "eplsync.history.columns.v2",
     [
-      { field: "hash", label: "downloads.hash", width: 360 },
       { field: "revision", label: "downloads.revision", width: 100 },
       { field: "status", label: "downloads.status", width: 160 },
       { field: "client", label: "downloads.client", width: 160 },
       { field: "lastCheckedAt", label: "downloads.lastChecked", width: 200 },
       { field: "completedAt", label: "downloads.completed", width: 220 },
+      { field: "hash", label: "downloads.hash", width: 360 },
       { field: "lastError", label: "downloads.error", width: 250 },
     ],
     sort,
@@ -153,11 +153,6 @@ export function BookHistory({ id }: { id: number }) {
                       </td>
                     )}
                     {columns.cells([
-                      <td>
-                        <small className="hash-text" title={item.hash}>
-                          {item.hash || "—"}
-                        </small>
-                      </td>,
                       <td>{number(item.revision)}</td>,
                       <td>
                         <span className="badge">{status(item.status)}</span>
@@ -168,6 +163,11 @@ export function BookHistory({ id }: { id: number }) {
                       </td>,
                       <td>{date(item.lastCheckedAt)}</td>,
                       <td>{date(item.completedAt)}</td>,
+                      <td>
+                        <small className="hash-text" title={item.hash}>
+                          {item.hash || "—"}
+                        </small>
+                      </td>,
                       <td>{item.lastError || "—"}</td>,
                     ])}
                   </tr>

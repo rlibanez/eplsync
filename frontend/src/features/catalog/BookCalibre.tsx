@@ -12,6 +12,8 @@ import {
   type CalibreBook,
 } from "../calibre/CalibreTable";
 
+const excludedFields = ["eplId", "title", "authors", "presence"];
+
 export function BookCalibre({ book }: { book: Book }) {
   const [sort, setSort] = useState("revision,desc"),
     [page, setPage] = useState(0),
@@ -19,7 +21,7 @@ export function BookCalibre({ book }: { book: Book }) {
   const pageSizeChoice = usePageSizeChoice(size);
   const columns = useDownloadColumns(
     "eplsync.book-calibre.columns",
-    calibreColumns,
+    calibreColumns.filter((column) => !excludedFields.includes(column.field)),
     sort,
     (v) => {
       setSort(v);
@@ -54,7 +56,12 @@ export function BookCalibre({ book }: { book: Book }) {
           <Failure error={result.error} retry={() => result.refetch()} />
         ) : result.data.meta.totalItems > 0 ? (
           <>
-            <CalibreTable items={result.data.items} columns={columns} />
+            <CalibreTable
+              items={result.data.items}
+              columns={columns}
+              showCovers={false}
+              excludedFields={excludedFields}
+            />
             <Paging
               choice={pageSizeChoice}
               meta={result.data.meta}

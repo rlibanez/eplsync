@@ -37,8 +37,12 @@ export const calibreColumns: TableColumn[] = [
 export function CalibreTable({
   items,
   columns,
+  showCovers = true,
+  excludedFields = [],
 }: {
   items: CalibreBook[];
+  showCovers?: boolean;
+  excludedFields?: string[];
   columns: ReturnType<typeof useDownloadColumns>;
 }) {
   const { t } = useTranslation();
@@ -52,76 +56,93 @@ export function CalibreTable({
         <tbody>
           {items.map((book) => (
             <tr key={book.calibreId}>
-              {columns.cells([
-                <td>
-                  <a
-                    href={`/api/calibre/books/${book.calibreId}/open`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {book.calibreId}
-                  </a>
-                </td>,
-                <td>
-                  {book.eplId ? (
-                    book.presence === "PRESENT" && auth.can("CATALOG_READ") ? (
-                      <Link to={`/catalog/${book.eplId}`}>{book.eplId}</Link>
+              {columns.cells(
+                [
+                  <td>
+                    <a
+                      href={`/api/calibre/books/${book.calibreId}/open`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {book.calibreId}
+                    </a>
+                  </td>,
+                  <td>
+                    {book.eplId ? (
+                      book.presence === "PRESENT" &&
+                      auth.can("CATALOG_READ") ? (
+                        <Link to={`/catalog/${book.eplId}`}>{book.eplId}</Link>
+                      ) : (
+                        book.eplId
+                      )
                     ) : (
-                      book.eplId
-                    )
-                  ) : (
-                    "—"
-                  )}
-                </td>,
-                <td>
-                  {book.presence === "PRESENT" && book.eplId ? (
-                    auth.can("CATALOG_READ") ? (
-                      <Link
-                        className="book-title"
-                        to={`/catalog/${book.eplId}`}
-                      >
-                        <BookCover
-                          book={{
-                            eplId: book.eplId,
-                            title: book.title,
-                            coverUrl: book.coverUrl,
-                            coverAvailable: book.coverAvailable,
-                          }}
-                        />
-                        <span>{book.title || "—"}</span>
-                      </Link>
+                      "—"
+                    )}
+                  </td>,
+                  <td>
+                    {book.presence === "PRESENT" && book.eplId ? (
+                      auth.can("CATALOG_READ") ? (
+                        <Link
+                          className="book-title"
+                          to={`/catalog/${book.eplId}`}
+                        >
+                          {showCovers && (
+                            <BookCover
+                              book={{
+                                eplId: book.eplId,
+                                title: book.title,
+                                coverUrl: book.coverUrl,
+                                coverAvailable: book.coverAvailable,
+                              }}
+                            />
+                          )}
+                          <span>{book.title || "—"}</span>
+                        </Link>
+                      ) : (
+                        <span className="book-title">
+                          {showCovers && (
+                            <BookCover
+                              book={{
+                                eplId: book.eplId,
+                                title: book.title,
+                                coverUrl: book.coverUrl,
+                                coverAvailable: book.coverAvailable,
+                              }}
+                            />
+                          )}
+                          <span>{book.title || "—"}</span>
+                        </span>
+                      )
                     ) : (
                       <span className="book-title">
-                        <BookCover
-                          book={{
-                            eplId: book.eplId,
-                            title: book.title,
-                            coverUrl: book.coverUrl,
-                            coverAvailable: book.coverAvailable,
-                          }}
-                        />
+                        {showCovers && (
+                          <span
+                            className="mini-book book-cover"
+                            aria-hidden="true"
+                          >
+                            <BookOpen size={18} />
+                          </span>
+                        )}
                         <span>{book.title || "—"}</span>
                       </span>
-                    )
-                  ) : (
-                    <span className="book-title">
-                      <span className="mini-book book-cover" aria-hidden="true">
-                        <BookOpen size={18} />
-                      </span>
-                      <span>{book.title || "—"}</span>
-                    </span>
-                  )}
-                </td>,
-                <td>{book.authors || "—"}</td>,
-                <td>{book.revision == null ? "—" : number(book.revision)}</td>,
-                <td>
-                  {book.catalogRevision == null
-                    ? "—"
-                    : number(book.catalogRevision)}
-                </td>,
-                <td>{t(`calibre.filter.${book.comparison}`)}</td>,
-                <td>{t(`calibre.presenceValues.${book.presence}`)}</td>,
-              ])}
+                    )}
+                  </td>,
+                  <td>{book.authors || "—"}</td>,
+                  <td>
+                    {book.revision == null ? "—" : number(book.revision)}
+                  </td>,
+                  <td>
+                    {book.catalogRevision == null
+                      ? "—"
+                      : number(book.catalogRevision)}
+                  </td>,
+                  <td>{t(`calibre.filter.${book.comparison}`)}</td>,
+                  <td>{t(`calibre.presenceValues.${book.presence}`)}</td>,
+                ].filter(
+                  (_, index) =>
+                    !excludedFields.includes(calibreColumns[index].field),
+                ),
+              )}
             </tr>
           ))}
         </tbody>

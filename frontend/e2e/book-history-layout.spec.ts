@@ -112,14 +112,16 @@ test("book history shares catalog pagination spacing and aligns heading with pag
     await paging
       .getByRole("button", { name: "Siguiente", exact: true })
       .click();
-    await expect(history.locator("tbody tr td").nth(2)).toHaveText("2");
+    await expect(history.locator("tbody tr td").nth(1)).toHaveText("2");
     await paging.getByRole("button", { name: "Anterior", exact: true }).click();
-    await expect(history.locator("tbody tr td").nth(2)).toHaveText("1");
+    await expect(history.locator("tbody tr td").nth(1)).toHaveText("1");
     await expect(history.getByRole("columnheader")).toHaveCount(8);
+    expect(await history.locator("th[data-table-column]").evaluateAll(cells => cells.map(cell => (cell as HTMLElement).dataset.tableColumn)))
+      .toEqual(["revision","status","client","lastCheckedAt","completedAt","hash","lastError"]);
     await expect(
       history.locator('th[data-table-column="revision"]'),
     ).toHaveAttribute("aria-sort", "descending");
-    await expect(history.locator("tbody tr td").nth(1)).toHaveText(
+    await expect(history.locator("tbody tr td").nth(6)).toHaveText(
       "A".repeat(40),
     );
     await expect(
@@ -141,7 +143,7 @@ test("book history shares catalog pagination spacing and aligns heading with pag
       history.locator('th[data-table-column="revision"]'),
     ).toHaveAttribute("aria-sort", "ascending");
     if (width === 1440)
-      await checkTableControls(page, "revision", "Revisión", history);
+      await checkTableControls(page, "hash", "Hash", history);
     await page.screenshot({
       path: `/tmp/eplsync-book-history-${width}.png`,
       fullPage: true,
