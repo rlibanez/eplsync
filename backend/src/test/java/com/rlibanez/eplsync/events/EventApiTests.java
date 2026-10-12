@@ -66,6 +66,8 @@ class EventApiTests {
             var body=json.readTree(response.body());
             assertThat(body.path("total").asInt()).isEqualTo(1);
         }
+        assertThat(request("/operations?size=1000",null).statusCode()).isEqualTo(200);
+        assertThat(request("/operations?size=1001",null).statusCode()).isEqualTo(400);
         var ordered=request("/operations?sort=category,asc&sort=event,asc&size=1",null);
         assertThat(ordered.statusCode()).isEqualTo(200);
         assertThat(json.readTree(ordered.body()).path("items").get(0).path("latest").path("category").asString()).isEqualTo("SECURITY");

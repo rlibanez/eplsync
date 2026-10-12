@@ -1,5 +1,6 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { SuggestionInput, type SuggestionKind } from "../../components/SuggestionInput";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Button, TextInput, Tooltip } from "@mantine/core";
@@ -21,7 +22,7 @@ export function Directory() {
   const kind = Object.hasOwn(fields, value)
     ? (value as keyof typeof fields)
     : "authors";
-  return <DirectoryView key={`${kind}:${search.toString()}`} kind={kind} onSection={section => setSearch({ section })} />;
+  return <DirectoryView key={kind} kind={kind} onSection={section => setSearch({ section })} />;
 }
 function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSection: (section: string) => void }) {
   const { t } = useTranslation();
@@ -35,10 +36,12 @@ function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSecti
   const centuries = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX", "XXI"];
   const q = search.get("q") ?? "";
   const [draft, setDraft] = useState(q);
+  useEffect(() => setDraft(q), [q]);
   const requestedPage = Number(search.get("page") ?? 0);
   const page = Number.isSafeInteger(requestedPage) && requestedPage >= 0 ? requestedPage : 0;
   const requestedSize = Number(search.get("size") ?? 20);
   const size = [10, 20, 50, 100, 200, 500, 1000].includes(requestedSize) ? requestedSize : 20;
+  const pageSizeChoice = usePageSizeChoice(size);
   const updateSearch = (values: Record<string, string | number>) => {
     const next = new URLSearchParams(search);
     for (const [key, value] of Object.entries(values)) {
@@ -139,6 +142,7 @@ function DirectoryView({ kind, onSection }: { kind: keyof typeof fields; onSecti
           </div>
         )}
         <Paging
+          choice={pageSizeChoice}
           meta={result.data?.meta}
           page={page}
           size={size}

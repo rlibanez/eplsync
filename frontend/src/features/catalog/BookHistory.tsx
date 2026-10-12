@@ -1,3 +1,4 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { HistorySelection } from "./HistorySelection";
 import { useAuth } from "../auth/Auth";
 import { Checkbox } from "@mantine/core";
@@ -36,6 +37,7 @@ export function BookHistory({ id }: { id: number }) {
   const [sort, setSort] = useState("revision,desc");
   const [page, setPage] = useState(0),
     [size, setSize] = useState(20);
+  const pageSizeChoice = usePageSizeChoice(size);
   const columns = useDownloadColumns(
     "eplsync.history.columns",
     [
@@ -174,6 +176,7 @@ export function BookHistory({ id }: { id: number }) {
             </table>
           </div>
           <Paging
+            choice={pageSizeChoice}
             meta={result.data.meta}
             page={page}
             size={size}

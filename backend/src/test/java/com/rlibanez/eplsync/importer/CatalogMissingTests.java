@@ -78,6 +78,8 @@ class CatalogMissingTests {
         assertThat(preview.items().getFirst().eplId()).isEqualTo(1);
         assertThat(books.count()).isEqualTo(2);
         assertThat(missing.page(preview.token(),0,1).items()).hasSize(1);
+        assertThat(missing.page(preview.token(),0,1000).items()).hasSize(1);
+        assertThatThrownBy(() -> missing.page(preview.token(),0,1001)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
         assertThatThrownBy(() -> missing.delete(preview.token(),false)).isInstanceOf(IllegalArgumentException.class);
         csv = "EPL Id,Título,Autor,Revisión\n1,Ausente,Autor,1.0\n";
         assertThat(missing.delete(preview.token(),true).deleted()).isEqualTo(1);

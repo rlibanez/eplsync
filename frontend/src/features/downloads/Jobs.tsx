@@ -1,3 +1,4 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { dateBounds } from "../events/eventTypes";
 import { sortQuery } from "./TableControls";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
@@ -26,6 +27,7 @@ export function Jobs() {
   const { date, status, number } = useLocale();
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
+  const pageSizeChoice = usePageSizeChoice(size);
   const [filter, setFilter] = useState("");
   const [type, setType] = useState("");
   const [username, setUsername] = useState("");
@@ -256,6 +258,7 @@ export function Jobs() {
           </>
         )}
         <Paging
+          choice={pageSizeChoice}
           meta={result.data?.meta}
           page={page}
           size={size}
@@ -288,6 +291,7 @@ export function JobDetail() {
   const cache = useQueryClient();
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
+  const pageSizeChoice = usePageSizeChoice(size);
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState("position,asc");
   const [cancel, setCancel] = useState(false);
@@ -593,6 +597,7 @@ export function JobDetail() {
           </>
         )}
         <Paging
+          choice={pageSizeChoice}
           meta={items.data?.meta}
           page={page}
           size={size}

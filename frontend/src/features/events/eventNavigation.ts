@@ -8,6 +8,7 @@ export interface EventNavigation {
   from: string;
   to: string;
   page: number;
+  size: number;
   sort: string;
   scroll: number;
   expanded: string[];
@@ -21,6 +22,7 @@ const defaults: EventNavigation = {
   from: "",
   to: "",
   page: 0,
+  size: 20,
   sort: "startedAt,desc",
   scroll: 0,
   expanded: [],
@@ -33,6 +35,8 @@ export function readEventNavigation(): EventNavigation {
       memory = { ...defaults, ...parsed };
       if (!Number.isSafeInteger(memory.page) || memory.page < 0)
         memory.page = 0;
+      if (![10, 20, 50, 100, 200, 500, 1000].includes(memory.size))
+        memory.size = 20;
       if (!Array.isArray(memory.expanded)) memory.expanded = [];
     }
   } catch {

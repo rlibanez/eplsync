@@ -1,3 +1,4 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { get, type Book } from "../../api/catalog";
@@ -15,6 +16,7 @@ export function BookCalibre({ book }: { book: Book }) {
   const [sort, setSort] = useState("revision,desc"),
     [page, setPage] = useState(0),
     [size, setSize] = useState(20);
+  const pageSizeChoice = usePageSizeChoice(size);
   const columns = useDownloadColumns(
     "eplsync.book-calibre.columns",
     calibreColumns,
@@ -54,6 +56,7 @@ export function BookCalibre({ book }: { book: Book }) {
           <>
             <CalibreTable items={result.data.items} columns={columns} />
             <Paging
+              choice={pageSizeChoice}
               meta={result.data.meta}
               page={page}
               size={size}

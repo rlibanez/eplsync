@@ -595,7 +595,8 @@
     "page": "Page",
     "of": "of {{total}}",
     "go": "Go",
-    "records": "{{total}} items"
+    "records": "{{total}} items",
+    "showAll": "Show all"
   },
   "covers": {
     "errors": {

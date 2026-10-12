@@ -1,3 +1,4 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { ordering } from "./TableControls";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
 import { useAuth } from "../auth/Auth";
@@ -56,6 +57,7 @@ function DownloadHistory() {
   const [draftEplId, setDraftEplId] = useState("");
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
+  const pageSizeChoice = usePageSizeChoice(size);
   useEffect(() => {
     if (draftEplId === filters.eplId) return;
     if (draftEplId !== "" && !/^[1-9]\d*$/.test(draftEplId)) return;
@@ -160,7 +162,10 @@ function DownloadHistory() {
       {session.report && (
         <SyncReport report={session.report} onClose={session.close} />
       )}
-      <form className="filters jobs-filters" onSubmit={(e) => e.preventDefault()}>
+      <form
+        className="filters jobs-filters"
+        onSubmit={(e) => e.preventDefault()}
+      >
         <TextInput
           name="eplId"
           label={t("filters.eplId")}
@@ -261,6 +266,7 @@ function DownloadHistory() {
           </>
         )}
         <Paging
+          choice={pageSizeChoice}
           meta={result.data?.meta}
           page={page}
           size={size}

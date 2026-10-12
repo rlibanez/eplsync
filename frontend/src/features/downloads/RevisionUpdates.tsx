@@ -1,3 +1,4 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { useUpdateSession } from "./useUpdateSession";
 import { BookCover } from "../catalog/BookCover";
 import { useDownloadColumns } from "./DownloadTable";
@@ -38,6 +39,7 @@ export function RevisionUpdates() {
   const { search, page, size, sort, registeredStatus } = session;
   const setPage = (page: number) => session.setView({ page });
   const setSize = (size: number) => session.setView({ size });
+  const pageSizeChoice = usePageSizeChoice(size);
   const setSort = (sort: string) => session.setView({ sort });
   const setRegisteredStatus = (registeredStatus: string | null) =>
     session.setView({ registeredStatus });
@@ -294,6 +296,7 @@ export function RevisionUpdates() {
             </>
           )}
           <Paging
+            choice={pageSizeChoice}
             meta={result.data?.meta}
             page={page}
             size={size}

@@ -1,6 +1,10 @@
+import {
+  PageSizeSelect,
+  type PageSizeChoice,
+} from "../../components/PageSizeSelect";
 import { secureFetch } from "../auth/transport";
 import { PageJump } from "../../components/PageJump";
-import { Button, Select } from "@mantine/core";
+import { Button } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { useLocale } from "../../locales/useLocale";
 export interface Page<T> {
@@ -54,6 +58,8 @@ export function Paging({
   onPage,
   onSize,
   maxSize = 1000,
+  choice,
+  disabled = false,
 }: {
   meta?: Page<unknown>["meta"];
   page: number;
@@ -61,21 +67,21 @@ export function Paging({
   onPage: (n: number) => void;
   onSize: (n: number) => void;
   maxSize?: number;
+  choice: PageSizeChoice;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const { number } = useLocale();
   return (
     <div className="pagination">
-      <Select
-        className="page-size-select"
-        withCheckIcon={false}
-        aria-label={t("downloads.pageSize")}
-        value={String(size)}
-        data={[10, 20, 50, 100, 200, 500, 1000]
-          .filter((n) => n <= maxSize)
-          .map(String)}
-        onChange={(v) => onSize(Number(v) || 20)}
-        allowDeselect={false}
+      <PageSizeSelect
+        disabled={disabled}
+        size={size}
+        total={meta?.totalItems}
+        onSize={onSize}
+        choice={choice}
+        maximum={maxSize}
+        label={t("downloads.pageSize")}
       />
       <span>
         {t("pagination.records", { total: number(meta?.totalItems ?? 0) })}
@@ -83,19 +89,19 @@ export function Paging({
       <PageJump
         page={page}
         totalPages={meta?.totalPages ?? 0}
-        disabled={!meta}
+        disabled={disabled || !meta}
         onPage={onPage}
       />
       <Button
         variant="default"
-        disabled={!meta?.hasPrevious}
+        disabled={disabled || !meta?.hasPrevious}
         onClick={() => onPage(page - 1)}
       >
         {t("catalog.previous")}
       </Button>
       <Button
         variant="default"
-        disabled={!meta?.hasNext}
+        disabled={disabled || !meta?.hasNext}
         onClick={() => onPage(page + 1)}
       >
         {t("catalog.next")}

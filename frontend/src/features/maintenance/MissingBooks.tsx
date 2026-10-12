@@ -1,6 +1,8 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
+import { Paging } from "../downloads/shared";
 import { secureFetch } from "../auth/transport";
 import { useState } from "react";
-import { Button, Pagination } from "@mantine/core";
+import { Button } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,6 +21,8 @@ export function MissingBooks({ disabled }: { disabled: boolean }) {
   const cache = useQueryClient();
   const { notify } = useNotifications();
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [size, setSize] = useState(50);
+  const pageSizeChoice = usePageSizeChoice(size);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function request(path: string, body?: object, method = "POST") {
@@ -33,16 +37,23 @@ export function MissingBooks({ disabled }: { disabled: boolean }) {
     if (!response.ok) throw new ApiError(response.status);
     return response.json();
   }
-  async function perform(action: "preview" | "delete" | "page", page = 0) {
+  async function perform(
+    action: "preview" | "delete" | "page",
+    page = 0,
+    requestedSize = size,
+  ) {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      if (action === "preview") setPreview(await request("preview"));
-      else if (action === "page" && preview)
+      if (action === "preview") {
+        setSize(50);
+        pageSizeChoice.choose("50");
+        setPreview(await request("preview"));
+      } else if (action === "page" && preview)
         setPreview(
           await request(
-            `${preview.token}?page=${page}&size=50`,
+            `${preview.token}?page=${page}&size=${requestedSize}`,
             undefined,
             "GET",
           ),
@@ -120,15 +131,25 @@ export function MissingBooks({ disabled }: { disabled: boolean }) {
                 </tbody>
               </table>
             </div>
-            {preview.total > preview.size && (
-              <Pagination
-                size="sm"
-                disabled={busy}
-                total={Math.ceil(preview.total / preview.size)}
-                value={preview.page + 1}
-                onChange={(page) => void perform("page", page - 1)}
-              />
-            )}
+            <Paging
+              choice={pageSizeChoice}
+              page={preview.page}
+              size={size}
+              disabled={busy}
+              meta={{
+                page: preview.page,
+                size: preview.size,
+                totalItems: preview.total,
+                totalPages: Math.ceil(preview.total / preview.size),
+                hasPrevious: preview.page > 0,
+                hasNext: (preview.page + 1) * preview.size < preview.total,
+              }}
+              onPage={(page) => void perform("page", page)}
+              onSize={(value) => {
+                setSize(value);
+                void perform("page", 0, value);
+              }}
+            />
           </>
         ) : (
           <p>{t("missing.empty")}</p>

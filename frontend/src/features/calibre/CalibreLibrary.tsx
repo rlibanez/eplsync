@@ -1,3 +1,4 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { CalibreTable, calibreColumns, type CalibreBook } from "./CalibreTable";
 import { useNotifications } from "../notifications/Notifications";
 import { useState } from "react";
@@ -31,6 +32,7 @@ export function CalibreLibrary() {
     [comparison, setComparison] = useState(""),
     [presence, setPresence] = useState(""),
     [sort, setSort] = useState("title,asc");
+  const pageSizeChoice = usePageSizeChoice(size);
   const params = new URLSearchParams({
     page: String(page),
     size: String(size),
@@ -191,6 +193,7 @@ export function CalibreLibrary() {
           <>
             <CalibreTable items={result.data.items} columns={columns} />
             <Paging
+              choice={pageSizeChoice}
               meta={result.data.meta}
               page={page}
               size={size}

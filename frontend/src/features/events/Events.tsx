@@ -1,3 +1,5 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
+import { Paging } from "../downloads/shared";
 import { eventActorLabel } from "./eventTypes";
 import { useAuth } from "../auth/Auth";
 import { EventSummary } from "./EventSummary";
@@ -11,15 +13,7 @@ import {
   useQueryClient,
   keepPreviousData,
 } from "@tanstack/react-query";
-import {
-  Badge,
-  Button,
-  Group,
-  Pagination,
-  Select,
-  TextInput,
-  Tooltip,
-} from "@mantine/core";
+import { Badge, Button, Select, TextInput, Tooltip } from "@mantine/core";
 import { Link, useSearchParams } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -51,6 +45,7 @@ function EventsView({ operationId }: { operationId?: string }) {
           from: "",
           to: "",
           page: 0,
+          size: 20,
           sort: "startedAt,desc",
           expanded: [operationId],
           scroll: 0,
@@ -79,6 +74,8 @@ function EventsView({ operationId }: { operationId?: string }) {
   const [from, setFrom] = useState(saved.from);
   const [to, setTo] = useState(saved.to);
   const [page, setPage] = useState(saved.page);
+  const [size, setSize] = useState(saved.size);
+  const pageSizeChoice = usePageSizeChoice(size);
   const [sort, setSort] = useState(saved.sort);
   const columns = useDownloadColumns(
     "eplsync.events.columnWidths",
@@ -116,6 +113,7 @@ function EventsView({ operationId }: { operationId?: string }) {
     from,
     to,
     page,
+    size,
     expanded,
     sort,
     scroll: navigation.current.scroll,
@@ -131,6 +129,7 @@ function EventsView({ operationId }: { operationId?: string }) {
     from,
     to,
     page,
+    size,
     expanded,
     operationId,
     sort,
@@ -149,7 +148,10 @@ function EventsView({ operationId }: { operationId?: string }) {
     enabled: false,
     initialData: { cursor: 0, revision: 0 },
   });
-  const params = new URLSearchParams({ page: String(page), size: "20" });
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
   ordering(sort).forEach((value) => params.append("sort", value));
   if (operationId) params.set("operationId", operationId);
   if (action) params.set("action", action);
@@ -211,9 +213,16 @@ function EventsView({ operationId }: { operationId?: string }) {
     }
     if (result.data)
       setPage((current) =>
-        Math.min(current, Math.max(0, Math.ceil(result.data.total / 20) - 1)),
+        Math.min(current, Math.max(0, Math.ceil(result.data.total / size) - 1)),
       );
-  }, [result.data, result.isFetching, visible, operationId, auth.user?.id]);
+  }, [
+    result.data,
+    result.isFetching,
+    visible,
+    operationId,
+    auth.user?.id,
+    size,
+  ]);
   const filterValue = (
     field: "action" | "category" | "outcome" | "origin",
     value: string,
@@ -510,13 +519,24 @@ function EventsView({ operationId }: { operationId?: string }) {
             </div>
           )}
           {!operationId && (
-            <Group mt="md">
-              <Pagination
-                value={page + 1}
-                total={Math.max(1, Math.ceil(result.data.total / 20))}
-                onChange={(value) => setPage(value - 1)}
-              />
-            </Group>
+            <Paging
+              choice={pageSizeChoice}
+              page={page}
+              size={size}
+              meta={{
+                page,
+                size,
+                totalItems: result.data.total,
+                totalPages: Math.ceil(result.data.total / size),
+                hasPrevious: page > 0,
+                hasNext: (page + 1) * size < result.data.total,
+              }}
+              onPage={setPage}
+              onSize={(value) => {
+                setSize(value);
+                setPage(0);
+              }}
+            />
           )}
         </section>
       )}

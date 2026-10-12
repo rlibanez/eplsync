@@ -66,7 +66,7 @@ public class CatalogMissingService {
         }
     }
     public Preview page(String token, int page, int size) {
-        if (page < 0 || size < 1 || size > 100) throw new com.rlibanez.eplsync.exception.UserInputException("Paginación inválida");
+        if (page < 0 || size < 1 || size > 1000) throw new com.rlibanez.eplsync.exception.UserInputException("Paginación inválida");
         synchronized (previews) {
             var snapshot = snapshot(token);
             int from = (int) Math.min((long) page * size, snapshot.books().size());

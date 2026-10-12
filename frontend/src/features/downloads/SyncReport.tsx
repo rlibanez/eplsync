@@ -1,3 +1,4 @@
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { compareText } from "../../locales/textOrdering";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
 import { useQuery } from "@tanstack/react-query";
@@ -100,6 +101,7 @@ export function SyncReport({
   };
   const setPage = (page: number) => setView({ page });
   const setSize = (size: number) => setView({ size });
+  const pageSizeChoice = usePageSizeChoice(size);
   const bookColumns = useDownloadColumns(
     "eplsync.sync.books.columns",
     [
@@ -512,6 +514,7 @@ export function SyncReport({
                 <p className="empty-list">{t("syncReport.empty")}</p>
               )}
               <Paging
+                choice={pageSizeChoice}
                 page={page}
                 size={size}
                 onPage={setPage}

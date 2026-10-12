@@ -595,7 +595,8 @@
     "page": "Página",
     "of": "de {{total}}",
     "go": "Ir",
-    "records": "{{total}} elementos"
+    "records": "{{total}} elementos",
+    "showAll": "Mostrar todos"
   },
   "covers": {
     "errors": {

@@ -1,3 +1,7 @@
+import {
+  PageSizeSelect,
+  usePageSizeChoice,
+} from "../../components/PageSizeSelect";
 import { useAuth } from "../auth/Auth";
 import { CatalogCards } from "./CatalogCards";
 import { ImportWizard } from "../maintenance/ImportWizard";
@@ -24,7 +28,7 @@ import { rememberCatalog } from "./navigation";
 import { useTranslation } from "react-i18next";
 import { useCatalogScroll } from "./useCatalogScroll";
 import { useQuery } from "@tanstack/react-query";
-import { Button, Select, Checkbox, Menu } from "@mantine/core";
+import { Button, Checkbox, Menu } from "@mantine/core";
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import {
   BookOpen,
@@ -81,6 +85,7 @@ export function Catalog() {
     rememberCatalog(search.toString());
   }, [search]);
   const params = catalogParams(search, false);
+  const pageSizeChoice = usePageSizeChoice(Number(params.get("size")));
   const ordering = params.getAll("sort");
   const query = params.toString();
   const result = useQuery({
@@ -556,16 +561,13 @@ export function Catalog() {
           </div>
         )}
         <div className="pagination">
-          <Select
-            className="page-size-select"
-            withCheckIcon={false}
-            aria-label={t("catalog.size")}
-            value={params.get("size")}
-            onChange={(value) => value && change("size", value)}
-            data={[10, 20, 50, 100, 200, 500, 1000].map((n) => ({
-              value: String(n),
-              label: t("catalog.perPage", { count: n }),
-            }))}
+          <PageSizeSelect
+            size={Number(params.get("size"))}
+            total={result.data?.meta.totalItems}
+            choice={pageSizeChoice}
+            label={t("catalog.size")}
+            onSize={(size) => change("size", String(size))}
+            numericLabel={(count) => t("catalog.perPage", { count })}
           />
           <PageJump
             page={Number(params.get("page"))}
