@@ -45,7 +45,7 @@ test("table values apply composable filters and exact local-day ranges", async (
     ["language", "Idioma", "Español"],
     ["status", "Estado", "Disponible"],
     ["publicationStatus", "Estado de publicación", "Actualizado"],
-    ["eplId", "EPL id", "17347"],
+    ["eplId", "EPL ID", "17347"],
     ["revision", "Revisión", "1.1"],
   ]) {
     await table

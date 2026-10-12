@@ -10,7 +10,7 @@ test("EPL ID lists validate atomically and submit repeated ID parameters", async
   await page.goto("/catalog");
   const search = page.locator(".catalog-search");
   await search.locator("summary").click();
-  const ids = search.getByRole("textbox", {name: "EPL id", exact: true});
+  const ids = search.getByRole("textbox", {name: "EPL ID", exact: true});
   await ids.fill("123, bad; 456");
   await ids.press("Enter");
   await expect(search.getByText("Introduce un valor válido.")).toBeVisible();
@@ -24,7 +24,7 @@ test("pasted multiline IDs remain separate and number ranges use one grid column
   await page.goto("/catalog");
   const search = page.locator(".catalog-search");
   await search.locator("summary").click();
-  const ids = search.getByRole("textbox", {name: "EPL id", exact: true});
+  const ids = search.getByRole("textbox", {name: "EPL ID", exact: true});
   await ids.focus();
   await ids.evaluate(node => {
     const clipboard = new DataTransfer();

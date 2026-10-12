@@ -61,7 +61,7 @@ test("browses the local library with filters and configurable columns", async ({
   await expect(page.getByRole("link", {name: "El reino del lenguaje", exact: true})).toHaveAttribute("href", "/catalog/80899");
   await expect(page.locator("tbody .book-cover")).toHaveCount(1);
   await expect(page.getByRole("columnheader").first()).toContainText("Calibre ID");
-  await page.getByLabel("EPL id", {exact:true}).fill("80899");
+  await page.getByLabel("EPL ID", {exact:true}).fill("80899");
   await expect.poll(()=>requests.at(-1)?.searchParams.get("eplId")).toBe("80899");
   await page.getByLabel("Libro", {exact:true}).fill("reino");
   await expect.poll(()=>requests.at(-1)?.searchParams.get("title")).toBe("reino");

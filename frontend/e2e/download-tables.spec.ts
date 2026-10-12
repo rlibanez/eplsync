@@ -112,7 +112,7 @@ for (const kind of ["state", "job"] as const) {
       "src",
       book.coverUrl,
     );
-    await expect(table.locator("th").first()).toContainText("EPL id");
+    await expect(table.locator("th").first()).toContainText("EPL ID");
     const cells = table.locator("tbody tr").first().locator("td");
     await expect(cells.nth(2)).toHaveCSS("display", "table-cell");
     const heights = await cells.evaluateAll((elements) =>

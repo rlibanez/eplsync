@@ -119,7 +119,7 @@ test("unified torrent permission exposes download history and synchronization to
   await expect(
     page.getByRole("link", { name: "Estado", exact: true }),
   ).toBeVisible();
-  await expect(page.getByLabel("EPL id", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("EPL ID", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", {
       name: "Previsualizar sincronización",
