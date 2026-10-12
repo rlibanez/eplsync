@@ -1346,7 +1346,7 @@
     "books": "Libros de Calibre",
     "booksDescription": "Consulta la biblioteca guardada. Los identificadores EPL y revisión permiten reconocer los libros; no se buscan coincidencias por título.",
     "load": "Consultar biblioteca",
-    "id": "ID de Calibre",
+    "id": "Calibre ID",
     "title": "Libro",
     "authors": "Autores",
     "epl": "EPL ID",

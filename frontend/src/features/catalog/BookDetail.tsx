@@ -1,4 +1,4 @@
-import { Tooltip } from "@mantine/core";
+import { BookCalibre } from "./BookCalibre";
 import { BookHistory } from "./BookHistory";
 import { useAuth } from "../auth/Auth";
 import { Synopsis } from "./Synopsis";
@@ -158,73 +158,11 @@ export function BookDetail() {
               </section>
             </div>
             <div className="detail-related-sections">
-              {auth.can("CALIBRE_READ") && (
-                <section className="panel detail-section">
-                  <h2>Calibre</h2>
-                  {!book.calibre ? (
-                    <p>{t("calibre.notSynced")}</p>
-                  ) : (
-                    <>
-                      <div className="calibre-book-summary">
-                        <Tooltip
-                          label={
-                            t("calibre.lastSync") +
-                            ": " +
-                            date(book.calibre.syncedAt)
-                          }
-                        >
-                          <span>
-                            {t("calibre.library")}: {book.calibre.library}
-                          </span>
-                        </Tooltip>
-                        {book.calibre.totalItems > 0 && (
-                          <span className="badge">
-                            {t(
-                              `calibre.filter.${book.calibre.revision == null ? "UNKNOWN" : book.calibre.revision < book.revision ? "OUTDATED" : book.calibre.revision > book.revision ? "NEWER" : "CURRENT"}`,
-                            )}
-                          </span>
-                        )}
-                      </div>
-                      {book.calibre.totalItems === 0 && (
-                        <p>{t("calibre.bookAbsent")}</p>
-                      )}
-                      {book.calibre.items.length > 0 && (
-                        <div className="table-scroll">
-                          <table className="catalog-table">
-                            <thead>
-                              <tr>
-                                <th>{t("calibre.id")}</th>
-                                <th>{t("calibre.revision")}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {book.calibre.items.map((item) => (
-                                <tr key={item.calibreId}>
-                                  <td>{item.calibreId}</td>
-                                  <td>
-                                    {item.revision == null
-                                      ? "—"
-                                      : String(item.revision)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                      {book.calibre.totalItems > book.calibre.items.length && (
-                        <p>
-                          {t("calibre.moreCopies", {
-                            count: book.calibre.totalItems,
-                          })}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </section>
-              )}
               {auth.can("BOOK_HISTORY_READ") && (
                 <BookHistory key={book.eplId} id={book.eplId} />
+              )}
+              {auth.can("CALIBRE_READ") && (
+                <BookCalibre key={`calibre-${book.eplId}`} book={book} />
               )}
             </div>
           </>

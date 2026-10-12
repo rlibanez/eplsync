@@ -60,16 +60,16 @@ test("browses the local library with filters and configurable columns", async ({
   await expect(page.getByRole("table")).toContainText("Tom Wolfe");
   await expect(page.getByRole("link", {name: "El reino del lenguaje", exact: true})).toHaveAttribute("href", "/catalog/80899");
   await expect(page.locator("tbody .book-cover")).toHaveCount(1);
-  await expect(page.getByRole("columnheader").first()).toContainText("ID de Calibre");
+  await expect(page.getByRole("columnheader").first()).toContainText("Calibre ID");
   await page.getByLabel("EPL id", {exact:true}).fill("80899");
   await expect.poll(()=>requests.at(-1)?.searchParams.get("eplId")).toBe("80899");
   await page.getByLabel("Libro", {exact:true}).fill("reino");
   await expect.poll(()=>requests.at(-1)?.searchParams.get("title")).toBe("reino");
 
   await expect(
-    page.getByRole("columnheader", { name: /ID de Calibre/i }),
+    page.getByRole("columnheader", { name: /Calibre ID/i }),
   ).toHaveCount(1);
-  await expect(page.getByRole("textbox", {name: "ID de Calibre", exact: true})).toHaveCount(0);
+  await expect(page.getByRole("textbox", {name: "Calibre ID", exact: true})).toHaveCount(0);
   await page.getByLabel("Autor", { exact: true }).fill("Wolfe");
   await expect
     .poll(() => requests.at(-1)?.searchParams.get("author"))
@@ -78,10 +78,10 @@ test("browses the local library with filters and configurable columns", async ({
   await expect(page.getByLabel("Autor", { exact: true })).toHaveValue("");
   await page.getByRole("button", { name: "Columnas", exact: true }).click();
   await page
-    .getByRole("checkbox", { name: "ID de Calibre", exact: true })
+    .getByRole("checkbox", { name: "Calibre ID", exact: true })
     .uncheck();
   await expect(
-    page.getByRole("columnheader", { name: /ID de Calibre/i }),
+    page.getByRole("columnheader", { name: /Calibre ID/i }),
   ).toHaveCount(0);
   await page.keyboard.press("Escape");
   await page

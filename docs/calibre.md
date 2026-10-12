@@ -61,13 +61,16 @@ conexión. EPL Sync guarda una copia local de los títulos, autores, identificad
 revisiones, sin descargar EPUB ni modificar Calibre. Repite la sincronización
 cuando cambie tu biblioteca; no se consulta Calibre al navegar por el catálogo.
 
-La ficha del libro muestra la biblioteca y las copias vinculadas mediante
+La ficha del libro muestra las copias vinculadas mediante
 `identifiers.epl`, con sus IDs y revisiones de Calibre. Una revisión inválida o
 ausente no impide identificar el libro, pero no permite comparar versiones.
-Se muestran hasta 20 copias, indicando el total cuando hay más.
+La tabla de la ficha muestra las copias con paginación, las mismas columnas que
+Biblioteca y los controles **Ordenar** y **Columnas**. Aparece después del
+historial de descargas.
 
-El resumen compara la revisión más alta de Calibre con la del catálogo.
-La fecha de la última sincronización se muestra como tooltip de la biblioteca.
+Cada fila compara su revisión de Calibre con la del catálogo.
+La biblioteca y la fecha de la última sincronización se muestran en
+**Calibre → Biblioteca**.
 Los datos de la biblioteca requieren el permiso `CALIBRE_READ`;
 la URL y las credenciales siguen restringidas al administrador.
 
