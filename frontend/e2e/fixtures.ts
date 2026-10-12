@@ -68,7 +68,8 @@ export const test = base.extend<{ eventTransport: void }>({
           json: {
             version: "0.0.1",
             commit: "0ef2d7b",
-            releasesUrl: "https://github.com/rlibanez/eplsync/releases/tag/v0.0.1",
+            releasesUrl:
+              "https://github.com/rlibanez/eplsync/releases/tag/v0.0.1",
           },
         }),
       );
@@ -185,6 +186,7 @@ export const test = base.extend<{ eventTransport: void }>({
         }
         Object.assign(window, {
           EventSource: MockEventSource,
+          SharedWorker: undefined,
           __event: (name: string, data: unknown) =>
             streams.forEach((stream) =>
               stream.dispatchEvent(

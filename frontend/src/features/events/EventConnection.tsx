@@ -1,3 +1,5 @@
+import { useAuth } from "../auth/Auth";
+import { subscribeEventStream } from "./sharedEventStream";
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -5,6 +7,8 @@ import { useNotifications } from "../notifications/Notifications";
 import { type AppEvent, eventTone } from "./eventTypes";
 
 export function EventConnection() {
+  const { user } = useAuth();
+  const account = JSON.stringify([user?.id, user?.permissions]);
   const { notify } = useNotifications();
   const { t } = useTranslation();
   const translate = useRef(t);
@@ -15,7 +19,7 @@ export function EventConnection() {
     let lost = false;
     let warning: number | undefined;
     let epoch = Date.now();
-    const channel = new EventSource("/api/events/stream");
+    const channel = new EventTarget();
     const publish = (deleted = false) => {
       cache.setQueryData<{ cursor: number; revision: number }>(
         ["event-changes"],
@@ -67,29 +71,29 @@ export function EventConnection() {
           event.outcome === "FAILED" && typeof event.details.reason === "string"
             ? event.details.reason
             : event.action === "SEND_BOOK" && event.outcome === "SUCCEEDED"
-            ? translate.current(
-                event.details.submissionStatus === "ALREADY_EXISTS"
-                  ? "detail.alreadySent"
-                  : "events.bookAccepted",
-                { eplId: event.details.eplId },
-              )
-            : event.category === "CATALOG" &&
-                event.action === "PREVIEW" &&
-                event.outcome === "STARTED"
-              ? translate.current("import.pendingDescription")
+              ? translate.current(
+                  event.details.submissionStatus === "ALREADY_EXISTS"
+                    ? "detail.alreadySent"
+                    : "events.bookAccepted",
+                  { eplId: event.details.eplId },
+                )
               : event.category === "CATALOG" &&
                   event.action === "PREVIEW" &&
-                  event.outcome === "SUCCEEDED"
-                ? translate.current("import.previewDone")
+                  event.outcome === "STARTED"
+                ? translate.current("import.pendingDescription")
                 : event.category === "CATALOG" &&
-                    event.outcome === "STARTED" &&
-                    ["UPDATE", "REPLACE"].includes(event.action)
-                  ? translate.current(
-                      event.details.retainedZip
-                        ? "import.applyPending"
-                        : "import.updateStarted",
-                    )
-                  : translate.current("events.outcomes." + event.outcome),
+                    event.action === "PREVIEW" &&
+                    event.outcome === "SUCCEEDED"
+                  ? translate.current("import.previewDone")
+                  : event.category === "CATALOG" &&
+                      event.outcome === "STARTED" &&
+                      ["UPDATE", "REPLACE"].includes(event.action)
+                    ? translate.current(
+                        event.details.retainedZip
+                          ? "import.applyPending"
+                          : "import.updateStarted",
+                      )
+                    : translate.current("events.outcomes." + event.outcome),
         tone: eventTone(event),
         phase: ["STARTED", "RESUMED", "RECOVERED"].includes(event.outcome)
           ? "start"
@@ -121,7 +125,7 @@ export function EventConnection() {
         });
       }
     });
-    channel.onerror = () => {
+    channel.addEventListener("error", () => {
       cache.setQueryData(["event-stream"], "reconnecting");
       if (!lost)
         warning = window.setTimeout(
@@ -134,11 +138,14 @@ export function EventConnection() {
           5000,
         );
       lost = true;
-    };
+    });
+    const unsubscribe = subscribeEventStream(account, ({ type, data }) => {
+      channel.dispatchEvent(new MessageEvent(type, { data }));
+    });
     return () => {
       window.clearTimeout(warning);
-      channel.close();
+      unsubscribe();
     };
-  }, [cache, notify]);
+  }, [cache, notify, account]);
   return null;
 }
