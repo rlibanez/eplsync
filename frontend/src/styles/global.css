@@ -2033,3 +2033,13 @@ summary {
 .catalog-metadata .catalog-checksum { white-space: nowrap; overflow-x: auto; overflow-wrap: normal; }
 .catalog-metadata dt { flex-shrink: 0; }
 .catalog-metadata .catalog-checksum { min-width: 0; }
+
+.catalog-filter-grid > .catalog-date-range { margin: 0; min-width: 0; }
+.catalog-filter-grid > .catalog-full-range { grid-column: 1 / -1; }
+.catalog-filter-grid > .catalog-number-range { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; padding: 12px; }
+.catalog-number-range > button:last-child { grid-column: 1 / -1; justify-self: end; margin: 0; }
+@media (max-width: 500px) {
+  .catalog-filter-grid > .catalog-number-range > .mantine-InputWrapper-root { grid-column: auto; }
+}
+
+.catalog-range-grid { margin-top: 16px; }

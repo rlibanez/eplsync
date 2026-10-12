@@ -1,3 +1,4 @@
+import { normalizeFilterValues } from "./FilterTokens";
 import { afterEach, expect, it, vi } from "vitest";
 import { filterRequest, localDay } from "./CatalogFilters";
 afterEach(() => vi.useRealTimers());
@@ -26,4 +27,13 @@ it("preserves open page bounds and serializes selection bounds as numbers", asyn
       expect(selected[key]).toBe(expected === null ? undefined : Number(expected));
     }
   }
+});
+
+it("accepts EPL ID lists without changing revision or text separators", () => {
+  expect(normalizeFilterValues("eplId", "123, 456;789\n123\t00042")).toEqual(["123", "456", "789", "42"]);
+  for (const invalid of ["1, abc, 2", "1;0", "1 -2", "1 2.5", "9007199254740992"])
+    expect(normalizeFilterValues("eplId", invalid)).toBeNull();
+  expect(normalizeFilterValues("eplId", "")).toEqual([]);
+  expect(normalizeFilterValues("revision", "1,2")).toEqual(["1.2"]);
+  expect(normalizeFilterValues("author", "Author One; Author Two")).toEqual(["Author One; Author Two"]);
 });

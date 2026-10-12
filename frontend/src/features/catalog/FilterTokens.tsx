@@ -24,6 +24,13 @@ export function normalizeFilterValue(key: string, raw: string): string | null {
     ? value
     : null;
 }
+/** Only EPL IDs accept lists; commas in revisions and text retain their meaning. */
+export function normalizeFilterValues(key: string, raw: string): string[] | null {
+  const parts = key === "eplId" ? raw.trim().split(/[\s,;]+/).filter(Boolean) : [raw];
+  const values = parts.map(part => normalizeFilterValue(key, part));
+  return values.some(value => value === null) ? null : [...new Set(values.filter((value): value is string => !!value))];
+}
+
 export function FilterTokens({
   label,
   values,
@@ -33,6 +40,7 @@ export function FilterTokens({
   commit,
   error,
   suggestionKind,
+  allowList = false,
 }: {
   label: string;
   values: string[];
@@ -42,6 +50,7 @@ export function FilterTokens({
   commit: () => void;
   error?: string;
   suggestionKind?: SuggestionKind;
+  allowList?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -51,6 +60,13 @@ export function FilterTokens({
       kind={suggestionKind}
       value={draft}
       onChange={onDraft}
+      onPaste={allowList ? (event) => {
+        const pasted = event.clipboardData.getData("text");
+        if (!/[\r\n]/.test(pasted)) return;
+        event.preventDefault();
+        const input = event.currentTarget;
+        onDraft(draft.slice(0, input.selectionStart ?? draft.length) + pasted.replace(/[\r\n]+/g, " ") + draft.slice(input.selectionEnd ?? draft.length));
+      } : undefined}
       excluded={values}
       onSelect={(value) => {
         onChange([...new Set([...values, value])]);

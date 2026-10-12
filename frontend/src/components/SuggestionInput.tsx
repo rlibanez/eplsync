@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type ClipboardEvent,
   type ReactNode,
 } from "react";
 import { Combobox, PillsInput, Pill, useCombobox, Button } from "@mantine/core";
@@ -21,6 +22,7 @@ export function SuggestionInput({
   onChange,
   onSelect,
   onKeyDown,
+  onPaste,
   error,
   children,
   excluded = [],
@@ -33,6 +35,7 @@ export function SuggestionInput({
   onChange: (value: string) => void;
   onSelect: (value: string) => void;
   onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
+  onPaste?: (event: ClipboardEvent<HTMLInputElement>) => void;
   error?: string;
   children?: ReactNode;
   excluded?: string[];
@@ -190,6 +193,7 @@ export function SuggestionInput({
             }}
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
+            onPaste={onPaste}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing || composing) return;
               if (e.key === "Escape") {

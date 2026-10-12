@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { Button, TextInput, MultiSelect } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { FilterTokens, normalizeFilterValue } from "./FilterTokens";
+import { FilterTokens, normalizeFilterValue, normalizeFilterValues } from "./FilterTokens";
 import { languages } from "../../api/catalog";
 import { useLocale } from "../../locales/useLocale";
 
@@ -109,16 +109,16 @@ export function CatalogFilters({
   const setMultiValue = (key: string, values: string[]) =>
     setMulti((previous) => ({ ...previous, [key]: values }));
   function commit(key: string) {
-    const value = normalizeFilterValue(key, drafts[key] || "");
+    const values = normalizeFilterValues(key, drafts[key] || "");
     setErrors((previous) => ({
       ...previous,
-      [key]: value === null ? t("filters.invalidValue") : "",
+      [key]: values === null ? t("filters.invalidValue") : "",
     }));
-    if (value === null) return;
-    if (value)
+    if (values === null) return;
+    if (values.length)
       setMulti((previous) => ({
         ...previous,
-        [key]: [...new Set([...previous[key], value])],
+        [key]: [...new Set([...previous[key], ...values])],
       }));
     setDrafts((previous) => ({ ...previous, [key]: "" }));
   }
@@ -127,6 +127,7 @@ export function CatalogFilters({
       <FilterTokens
         key={key}
         suggestionKind={key === "title" ? "titles" : key === "author" ? "authors" : key === "collection" ? "collections" : key === "genres" ? "genres" : undefined}
+        allowList={key === "eplId"}
         label={t(key === "revision" ? "catalog.revision" : `filters.${key}`)}
         values={multi[key]}
         draft={drafts[key] || ""}
@@ -216,9 +217,9 @@ export function CatalogFilters({
           const merged = { ...multi };
           const invalid: Record<string, string> = {};
           for (const key of multiKeys) {
-            const value = normalizeFilterValue(key, drafts[key] || "");
-            if (value === null) invalid[key] = t("filters.invalidValue");
-            else if (value) merged[key] = [...new Set([...merged[key], value])];
+            const values = normalizeFilterValues(key, drafts[key] || "");
+            if (values === null) invalid[key] = t("filters.invalidValue");
+            else merged[key] = [...new Set([...merged[key], ...values])];
           }
           setErrors(invalid);
           if (Object.keys(invalid).length) return;
@@ -281,8 +282,9 @@ export function CatalogFilters({
           {tokenField("eplId")}
           {tokenField("revision")}
         </div>
+        <div className="catalog-filter-grid catalog-range-grid">
         {ranges.map(([from, to, label]) => (
-          <fieldset className="catalog-date-range" key={from}>
+          <fieldset className={`catalog-date-range ${label === "pages" || label === "years" ? "catalog-number-range" : "catalog-full-range"}`} key={from}>
             <legend>{t(`filters.${label}`)}</legend>
             {[from, to].map((key, index) => (
               <Fragment key={key}>
@@ -373,6 +375,7 @@ export function CatalogFilters({
             </Button>
           </fieldset>
         ))}
+        </div>
         <div className="action-row">
           <Button type="submit">{t("catalog.search")}</Button>
           <Button
