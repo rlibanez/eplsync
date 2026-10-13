@@ -35,7 +35,6 @@ export function BookCalibre({ book }: { book: Book }) {
     {
       defaults: "revision,desc",
       selection: selectable,
-      hidden: selectable ? [] : ["actions"],
     },
   );
   const result = useQuery<Page<CalibreBook>>({

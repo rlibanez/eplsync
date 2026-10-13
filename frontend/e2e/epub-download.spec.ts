@@ -51,7 +51,33 @@ test("download record offers completed EPUBs and downloads the selected file", a
     }),
   );
   await page.goto("/downloads");
-  await page.getByRole("button", { name: "Descargar EPUB" }).click();
+  const action = page.getByRole("button", {
+    name: "Descargar EPUB",
+    exact: true,
+  });
+  await expect(action).toHaveText("");
+  const table = page.locator(".download-record-table");
+  await expect(table.locator('th[data-table-column="actions"]')).toContainText(
+    "Acciones",
+  );
+  const hashIndex = await table
+    .locator("th")
+    .evaluateAll((cells) =>
+      cells.findIndex(
+        (cell) => (cell as HTMLElement).dataset.tableColumn === "hash",
+      ),
+    );
+  await expect(
+    table
+      .locator("tbody tr")
+      .first()
+      .locator("td")
+      .nth(hashIndex)
+      .getByRole("button"),
+  ).toHaveCount(0);
+  await action.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Descargar EPUB");
+  await action.click();
   const dialog = page.getByRole("dialog", { name: "Archivos EPUB" });
   await expect(
     dialog.getByRole("link", { name: "primero.epub" }),

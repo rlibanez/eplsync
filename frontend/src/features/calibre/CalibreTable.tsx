@@ -1,6 +1,7 @@
-import { Checkbox } from "@mantine/core";
+import { TableAction } from "../../components/TableAction";
+import { Checkbox, Group } from "@mantine/core";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
-import { BookOpen } from "lucide-react";
+import { BookOpen, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { BookCover } from "../catalog/BookCover";
@@ -38,7 +39,7 @@ export const calibreColumns: TableColumn[] = [
   {
     field: "actions",
     label: "historyActions.actions",
-    width: 180,
+    width: 110,
     sortable: false,
   },
 ];
@@ -194,13 +195,21 @@ export function CalibreTable({
                   <td>{t(`calibre.filter.${book.comparison}`)}</td>,
                   <td>{t(`calibre.presenceValues.${book.presence}`)}</td>,
                   <td>
-                    {auth.can("CALIBRE_FILES_READ") && (
-                      <EpubBatchDownload
-                        selected={[book.calibreId]}
-                        endpoint="/calibre/epub-downloads"
-                        inline
-                      />
-                    )}
+                    <Group gap={4} wrap="nowrap">
+                      {auth.can("CALIBRE_FILES_READ") && (
+                        <EpubBatchDownload
+                          selected={[book.calibreId]}
+                          endpoint="/calibre/epub-downloads"
+                          inline
+                        />
+                      )}
+                      <TableAction
+                        label={t("calibre.open")}
+                        href={`/api/calibre/books/${book.calibreId}/open`}
+                      >
+                        <ExternalLink size={16} aria-hidden="true" />
+                      </TableAction>
+                    </Group>
                   </td>,
                 ].filter(
                   (_, index) =>

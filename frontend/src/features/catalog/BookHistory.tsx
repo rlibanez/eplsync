@@ -49,13 +49,23 @@ export function BookHistory({ id }: { id: number }) {
       { field: "completedAt", label: "downloads.completed", width: 220 },
       { field: "hash", label: "downloads.hash", width: 360 },
       { field: "lastError", label: "downloads.error", width: 250 },
+      {
+        field: "actions",
+        label: "historyActions.actions",
+        width: 100,
+        sortable: false,
+      },
     ],
     sort,
     (value) => {
       setSort(value);
       setPage(0);
     },
-    { defaults: "revision,desc", selection: selectable },
+    {
+      defaults: "revision,desc",
+      selection: selectable,
+      hidden: can("DOWNLOADS_FILES_READ") ? [] : ["actions"],
+    },
   );
   const result = useQuery<Page<HistoryItem>>({
     queryKey: ["book-history", id, page, size, sort],
@@ -168,9 +178,11 @@ export function BookHistory({ id }: { id: number }) {
                         <small className="hash-text" title={item.hash}>
                           {item.hash || "—"}
                         </small>
-                        <EpubDownload id={item.id} />
                       </td>,
                       <td>{item.lastError || "—"}</td>,
+                      <td>
+                        <EpubDownload id={item.id} />
+                      </td>,
                     ])}
                   </tr>
                 ))}

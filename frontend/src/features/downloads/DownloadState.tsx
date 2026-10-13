@@ -141,12 +141,19 @@ function DownloadHistory() {
       { field: "lastCheckedAt", label: "downloads.lastChecked", width: 200 },
       { field: "completedAt", label: "downloads.completed", width: 200 },
       { field: "lastError", label: "downloads.error", width: 240 },
+      {
+        field: "actions",
+        label: "historyActions.actions",
+        width: 100,
+        sortable: false,
+      },
     ],
     filters.sort,
     (value) => filter("sort", value),
     {
       defaults: "createdAt,desc",
       selection: selectable,
+      hidden: selectable ? [] : ["actions"],
       extraSort: [
         { field: "createdAt", label: "downloads.createdAt", width: 200 },
       ],
@@ -316,7 +323,6 @@ function DownloadHistory() {
                         </td>,
                         <td>
                           <small className="hash-text">{d.hash}</small>
-                          <EpubDownload id={d.id} />
                         </td>,
                         <td>{number(d.revision)}</td>,
                         <td>
@@ -327,6 +333,9 @@ function DownloadHistory() {
                         <td>{date(d.lastCheckedAt)}</td>,
                         <td>{date(d.completedAt)}</td>,
                         <td>{d.lastError || "—"}</td>,
+                        <td>
+                          <EpubDownload id={d.id} />
+                        </td>,
                       ])}
                     </tr>
                   ))}

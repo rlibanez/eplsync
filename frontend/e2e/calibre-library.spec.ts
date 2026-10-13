@@ -58,9 +58,9 @@ test("browses the local library with filters and configurable columns", async ({
     page.getByRole("heading", { name: "Biblioteca de Calibre" }),
   ).toBeVisible();
   await expect(page.getByRole("table")).toContainText("Tom Wolfe");
-  await expect(
-    page.locator('th[data-table-column="actions"]'),
-  ).toContainText("Acciones");
+  await expect(page.locator('th[data-table-column="actions"]')).toContainText(
+    "Acciones",
+  );
   await expect(
     page.getByRole("link", { name: "El reino del lenguaje", exact: true }),
   ).toHaveAttribute("href", "/catalog/80899");
@@ -151,6 +151,12 @@ test("read-only Calibre users can browse without catalog links or synchronizatio
   );
   await page.goto("/calibre");
   await expect(page.getByRole("table")).toContainText("Book");
+  await expect(page.locator('th[data-table-column="actions"]')).toContainText(
+    "Acciones",
+  );
+  await expect(
+    page.getByRole("link", { name: "Ver en Calibre", exact: true }),
+  ).toHaveAttribute("href", "/api/calibre/books/3/open");
   await expect(
     page.getByRole("button", { name: "Descargar EPUB", exact: true }),
   ).toHaveCount(0);

@@ -1,3 +1,4 @@
+import { TableAction } from "../../components/TableAction";
 import { Button, Stack } from "@mantine/core";
 import { Download } from "lucide-react";
 import { useState } from "react";
@@ -33,18 +34,13 @@ export function EpubDownload({ id }: { id: string }) {
   if (!can("DOWNLOADS_FILES_READ")) return null;
   return (
     <>
-      <Button
-        variant="subtle"
-        title={t("epubDownload.button")}
-        size="compact-xs"
+      <TableAction
+        label={t("epubDownload.button")}
         loading={files.isPending && !opened}
-        leftSection={<Download size={14} />}
-        onClick={() => {
-          files.mutate();
-        }}
+        onClick={() => files.mutate()}
       >
-        {t("epubDownload.button")}
-      </Button>
+        <Download size={16} aria-hidden="true" />
+      </TableAction>
       <AppModal
         opened={opened}
         onClose={() => setOpened(false)}

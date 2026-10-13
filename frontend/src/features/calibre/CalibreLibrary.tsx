@@ -106,7 +106,6 @@ export function CalibreLibrary() {
     {
       defaults: "title,asc",
       selection: selectable,
-      hidden: selectable ? [] : ["actions"],
     },
   );
   return (

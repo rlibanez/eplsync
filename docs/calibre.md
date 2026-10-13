@@ -129,10 +129,13 @@ credenciales, parámetros y fragmentos.
 
 ## Descargar EPUB
 
-La acción **Descargar EPUB** está disponible en cada fila de **Calibre → Biblioteca**
+El icono **Descargar EPUB**, con tooltip, está disponible en la columna **Acciones** de cada fila de **Calibre → Biblioteca**
 y en el apartado Calibre de la ficha individual. Usa el Calibre ID y la biblioteca
 configurada, por lo que permite descargar revisiones diferentes del mismo EPL ID.
 No requiere acceso a las carpetas de Calibre ni instalar `calibredb`.
+El icono **Ver en Calibre** abre esa copia en una pestaña nueva y solo requiere
+`CALIBRE_READ`. La columna Acciones se puede ocultar y reordenar desde **Columnas**;
+no se utiliza como criterio de ordenación.
 
 Con la primera columna puedes seleccionar varios libros y pulsar **Descargar**:
 un libro se entrega como EPUB y varios como ZIP. Los nombres incluyen el Calibre ID

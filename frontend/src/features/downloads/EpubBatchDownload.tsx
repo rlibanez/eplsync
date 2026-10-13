@@ -1,3 +1,4 @@
+import { TableAction } from "../../components/TableAction";
 import { AppModal } from "../../components/AppModal";
 import { Button } from "@mantine/core";
 import { Download } from "lucide-react";
@@ -31,15 +32,23 @@ export function EpubBatchDownload({
     },
   });
   if (!selected.length) return null;
-  const button = (
+  const button = inline ? (
+    <TableAction
+      label={t("epubDownload.button")}
+      loading={batch.isPending}
+      onClick={() => batch.mutate(selected)}
+    >
+      <Download size={16} aria-hidden="true" />
+    </TableAction>
+  ) : (
     <Button
-      variant={inline ? "subtle" : "filled"}
-      size={inline ? "compact-xs" : "sm"}
+      variant="filled"
+      size="sm"
       leftSection={<Download size={16} />}
       loading={batch.isPending}
       onClick={() => batch.mutate(selected)}
     >
-      {t(inline ? "epubDownload.button" : "epubDownload.download")}
+      {t("epubDownload.download")}
     </Button>
   );
   return (

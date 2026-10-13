@@ -46,12 +46,13 @@ se actualizan para evitar repetir operaciones ya resueltas.
 
 ## Descargar los EPUB al navegador
 
-En Estado y en el historial de descargas de cada libro, el botón **Descargar EPUB**
-permite descargar los archivos completos del torrent. Requiere el permiso
+En Estado y en el historial de descargas de cada libro, el icono **Descargar EPUB**
+de la columna **Acciones**, con tooltip, permite descargar los archivos completos del torrent. Requiere el permiso
 **Descargar archivos EPUB**, además del permiso para consultar esa vista.
-Si hay un único EPUB, se descarga directamente. Si hay varios, se abre un selector
-para elegir el archivo. No se modifica el contenido del
-cliente torrent ni se envía a Calibre.
+La columna Acciones se puede ocultar y reordenar desde **Columnas**, pero no sirve
+como criterio de ordenación. Si hay un único EPUB, se descarga directamente.
+Si hay varios, se abre un selector para elegir el archivo. No se modifica el
+contenido del cliente torrent ni se envía a Calibre.
 
 En **Estado**, también puedes seleccionar registros mediante la primera columna
 y pulsar **Descargar**. La selección corresponde a la página actual y se limpia

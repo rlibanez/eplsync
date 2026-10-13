@@ -1,3 +1,4 @@
+import { checkTableControls } from "./table-controls";
 import { test, expect } from "./fixtures";
 
 const items = [3, 8].map((id) => ({
@@ -95,6 +96,29 @@ for (const path of ["/calibre", "/catalog/1"]) {
       path === "/calibre"
         ? page.locator("section.panel")
         : page.locator("section.book-calibre");
+    const row = section.locator("tbody tr").first();
+    const downloadAction = row.getByRole("button", {
+      name: "Descargar EPUB",
+      exact: true,
+    });
+    await expect(downloadAction).toHaveText("");
+    await downloadAction.hover();
+    await expect(page.getByRole("tooltip")).toHaveText("Descargar EPUB");
+    const openAction = row.getByRole("link", {
+      name: "Ver en Calibre",
+      exact: true,
+    });
+    await expect(openAction).toHaveAttribute(
+      "href",
+      "/api/calibre/books/3/open",
+    );
+    await expect(openAction).toHaveAttribute("target", "_blank");
+    await expect(openAction).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(openAction).toHaveText("");
+    await openAction.focus();
+    await expect(
+      page.getByRole("tooltip", { name: "Ver en Calibre", exact: true }),
+    ).toBeVisible();
     const single = page.waitForEvent("download");
     await section
       .getByRole("button", { name: "Descargar EPUB", exact: true })
@@ -120,6 +144,12 @@ for (const path of ["/calibre", "/catalog/1"]) {
     await expect(
       section.getByRole("button", { name: "Descargar", exact: true }),
     ).toHaveCount(0);
+    await expect(
+      section
+        .locator('th[data-table-column="actions"]')
+        .getByRole("button", { name: "Acciones", exact: true }),
+    ).toHaveCount(0);
+    await checkTableControls(page, "actions", "Acciones", section);
   });
 }
 test("missing EPUB reports its Calibre ID before any download", async ({
