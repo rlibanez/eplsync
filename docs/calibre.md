@@ -236,3 +236,9 @@ Los registros de cada archivo y los controles del trabajo se escriben en DEBUG.
 Los EPUB sin EPL ID o revisión no permiten comprobar duplicados por esa combinación.
 Si la respuesta de un envío sin identificadores se pierde y no hay Calibre ID confirmado,
 el trabajo queda pendiente de verificación y no se repite automáticamente.
+
+Si el tamaño local del EPUB difiere del registrado por qBittorrent, la preparación
+muestra un aviso y permite continuar. El aviso se conserva en el detalle del trabajo,
+incluso después de finalizar el envío. Las descargas individuales y múltiples también
+advierten antes de iniciarse. La comprobación compara tamaños; no verifica que el
+contenido del archivo sea idéntico al original.

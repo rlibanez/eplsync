@@ -17,6 +17,7 @@ type Candidate = {
   index: number;
   name: string;
   size: number;
+  expectedSize?: number;
   eplId: number;
   revision: number;
 };
@@ -104,6 +105,18 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                 allowDeselect={false}
                 disabled={send.isPending}
               />
+              {prepare.data.files
+                .filter(
+                  (file) =>
+                    chosen.includes(key(file)) &&
+                    file.expectedSize != null &&
+                    file.expectedSize !== file.size,
+                )
+                .map((file) => (
+                  <Alert color="yellow" key={key(file)}>
+                    {file.name}: {t("epubDownload.sizeWarning")}
+                  </Alert>
+                ))}
               <fieldset className="send-options-group">
                 <legend>{t("calibreSend.files")}</legend>
                 <Stack gap="sm">

@@ -140,6 +140,15 @@ class CalibreTransfersTests {
             .hasMessageContaining("EPL ID 1").hasMessageContaining("revisión 1.1").hasMessageContaining("No se puede leer el EPUB");
         assertThat(transfers.jobs(0,20,"",List.of("createdAt,desc")).meta().totalItems()).isZero();
     }
+    @Test void sizeWarningSurvivesTheSuccessfulTransferResult() {
+        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length,bytes.length+10)));
+        assertThat(transfers.prepare(List.of(record)).files().getFirst().expectedSize()).isEqualTo(bytes.length+10);
+        var job=create();
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).contains("El tamaño del EPUB no coincide");
+        transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).contains("EPUB enviado y verificado","El tamaño del EPUB no coincide");
+    }
     @Test void skipsLiveDuplicateWithoutUploading() {
         when(client.findRevision(any(),eq(1L),any())).thenReturn(9L);
         var job=create();transfers.cycle();assertThat(transfers.job(job.id()).skipped()).isEqualTo(1);

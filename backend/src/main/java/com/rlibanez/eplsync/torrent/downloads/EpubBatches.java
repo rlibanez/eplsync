@@ -14,7 +14,7 @@ public class EpubBatches {
     private final Semaphore preparing=new Semaphore(1);
     private final Map<String,Pending> batches=new HashMap<>();
     private record Pending(String session,Instant expires,EpubFiles.Plan plan) {}
-    public record Ready(String url,int fileCount,boolean archive) {}
+    public record Ready(String url,int fileCount,boolean archive,List<String> sizeWarnings) {}
     public EpubBatches(EpubFiles files) { this.files=files; }
     public Ready prepare(String session,List<String> ids) {
         if(!preparing.tryAcquire()) throw new TorrentOperationException(HttpStatus.CONFLICT,"Hay otra descarga múltiple en preparación; inténtalo de nuevo en unos segundos");
@@ -24,7 +24,7 @@ public class EpubBatches {
             var plan=files.prepare(ids);
             String token=UUID.randomUUID().toString();
             synchronized(this) { batches.put(token,new Pending(session,Instant.now().plusSeconds(120),plan)); }
-            return new Ready("/api/torrent/downloads/epub-batches/"+token,plan.items().size(),plan.archive());
+            return new Ready("/api/torrent/downloads/epub-batches/"+token,plan.items().size(),plan.archive(),plan.items().stream().filter(EpubFiles.Planned::sizeMismatch).map(p -> p.file().name()).toList());
         } finally { preparing.release(); }
     }
     synchronized EpubFiles.Plan take(String session,String token) {

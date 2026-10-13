@@ -21,7 +21,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 public class CalibreTransfers {
     public record FileChoice(String recordId,int index) {}
-    public record Candidate(String recordId,int index,String name,long size,long eplId,double revision) {}
+    public record Candidate(String recordId,int index,String name,long size,long eplId,double revision,long expectedSize) {}
     public record Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files) {}
     public record Request(String library,List<FileChoice> files) {}
     public record Job(String id,String createdAt,String updatedAt,String username,String library,String state,String message,
@@ -77,7 +77,7 @@ public class CalibreTransfers {
             }
             for(var file:available) {
                 if(file.size()>268435456 || candidates.size()>=1000) throw new UserInputException("Máximo 1000 EPUB de 256 MiB por selección");
-                candidates.add(new Candidate(id,file.index(),file.name(),file.size(),row.getEplId(),row.getRevision()));
+                candidates.add(new Candidate(id,file.index(),file.name(),file.size(),row.getEplId(),row.getRevision(),file.expectedSize()));
             }
         }
         return new Prepared(check.libraries(),connection.library(),List.copyOf(candidates));
@@ -105,7 +105,7 @@ public class CalibreTransfers {
                 jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username()==null ? "Sistema" : actor.username(),destination(connection),request.library(),source);
                 for(int position=0;position<selected.size();position++) {
                     var f=selected.get(position);
-                    jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES(?,?,?,?,?,?,?,?,?,'PENDING')",UUID.randomUUID().toString(),id,position,f.recordId(),f.index(),f.name(),f.size(),f.eplId(),BigDecimal.valueOf(f.revision()).stripTrailingZeros().toPlainString());
+                    jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,message) VALUES(?,?,?,?,?,?,?,?,?,'PENDING',?)",UUID.randomUUID().toString(),id,position,f.recordId(),f.index(),f.name(),f.size(),f.eplId(),BigDecimal.valueOf(f.revision()).stripTrailingZeros().toPlainString(),f.size()!=f.expectedSize()?SIZE_WARNING:null);
                 }
                 event(actor,id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",request.library(),"selected",selected.size()));
             });
@@ -253,11 +253,14 @@ public class CalibreTransfers {
         if(book.eplId()!=null && !java.util.Objects.equals(book.eplId(),item.eplId()) || book.revision()!=null && book.revision().compareTo(new BigDecimal(item.revision()))!=0) throw new UserInputException("Los identificadores del libro recibido por Calibre no coinciden; comprueba sus metadatos");
         catalog.observe(connection,book);
     }
+    private static final String SIZE_WARNING="El tamaño del EPUB no coincide con el registrado por el cliente torrent. El archivo podría haber sido modificado.";
     private void finish(String job,EventContext.Actor actor,Item item,String state,Long calibreId,String message) {
         tx.executeWithoutResult(s -> {
-            jdbc.update("UPDATE calibre_job_items SET state=?,calibre_id=?,message=? WHERE id=?",state,calibreId,message,item.id());
+            String previous=jdbc.queryForObject("SELECT message FROM calibre_job_items WHERE id=?",String.class,item.id());
+            String detail=previous!=null && previous.contains(SIZE_WARNING) && !message.contains(SIZE_WARNING) ? message+". "+SIZE_WARNING : message;
+            jdbc.update("UPDATE calibre_job_items SET state=?,calibre_id=?,message=? WHERE id=?",state,calibreId,detail,item.id());
             jdbc.update("UPDATE calibre_jobs SET updated_at=? WHERE id=?",Instant.now().toString(),job);
-            event(actor,item.id(),"CALIBRE_SEND_FILE",state.equals("UNCERTAIN")?EventJournal.Outcome.PAUSED:state.equals("FAILED")?EventJournal.Outcome.FAILED:EventJournal.Outcome.SUCCEEDED,Map.of("eplId",item.eplId(),"revision",item.revision(),"state",state,"reason",message,"itemId",item.id(),"jobId",job));
+            event(actor,item.id(),"CALIBRE_SEND_FILE",state.equals("UNCERTAIN")?EventJournal.Outcome.PAUSED:state.equals("FAILED")?EventJournal.Outcome.FAILED:EventJournal.Outcome.SUCCEEDED,Map.of("eplId",item.eplId(),"revision",item.revision(),"state",state,"reason",detail,"itemId",item.id(),"jobId",job));
         });
     }
 }

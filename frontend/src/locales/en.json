@@ -1419,6 +1419,8 @@
     "copyLabel": "Revision {{revision}} · Calibre ID {{id}}"
   },
   "epubDownload": {
+    "sizeWarning": "The EPUB size differs from the size recorded by the torrent client. The file may have been modified.",
+    "continueDownload": "Download anyway",
     "button": "Download EPUB",
     "title": "EPUB files",
     "choose": "Choose the file to download.",

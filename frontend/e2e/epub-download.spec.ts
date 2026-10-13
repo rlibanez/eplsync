@@ -140,3 +140,36 @@ test("a single EPUB downloads directly without opening the selector", async ({
     page.getByRole("heading", { name: "Estado de las descargas" }),
   ).toBeVisible();
 });
+
+test("a changed EPUB size requires acknowledgement before downloading", async ({
+  page,
+  context,
+}) => {
+  await records(page);
+  await page.route("**/api/torrent/downloads/record/epubs", (route) =>
+    route.fulfill({
+      json: [{ index: 4, name: "changed.epub", size: 5, expectedSize: 9 }],
+    }),
+  );
+  await context.route("**/api/torrent/downloads/record/epubs/4", (route) =>
+    route.fulfill({
+      contentType: "application/epub+zip",
+      headers: { "Content-Disposition": 'attachment; filename="changed.epub"' },
+      body: "bytes",
+    }),
+  );
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  await page.goto("/downloads");
+  await page
+    .getByRole("button", { name: "Descargar EPUB", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByText(/El tamaño del EPUB no coincide/),
+  ).toBeVisible();
+  expect(downloads).toBe(0);
+  const download = page.waitForEvent("download");
+  await dialog.getByRole("link", { name: "changed.epub", exact: true }).click();
+  await download;
+});

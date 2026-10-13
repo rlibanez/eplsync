@@ -20,7 +20,9 @@ public class EpubFiles {
     public EpubFiles(DownloadRepository records, DownloadTrackingService tracking, TorrentClientService client, TorrentProperties properties) {
         this.records=records; this.tracking=tracking; this.client=client; this.properties=properties;
     }
-    public record Item(int index, String name, long size) {}
+    public record Item(int index, String name, long size, long expectedSize) {
+        public Item(int index,String name,long size) {this(index,name,size,size);}
+    }
     public record Opened(String name, long size, InputStream stream) implements AutoCloseable {
         public void close() throws IOException { stream.close(); }
     }
@@ -36,7 +38,7 @@ public class EpubFiles {
         requireRoots();
         var result=new ArrayList<Item>();
         for(var f:files(id)) {
-            try(var opened=open(f)) { result.add(new Item(f.index(), opened.name(), opened.size())); }
+            try(var opened=open(f)) { result.add(new Item(f.index(), opened.name(), opened.size(), f.size())); }
             catch(IOException ex) { throw unavailable("No se puede leer el EPUB; revisa el montaje y los permisos de la carpeta"); }
         }
         if(result.isEmpty()) throw unavailable("El torrent no contiene archivos EPUB completamente descargados");
@@ -47,7 +49,9 @@ public class EpubFiles {
         var file=files(id).stream().filter(f -> f.index()==index).findFirst().orElseThrow(() -> unavailable("El EPUB no existe o todavía no está completamente descargado"));
         try { return open(file); } catch(IOException ex) { throw unavailable("El EPUB no está accesible; revisa la carpeta compartida y sus permisos"); }
     }
-    record Planned(String recordId, TorrentFile file) {}
+    record Planned(String recordId, TorrentFile file, boolean sizeMismatch) {
+        Planned(String recordId,TorrentFile file) {this(recordId,file,false);}
+    }
     record Plan(String instance, String remoteRoot, String localRoot, boolean archive, List<Planned> items) {}
     Plan prepare(List<String> ids) {
         requireRoots();
@@ -78,7 +82,7 @@ public class EpubFiles {
                 if(candidates.isEmpty()) { failures.add(label+": no hay EPUB completamente descargados");continue; }
                 for(var file:candidates) {
                     try(var opened=open(file)) {
-                        if(paths.add(relative(roots.getRemoteRoot(),file.savePath(),file.name()))) planned.add(new Planned(id,file));
+                        if(paths.add(relative(roots.getRemoteRoot(),file.savePath(),file.name()))) planned.add(new Planned(id,file,opened.size()!=file.size()));
                     } catch(IOException | TorrentOperationException ex) { failures.add(label+": EPUB inaccesible o fuera de la carpeta configurada");break; }
                     if(planned.size()>1000) throw unavailable("La selección contiene más de 1000 archivos EPUB; selecciona menos registros");
                 }

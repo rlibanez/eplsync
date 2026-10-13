@@ -17,6 +17,15 @@ class EpubBatchesTests {
         assertThat(batches.take("owner",token)).isSameAs(plan);
         assertThatThrownBy(() -> batches.take("owner",token)).hasMessageContaining("caducado");
     }
+    @Test void exposesModifiedFilesBeforeTheDownloadStarts() {
+        var files=mock(EpubFiles.class);
+        var file=new com.rlibanez.eplsync.torrent.TorrentClient.TorrentFile(0,"changed.epub",10,1,"/downloads");
+        when(files.prepare(List.of("one"))).thenReturn(new EpubFiles.Plan("server","/downloads","/local",false,List.of(new EpubFiles.Planned("one",file,true))));
+        var batches=new EpubBatches(files);
+        var ready=batches.prepare("owner",List.of("one"));
+        assertThat(ready.sizeWarnings()).containsExactly("changed.epub");
+        assertThat(batches.take("owner",ready.url().substring(ready.url().lastIndexOf('/')+1)).items()).hasSize(1);
+    }
     @Test void boundsUnconsumedPreparationsPerSession() {
         var files=mock(EpubFiles.class);
         when(files.prepare(anyList())).thenReturn(new EpubFiles.Plan("server","/downloads","/local",false,List.of()));

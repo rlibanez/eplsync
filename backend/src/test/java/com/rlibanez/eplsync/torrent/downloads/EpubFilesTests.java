@@ -42,7 +42,7 @@ class EpubFilesTests {
         remote("book.epub",10,.5,"/downloads");assertThatThrownBy(() -> files.list("record")).hasMessageContaining("completamente");
         remote("book.epub",10,1,"/downloads");assertThatThrownBy(() -> files.download("record",7)).hasMessageContaining("accesible");
         Files.writeString(directory.resolve("book.epub"),"short");
-        assertThat(files.list("record")).containsExactly(new EpubFiles.Item(7,"book.epub",5));
+        assertThat(files.list("record")).containsExactly(new EpubFiles.Item(7,"book.epub",5,10));
         try(var opened=files.download("record",7)) {assertThat(opened.size()).isEqualTo(5);assertThat(opened.stream().readAllBytes()).isEqualTo("short".getBytes());}
     }
     @Test void rejectsTraversalSiblingRootAndAbsoluteNames() {

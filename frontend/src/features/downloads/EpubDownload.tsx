@@ -1,5 +1,5 @@
 import { TableAction } from "../../components/TableAction";
-import { Button, Stack } from "@mantine/core";
+import { Alert, Button, Stack } from "@mantine/core";
 import { Download } from "lucide-react";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -9,7 +9,12 @@ import { Loading, Failure } from "../../components/Feedback";
 import { get } from "../../api/catalog";
 import { useAuth } from "../auth/Auth";
 
-type File = { index: number; name: string; size: number };
+type File = {
+  index: number;
+  name: string;
+  size: number;
+  expectedSize?: number;
+};
 export function EpubDownload({ id }: { id: string }) {
   const { can } = useAuth();
   const { t } = useTranslation();
@@ -18,7 +23,11 @@ export function EpubDownload({ id }: { id: string }) {
     mutationFn: () =>
       get<File[]>(`/torrent/downloads/${encodeURIComponent(id)}/epubs`),
     onSuccess: (available) => {
-      if (available.length === 1) {
+      if (
+        available.length === 1 &&
+        (available[0].expectedSize == null ||
+          available[0].expectedSize === available[0].size)
+      ) {
         setOpened(false);
         const link = document.createElement("a");
         link.href = `/api/torrent/downloads/${encodeURIComponent(id)}/epubs/${available[0].index}`;
@@ -54,6 +63,16 @@ export function EpubDownload({ id }: { id: string }) {
         ) : (
           <Stack gap="sm">
             <p>{t("epubDownload.choose")}</p>
+            {files.data
+              ?.filter(
+                (file) =>
+                  file.expectedSize != null && file.expectedSize !== file.size,
+              )
+              .map((file) => (
+                <Alert key={file.index} color="yellow">
+                  {file.name}: {t("epubDownload.sizeWarning")}
+                </Alert>
+              ))}
             {files.data?.map((file) => (
               <Button
                 key={file.index}

@@ -54,6 +54,7 @@ async function jobRoutes(page: Page) {
             index: 0,
             name: "Libro.epub",
             size: 200,
+            expectedSize: 250,
             eplId: 1,
             revision: "1.1",
             state: "PENDING",
@@ -95,6 +96,7 @@ test("sends selected EPUB files to a library and controls its job", async ({
             index: 0,
             name: "Libro.epub",
             size: 200,
+            expectedSize: 250,
             eplId: 1,
             revision: 1.1,
           },
@@ -129,6 +131,9 @@ test("sends selected EPUB files to a library and controls its job", async ({
   const dialog = page.getByRole("dialog");
   await expect(
     dialog.getByText("Los archivos originales se conservan.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText(/El tamaño del EPUB no coincide/),
   ).toBeVisible();
   await dialog.getByRole("checkbox", { name: /Otro.epub/ }).uncheck();
   await dialog

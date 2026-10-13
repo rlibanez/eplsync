@@ -103,3 +103,44 @@ test("failed preparation identifies unavailable records without starting downloa
     page.getByRole("button", { name: "Reintentar", exact: true }),
   ).toBeVisible();
 });
+
+test("batch size warnings allow the user to continue explicitly", async ({
+  page,
+  context,
+}) => {
+  await records(page);
+  await page.route("**/api/torrent/downloads/epub-batches", (route) =>
+    route.fulfill({
+      json: {
+        url: "/api/torrent/downloads/epub-batches/warning",
+        fileCount: 2,
+        archive: true,
+        sizeWarnings: ["changed.epub"],
+      },
+    }),
+  );
+  await context.route(
+    "**/api/torrent/downloads/epub-batches/warning",
+    (route) =>
+      route.fulfill({
+        contentType: "application/zip",
+        headers: { "Content-Disposition": 'attachment; filename="books.zip"' },
+        body: "zip",
+      }),
+  );
+  await page.goto("/downloads");
+  await page
+    .getByRole("checkbox", { name: "Seleccionar registros de esta página" })
+    .check();
+  await page.getByRole("button", { name: "Descargar", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByText(/El tamaño del EPUB no coincide/),
+  ).toBeVisible();
+  await expect(dialog.getByText("changed.epub", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await dialog
+    .getByRole("button", { name: "Descargar igualmente", exact: true })
+    .click();
+  await download;
+});
