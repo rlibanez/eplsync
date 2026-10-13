@@ -74,6 +74,9 @@ test("shows Calibre copies in the individual book", async ({ page }) => {
     has: page.getByRole("heading", { name: "Calibre", exact: true }),
   });
   await expect(section).not.toContainText("Biblioteca: main");
+  await expect(
+    section.locator('th[data-table-column="actions"]'),
+  ).toContainText("Acciones");
   await expect(section).toContainText("Revisión anterior al catálogo");
   await expect(section.locator("tbody tr")).toHaveCount(2);
   await expect(
@@ -89,10 +92,21 @@ test("shows Calibre copies in the individual book", async ({ page }) => {
     page.getByRole("menuitem").filter({ hasText: "Calibre ID 8" }),
   ).toHaveAttribute("target", "_blank");
   await page.keyboard.press("Escape");
-  await expect(section.getByRole("columnheader")).toHaveCount(4);
-  expect(await section.locator("th[data-table-column]").evaluateAll(cells => cells.map(cell => (cell as HTMLElement).dataset.tableColumn)))
-    .toEqual(["calibreId","revision","catalogRevision","comparison"]);
-  await expect(section.getByRole("columnheader").first()).toContainText(
+  await expect(section.getByRole("columnheader")).toHaveCount(6);
+  expect(
+    await section
+      .locator("th[data-table-column]")
+      .evaluateAll((cells) =>
+        cells.map((cell) => (cell as HTMLElement).dataset.tableColumn),
+      ),
+  ).toEqual([
+    "calibreId",
+    "revision",
+    "catalogRevision",
+    "comparison",
+    "actions",
+  ]);
+  await expect(section.getByRole("columnheader").nth(1)).toContainText(
     "Calibre ID",
   );
   await expect(

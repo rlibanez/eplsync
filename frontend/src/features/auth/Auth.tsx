@@ -25,6 +25,7 @@ import { authRequest, resetCsrf, secureFetch } from "./transport";
 export type Permission =
   | "CALIBRE_READ"
   | "CALIBRE_SYNC"
+  | "CALIBRE_FILES_READ"
   | "CATALOG_READ"
   | "BOOK_HISTORY_READ"
   | "DOWNLOADS_FILES_READ"

@@ -408,7 +408,12 @@ export function UserSettings() {
               disabled={pending}
               onClick={() =>
                 void action(() =>
-                  authRequest("/security/policy", "PUT", policy).then((result) => { settingsSaved(); return result; }),
+                  authRequest("/security/policy", "PUT", policy).then(
+                    (result) => {
+                      settingsSaved();
+                      return result;
+                    },
+                  ),
                 )
               }
             >
@@ -741,14 +746,16 @@ function UserEditor({
                         label={t(`auth.permissionLabels.${permission}`)}
                         value={
                           permission === "CALIBRE_READ" &&
-                          overrides.CALIBRE_SYNC === "ALLOW"
+                          (overrides.CALIBRE_SYNC === "ALLOW" ||
+                            overrides.CALIBRE_FILES_READ === "ALLOW")
                             ? "ALLOW"
                             : (overrides[permission] ?? "INHERIT")
                         }
                         allowDeselect={false}
                         disabled={
                           permission === "CALIBRE_READ" &&
-                          overrides.CALIBRE_SYNC === "ALLOW"
+                          (overrides.CALIBRE_SYNC === "ALLOW" ||
+                            overrides.CALIBRE_FILES_READ === "ALLOW")
                         }
                         data={[
                           {
@@ -768,7 +775,8 @@ function UserEditor({
                             if (value === "INHERIT") delete next[permission];
                             else next[permission] = value ?? "DENY";
                             if (
-                              permission === "CALIBRE_SYNC" &&
+                              (permission === "CALIBRE_SYNC" ||
+                                permission === "CALIBRE_FILES_READ") &&
                               value === "ALLOW"
                             )
                               next.CALIBRE_READ = "ALLOW";

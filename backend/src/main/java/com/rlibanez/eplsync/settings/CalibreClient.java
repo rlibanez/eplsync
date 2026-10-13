@@ -107,6 +107,52 @@ public class CalibreClient {
         } catch (ResponseStatusException ex) { throw ex; }
         catch (Exception ex) { throw failure("No se puede consultar Calibre; revisa la URL, que el servidor de contenido esté activo y la conexión de red"); }
     }
+    /** Fetch to a bounded temporary file, without following redirects or buffering the EPUB in memory. */
+    public void downloadEpub(CalibreSettings.Connection c,long id,java.nio.file.Path target,long maxBytes) {
+        limited(() -> {
+            var uri=URI.create(c.url()+"/get/epub/"+id+"/"+segment(c.library()));
+            var credentials=new BasicCredentialsProvider();
+            if(!c.username().isEmpty()) credentials.setCredentials(new AuthScope(new HttpHost(uri.getScheme(),uri.getHost(),uri.getPort())),
+                    new UsernamePasswordCredentials(c.username(),c.password().toCharArray()));
+            var manager=PoolingHttpClientConnectionManagerBuilder.create().setDefaultConnectionConfig(ConnectionConfig.custom()
+                    .setConnectTimeout(Timeout.ofSeconds(3)).setSocketTimeout(Timeout.ofSeconds(10)).build()).build();
+            try(var http=HttpClients.custom().setConnectionManager(manager).setDefaultCredentialsProvider(credentials)
+                    .setDefaultRequestConfig(RequestConfig.custom().setResponseTimeout(Timeout.ofSeconds(10)).build())
+                    .disableRedirectHandling().disableAutomaticRetries().disableContentCompression().build()) {
+                var request=new HttpGet(uri);
+                request.setHeader("Accept","application/epub+zip");
+                var deadline=TIMER.schedule(request::cancel,60,TimeUnit.SECONDS);
+                try(var response=http.executeOpen(null,request,null)) {
+                    int status=response.getCode();
+                    if(status==401 || status==403) throw failure("Calibre ha rechazado el acceso; revisa el usuario, la contraseña y los permisos de biblioteca");
+                    if(status==404) throw failure("Calibre ID "+id+": el libro no existe o no tiene formato EPUB");
+                    if(status>=300 && status<400) throw failure("Calibre ha respondido con una redirección; configura la URL final del servidor de contenido");
+                    if(status!=200 || response.getEntity()==null) throw failure("Calibre ID "+id+": no se puede descargar el EPUB (HTTP "+status+")");
+                    if(response.getEntity().getContentLength()>maxBytes) throw failure("La descarga de Calibre supera el límite de tamaño");
+                    try(var body=response.getEntity().getContent();var output=java.nio.file.Files.newOutputStream(target)) {
+                        byte[] buffer=new byte[65536];long total=0;int count;
+                        while((count=body.read(buffer))!=-1) {
+                            total+=count;
+                            if(total>maxBytes || Thread.currentThread().isInterrupted()) throw failure("La descarga de Calibre supera el límite de tamaño o ha sido cancelada");
+                            output.write(buffer,0,count);
+                        }
+                        if(total==0) throw failure("Calibre ID "+id+": el EPUB está vacío");
+                    }
+                    try(var zip=new java.util.zip.ZipFile(target.toFile())) {
+                        var mimetype=zip.getEntry("mimetype");
+                        if(mimetype==null || mimetype.getSize()!=20 || zip.getEntry("META-INF/container.xml")==null)
+                            throw failure("Calibre ID "+id+": la respuesta no es un EPUB válido");
+                        try(var body=zip.getInputStream(mimetype)) {
+                            if(!java.util.Arrays.equals(body.readNBytes(21),"application/epub+zip".getBytes(java.nio.charset.StandardCharsets.US_ASCII)))
+                                throw failure("Calibre ID "+id+": la respuesta no es un EPUB válido");
+                        }
+                    }
+                } finally { deadline.cancel(false); }
+            } catch(ResponseStatusException ex) { throw ex; }
+            catch(Exception ex) { throw failure("Calibre ID "+id+": no se puede descargar el EPUB; revisa el servidor y la conexión"); }
+            return null;
+        });
+    }
     static Long positiveId(String text) {
         try { long value = Long.parseLong(text); return value > 0 ? value : null; } catch (Exception ex) { return null; }
     }

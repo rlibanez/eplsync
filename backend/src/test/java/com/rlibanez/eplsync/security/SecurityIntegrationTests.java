@@ -132,6 +132,12 @@ class SecurityIntegrationTests {
         org.junit.jupiter.api.Assertions.assertFalse(details.isEmpty());
         org.junit.jupiter.api.Assertions.assertTrue(details.stream().noneMatch(value -> value.contains(PASSWORD)||value.contains(initial.password())||value.contains("@")||value.contains("password_hash")));
     }
+    @Test void calibreDownloadPermissionIncludesReadingLibraryButNotSynchronization() {
+        var created=accounts.create("calibredownload","calibre@example.org","USER",initial.user().id());
+        accounts.update(created.user().id(),"USER","ACTIVE",Map.of("CALIBRE_FILES_READ","ALLOW","CALIBRE_READ","DENY"),initial.user().id());
+        assertThat(accounts.view(created.user().id()).permissions()).contains(Permission.CALIBRE_READ,Permission.CALIBRE_FILES_READ)
+            .doesNotContain(Permission.CALIBRE_SYNC,Permission.DOWNLOADS_FILES_READ);
+    }
     @Test void foreignKeysRejectOrphanPermissionsAndDirectUserDeletionButAccountDeletionIsSafe() {
         var created=accounts.create("fkuser","fk@example.org","USER",initial.user().id());
         jdbc.update("INSERT INTO user_permission_overrides VALUES(?,?,?)",created.user().id(),"TORRENT_SYNC","ALLOW");

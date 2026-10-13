@@ -1,5 +1,7 @@
+import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
+import { useAuth } from "../auth/Auth";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { get, type Book } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
@@ -18,6 +20,9 @@ export function BookCalibre({ book }: { book: Book }) {
   const [sort, setSort] = useState("revision,desc"),
     [page, setPage] = useState(0),
     [size, setSize] = useState(20);
+  const selectable = useAuth().can("CALIBRE_FILES_READ");
+  const [selected, setSelected] = useState<number[]>([]);
+  useEffect(() => setSelected([]), [book.eplId, page, size, sort]);
   const pageSizeChoice = usePageSizeChoice(size);
   const columns = useDownloadColumns(
     "eplsync.book-calibre.columns",
@@ -27,7 +32,11 @@ export function BookCalibre({ book }: { book: Book }) {
       setSort(v);
       setPage(0);
     },
-    { defaults: "revision,desc" },
+    {
+      defaults: "revision,desc",
+      selection: selectable,
+      hidden: selectable ? [] : ["actions"],
+    },
   );
   const result = useQuery<Page<CalibreBook>>({
     queryKey: ["calibre-library", book.eplId, page, size, sort],
@@ -40,6 +49,14 @@ export function BookCalibre({ book }: { book: Book }) {
       ),
     enabled: !!book.calibre && book.calibre.totalItems > 0,
   });
+  useEffect(() => {
+    if (result.data)
+      setSelected((previous) =>
+        previous.filter((id) =>
+          result.data.items.some((item) => item.calibreId === id),
+        ),
+      );
+  }, [result.data]);
   return (
     <section className="panel book-calibre">
       <div className="table-toolbar book-history-toolbar">
@@ -56,9 +73,18 @@ export function BookCalibre({ book }: { book: Book }) {
           <Failure error={result.error} retry={() => result.refetch()} />
         ) : result.data.meta.totalItems > 0 ? (
           <>
+            {selectable && (
+              <EpubBatchDownload
+                selected={selected}
+                endpoint="/calibre/epub-downloads"
+                selectionLabel="calibre.selectedBooks"
+              />
+            )}
             <CalibreTable
               items={result.data.items}
               columns={columns}
+              selected={selectable ? selected : undefined}
+              onSelection={setSelected}
               showCovers={false}
               excludedFields={excludedFields}
             />

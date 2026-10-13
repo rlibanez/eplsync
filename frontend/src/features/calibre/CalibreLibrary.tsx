@@ -1,7 +1,8 @@
+import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { CalibreTable, calibreColumns, type CalibreBook } from "./CalibreTable";
 import { useNotifications } from "../notifications/Notifications";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, MultiSelect, TextInput } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -32,6 +33,12 @@ export function CalibreLibrary() {
     [comparison, setComparison] = useState(""),
     [presence, setPresence] = useState(""),
     [sort, setSort] = useState("title,asc");
+  const selectable = auth.can("CALIBRE_FILES_READ");
+  const [selected, setSelected] = useState<number[]>([]);
+  useEffect(
+    () => setSelected([]),
+    [page, size, title, author, eplId, comparison, presence, sort],
+  );
   const pageSizeChoice = usePageSizeChoice(size);
   const params = new URLSearchParams({
     page: String(page),
@@ -50,6 +57,14 @@ export function CalibreLibrary() {
         signal,
       ),
   });
+  useEffect(() => {
+    if (result.data)
+      setSelected((previous) =>
+        previous.filter((id) =>
+          result.data.items.some((book) => book.calibreId === id),
+        ),
+      );
+  }, [result.data]);
   const snapshot = useQuery({
     queryKey: ["calibre-snapshot"],
     queryFn: ({ signal }) =>
@@ -88,7 +103,11 @@ export function CalibreLibrary() {
       setSort(v);
       setPage(0);
     },
-    { defaults: "title,asc" },
+    {
+      defaults: "title,asc",
+      selection: selectable,
+      hidden: selectable ? [] : ["actions"],
+    },
   );
   return (
     <>
@@ -189,13 +208,25 @@ export function CalibreLibrary() {
         <div className="table-toolbar">
           <div className="catalog-table-controls">{columns.controls}</div>
         </div>
+        {selectable && (
+          <EpubBatchDownload
+            selected={selected}
+            endpoint="/calibre/epub-downloads"
+            selectionLabel="calibre.selectedBooks"
+          />
+        )}
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
           <Failure error={result.error} retry={() => result.refetch()} />
         ) : (
           <>
-            <CalibreTable items={result.data.items} columns={columns} />
+            <CalibreTable
+              items={result.data.items}
+              columns={columns}
+              selected={selectable ? selected : undefined}
+              onSelection={setSelected}
+            />
             <Paging
               choice={pageSizeChoice}
               meta={result.data.meta}

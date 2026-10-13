@@ -85,7 +85,11 @@ export const test = base.extend<{ eventTransport: void }>({
           },
         });
       });
-      await page.route("**/api/catalog/import/progress", route => route.fulfill({json: {active: false, phase: "IDLE", processedRows: 0}}));
+      await page.route("**/api/catalog/import/progress", (route) =>
+        route.fulfill({
+          json: { active: false, phase: "IDLE", processedRows: 0 },
+        }),
+      );
       await page.route("**/api/catalog/import/metadata", (route) =>
         route.fulfill({ json: { metadata: null } }),
       );
@@ -106,6 +110,7 @@ export const test = base.extend<{ eventTransport: void }>({
             permissions: [
               "CALIBRE_READ",
               "CALIBRE_SYNC",
+              "CALIBRE_FILES_READ",
               "CATALOG_READ",
               "BOOK_HISTORY_READ",
               "DOWNLOADS_FILES_READ",

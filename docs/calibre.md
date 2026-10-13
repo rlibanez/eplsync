@@ -126,3 +126,35 @@ Esta URL no cambia la conexión del backend ni invalida la biblioteca
 sincronizada. Los enlaces no incluyen las credenciales guardadas; Calibre
 puede pedir iniciar sesión al abrirlos. Ambas URL admiten HTTP/HTTPS y rechazan
 credenciales, parámetros y fragmentos.
+
+## Descargar EPUB
+
+La acción **Descargar EPUB** está disponible en cada fila de **Calibre → Biblioteca**
+y en el apartado Calibre de la ficha individual. Usa el Calibre ID y la biblioteca
+configurada, por lo que permite descargar revisiones diferentes del mismo EPL ID.
+No requiere acceso a las carpetas de Calibre ni instalar `calibredb`.
+
+Con la primera columna puedes seleccionar varios libros y pulsar **Descargar**:
+un libro se entrega como EPUB y varios como ZIP. Los nombres incluyen el Calibre ID
+para distinguir las copias. La selección se limita a la página visible y se limpia
+al cambiar filtros, ordenación o página. Si falta el formato EPUB o falla el acceso,
+se muestra el error antes de iniciar la descarga; no se entrega un ZIP parcial.
+
+Se requiere **Descargar EPUB de Calibre** (`CALIBRE_FILES_READ`), que implica
+`CALIBRE_READ` y no concede sincronización ni descargas del cliente torrent.
+Los administradores disponen de este permiso automáticamente. Las credenciales
+se utilizan exclusivamente en el backend y no se incluyen en los enlaces.
+
+Los archivos se preparan temporalmente, sin cargarlos completos en memoria, y se
+eliminan al terminar la entrega. Los enlaces son de un solo uso, pertenecen a la
+sesión que los creó y caducan tras dos minutos; las copias abandonadas se eliminan
+en la siguiente comprobación, cada 30 segundos. Un cambio en la conexión invalida
+las descargas pendientes.
+
+Límites: 1000 libros por selección, 256 MiB por EPUB y 512 MiB en total; dos
+preparaciones o entregas pendientes simultáneas. La preparación tiene un plazo de
+cinco minutos, con hasta 60 segundos por archivo. Durante la creación de los ZIP,
+el uso temporal de disco puede alcanzar aproximadamente 2 GiB entre ambas
+operaciones. Se comprueba que la respuesta sea un EPUB y no se siguen redirecciones.
+La descarga utiliza el servidor de contenido; la URL opcional del navegador solo
+sirve para abrir las fichas de Calibre.

@@ -1195,6 +1195,7 @@
       "SETTINGS_MANAGE": "Consultar y modificar ajustes",
       "CALIBRE_READ": "Consultar biblioteca de Calibre",
       "CALIBRE_SYNC": "Sincronizar biblioteca de Calibre",
+      "CALIBRE_FILES_READ": "Descargar EPUB de Calibre",
       "DOWNLOADS_FILES_READ": "Descargar archivos EPUB"
     },
     "statuses": {
@@ -1272,6 +1273,7 @@
     "lastSearch": "Última búsqueda: {{date}}"
   },
   "historyActions": {
+    "actions": "Acciones",
     "delete": "Eliminar",
     "inApp": "En EPL Sync",
     "inClient": "En el cliente torrent",
@@ -1399,6 +1401,8 @@
       "UNIDENTIFIED": "Sin identificador EPL"
     },
     "libraryRevision": "Revisión en Calibre",
+    "selectedBooks": "{{count}} libros seleccionados",
+    "selectBook": "Seleccionar Calibre ID {{id}}",
     "libraryHeading": "Biblioteca de Calibre",
     "browserUrl": "URL para abrir en el navegador",
     "browserUrlHelp": "Opcional. Si está vacía, se utiliza la URL del servidor de contenido.",

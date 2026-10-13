@@ -1,3 +1,4 @@
+import { AppModal } from "../../components/AppModal";
 import { Button } from "@mantine/core";
 import { Download } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
@@ -5,12 +6,22 @@ import { useTranslation } from "react-i18next";
 import { Failure } from "../../components/Feedback";
 import { post } from "./shared";
 
-export function EpubBatchDownload({ selected }: { selected: string[] }) {
+export function EpubBatchDownload({
+  selected,
+  endpoint = "/torrent/downloads/epub-batches",
+  inline = false,
+  selectionLabel = "historyActions.selected",
+}: {
+  selected: (string | number)[];
+  endpoint?: string;
+  inline?: boolean;
+  selectionLabel?: string;
+}) {
   const { t } = useTranslation();
   const batch = useMutation({
     retry: false,
-    mutationFn: (ids: string[]) =>
-      post<{ url: string }>("/torrent/downloads/epub-batches", { ids }),
+    mutationFn: (ids: (string | number)[]) =>
+      post<{ url: string }>(endpoint, { ids }),
     onSuccess: ({ url }) => {
       const link = document.createElement("a");
       link.href = url;
@@ -20,27 +31,45 @@ export function EpubBatchDownload({ selected }: { selected: string[] }) {
     },
   });
   if (!selected.length) return null;
+  const button = (
+    <Button
+      variant={inline ? "subtle" : "filled"}
+      size={inline ? "compact-xs" : "sm"}
+      leftSection={<Download size={16} />}
+      loading={batch.isPending}
+      onClick={() => batch.mutate(selected)}
+    >
+      {t(inline ? "epubDownload.button" : "epubDownload.download")}
+    </Button>
+  );
   return (
     <>
-      <div className="catalog-selection-bar has-selection">
-        <div className="catalog-selection-info">
-          <span className="catalog-selection-count" aria-live="polite">
-            {t("historyActions.selected", { count: selected.length })}
-          </span>
+      {inline ? (
+        button
+      ) : (
+        <div className="catalog-selection-bar has-selection">
+          <div className="catalog-selection-info">
+            <span className="catalog-selection-count" aria-live="polite">
+              {t(selectionLabel, { count: selected.length })}
+            </span>
+          </div>
+          <div className="catalog-selection-actions">{button}</div>
         </div>
-        <div className="catalog-selection-actions">
-          <Button
-            leftSection={<Download size={16} />}
-            loading={batch.isPending}
-            onClick={() => batch.mutate(selected)}
-          >
-            {t("epubDownload.download")}
-          </Button>
-        </div>
-      </div>
-      {batch.isError && batch.variables?.join("|") === selected.join("|") && (
-        <Failure error={batch.error} retry={() => batch.mutate(selected)} />
       )}
+      {batch.isError &&
+        batch.variables?.join("|") === selected.join("|") &&
+        (inline ? (
+          <AppModal
+            opened
+            onClose={() => batch.reset()}
+            title={t("epubDownload.title")}
+            icon={Download}
+          >
+            <Failure error={batch.error} retry={() => batch.mutate(selected)} />
+          </AppModal>
+        ) : (
+          <Failure error={batch.error} retry={() => batch.mutate(selected)} />
+        ))}
     </>
   );
 }
