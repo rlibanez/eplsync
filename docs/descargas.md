@@ -33,7 +33,7 @@ permiso para ver el historial. Puedes seleccionar registros y:
 
 - **Actualizar estado:** consulta al cliente los hashes seleccionados.
 - **Eliminar:** abre un formulario para elegir si se elimina el registro de EPL Sync,
-  el torrent del cliente o también sus archivos.
+ el torrent del cliente o también sus archivos.
 
 Las opciones disponibles dependen de tus permisos. Borrar el registro local no
 elimina el torrent del cliente; borrar solo el torrent no elimina sus archivos.
@@ -52,6 +52,15 @@ permite descargar los archivos completos del torrent. Requiere el permiso
 Si hay un único EPUB, se descarga directamente. Si hay varios, se abre un selector
 para elegir el archivo. No se modifica el contenido del
 cliente torrent ni se envía a Calibre.
+
+En **Estado**, también puedes seleccionar registros mediante la primera columna
+y pulsar **Descargar**. La selección corresponde a la página actual y se limpia
+al cambiar filtros, ordenación o página. Un único EPUB se descarga directamente;
+varios archivos o registros se reúnen en un ZIP, sin modificar sus originales.
+Los nombres repetidos se distinguen con un sufijo numérico. Antes de iniciar,
+se comprueba toda la selección: si algún registro no tiene EPUB completos y
+accesibles, se indican los registros afectados y no se inicia la descarga.
+El límite es de 1000 registros y 1000 archivos por descarga.
 
 Configura en **Ajustes > Torrent > Archivos descargados** las dos carpetas:
 

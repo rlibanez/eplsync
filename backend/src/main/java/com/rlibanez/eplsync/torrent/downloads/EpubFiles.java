@@ -47,6 +47,57 @@ public class EpubFiles {
         var file=files(id).stream().filter(f -> f.index()==index).findFirst().orElseThrow(() -> unavailable("El EPUB no existe o todavía no está completamente descargado"));
         try { return open(file); } catch(IOException ex) { throw unavailable("El EPUB no está accesible; revisa la carpeta compartida y sus permisos"); }
     }
+    record Planned(String recordId, TorrentFile file) {}
+    record Plan(String instance, String remoteRoot, String localRoot, boolean archive, List<Planned> items) {}
+    Plan prepare(List<String> ids) {
+        requireRoots();
+        if (ids == null || ids.isEmpty() || ids.size()>1000 || ids.stream().anyMatch(id -> id==null || id.isBlank() || id.length()>64))
+            throw new com.rlibanez.eplsync.exception.UserInputException("Selecciona entre 1 y 1000 registros de descargas");
+        var selected=ids.stream().distinct().toList();
+        return client.exclusiveClient(adapter -> {
+            var roots=properties.getFiles();
+            var planned=new ArrayList<Planned>();
+            var failures=new ArrayList<String>();
+            var cache=new HashMap<String,List<TorrentFile>>();
+            var paths=new HashSet<Path>();
+            long deadline=System.nanoTime()+java.time.Duration.ofMinutes(2).toNanos();
+            for (var id:selected) {
+                if(Thread.currentThread().isInterrupted() || System.nanoTime()>deadline)
+                    throw unavailable("La preparación ha tardado demasiado; selecciona menos registros e inténtalo de nuevo");
+                var row=records.findById(id).orElse(null);
+                if(row==null) { failures.add("Registro "+id+": ya no existe"); continue; }
+                String label="EPL ID "+row.getEplId()+" (r"+row.getRevision()+")";
+                if(!row.getClientInstanceId().equals(tracking.instanceId())) { failures.add(label+": pertenece a otro cliente torrent");continue; }
+                List<TorrentFile> candidates;
+                try {
+                    candidates=cache.computeIfAbsent(row.getHash(), hash -> adapter.listFiles(hash).stream()
+                            .filter(f -> f.name().toLowerCase(Locale.ROOT).endsWith(".epub") && f.progress()==1 && f.size()>0).toList());
+                } catch(TorrentOperationException ex) {
+                    failures.add(label+": "+ex.getMessage());continue;
+                }
+                if(candidates.isEmpty()) { failures.add(label+": no hay EPUB completamente descargados");continue; }
+                for(var file:candidates) {
+                    try(var opened=open(file)) {
+                        if(paths.add(relative(roots.getRemoteRoot(),file.savePath(),file.name()))) planned.add(new Planned(id,file));
+                    } catch(IOException | TorrentOperationException ex) { failures.add(label+": EPUB inaccesible o fuera de la carpeta configurada");break; }
+                    if(planned.size()>1000) throw unavailable("La selección contiene más de 1000 archivos EPUB; selecciona menos registros");
+                }
+            }
+            if(!failures.isEmpty()) throw unavailable("No se ha iniciado la descarga. Revisa los registros afectados:\n"+String.join("\n",failures));
+            return new Plan(tracking.instanceId(),roots.getRemoteRoot(),roots.getLocalRoot(),selected.size()>1 || planned.size()>1,List.copyOf(planned));
+        });
+    }
+    void validate(Plan plan) {
+        requireRoots();
+        client.requireEnabled();
+        if(!plan.instance().equals(tracking.instanceId()) || !plan.remoteRoot().equals(properties.getFiles().getRemoteRoot())
+                || !plan.localRoot().equals(properties.getFiles().getLocalRoot()))
+            throw unavailable("La configuración del cliente o de las carpetas ha cambiado; vuelve a iniciar la descarga");
+        for(var entry:plan.items()) try(var opened=open(entry.file())) { /* Check every file before sending headers. */ }
+            catch(IOException | TorrentOperationException ex) { throw unavailable("No se ha iniciado la descarga: un EPUB ya no está accesible. Vuelve a intentarlo"); }
+    }
+    Opened open(Planned entry) throws IOException { return open(entry.file()); }
+
     private void requireRoots() {
         var f=properties.getFiles();
         if(f.getRemoteRoot().isBlank() || f.getLocalRoot().isBlank()) throw unavailable("Configura las carpetas de descarga en Ajustes > Torrent");

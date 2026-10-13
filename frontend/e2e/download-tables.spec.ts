@@ -126,7 +126,9 @@ for (const kind of ["state", "job"] as const) {
             .evaluate((image: HTMLImageElement) => image.naturalWidth),
         )
         .toBeGreaterThan(0);
-      await expect(table.locator("th").first()).toContainText("EPL ID");
+      await expect(
+        table.locator("th").nth(kind === "state" ? 1 : 0),
+      ).toContainText("EPL ID");
       const cells = table.locator("tbody tr").first().locator("td");
       await expect(cells.nth(2)).toHaveCSS("display", "table-cell");
       const heights = await cells.evaluateAll((elements) =>

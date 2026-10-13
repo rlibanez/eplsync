@@ -1,3 +1,4 @@
+import { EpubBatchDownload } from "./EpubBatchDownload";
 import { EpubDownload } from "./EpubDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { ordering } from "./TableControls";
@@ -12,7 +13,13 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Select, MultiSelect, TextInput } from "@mantine/core";
+import {
+  Button,
+  Checkbox,
+  Select,
+  MultiSelect,
+  TextInput,
+} from "@mantine/core";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -59,6 +66,9 @@ function DownloadHistory() {
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
   const pageSizeChoice = usePageSizeChoice(size);
+  const selectable = auth.can("DOWNLOADS_FILES_READ");
+  const [selected, setSelected] = useState<string[]>([]);
+  useEffect(() => setSelected([]), [page, size, filters]);
   useEffect(() => {
     if (draftEplId === filters.eplId) return;
     if (draftEplId !== "" && !/^[1-9]\d*$/.test(draftEplId)) return;
@@ -83,6 +93,12 @@ function DownloadHistory() {
     queryFn: ({ signal }) =>
       get<Page<Download>>(`/torrent/downloads?${params}`, signal),
   });
+  useEffect(() => {
+    if (result.data)
+      setSelected((previous) =>
+        previous.filter((id) => result.data.items.some((row) => row.id === id)),
+      );
+  }, [result.data]);
   const sync = useMutation({
     mutationKey: ["torrent-sync"],
     meta: {
@@ -130,6 +146,7 @@ function DownloadHistory() {
     (value) => filter("sort", value),
     {
       defaults: "createdAt,desc",
+      selection: selectable,
       extraSort: [
         { field: "createdAt", label: "downloads.createdAt", width: 200 },
       ],
@@ -224,6 +241,7 @@ function DownloadHistory() {
         <div className="table-toolbar">
           <div className="catalog-table-controls">{columns.controls}</div>
         </div>
+        {selectable && <EpubBatchDownload selected={selected} />}
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
@@ -236,10 +254,59 @@ function DownloadHistory() {
                 style={{ width: columns.width }}
               >
                 {columns.colgroup}
-                <thead>{columns.headings}</thead>
+                <thead>
+                  {columns.selectionHeadings(
+                    selectable && (
+                      <th className="history-selection">
+                        <Checkbox
+                          aria-label={t("historyActions.selectPage")}
+                          checked={
+                            result.data.items.length > 0 &&
+                            result.data.items.every((row) =>
+                              selected.includes(row.id),
+                            )
+                          }
+                          indeterminate={
+                            selected.length > 0 &&
+                            !result.data.items.every((row) =>
+                              selected.includes(row.id),
+                            )
+                          }
+                          disabled={!result.data.items.length}
+                          onChange={(event) =>
+                            setSelected(
+                              event.currentTarget.checked
+                                ? result.data.items.map((row) => row.id)
+                                : [],
+                            )
+                          }
+                        />
+                      </th>
+                    ),
+                  )}
+                </thead>
                 <tbody>
                   {result.data.items.map((d) => (
                     <tr key={d.id}>
+                      {selectable && (
+                        <td className="history-selection">
+                          <Checkbox
+                            aria-label={t("epubDownload.selectRecord", {
+                              id: d.eplId,
+                              revision: number(d.revision),
+                            })}
+                            checked={selected.includes(d.id)}
+                            onChange={(event) => {
+                              const checked = event.currentTarget.checked;
+                              setSelected((previous) =>
+                                checked
+                                  ? [...previous, d.id]
+                                  : previous.filter((id) => id !== d.id),
+                              );
+                            }}
+                          />
+                        </td>
+                      )}
                       {columns.cells([
                         <td>
                           <Link to={`/catalog/${d.eplId}`}>{d.eplId}</Link>

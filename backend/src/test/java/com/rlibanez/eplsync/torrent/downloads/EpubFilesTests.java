@@ -81,4 +81,25 @@ class EpubFilesTests {
         try(var result=files.download("record",8)) { assertThat(result.name()).isEqualTo("two.epub"); }
         assertThatThrownBy(() -> files.download("record",9)).hasMessageContaining("no existe");
     }
+    @Test void preparesSharedFilesOnceAndRejectsChangedConfiguration() throws Exception {
+        Files.writeString(directory.resolve("book.epub"),"bytes");remote("book.epub",5,1,"/downloads");
+        var existing=records.findById("record");when(records.findById("other")).thenReturn(existing);
+        var plan=files.prepare(List.of("record","other"));
+        assertThat(plan.archive()).isTrue();assertThat(plan.items()).hasSize(1);
+        verify(adapter,times(1)).listFiles(anyString());files.validate(plan);
+        properties.getFiles().setRemoteRoot("/new");
+        assertThatThrownBy(() -> files.validate(plan)).hasMessageContaining("ha cambiado");
+    }
+    @Test void preparesSingleEpubWithoutZipAndRejectsMissingFilesBeforeDownload() throws Exception {
+        Files.writeString(directory.resolve("book.epub"),"bytes");remote("book.epub",5,1,"/downloads");
+        var plan=files.prepare(List.of("record"));assertThat(plan.archive()).isFalse();
+        Files.delete(directory.resolve("book.epub"));
+        assertThatThrownBy(() -> files.validate(plan)).hasMessageContaining("No se ha iniciado");
+        assertThatThrownBy(() -> files.prepare(List.of("record"))).hasMessageContaining("registros afectados");
+    }
+    @Test void rejectsInvalidSelectionBeforeContactingClient() {
+        assertThatThrownBy(() -> files.prepare(Collections.nCopies(1001,"record"))).hasMessageContaining("1000");
+        assertThatThrownBy(() -> files.prepare(List.of())).hasMessageContaining("1000");
+        verifyNoInteractions(client);
+    }
 }

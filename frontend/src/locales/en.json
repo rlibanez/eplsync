@@ -1408,6 +1408,8 @@
   "epubDownload": {
     "button": "Download EPUB",
     "title": "EPUB files",
-    "choose": "Choose the file to download."
+    "choose": "Choose the file to download.",
+    "download": "Download",
+    "selectRecord": "Select EPL ID {{id}} (r{{revision}})"
   }
 }
