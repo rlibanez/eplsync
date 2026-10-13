@@ -93,7 +93,7 @@ public class CalibreTransfers {
         lifecycle.readLock().lock();
         try {
             var connection=settings.connection();String source=source();
-            var prepared=prepare(request.files().stream().map(FileChoice::recordId).distinct().toList());
+            var prepared=prepare(request.files().stream().map(choice -> java.util.Objects.requireNonNull(choice).recordId()).distinct().toList());
             if(prepared.libraries().stream().noneMatch(l -> l.id().equals(request.library()))) throw new UserInputException("La biblioteca de destino no está disponible");
             var byFile=new HashMap<FileChoice,Candidate>();prepared.files().forEach(f -> byFile.put(new FileChoice(f.recordId(),f.index()),f));
             var selected=request.files().stream().map(f -> {var candidate=byFile.get(f);if(candidate==null) throw new UserInputException("El EPUB seleccionado ya no está disponible");return candidate;}).toList();

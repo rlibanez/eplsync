@@ -24,7 +24,7 @@ public class EpubBatches {
             var plan=files.prepare(ids);
             String token=UUID.randomUUID().toString();
             synchronized(this) { batches.put(token,new Pending(session,Instant.now().plusSeconds(120),plan)); }
-            return new Ready("/api/torrent/downloads/epub-batches/"+token,plan.items().size(),plan.archive(),plan.items().stream().filter(EpubFiles.Planned::sizeMismatch).map(p -> p.file().name()).toList());
+            return new Ready("/api/torrent/downloads/epub-batches/"+token,plan.items().size(),plan.archive(),plan.items().stream().filter(entry -> java.util.Objects.requireNonNull(entry).sizeMismatch()).map(p -> p.file().name()).toList());
         } finally { preparing.release(); }
     }
     synchronized EpubFiles.Plan take(String session,String token) {

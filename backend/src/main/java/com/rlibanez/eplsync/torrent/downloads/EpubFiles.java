@@ -97,7 +97,10 @@ public class EpubFiles {
         if(!plan.instance().equals(tracking.instanceId()) || !plan.remoteRoot().equals(properties.getFiles().getRemoteRoot())
                 || !plan.localRoot().equals(properties.getFiles().getLocalRoot()))
             throw unavailable("La configuración del cliente o de las carpetas ha cambiado; vuelve a iniciar la descarga");
-        for(var entry:plan.items()) try(var opened=open(entry.file())) { /* Check every file before sending headers. */ }
+        for(var entry:plan.items()) try(var opened=open(entry.file())) {
+            // Check every file before sending headers, including its current size.
+            if(opened.size()<=0) throw unavailable("El EPUB está vacío");
+        }
             catch(IOException | TorrentOperationException ex) { throw unavailable("No se ha iniciado la descarga: un EPUB ya no está accesible. Vuelve a intentarlo"); }
     }
     Opened open(Planned entry) throws IOException { return open(entry.file()); }

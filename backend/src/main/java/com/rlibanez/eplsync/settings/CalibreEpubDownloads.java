@@ -116,7 +116,7 @@ public class CalibreEpubDownloads {
     static String filename(Item book) {
         String title=book.title()==null ? "Calibre" : book.title().replaceAll("[\\p{Cntrl}\\\\/:*?\"<>|]","_").strip();
         // Bound UTF-8 filename size and include the unique Calibre ID to distinguish revisions.
-        title=title.codePoints().limit(40).collect(StringBuilder::new,StringBuilder::appendCodePoint,StringBuilder::append).toString();
+        title=title.substring(0,title.offsetByCodePoints(0,Math.min(40,title.codePointCount(0,title.length()))));
         return (title.isBlank()?"Calibre":title)+" ["+book.id()+"].epub";
     }
     private static void delete(Path file) { if(file!=null) try { Files.deleteIfExists(file); } catch(IOException ex) { org.slf4j.LoggerFactory.getLogger(CalibreEpubDownloads.class).warn("No se pudo eliminar un archivo temporal de descarga de Calibre"); } }
