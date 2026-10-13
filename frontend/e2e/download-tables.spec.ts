@@ -190,3 +190,36 @@ for (const kind of ["state", "job"] as const) {
     });
   }
 }
+
+test("download row status and origin apply filters", async ({ page }) => {
+  await page.route("**/api/torrent/downloads?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            ...book,
+            id: "filter-row",
+            hash: "A".repeat(40),
+            revision: 2,
+            client: "qbittorrent",
+            origin: "DISCOVERED",
+            status: "DOWNLOADED",
+          },
+        ],
+        meta,
+      },
+    }),
+  );
+  await page.goto("/downloads");
+  const row = page.locator("tbody tr").filter({ hasText: "Un libro" });
+  await row.getByRole("button", { name: "Descargado", exact: true }).click();
+  await expect.poll(() => page.locator("input").count()).toBeGreaterThan(0);
+  const request = page.waitForRequest(
+    (r) =>
+      r.url().includes("/api/torrent/downloads?") &&
+      new URL(r.url()).searchParams.get("origin") === "DISCOVERED" &&
+      new URL(r.url()).searchParams.get("status") === "DOWNLOADED",
+  );
+  await row.getByRole("button", { name: "DISCOVERED", exact: true }).click();
+  await request;
+});

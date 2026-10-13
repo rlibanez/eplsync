@@ -1732,8 +1732,6 @@ summary {
 .directory-empty { padding: 24px; }
 
 .detail-section dl > div { font-size: 15px; }
-.detail-filter-badge { cursor: pointer; font: inherit; }
-.detail-filter-badge:hover { text-decoration: underline; }
 .book-navigation { display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 16px; }
 .detail-section dd .badge { font-size: inherit; }
 .detail-navigation-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }

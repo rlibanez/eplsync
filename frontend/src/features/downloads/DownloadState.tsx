@@ -373,12 +373,26 @@ function DownloadHistory() {
                                 </td>,
                                 <td>{revision(d.revision)}</td>,
                                 <td>
-                                  <span className="badge">
-                                    {status(d.status)}
-                                  </span>
+                                  <button
+                                    type="button"
+                                    className="catalog-value-filter"
+                                    onClick={() => filter("status", d.status)}
+                                  >
+                                    <span className="badge">
+                                      {status(d.status)}
+                                    </span>
+                                  </button>
                                 </td>,
                                 <td title={d.clientInstanceId}>{d.client}</td>,
-                                <td>{d.origin}</td>,
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="catalog-value-filter"
+                                    onClick={() => filter("origin", d.origin)}
+                                  >
+                                    {d.origin}
+                                  </button>
+                                </td>,
                                 <td>{date(d.lastCheckedAt)}</td>,
                                 <td>{date(d.completedAt)}</td>,
                                 <td>{d.lastError || "—"}</td>,

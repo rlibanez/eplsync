@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Pause, Play, X } from "lucide-react";
+import { BookCover } from "../catalog/BookCover";
 import { get } from "../../api/catalog";
 import { useAuth } from "../auth/Auth";
 import { useLocale } from "../../locales/useLocale";
@@ -176,7 +177,7 @@ export function CalibreJobs() {
   return (
     <section>
       <h1>{t("calibreSend.jobs")}</h1>
-      <p>{t("calibreSend.jobsHelp")}</p>
+      <p className="muted">{t("calibreSend.jobsHelp")}</p>
       <div className="filters jobs-filters">
         <Select
           label={t("downloads.status")}
@@ -433,7 +434,19 @@ export function CalibreJobDetail() {
                             item.eplId
                           )}
                         </td>,
-                        <td>{item.name}</td>,
+                        <td className="catalog-title-cell">
+                          <div className="book-title">
+                            <BookCover
+                              book={{
+                                eplId: item.eplId,
+                                title: item.name,
+                                coverUrl: null,
+                                coverAvailable: null,
+                              }}
+                            />
+                            <span>{item.name}</span>
+                          </div>
+                        </td>,
                         <td>{revision(item.revision)}</td>,
                         <td>
                           <span className="badge">

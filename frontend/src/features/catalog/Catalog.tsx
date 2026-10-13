@@ -160,21 +160,6 @@ export function Catalog() {
               variant="subtle"
               size="compact-sm"
               fw={400}
-              disabled={!pageIds.length || result.isFetching}
-              onClick={() =>
-                selection.toggle(pageIds, selectedOnPage !== pageIds.length)
-              }
-            >
-              {t(
-                pageIds.length > 0 && selectedOnPage === pageIds.length
-                  ? "selection.clearPage"
-                  : "selection.selectPage",
-              )}
-            </Button>
-            <Button
-              variant="subtle"
-              size="compact-sm"
-              fw={400}
               disabled={!result.data?.meta.totalItems || result.isFetching}
               onClick={selection.selectAll}
             >
