@@ -49,7 +49,7 @@ export function DownloadActions({
 }) {
   const { t } = useTranslation();
   const { can } = useAuth();
-  const { status, number } = useLocale();
+  const { status, revision } = useLocale();
   const cache = useQueryClient();
   const [removal, setRemoval] = useState(false);
   const [targets, setTargets] = useState<Targets>({ ids: [], rows: [] });
@@ -264,7 +264,7 @@ export function DownloadActions({
                   {t("filters.eplId")} {row.eplId ?? targets.eplId} ·{" "}
                 </>
               )}
-              {t("downloads.revision")} {number(row.revision)}{" "}
+              {t("downloads.revision")} {revision(row.revision)}{" "}
               <small className="hash-text">{row.hash}</small>
             </li>
           ))}
@@ -320,7 +320,7 @@ export function DownloadActions({
                     {t("filters.eplId")} {item.eplId} ·{" "}
                   </>
                 )}
-                {t("downloads.revision")} {number(item.revision ?? null)}
+                {t("downloads.revision")} {revision(item.revision ?? null)}
               </span>
               {" · "}
               <strong>

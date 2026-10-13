@@ -23,7 +23,29 @@ public class CalibreCatalogService {
     private final TransactionTemplate tx;
     private final Semaphore gate = new Semaphore(1);
     private final JsonMapper json = JsonMapper.builder().build();
-    public record Snapshot(String library, Instant syncedAt, long total, long identified) {}
+    public record Snapshot(String library, Instant syncedAt, long total, long identified,Boolean complete) {
+        public Snapshot(String library,Instant syncedAt,long total,long identified) {this(library,syncedAt,total,identified,true);}
+    }
+    public void observe(CalibreSettings.Connection connection,CalibreClient.Book book) {
+        if(!gate.tryAcquire()) throw new UserInputException("La biblioteca se está sincronizando; reanuda el trabajo para verificar el envío");
+        try {
+            tx.executeWithoutResult(s -> {
+                var current=settings.connection();
+                if(!connection.equals(current)) return; // A job may explicitly target another accessible library.
+                String authors=String.join(", ",book.authors());
+                if(book.title().length()>4096 || authors.length()>16384) throw new UserInputException("Los metadatos de Calibre superan el tamaño permitido");
+                var previous=snapshot();
+                var generations=jdbc.queryForList("SELECT generation FROM calibre_books WHERE active=true LIMIT 1",String.class);
+                String generation=generations.isEmpty()?UUID.randomUUID().toString():generations.getFirst();
+                jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES(?,?,true,?,?,?,?,?) ON CONFLICT(generation,calibre_id) DO UPDATE SET epl_id=excluded.epl_id,revision=excluded.revision,title=excluded.title,authors=excluded.authors",
+                    generation+":"+book.calibreId(),generation,book.calibreId(),book.eplId(),book.revision()==null?null:book.revision().doubleValue(),book.title(),authors);
+                long total=jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Long.class);
+                long identified=jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true AND epl_id IS NOT NULL",Long.class);
+                var value=new Snapshot(connection.library(),previous==null?Instant.now():previous.syncedAt(),total,identified,previous!=null && !Boolean.FALSE.equals(previous.complete()));
+                jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value",KEY,json.writeValueAsString(value));
+            });
+        } finally {gate.release();}
+    }
     public CalibreCatalogService(JdbcTemplate jdbc, CalibreSettings settings, CalibreClient client, PlatformTransactionManager manager) {
         this.jdbc=jdbc; this.settings=settings; this.client=client; this.tx=new TransactionTemplate(manager);
         // Interrupted staging generations have no public references.

@@ -10,7 +10,7 @@ import { type CalibreBook } from "./CalibreTable";
 import { type Page } from "../downloads/shared";
 export function OpenInCalibre({ book }: { book: Book }) {
   const { t } = useTranslation();
-  const { number } = useLocale();
+  const { revision } = useLocale();
   const [opened, setOpened] = useState(false),
     [page, setPage] = useState(0);
   const copies = useQuery({
@@ -59,7 +59,8 @@ export function OpenInCalibre({ book }: { book: Book }) {
                 rel="noopener noreferrer"
               >
                 {t("calibre.copyLabel", {
-                  revision: item.revision == null ? "—" : number(item.revision),
+                  revision:
+                    item.revision == null ? "—" : revision(item.revision),
                   id: item.calibreId,
                 })}
               </Menu.Item>

@@ -93,7 +93,7 @@ public class AccountStore {
                 var p = Permission.valueOf(r.getString(1));
                 if (r.getString(2).equals("DENY")) permissions.remove(p); else permissions.add(p);
             },id);
-        if (permissions.contains(Permission.CALIBRE_SYNC) || permissions.contains(Permission.CALIBRE_FILES_READ)) permissions.add(Permission.CALIBRE_READ);
+        if (permissions.contains(Permission.CALIBRE_SYNC) || permissions.contains(Permission.CALIBRE_FILES_READ) || permissions.contains(Permission.CALIBRE_SEND) || permissions.contains(Permission.CALIBRE_JOBS_MANAGE)) permissions.add(Permission.CALIBRE_READ);
         return new Account(a.id(),a.username(),a.email(),a.role(),a.status(),a.mustChangePassword(),a.temporaryExpiresAt(),a.securityVersion(),Set.copyOf(permissions),null);
     }
     public Account authenticate(String username, String password) {

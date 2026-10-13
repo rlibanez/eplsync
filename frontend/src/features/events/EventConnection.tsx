@@ -119,6 +119,11 @@ export function EventConnection() {
                   "download-summary",
                   "catalog",
                   "book",
+                  "calibre-jobs",
+                  "calibre-job",
+                  "calibre-job-items",
+                  "calibre-library",
+                  "calibre-snapshot",
                 ];
         keys.forEach((key) => {
           void cache.invalidateQueries({ queryKey: [key] });

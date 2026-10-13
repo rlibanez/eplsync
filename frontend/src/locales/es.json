@@ -1,4 +1,8 @@
 {
+  "jobReport": {
+    "work": "Trabajo",
+    "submission": "Envío"
+  },
   "suggestions": {
     "loading": "Buscando sugerencias…",
     "empty": "Sin sugerencias. Puedes buscar el texto escrito.",
@@ -43,7 +47,7 @@
     "downloads": "Descargas",
     "downloadState": "Estado",
     "send": "Enviar",
-    "jobs": "Trabajos",
+    "jobs": "Trabajos de descargas",
     "backToTop": "Subir",
     "foldShort": "Plegar",
     "updates": "Actualizaciones"
@@ -915,7 +919,10 @@
       "REFRESH_DOWNLOADS": "Actualizar estados de descargas",
       "DELETE_DOWNLOAD_HISTORY": "Eliminar historial de descargas",
       "DELETE_DOWNLOADS": "Eliminar del cliente",
-      "CLEANUP": "Limpiar revisiones anteriores"
+      "CLEANUP": "Limpiar revisiones anteriores",
+      "CALIBRE_SEND": "Envío a Calibre",
+      "CALIBRE_SEND_FILE": "Enviar EPUB a Calibre",
+      "CALIBRE_JOB_CONTROL": "Controlar trabajo de Calibre"
     },
     "fields": {
       "policy": "Política de borrado",
@@ -1196,7 +1203,9 @@
       "CALIBRE_READ": "Consultar biblioteca de Calibre",
       "CALIBRE_SYNC": "Sincronizar biblioteca de Calibre",
       "CALIBRE_FILES_READ": "Descargar EPUB de Calibre",
-      "DOWNLOADS_FILES_READ": "Descargar archivos EPUB"
+      "DOWNLOADS_FILES_READ": "Descargar archivos EPUB",
+      "CALIBRE_SEND": "Enviar EPUB a Calibre",
+      "CALIBRE_JOBS_MANAGE": "Gestionar trabajos de Calibre"
     },
     "statuses": {
       "PENDING": "Pendiente de aprobación",
@@ -1415,5 +1424,44 @@
     "choose": "Selecciona el archivo que quieres descargar.",
     "download": "Descargar",
     "selectRecord": "Seleccionar EPL ID {{id}} (r{{revision}})"
+  },
+  "calibreSend": {
+    "title": "Enviar a Calibre",
+    "help": "Elige la biblioteca y los EPUB que quieres enviar. Los archivos originales se conservan.",
+    "files": "Archivos EPUB",
+    "file": "Archivo",
+    "duplicates": "Se omiten las revisiones que ya existen en Calibre. Las revisiones diferentes se añaden como copias independientes.",
+    "created": "Trabajo de envío a Calibre creado",
+    "failed": "No se pudo completar la operación con Calibre",
+    "jobs": "Trabajos de Calibre",
+    "jobsCount": "trabajos",
+    "jobsHelp": "Gestionan los envíos de EPUB a Calibre. Pausar o cancelar no interrumpe un archivo que ya se está enviando.",
+    "job": "Trabajo de Calibre",
+    "accepted": "Enviados",
+    "skipped": "Ya existentes",
+    "failedCount": "Errores",
+    "uncertain": "Sin confirmar",
+    "verify": "Verificar envíos",
+    "cancelHelp": "Se cancelarán los archivos pendientes. Un envío en curso podrá finalizar y se registrará su resultado. Los libros ya añadidos a Calibre se conservan.",
+    "back": "Volver a los trabajos",
+    "report": "Informe del trabajo",
+    "progress": "Progreso",
+    "position": "Orden de envío",
+    "partial": "La copia local contiene los libros consultados durante los envíos. Sincroniza la biblioteca para obtener el listado completo.",
+    "states": {
+      "QUEUED": "En cola",
+      "RUNNING": "En ejecución",
+      "PAUSED": "Pausado",
+      "COMPLETED": "Terminado",
+      "CANCELLED": "Cancelado",
+      "PENDING": "Pendiente",
+      "SENDING": "Enviando",
+      "ACCEPTED": "Enviado",
+      "SKIPPED": "Ya existe",
+      "FAILED": "Error",
+      "UNCERTAIN": "Sin confirmar"
+    },
+    "cancel": "Cancelar",
+    "detail": "Detalle"
   }
 }

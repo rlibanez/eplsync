@@ -40,6 +40,7 @@ class DatabaseResetTests {
     @Autowired PlatformTransactionManager manager;
     @Autowired BulkStore bulk;
     @Autowired com.rlibanez.eplsync.settings.CalibreCatalogService calibre;
+    @Autowired com.rlibanez.eplsync.settings.CalibreTransfers calibreTransfers;
     @Autowired DownloadTrackingService tracking;
     TransactionTemplate tx;
     String csv;
@@ -119,6 +120,7 @@ class DatabaseResetTests {
         when(provider.getIfAvailable()).thenReturn(worker);
         var guarded = new DatabaseResetService(bulk,provider,tracking,em,manager,new com.rlibanez.eplsync.service.CatalogOperationGate(new com.rlibanez.eplsync.config.CatalogImportProperties()));
         org.springframework.test.util.ReflectionTestUtils.setField(guarded,"calibre",calibre);
+        org.springframework.test.util.ReflectionTestUtils.setField(guarded,"calibreTransfers",calibreTransfers);
         when(worker.hasInFlightSends()).thenReturn(true);
         assertThatThrownBy(guarded::reset).isInstanceOf(TorrentOperationException.class); assertRows(1);
         verify(worker,never()).clearIdleState();

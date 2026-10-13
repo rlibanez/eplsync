@@ -10,6 +10,8 @@ export function RouteAccess({ children }: { children: ReactNode }) {
   let permission: Permission | undefined;
   if (pathname.startsWith("/catalog") || pathname.startsWith("/directory"))
     permission = "CATALOG_READ";
+  else if (pathname.startsWith("/calibre/jobs") && !auth.can("CALIBRE_SEND"))
+    permission = "CALIBRE_JOBS_MANAGE";
   else if (pathname.startsWith("/calibre")) permission = "CALIBRE_READ";
   else if (pathname === "/downloads/updates" && !auth.can("CATALOG_READ"))
     permission = "CATALOG_READ";

@@ -42,6 +42,11 @@ Los permisos de un usuario normal permiten controlar:
 | `TORRENT_JOBS_MANAGE` | Consultar y controlar trabajos de envío. |
 | `TORRENT_CLEANUP` | Eliminar torrents del cliente. |
 | `TORRENT_FILES_DELETE` | Eliminar también sus archivos; requiere permiso de limpieza. |
+| `CALIBRE_READ` | Consultar la biblioteca de Calibre. |
+| `CALIBRE_SYNC` | Sincronizar su copia local; implica consulta. |
+| `CALIBRE_FILES_READ` | Descargar EPUB de Calibre; implica consulta. |
+| `CALIBRE_SEND` | Enviar EPUB a Calibre; implica consulta y requiere además `DOWNLOADS_FILES_READ`. |
+| `CALIBRE_JOBS_MANAGE` | Consultar y controlar los trabajos de Calibre; implica consulta. |
 | `DOWNLOADS_DELETE` | Eliminar registros del historial de EPL Sync. |
 | `CATALOG_IMPORT` | Previsualizar e importar el catálogo. |
 | `CATALOG_DELETE` | Revisar y eliminar libros ausentes del catálogo importado. |

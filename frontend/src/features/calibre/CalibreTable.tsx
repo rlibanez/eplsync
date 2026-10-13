@@ -60,7 +60,7 @@ export function CalibreTable({
 }) {
   const { t } = useTranslation();
   const auth = useAuth();
-  const { number } = useLocale();
+  const { revision } = useLocale();
   const selectable =
     auth.can("CALIBRE_FILES_READ") && selected !== undefined && !!onSelection;
   return (
@@ -185,12 +185,12 @@ export function CalibreTable({
                   </td>,
                   <td>{book.authors || "—"}</td>,
                   <td>
-                    {book.revision == null ? "—" : number(book.revision)}
+                    {book.revision == null ? "—" : revision(book.revision)}
                   </td>,
                   <td>
                     {book.catalogRevision == null
                       ? "—"
-                      : number(book.catalogRevision)}
+                      : revision(book.catalogRevision)}
                   </td>,
                   <td>{t(`calibre.filter.${book.comparison}`)}</td>,
                   <td>{t(`calibre.presenceValues.${book.presence}`)}</td>,

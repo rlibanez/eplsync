@@ -7,7 +7,14 @@ import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { CircleStop } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Alert, Button, Select, MultiSelect, Progress, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Select,
+  MultiSelect,
+  Progress,
+  TextInput,
+} from "@mantine/core";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -289,7 +296,7 @@ interface Item {
 export function JobDetail() {
   const { id } = useParams();
   const { t } = useTranslation();
-  const { date, status, number } = useLocale();
+  const { date, status, number, revision } = useLocale();
   const cache = useQueryClient();
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
@@ -427,7 +434,7 @@ export function JobDetail() {
                 <div className="job-report-groups">
                   {[
                     {
-                      title: "downloads.job",
+                      title: "jobReport.work",
                       values: [
                         [
                           "downloads.type",
@@ -444,7 +451,7 @@ export function JobDetail() {
                       ],
                     },
                     {
-                      title: "downloads.progress",
+                      title: "jobReport.submission",
                       values: (
                         [
                           "selectedBooks",
@@ -582,7 +589,9 @@ export function JobDetail() {
                         </td>,
                         <td className="hash-text">{item.hash}</td>,
                         <td>
-                          {item.revision == null ? "—" : number(item.revision)}
+                          {item.revision == null
+                            ? "—"
+                            : revision(item.revision)}
                         </td>,
                         <td>{status(item.status)}</td>,
                         <td>{item.attempts}</td>,

@@ -122,6 +122,20 @@ export const router = createBrowserRouter([
         }),
       },
       {
+        path: "/calibre/jobs",
+        lazy: async () => ({
+          Component: (await import("../features/calibre/CalibreJobs"))
+            .CalibreJobs,
+        }),
+      },
+      {
+        path: "/calibre/jobs/:id",
+        lazy: async () => ({
+          Component: (await import("../features/calibre/CalibreJobs"))
+            .CalibreJobDetail,
+        }),
+      },
+      {
         path: "/calibre",
         lazy: async () => ({
           Component: (await import("../features/calibre/CalibreLibrary"))

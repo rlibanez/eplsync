@@ -144,7 +144,7 @@ public class EpubFiles {
             }
         }
         try {
-            if(channel.size()!=file.size()) throw new IOException("File size changed");
+            if(channel.size()<=0) throw new IOException("Empty file");
             return new Opened(relative.getFileName().toString(),channel.size(),Channels.newInputStream(channel));
         } catch(IOException | RuntimeException ex) { channel.close(); throw ex; }
     }

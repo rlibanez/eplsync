@@ -1,4 +1,8 @@
 {
+  "jobReport": {
+    "work": "Job",
+    "submission": "Submission"
+  },
   "suggestions": {
     "loading": "Loading suggestions…",
     "empty": "No suggestions. You can search for your own text.",
@@ -43,7 +47,7 @@
     "downloads": "Downloads",
     "downloadState": "Status",
     "send": "Send",
-    "jobs": "Jobs",
+    "jobs": "Download jobs",
     "backToTop": "Back to top",
     "foldShort": "Collapse",
     "updates": "Updates"
@@ -915,7 +919,10 @@
       "REFRESH_DOWNLOADS": "Refresh download statuses",
       "DELETE_DOWNLOAD_HISTORY": "Delete download history",
       "DELETE_DOWNLOADS": "Remove from client",
-      "CLEANUP": "Clean up previous revisions"
+      "CLEANUP": "Clean up previous revisions",
+      "CALIBRE_SEND": "Calibre transfer",
+      "CALIBRE_SEND_FILE": "Send EPUB to Calibre",
+      "CALIBRE_JOB_CONTROL": "Control Calibre job"
     },
     "fields": {
       "policy": "Deletion policy",
@@ -1196,7 +1203,9 @@
       "CALIBRE_READ": "View Calibre library",
       "CALIBRE_SYNC": "Synchronize Calibre library",
       "CALIBRE_FILES_READ": "Download EPUBs from Calibre",
-      "DOWNLOADS_FILES_READ": "Download EPUB files"
+      "DOWNLOADS_FILES_READ": "Download EPUB files",
+      "CALIBRE_SEND": "Send EPUB to Calibre",
+      "CALIBRE_JOBS_MANAGE": "Manage Calibre jobs"
     },
     "statuses": {
       "PENDING": "Pending approval",
@@ -1415,5 +1424,44 @@
     "choose": "Choose the file to download.",
     "download": "Download",
     "selectRecord": "Select EPL ID {{id}} (r{{revision}})"
+  },
+  "calibreSend": {
+    "title": "Send to Calibre",
+    "help": "Choose the library and EPUB files to send. Original files are preserved.",
+    "files": "EPUB files",
+    "file": "File",
+    "duplicates": "Revisions already in Calibre are skipped. Different revisions are added as separate copies.",
+    "created": "Calibre transfer job created",
+    "failed": "The Calibre operation could not be completed",
+    "jobs": "Calibre jobs",
+    "jobsCount": "jobs",
+    "jobsHelp": "Manage EPUB transfers to Calibre. Pausing or cancelling does not interrupt a file already being sent.",
+    "job": "Calibre job",
+    "accepted": "Sent",
+    "skipped": "Already present",
+    "failedCount": "Errors",
+    "uncertain": "Unconfirmed",
+    "verify": "Verify transfers",
+    "cancelHelp": "Pending files will be cancelled. An in-flight transfer may finish and its result will be recorded. Books already added to Calibre are preserved.",
+    "back": "Back to jobs",
+    "report": "Job report",
+    "progress": "Progress",
+    "position": "Transfer order",
+    "partial": "The local snapshot contains books checked during transfers. Synchronize the library to retrieve the complete listing.",
+    "states": {
+      "QUEUED": "Queued",
+      "RUNNING": "Running",
+      "PAUSED": "Paused",
+      "COMPLETED": "Completed",
+      "CANCELLED": "Cancelled",
+      "PENDING": "Pending",
+      "SENDING": "Sending",
+      "ACCEPTED": "Sent",
+      "SKIPPED": "Already present",
+      "FAILED": "Error",
+      "UNCERTAIN": "Unconfirmed"
+    },
+    "cancel": "Cancel",
+    "detail": "Details"
   }
 }

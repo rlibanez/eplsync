@@ -1,3 +1,5 @@
+import { SelectAllRows } from "../../components/SelectAllRows";
+import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
 import { DownloadActions } from "./DownloadActions";
 import { TableAction } from "../../components/TableAction";
 import { RefreshCw, Trash2 } from "lucide-react";
@@ -61,7 +63,7 @@ export function DownloadState() {
 function DownloadHistory() {
   const { t } = useTranslation();
   const auth = useAuth();
-  const { date, number, status } = useLocale();
+  const { date, status, revision } = useLocale();
   const cache = useQueryClient();
   const session = useSyncSession();
   const syncPending = useIsMutating({ mutationKey: ["torrent-sync"] }) > 0;
@@ -71,12 +73,13 @@ function DownloadHistory() {
   const [size, setSize] = useState(20);
   const pageSizeChoice = usePageSizeChoice(size);
   const selectable =
+    (auth.can("CALIBRE_SEND") && auth.can("DOWNLOADS_FILES_READ")) ||
     auth.can("DOWNLOADS_FILES_READ") ||
     auth.can("TORRENT_SYNC") ||
     auth.can("DOWNLOADS_DELETE") ||
     auth.can("TORRENT_CLEANUP");
   const [selected, setSelected] = useState<string[]>([]);
-  useEffect(() => setSelected([]), [page, size, filters]);
+  useEffect(() => setSelected([]), [filters]);
   useEffect(() => {
     if (draftEplId === filters.eplId) return;
     if (draftEplId !== "" && !/^[1-9]\d*$/.test(draftEplId)) return;
@@ -105,9 +108,6 @@ function DownloadHistory() {
     if (result.data) {
       setPage((current) =>
         Math.min(current, Math.max(0, result.data.meta.totalPages - 1)),
-      );
-      setSelected((previous) =>
-        previous.filter((id) => result.data.items.some((row) => row.id === id)),
       );
     }
   }, [result.data]);
@@ -172,249 +172,272 @@ function DownloadHistory() {
     },
   );
   return (
-    <>
-      <div className="page-heading">
-        <h1>{t("downloads.stateTitle")}</h1>
-        {auth.can("TORRENT_SYNC") && (
-          <div className="action-row">
-            <Button
-              variant="default"
-              disabled={syncPending}
-              loading={sync.isPending && sync.variables === true}
-              onClick={() => sync.mutate(true)}
-            >
-              {t("syncReport.previewAction")}
-            </Button>
-            <Button
-              disabled={syncPending}
-              loading={sync.isPending && sync.variables === false}
-              onClick={() => sync.mutate(false)}
-            >
-              {t("downloads.sync")}
-            </Button>
-          </div>
-        )}
-      </div>
-      <p className="muted">{t("downloads.localNote")}</p>
-      {session.report && (
-        <SyncReport report={session.report} onClose={session.close} />
-      )}
-      <form
-        className="filters jobs-filters"
-        onSubmit={(e) => e.preventDefault()}
-      >
-        <TextInput
-          name="eplId"
-          label={t("filters.eplId")}
-          type="number"
-          min={1}
-          value={draftEplId}
-          onChange={(e) => setDraftEplId(e.currentTarget.value)}
-        />
-        <MultiSelect
-          searchable
-          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
-          label={t("downloads.status")}
-          clearable
-          value={filters.status ? filters.status.split(",") : []}
-          data={downloadStates.map((value) => ({
-            value,
-            label: status(value),
-          }))}
-          onChange={(values) => filter("status", values.join(","))}
-        />
-        <Select
-          label={t("downloads.origin")}
-          value={filters.origin || null}
-          clearable
-          data={[
-            { value: "EPLSYNC", label: "EPL Sync" },
-            { value: "DISCOVERED", label: t("downloads.discovered") },
-          ]}
-          onChange={(v) => filter("origin", v ?? "")}
-        />
-        <Select
-          label={t("downloads.completed")}
-          value={filters.completed || null}
-          clearable
-          data={[
-            { value: "true", label: t("downloads.yes") },
-            { value: "false", label: t("downloads.no") },
-          ]}
-          onChange={(v) => filter("completed", v ?? "")}
-        />
-        <Button
-          type="button"
-          variant="subtle"
-          onClick={() => {
-            setDraftEplId("");
-            setFilters(initialFilters);
-            setPage(0);
-            setSize(20);
-          }}
-        >
-          {t("catalog.clear")}
-        </Button>
-      </form>
-      <section className="panel">
-        <div className="table-toolbar">
-          <div className="catalog-table-controls">{columns.controls}</div>
-        </div>
-        <DownloadActions
-          selected={selected}
-          rows={result.data?.items ?? []}
-          onDone={(ids) =>
-            setSelected((previous) =>
-              previous.filter((id) => !ids.includes(id)),
-            )
-          }
-          extraActions={
-            auth.can("DOWNLOADS_FILES_READ") && (
-              <EpubBatchDownload selected={selected} toolbar={false} />
-            )
-          }
-        >
-          {({ pending, refreshingIds, refreshRow, removeRow }) => (
-            <>
-              {result.isPending ? (
-                <Loading />
-              ) : result.isError ? (
-                <Failure error={result.error} retry={() => result.refetch()} />
-              ) : (
-                <>
-                  <div className="table-scroll">
-                    <table
-                      className="download-record-table"
-                      style={{ width: columns.width }}
-                    >
-                      {columns.colgroup}
-                      <thead>
-                        {columns.selectionHeadings(
-                          selectable && (
-                            <th className="history-selection">
-                              <Checkbox
-                                aria-label={t("historyActions.selectPage")}
-                                checked={
-                                  result.data.items.length > 0 &&
-                                  result.data.items.every((row) =>
-                                    selected.includes(row.id),
-                                  )
-                                }
-                                indeterminate={
-                                  selected.length > 0 &&
-                                  !result.data.items.every((row) =>
-                                    selected.includes(row.id),
-                                  )
-                                }
-                                disabled={!result.data.items.length}
-                                onChange={(event) =>
-                                  setSelected(
-                                    event.currentTarget.checked
-                                      ? result.data.items.map((row) => row.id)
-                                      : [],
-                                  )
-                                }
-                              />
-                            </th>
-                          ),
-                        )}
-                      </thead>
-                      <tbody>
-                        {result.data.items.map((d) => (
-                          <tr key={d.id}>
-                            {selectable && (
-                              <td className="history-selection">
-                                <Checkbox
-                                  aria-label={t("epubDownload.selectRecord", {
-                                    id: d.eplId,
-                                    revision: number(d.revision),
-                                  })}
-                                  checked={selected.includes(d.id)}
-                                  onChange={(event) => {
-                                    const checked = event.currentTarget.checked;
-                                    setSelected((previous) =>
-                                      checked
-                                        ? [...previous, d.id]
-                                        : previous.filter((id) => id !== d.id),
-                                    );
-                                  }}
-                                />
-                              </td>
-                            )}
-                            {columns.cells([
-                              <td>
-                                <Link to={`/catalog/${d.eplId}`}>
-                                  {d.eplId}
-                                </Link>
-                              </td>,
-                              <td className="catalog-title-cell">
-                                <DownloadBook book={d} />
-                              </td>,
-                              <td>
-                                <small className="hash-text">{d.hash}</small>
-                              </td>,
-                              <td>{number(d.revision)}</td>,
-                              <td>
-                                <span className="badge">
-                                  {status(d.status)}
-                                </span>
-                              </td>,
-                              <td title={d.clientInstanceId}>{d.client}</td>,
-                              <td>{d.origin}</td>,
-                              <td>{date(d.lastCheckedAt)}</td>,
-                              <td>{date(d.completedAt)}</td>,
-                              <td>{d.lastError || "—"}</td>,
-                              <td>
-                                <Group gap={4} wrap="nowrap">
-                                  <EpubDownload id={d.id} />
-                                  {auth.can("TORRENT_SYNC") && (
-                                    <TableAction
-                                      label={t("historyActions.refresh")}
-                                      disabled={pending}
-                                      loading={refreshingIds.includes(d.id)}
-                                      onClick={() => refreshRow(d)}
-                                    >
-                                      <RefreshCw size={16} aria-hidden="true" />
-                                    </TableAction>
-                                  )}
-                                  {(auth.can("DOWNLOADS_DELETE") ||
-                                    auth.can("TORRENT_CLEANUP")) && (
-                                    <TableAction
-                                      label={t("historyActions.delete")}
-                                      disabled={pending}
-                                      onClick={() => removeRow(d)}
-                                    >
-                                      <Trash2 size={16} aria-hidden="true" />
-                                    </TableAction>
-                                  )}
-                                </Group>
-                              </td>,
-                            ])}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {!result.data.items.length && (
-                    <p className="empty-list">{t("downloads.empty")}</p>
-                  )}
-                </>
-              )}
-            </>
+    <CalibreSendProvider>
+      <>
+        <div className="page-heading">
+          <h1>{t("downloads.stateTitle")}</h1>
+          {auth.can("TORRENT_SYNC") && (
+            <div className="action-row">
+              <Button
+                variant="default"
+                disabled={syncPending}
+                loading={sync.isPending && sync.variables === true}
+                onClick={() => sync.mutate(true)}
+              >
+                {t("syncReport.previewAction")}
+              </Button>
+              <Button
+                disabled={syncPending}
+                loading={sync.isPending && sync.variables === false}
+                onClick={() => sync.mutate(false)}
+              >
+                {t("downloads.sync")}
+              </Button>
+            </div>
           )}
-        </DownloadActions>
-        <Paging
-          choice={pageSizeChoice}
-          meta={result.data?.meta}
-          page={page}
-          size={size}
-          onPage={setPage}
-          onSize={(n) => {
-            setSize(n);
-            setPage(0);
-          }}
-        />
-      </section>
-    </>
+        </div>
+        <p className="muted">{t("downloads.localNote")}</p>
+        {session.report && (
+          <SyncReport report={session.report} onClose={session.close} />
+        )}
+        <form
+          className="filters jobs-filters"
+          onSubmit={(e) => e.preventDefault()}
+        >
+          <TextInput
+            name="eplId"
+            label={t("filters.eplId")}
+            type="number"
+            min={1}
+            value={draftEplId}
+            onChange={(e) => setDraftEplId(e.currentTarget.value)}
+          />
+          <MultiSelect
+            searchable
+            styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
+            label={t("downloads.status")}
+            clearable
+            value={filters.status ? filters.status.split(",") : []}
+            data={downloadStates.map((value) => ({
+              value,
+              label: status(value),
+            }))}
+            onChange={(values) => filter("status", values.join(","))}
+          />
+          <Select
+            label={t("downloads.origin")}
+            value={filters.origin || null}
+            clearable
+            data={[
+              { value: "EPLSYNC", label: "EPL Sync" },
+              { value: "DISCOVERED", label: t("downloads.discovered") },
+            ]}
+            onChange={(v) => filter("origin", v ?? "")}
+          />
+          <Select
+            label={t("downloads.completed")}
+            value={filters.completed || null}
+            clearable
+            data={[
+              { value: "true", label: t("downloads.yes") },
+              { value: "false", label: t("downloads.no") },
+            ]}
+            onChange={(v) => filter("completed", v ?? "")}
+          />
+          <Button
+            type="button"
+            variant="subtle"
+            onClick={() => {
+              setDraftEplId("");
+              setFilters(initialFilters);
+              setPage(0);
+              setSize(20);
+            }}
+          >
+            {t("catalog.clear")}
+          </Button>
+        </form>
+        <section className="panel">
+          <div className="table-toolbar">
+            {selectable && (
+              <SelectAllRows<Download, string>
+                url={`/torrent/downloads?${new URLSearchParams([...params].filter(([key]) => key !== "page" && key !== "size"))}`}
+                total={result.data?.meta.totalItems ?? 0}
+                identify={(row) => row.id}
+                onSelect={setSelected}
+              />
+            )}
+            <div className="catalog-table-controls">{columns.controls}</div>
+          </div>
+          <DownloadActions
+            selected={selected}
+            rows={result.data?.items ?? []}
+            onDone={(ids) =>
+              setSelected((previous) =>
+                previous.filter((id) => !ids.includes(id)),
+              )
+            }
+            extraActions={
+              <>
+                <SendToCalibre ids={selected} />
+                {auth.can("DOWNLOADS_FILES_READ") && (
+                  <EpubBatchDownload selected={selected} toolbar={false} />
+                )}
+              </>
+            }
+          >
+            {({ pending, refreshingIds, refreshRow, removeRow }) => (
+              <>
+                {result.isPending ? (
+                  <Loading />
+                ) : result.isError ? (
+                  <Failure
+                    error={result.error}
+                    retry={() => result.refetch()}
+                  />
+                ) : (
+                  <>
+                    <div className="table-scroll">
+                      <table
+                        className="download-record-table"
+                        style={{ width: columns.width }}
+                      >
+                        {columns.colgroup}
+                        <thead>
+                          {columns.selectionHeadings(
+                            selectable && (
+                              <th className="history-selection">
+                                <Checkbox
+                                  aria-label={t("historyActions.selectPage")}
+                                  checked={
+                                    result.data.items.length > 0 &&
+                                    result.data.items.every((row) =>
+                                      selected.includes(row.id),
+                                    )
+                                  }
+                                  indeterminate={
+                                    selected.length > 0 &&
+                                    !result.data.items.every((row) =>
+                                      selected.includes(row.id),
+                                    )
+                                  }
+                                  disabled={!result.data.items.length}
+                                  onChange={(event) =>
+                                    setSelected(
+                                      event.currentTarget.checked
+                                        ? result.data.items.map((row) => row.id)
+                                        : [],
+                                    )
+                                  }
+                                />
+                              </th>
+                            ),
+                          )}
+                        </thead>
+                        <tbody>
+                          {result.data.items.map((d) => (
+                            <tr key={d.id}>
+                              {selectable && (
+                                <td className="history-selection">
+                                  <Checkbox
+                                    aria-label={t("epubDownload.selectRecord", {
+                                      id: d.eplId,
+                                      revision: revision(d.revision),
+                                    })}
+                                    checked={selected.includes(d.id)}
+                                    onChange={(event) => {
+                                      const checked =
+                                        event.currentTarget.checked;
+                                      setSelected((previous) =>
+                                        checked
+                                          ? [...previous, d.id]
+                                          : previous.filter(
+                                              (id) => id !== d.id,
+                                            ),
+                                      );
+                                    }}
+                                  />
+                                </td>
+                              )}
+                              {columns.cells([
+                                <td>
+                                  <Link to={`/catalog/${d.eplId}`}>
+                                    {d.eplId}
+                                  </Link>
+                                </td>,
+                                <td className="catalog-title-cell">
+                                  <DownloadBook book={d} />
+                                </td>,
+                                <td>
+                                  <small className="hash-text">{d.hash}</small>
+                                </td>,
+                                <td>{revision(d.revision)}</td>,
+                                <td>
+                                  <span className="badge">
+                                    {status(d.status)}
+                                  </span>
+                                </td>,
+                                <td title={d.clientInstanceId}>{d.client}</td>,
+                                <td>{d.origin}</td>,
+                                <td>{date(d.lastCheckedAt)}</td>,
+                                <td>{date(d.completedAt)}</td>,
+                                <td>{d.lastError || "—"}</td>,
+                                <td>
+                                  <Group gap={4} wrap="nowrap">
+                                    <EpubDownload id={d.id} />
+                                    <SendToCalibre ids={[d.id]} inline />
+                                    {auth.can("TORRENT_SYNC") && (
+                                      <TableAction
+                                        label={t("historyActions.refresh")}
+                                        disabled={pending}
+                                        loading={refreshingIds.includes(d.id)}
+                                        onClick={() => refreshRow(d)}
+                                      >
+                                        <RefreshCw
+                                          size={16}
+                                          aria-hidden="true"
+                                        />
+                                      </TableAction>
+                                    )}
+                                    {(auth.can("DOWNLOADS_DELETE") ||
+                                      auth.can("TORRENT_CLEANUP")) && (
+                                      <TableAction
+                                        label={t("historyActions.delete")}
+                                        disabled={pending}
+                                        onClick={() => removeRow(d)}
+                                      >
+                                        <Trash2 size={16} aria-hidden="true" />
+                                      </TableAction>
+                                    )}
+                                  </Group>
+                                </td>,
+                              ])}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {!result.data.items.length && (
+                      <p className="empty-list">{t("downloads.empty")}</p>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </DownloadActions>
+          <Paging
+            choice={pageSizeChoice}
+            meta={result.data?.meta}
+            page={page}
+            size={size}
+            onPage={setPage}
+            onSize={(n) => {
+              setSize(n);
+              setPage(0);
+            }}
+          />
+        </section>
+      </>
+    </CalibreSendProvider>
   );
 }

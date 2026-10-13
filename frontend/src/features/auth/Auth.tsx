@@ -23,6 +23,8 @@ import {
 } from "./sessionChanges";
 import { authRequest, resetCsrf, secureFetch } from "./transport";
 export type Permission =
+  | "CALIBRE_SEND"
+  | "CALIBRE_JOBS_MANAGE"
   | "CALIBRE_READ"
   | "CALIBRE_SYNC"
   | "CALIBRE_FILES_READ"

@@ -1,0 +1,467 @@
+import { useEffect, useState } from "react";
+import { Alert, Button, Group, Progress, Select } from "@mantine/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { Pause, Play, X } from "lucide-react";
+import { get } from "../../api/catalog";
+import { useAuth } from "../auth/Auth";
+import { useLocale } from "../../locales/useLocale";
+import { AppModal, ModalActions } from "../../components/AppModal";
+import { Loading, Failure } from "../../components/Feedback";
+import { usePageSizeChoice } from "../../components/PageSizeSelect";
+import { useDownloadColumns } from "../downloads/DownloadTable";
+import { sortQuery } from "../downloads/TableControls";
+import { Paging, post, type Page } from "../downloads/shared";
+
+type Job = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  username: string;
+  library: string;
+  state: string;
+  message: string | null;
+  total: number;
+  pending: number;
+  accepted: number;
+  skipped: number;
+  failed: number;
+  uncertain: number;
+};
+type Item = {
+  id: string;
+  recordId: string;
+  index: number;
+  name: string;
+  size: number;
+  eplId: number;
+  revision: string;
+  state: string;
+  calibreId: number | null;
+  message: string | null;
+};
+function Controls({ job }: { job: Job }) {
+  const { can } = useAuth();
+  const { t } = useTranslation();
+  const cache = useQueryClient();
+  const [cancel, setCancel] = useState(false);
+  const control = useMutation({
+    mutationFn: (command: string) =>
+      post<Job>(`/calibre/transfers/${job.id}/${command}`),
+    retry: false,
+    onSuccess: () => {
+      setCancel(false);
+      void cache.invalidateQueries({ queryKey: ["calibre-jobs"] });
+      void cache.invalidateQueries({ queryKey: ["calibre-job"] });
+      void cache.invalidateQueries({ queryKey: ["calibre-job-items"] });
+    },
+  });
+  if (!can("CALIBRE_JOBS_MANAGE")) return null;
+  return (
+    <>
+      <Group gap="xs">
+        {!["COMPLETED", "CANCELLED", "PAUSED"].includes(job.state) && (
+          <Button
+            variant="light"
+            size="xs"
+            leftSection={<Pause size={14} />}
+            disabled={control.isPending}
+            onClick={() => control.mutate("pause")}
+          >
+            {t("downloads.pause")}
+          </Button>
+        )}
+        {(job.state === "PAUSED" ||
+          (job.state === "CANCELLED" && job.uncertain > 0)) && (
+          <Button
+            variant="light"
+            size="xs"
+            leftSection={<Play size={14} />}
+            disabled={control.isPending}
+            onClick={() => control.mutate("resume")}
+          >
+            {t(job.uncertain ? "calibreSend.verify" : "downloads.resume")}
+          </Button>
+        )}
+        {!["COMPLETED", "CANCELLED"].includes(job.state) && (
+          <Button
+            variant="light"
+            color="red"
+            size="xs"
+            leftSection={<X size={14} />}
+            disabled={control.isPending}
+            onClick={() => setCancel(true)}
+          >
+            {t("calibreSend.cancel")}
+          </Button>
+        )}
+      </Group>
+      {control.isError && (
+        <Alert color="red" mt="sm">
+          {control.error.message || t("calibreSend.failed")}
+        </Alert>
+      )}
+      <AppModal
+        opened={cancel}
+        onClose={() => {
+          if (!control.isPending) setCancel(false);
+        }}
+        title={t("calibreSend.cancel")}
+        icon={X}
+      >
+        <p>{t("calibreSend.cancelHelp")}</p>
+        <ModalActions>
+          <Button
+            variant="default"
+            disabled={control.isPending}
+            onClick={() => setCancel(false)}
+          >
+            {t("common.close")}
+          </Button>
+          <Button
+            color="red"
+            loading={control.isPending}
+            onClick={() => control.mutate("cancel")}
+          >
+            {t("calibreSend.cancel")}
+          </Button>
+        </ModalActions>
+      </AppModal>
+    </>
+  );
+}
+export function CalibreJobs() {
+  const { t } = useTranslation();
+  const { date, number } = useLocale();
+  const [page, setPage] = useState(0),
+    [size, setSize] = useState(20),
+    [state, setState] = useState<string | null>(null),
+    [sort, setSort] = useState("createdAt,desc");
+  const choice = usePageSizeChoice(size);
+  const result = useQuery({
+    queryKey: ["calibre-jobs", page, size, state, sort],
+    queryFn: ({ signal }) =>
+      get<Page<Job>>(
+        `/calibre/transfers?page=${page}&size=${size}&state=${state ?? ""}&${sortQuery(sort)}`,
+        signal,
+      ),
+    retry: false,
+    refetchInterval: (query) => (query.state.status === "error" ? false : 5000),
+  });
+  const columns = useDownloadColumns(
+    "eplsync.calibre.jobs.columns",
+    [
+      { field: "createdAt", label: "downloads.createdAt", width: 200 },
+      { field: "username", label: "events.user", width: 180 },
+      { field: "library", label: "calibre.library", width: 180 },
+      { field: "state", label: "downloads.status", width: 180 },
+      { field: "total", label: "calibreSend.files", width: 100 },
+      { field: "accepted", label: "calibreSend.accepted", width: 100 },
+      { field: "failed", label: "calibreSend.failedCount", width: 100 },
+    ],
+    sort,
+    (value) => {
+      setSort(value);
+      setPage(0);
+    },
+    { defaults: "createdAt,desc" },
+  );
+  useEffect(() => {
+    if (result.data)
+      setPage((current) =>
+        Math.min(current, Math.max(0, result.data.meta.totalPages - 1)),
+      );
+  }, [result.data]);
+  return (
+    <section>
+      <h1>{t("calibreSend.jobs")}</h1>
+      <p>{t("calibreSend.jobsHelp")}</p>
+      <div className="filters jobs-filters">
+        <Select
+          label={t("downloads.status")}
+          value={state}
+          onChange={(value) => {
+            setState(value);
+            setPage(0);
+          }}
+          clearable
+          data={["QUEUED", "RUNNING", "PAUSED", "COMPLETED", "CANCELLED"].map(
+            (value) => ({ value, label: t(`calibreSend.states.${value}`) }),
+          )}
+        />
+      </div>
+      <section className="panel">
+        <div className="table-toolbar">
+          <span>
+            {result.data ? number(result.data.meta.totalItems) : ""}{" "}
+            {t("calibreSend.jobsCount")}
+          </span>
+          <div className="catalog-table-controls">{columns.controls}</div>
+        </div>
+        {result.isPending ? (
+          <Loading />
+        ) : result.isError ? (
+          <Failure error={result.error} retry={() => result.refetch()} />
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table
+                className="download-record-table"
+                style={{ width: columns.width }}
+              >
+                {columns.colgroup}
+                <thead>{columns.headings}</thead>
+                <tbody>
+                  {result.data.items.map((job) => (
+                    <tr key={job.id}>
+                      {columns.cells([
+                        <td>
+                          <Link to={`/calibre/jobs/${job.id}`}>
+                            {date(job.createdAt)}
+                          </Link>
+                        </td>,
+                        <td>{job.username}</td>,
+                        <td>{job.library}</td>,
+                        <td>
+                          <span className="badge">
+                            {t(`calibreSend.states.${job.state}`)}
+                          </span>
+                        </td>,
+                        <td>{number(job.total)}</td>,
+                        <td>{number(job.accepted)}</td>,
+                        <td>{number(job.failed)}</td>,
+                      ])}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Paging
+              choice={choice}
+              meta={result.data.meta}
+              page={page}
+              size={size}
+              onPage={setPage}
+              onSize={(value) => {
+                setSize(value);
+                setPage(0);
+              }}
+            />
+          </>
+        )}
+      </section>
+    </section>
+  );
+}
+export function CalibreJobDetail() {
+  const { id } = useParams();
+  const { t } = useTranslation();
+  const { can } = useAuth();
+  const { date, number, revision } = useLocale();
+  const cache = useQueryClient();
+  const [page, setPage] = useState(0),
+    [size, setSize] = useState(20),
+    [sort, setSort] = useState("position,asc");
+  const choice = usePageSizeChoice(size);
+  const job = useQuery({
+    queryKey: ["calibre-job", id],
+    queryFn: ({ signal }) => get<Job>(`/calibre/transfers/${id}`, signal),
+    retry: false,
+    refetchInterval: (query) => (query.state.status === "error" ? false : 3000),
+  });
+  const result = useQuery({
+    queryKey: ["calibre-job-items", id, page, size, sort],
+    queryFn: ({ signal }) =>
+      get<Page<Item>>(
+        `/calibre/transfers/${id}/items?page=${page}&size=${size}&${sortQuery(sort)}`,
+        signal,
+      ),
+    retry: false,
+    refetchInterval: (query) => (query.state.status === "error" ? false : 3000),
+  });
+  useEffect(() => {
+    if (job.data)
+      for (const key of ["calibre-library", "calibre-snapshot", "book"])
+        void cache.invalidateQueries({ queryKey: [key] });
+  }, [job.data?.updatedAt, cache]);
+  useEffect(() => {
+    if (result.data)
+      setPage((current) =>
+        Math.min(current, Math.max(0, result.data.meta.totalPages - 1)),
+      );
+  }, [result.data]);
+  const columns = useDownloadColumns(
+    "eplsync.calibre.job.items.columns",
+    [
+      { field: "eplId", label: "filters.eplId", width: 100 },
+      { field: "name", label: "calibreSend.file", width: 420 },
+      { field: "revision", label: "downloads.revision", width: 100 },
+      { field: "state", label: "downloads.status", width: 180 },
+      { field: "calibreId", label: "calibre.id", width: 100 },
+      {
+        field: "message",
+        label: "calibreSend.detail",
+        width: 360,
+      },
+    ],
+    sort,
+    (value) => {
+      setSort(value);
+      setPage(0);
+    },
+    {
+      defaults: "position,asc",
+      extraSort: [
+        { field: "position", label: "calibreSend.position", width: 100 },
+      ],
+    },
+  );
+  if (job.isPending) return <Loading />;
+  if (job.isError)
+    return <Failure error={job.error} retry={() => job.refetch()} />;
+  const value = job.data;
+  return (
+    <section>
+      <Link className="back-link" to="/calibre/jobs">
+        ← {t("calibreSend.back")}
+      </Link>
+      <h1>{t("calibreSend.job")}</h1>
+      <p className="hash-text">{id}</p>
+      <p className="muted">{t("calibreSend.jobsHelp")}</p>
+      <section className="panel settings-section job-report-panel">
+        {can("CALIBRE_JOBS_MANAGE") &&
+          (!["COMPLETED", "CANCELLED"].includes(value.state) ||
+            value.uncertain > 0) && (
+            <div className="job-controls-heading">
+              <div className="action-row">
+                <Controls job={value} />
+              </div>
+            </div>
+          )}
+        <details className="report-collapse">
+          <summary>
+            <span>{t("calibreSend.report")}</span>
+            <strong className="report-result">
+              {t(`calibreSend.states.${value.state}`)}
+            </strong>
+          </summary>
+          <div className="report-collapse-body">
+            <Progress
+              aria-label={t("calibreSend.progress")}
+              value={
+                value.total
+                  ? (100 * (value.accepted + value.skipped + value.failed)) /
+                    value.total
+                  : 0
+              }
+            />
+            <div className="job-report-groups">
+              {[
+                {
+                  title: "jobReport.work",
+                  values: [
+                    ["events.user", value.username],
+                    ["downloads.createdAt", date(value.createdAt)],
+                    ["downloads.updatedAt", date(value.updatedAt)],
+                    ["calibre.library", value.library],
+                  ],
+                },
+                {
+                  title: "jobReport.submission",
+                  values: [
+                    [
+                      "calibreSend.progress",
+                      `${number(value.accepted + value.skipped + value.failed)}/${number(value.total)}`,
+                    ],
+                    ["calibreSend.accepted", number(value.accepted)],
+                    ["calibreSend.skipped", number(value.skipped)],
+                    ["calibreSend.failedCount", number(value.failed)],
+                    ["calibreSend.uncertain", number(value.uncertain)],
+                  ],
+                },
+              ].map((group) => (
+                <section className="job-report-group" key={group.title}>
+                  <h3>{t(group.title)}</h3>
+                  <dl className="import-summary">
+                    {group.values.map(([label, content]) => (
+                      <div key={label}>
+                        <dt>{t(label)}</dt>
+                        <dd>{content}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
+            </div>
+          </div>
+        </details>
+      </section>
+      {value.message && (
+        <Alert color="yellow" mb="md">
+          {value.message}
+        </Alert>
+      )}
+      <section className="panel">
+        <div className="table-toolbar">
+          <span>{t("calibreSend.files")}</span>
+          <div className="catalog-table-controls">{columns.controls}</div>
+        </div>
+        {result.isPending ? (
+          <Loading />
+        ) : result.isError ? (
+          <Failure error={result.error} retry={() => result.refetch()} />
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table
+                className="download-record-table"
+                style={{ width: columns.width }}
+              >
+                {columns.colgroup}
+                <thead>{columns.headings}</thead>
+                <tbody>
+                  {result.data.items.map((item) => (
+                    <tr key={item.id}>
+                      {columns.cells([
+                        <td>
+                          {can("CATALOG_READ") ? (
+                            <Link to={`/catalog/${item.eplId}`}>
+                              {item.eplId}
+                            </Link>
+                          ) : (
+                            item.eplId
+                          )}
+                        </td>,
+                        <td>{item.name}</td>,
+                        <td>{revision(item.revision)}</td>,
+                        <td>
+                          <span className="badge">
+                            {t(`calibreSend.states.${item.state}`)}
+                          </span>
+                        </td>,
+                        <td>{item.calibreId ?? "—"}</td>,
+                        <td>{item.message ?? "—"}</td>,
+                      ])}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Paging
+              choice={choice}
+              meta={result.data.meta}
+              page={page}
+              size={size}
+              onPage={setPage}
+              onSize={(value) => {
+                setSize(value);
+                setPage(0);
+              }}
+            />
+          </>
+        )}
+      </section>
+    </section>
+  );
+}

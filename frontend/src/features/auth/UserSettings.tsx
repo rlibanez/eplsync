@@ -747,7 +747,9 @@ function UserEditor({
                         value={
                           permission === "CALIBRE_READ" &&
                           (overrides.CALIBRE_SYNC === "ALLOW" ||
-                            overrides.CALIBRE_FILES_READ === "ALLOW")
+                            overrides.CALIBRE_FILES_READ === "ALLOW" ||
+                            overrides.CALIBRE_SEND === "ALLOW" ||
+                            overrides.CALIBRE_JOBS_MANAGE === "ALLOW")
                             ? "ALLOW"
                             : (overrides[permission] ?? "INHERIT")
                         }
@@ -755,7 +757,9 @@ function UserEditor({
                         disabled={
                           permission === "CALIBRE_READ" &&
                           (overrides.CALIBRE_SYNC === "ALLOW" ||
-                            overrides.CALIBRE_FILES_READ === "ALLOW")
+                            overrides.CALIBRE_FILES_READ === "ALLOW" ||
+                            overrides.CALIBRE_SEND === "ALLOW" ||
+                            overrides.CALIBRE_JOBS_MANAGE === "ALLOW")
                         }
                         data={[
                           {
@@ -776,7 +780,9 @@ function UserEditor({
                             else next[permission] = value ?? "DENY";
                             if (
                               (permission === "CALIBRE_SYNC" ||
-                                permission === "CALIBRE_FILES_READ") &&
+                                permission === "CALIBRE_FILES_READ" ||
+                                permission === "CALIBRE_SEND" ||
+                                permission === "CALIBRE_JOBS_MANAGE") &&
                               value === "ALLOW"
                             )
                               next.CALIBRE_READ = "ALLOW";

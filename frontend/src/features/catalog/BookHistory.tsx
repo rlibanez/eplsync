@@ -1,3 +1,5 @@
+import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
+import { Group } from "@mantine/core";
 import { EpubDownload } from "../downloads/EpubDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { DownloadActions } from "../downloads/DownloadActions";
@@ -32,9 +34,12 @@ export function BookHistory({ id }: { id: number }) {
   const { t } = useTranslation();
   const { can } = useAuth();
   const selectable =
-    can("TORRENT_SYNC") || can("TORRENT_CLEANUP") || can("DOWNLOADS_DELETE");
+    (can("CALIBRE_SEND") && can("DOWNLOADS_FILES_READ")) ||
+    can("TORRENT_SYNC") ||
+    can("TORRENT_CLEANUP") ||
+    can("DOWNLOADS_DELETE");
   const [selected, setSelected] = useState<string[]>([]);
-  const { status, number, date } = useLocale();
+  const { status, date, revision } = useLocale();
   const [sort, setSort] = useState("revision,desc");
   const [page, setPage] = useState(0),
     [size, setSize] = useState(20);
@@ -52,7 +57,7 @@ export function BookHistory({ id }: { id: number }) {
       {
         field: "actions",
         label: "historyActions.actions",
-        width: 100,
+        width: 120,
         sortable: false,
       },
     ],
@@ -85,123 +90,129 @@ export function BookHistory({ id }: { id: number }) {
       );
   }, [result.data]);
   return (
-    <section className="panel book-history">
-      <div className="table-toolbar book-history-toolbar">
-        <h2>{t("detail.history")}</h2>
-        {result.data && result.data.meta.totalItems > 0 && (
-          <div className="catalog-table-controls">{columns.controls}</div>
-        )}
-      </div>
-      {result.isPending ? (
-        <Loading />
-      ) : result.isError ? (
-        <Failure error={result.error} retry={() => result.refetch()} />
-      ) : result.data.meta.totalItems === 0 ? null : (
-        <>
-          <DownloadActions
-            eplId={id}
-            selected={selected}
-            rows={result.data.items}
-            onDone={() => setSelected([])}
-          />
-          <div className="table-scroll">
-            <table
-              className="download-record-table"
-              style={{ width: columns.width }}
-            >
-              {columns.colgroup}
-              <caption className="sr-only">{t("detail.history")}</caption>
-              <thead>
-                {columns.selectionHeadings(
-                  selectable && (
-                    <th className="history-selection">
-                      <Checkbox
-                        aria-label={t("historyActions.selectPage")}
-                        checked={
-                          result.data.items.length > 0 &&
-                          result.data.items.every((r) =>
-                            selected.includes(r.id),
-                          )
-                        }
-                        indeterminate={
-                          selected.length > 0 &&
-                          !result.data.items.every((r) =>
-                            selected.includes(r.id),
-                          )
-                        }
-                        disabled={!result.data.items.length}
-                        onChange={(e) =>
-                          setSelected(
-                            e.currentTarget.checked
-                              ? result.data.items.map((r) => r.id)
-                              : [],
-                          )
-                        }
-                      />
-                    </th>
-                  ),
-                )}
-              </thead>
-              <tbody>
-                {result.data.items.map((item) => (
-                  <tr key={item.id}>
-                    {selectable && (
-                      <td className="history-selection">
+    <CalibreSendProvider>
+      <section className="panel book-history">
+        <div className="table-toolbar book-history-toolbar">
+          <h2>{t("detail.history")}</h2>
+          {result.data && result.data.meta.totalItems > 0 && (
+            <div className="catalog-table-controls">{columns.controls}</div>
+          )}
+        </div>
+        {result.isPending ? (
+          <Loading />
+        ) : result.isError ? (
+          <Failure error={result.error} retry={() => result.refetch()} />
+        ) : result.data.meta.totalItems === 0 ? null : (
+          <>
+            <DownloadActions
+              eplId={id}
+              selected={selected}
+              rows={result.data.items}
+              onDone={() => setSelected([])}
+              extraActions={<SendToCalibre ids={selected} />}
+            />
+            <div className="table-scroll">
+              <table
+                className="download-record-table"
+                style={{ width: columns.width }}
+              >
+                {columns.colgroup}
+                <caption className="sr-only">{t("detail.history")}</caption>
+                <thead>
+                  {columns.selectionHeadings(
+                    selectable && (
+                      <th className="history-selection">
                         <Checkbox
-                          aria-label={t("historyActions.selectRevision", {
-                            revision: number(item.revision),
-                          })}
-                          checked={selected.includes(item.id)}
-                          onChange={(e) => {
-                            const checked = e.currentTarget.checked;
-                            setSelected((previous) =>
-                              checked
-                                ? [...previous, item.id]
-                                : previous.filter((id) => id !== item.id),
-                            );
-                          }}
+                          aria-label={t("historyActions.selectPage")}
+                          checked={
+                            result.data.items.length > 0 &&
+                            result.data.items.every((r) =>
+                              selected.includes(r.id),
+                            )
+                          }
+                          indeterminate={
+                            selected.length > 0 &&
+                            !result.data.items.every((r) =>
+                              selected.includes(r.id),
+                            )
+                          }
+                          disabled={!result.data.items.length}
+                          onChange={(e) =>
+                            setSelected(
+                              e.currentTarget.checked
+                                ? result.data.items.map((r) => r.id)
+                                : [],
+                            )
+                          }
                         />
-                      </td>
-                    )}
-                    {columns.cells([
-                      <td>{number(item.revision)}</td>,
-                      <td>
-                        <span className="badge">{status(item.status)}</span>
-                      </td>,
-                      <td title={item.clientInstanceId}>
-                        {item.client || "—"}
-                        <small className="hash-text">{item.origin}</small>
-                      </td>,
-                      <td>{date(item.lastCheckedAt)}</td>,
-                      <td>{date(item.completedAt)}</td>,
-                      <td>
-                        <small className="hash-text" title={item.hash}>
-                          {item.hash || "—"}
-                        </small>
-                      </td>,
-                      <td>{item.lastError || "—"}</td>,
-                      <td>
-                        <EpubDownload id={item.id} />
-                      </td>,
-                    ])}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Paging
-            choice={pageSizeChoice}
-            meta={result.data.meta}
-            page={page}
-            size={size}
-            onPage={setPage}
-            onSize={(value) => {
-              setSize(value);
-              setPage(0);
-            }}
-          />
-        </>
-      )}
-    </section>
+                      </th>
+                    ),
+                  )}
+                </thead>
+                <tbody>
+                  {result.data.items.map((item) => (
+                    <tr key={item.id}>
+                      {selectable && (
+                        <td className="history-selection">
+                          <Checkbox
+                            aria-label={t("historyActions.selectRevision", {
+                              revision: revision(item.revision),
+                            })}
+                            checked={selected.includes(item.id)}
+                            onChange={(e) => {
+                              const checked = e.currentTarget.checked;
+                              setSelected((previous) =>
+                                checked
+                                  ? [...previous, item.id]
+                                  : previous.filter((id) => id !== item.id),
+                              );
+                            }}
+                          />
+                        </td>
+                      )}
+                      {columns.cells([
+                        <td>{revision(item.revision)}</td>,
+                        <td>
+                          <span className="badge">{status(item.status)}</span>
+                        </td>,
+                        <td title={item.clientInstanceId}>
+                          {item.client || "—"}
+                          <small className="hash-text">{item.origin}</small>
+                        </td>,
+                        <td>{date(item.lastCheckedAt)}</td>,
+                        <td>{date(item.completedAt)}</td>,
+                        <td>
+                          <small className="hash-text" title={item.hash}>
+                            {item.hash || "—"}
+                          </small>
+                        </td>,
+                        <td>{item.lastError || "—"}</td>,
+                        <td>
+                          <Group gap={4} wrap="nowrap">
+                            <EpubDownload id={item.id} />
+                            <SendToCalibre ids={[item.id]} inline />
+                          </Group>
+                        </td>,
+                      ])}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Paging
+              choice={pageSizeChoice}
+              meta={result.data.meta}
+              page={page}
+              size={size}
+              onPage={setPage}
+              onSize={(value) => {
+                setSize(value);
+                setPage(0);
+              }}
+            />
+          </>
+        )}
+      </section>
+    </CalibreSendProvider>
   );
 }

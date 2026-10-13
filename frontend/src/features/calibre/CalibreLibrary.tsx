@@ -1,3 +1,4 @@
+import { SelectAllRows } from "../../components/SelectAllRows";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { CalibreTable, calibreColumns, type CalibreBook } from "./CalibreTable";
@@ -18,6 +19,7 @@ interface Snapshot {
   syncedAt: string;
   total: number;
   identified: number;
+  complete?: boolean;
 }
 export function CalibreLibrary() {
   const { t } = useTranslation();
@@ -37,7 +39,7 @@ export function CalibreLibrary() {
   const [selected, setSelected] = useState<number[]>([]);
   useEffect(
     () => setSelected([]),
-    [page, size, title, author, eplId, comparison, presence, sort],
+    [title, author, eplId, comparison, presence, sort],
   );
   const pageSizeChoice = usePageSizeChoice(size);
   const params = new URLSearchParams({
@@ -57,14 +59,6 @@ export function CalibreLibrary() {
         signal,
       ),
   });
-  useEffect(() => {
-    if (result.data)
-      setSelected((previous) =>
-        previous.filter((id) =>
-          result.data.items.some((book) => book.calibreId === id),
-        ),
-      );
-  }, [result.data]);
   const snapshot = useQuery({
     queryKey: ["calibre-snapshot"],
     queryFn: ({ signal }) =>
@@ -119,6 +113,7 @@ export function CalibreLibrary() {
         )}
       </div>
       <p className="muted">{t("calibre.libraryDescription")}</p>
+      {snapshot.data?.complete === false && <p>{t("calibreSend.partial")}</p>}
       {snapshot.data ? (
         <p>
           {t("calibre.library")}: {snapshot.data.library} ·{" "}
@@ -205,6 +200,14 @@ export function CalibreLibrary() {
       </div>
       <section className="panel">
         <div className="table-toolbar">
+          {selectable && (
+            <SelectAllRows<CalibreBook, number>
+              url={`/calibre/books?${new URLSearchParams([...params].filter(([key]) => key !== "page" && key !== "size"))}&${sortQuery(sort)}`}
+              total={result.data?.meta.totalItems ?? 0}
+              identify={(book) => book.calibreId}
+              onSelect={setSelected}
+            />
+          )}
           <div className="catalog-table-controls">{columns.controls}</div>
         </div>
         {selectable && (

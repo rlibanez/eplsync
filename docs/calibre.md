@@ -2,7 +2,7 @@
 
 [Guías](README.md) · [Inicio](../README.md)
 
-La integración permite consultar bibliotecas mediante el servidor de contenido de
+La integración permite consultar bibliotecas y enviar EPUB mediante el servidor de contenido de
 Calibre. Funciona con Calibre nativo en Windows/Linux y con la imagen
 `lscr.io/linuxserver/calibre`. No requiere instalar `calibredb` en EPL Sync.
 
@@ -83,8 +83,8 @@ completarla: un error conserva la copia anterior y elimina los datos incompletos
 Al cambiar URL, usuario o biblioteca, se descarta la copia anterior y es necesario
 sincronizar otra vez. Las importaciones del catálogo no eliminan esa copia.
 
-Descargas → Estado mantiene su funcionamiento. El envío de libros a Calibre y la
-sustitución de revisiones quedan para una fase posterior.
+Descargas → Estado permite enviar los EPUB descargados a Calibre. La sustitución
+o eliminación de revisiones anteriores en Calibre queda para una fase posterior.
 
 ## Biblioteca de Calibre
 
@@ -103,8 +103,7 @@ paginada, con un máximo de 1000 registros por página.
   copia local e implica el permiso de consulta.
 
 La configuración de conexión continúa siendo exclusiva de administradores.
-Abrir una ficha del catálogo requiere además `CATALOG_READ`. Esta funcionalidad
-no envía libros ni modifica la biblioteca de Calibre.
+Abrir una ficha del catálogo requiere además `CATALOG_READ`. La consulta y la sincronización no modifican los libros de Calibre.
 
 Las copias anteriores deben volver a sincronizarse para completar título y autores.
 
@@ -161,3 +160,79 @@ el uso temporal de disco puede alcanzar aproximadamente 2 GiB entre ambas
 operaciones. Se comprueba que la respuesta sea un EPUB y no se siguen redirecciones.
 La descarga utiliza el servidor de contenido; la URL opcional del navegador solo
 sirve para abrir las fichas de Calibre.
+
+## Enviar EPUB desde el cliente torrent
+
+En **Descargas → Estado** y en el **Historial de descargas** de la ficha de un libro,
+usa el icono **Enviar a Calibre** o selecciona varios registros y pulsa ese botón.
+El formulario permite elegir una biblioteca accesible y los EPUB que se enviarán.
+Si un torrent contiene varios EPUB, puedes desmarcar los que no quieras enviar.
+
+El envío requiere `CALIBRE_SEND` y `DOWNLOADS_FILES_READ`. El permiso de envío
+implica `CALIBRE_READ`, pero no concede acceso a los archivos del cliente torrent:
+es necesario permitir también su lectura. Calibre debe tener activo su servidor
+de contenido y la cuenta configurada debe poder **realizar cambios** en la biblioteca.
+Las cuentas de solo lectura o con restricciones por libro pueden ser rechazadas
+por Calibre. No necesitas instalar `calibredb` ni compartir las carpetas de Calibre.
+
+Se utilizan las carpetas configuradas en **Ajustes → Torrent**, igual que para
+**Descargar EPUB**. EPL Sync consulta los archivos completados del hash y lee el
+EPUB desde el montaje local seguro. El original no se borra ni se modifica.
+
+Antes de enviar, EPL Sync valida el EPUB y comprueba que los identificadores `epl` y
+`revision` presentes coincidan con el registro de descarga. También permite enviarlo
+si falta alguno o ambos; el detalle del resultado indica qué identificadores faltan.
+Solo cuando están ambos se busca esa revisión en Calibre usando sus identificadores
+reales, no el título ni una copia local antigua:
+
+- Si ya existe el mismo EPL ID y revisión, el resultado es **Ya existe**.
+- Si existe otra revisión, se añade una copia independiente y se conserva la anterior.
+- Si el EPUB es inaccesible o sus identificadores no coinciden, se registra el error.
+
+## Trabajos de Calibre
+
+**Calibre → Trabajos de Calibre** muestra los envíos, su usuario, biblioteca,
+estado y resultados. El detalle incluye un informe plegable y la tabla de archivos
+con EPL ID, nombre, revisión, estado, Calibre ID y detalle. Las tablas permiten
+ordenar, configurar columnas, redimensionarlas y paginar.
+
+`CALIBRE_SEND` o `CALIBRE_JOBS_MANAGE` permiten consultar los trabajos.
+`CALIBRE_JOBS_MANAGE` permite **Pausar**, **Reanudar** y **Cancelar**.
+Estas acciones afectan a los archivos pendientes; un envío que ya está en curso
+puede finalizar y se conservará su resultado. Cancelar no borra libros de Calibre.
+
+Los trabajos se guardan en base de datos y se procesan por orden de creación,
+con un único archivo en envío. No mantienen una transacción de base de datos
+abierta durante las llamadas a qBittorrent o Calibre. Los cambios de destino o
+carpetas y la pérdida de permisos del usuario detienen los siguientes envíos.
+Las contraseñas no se guardan dentro de los trabajos. El inicio y el resultado
+general se agrupan en una operación de Eventos por trabajo; los controles se
+registran con el usuario correspondiente. Los resultados individuales se conservan
+en el detalle del trabajo y en los logs DEBUG, sin crear un evento por archivo.
+
+Si una respuesta de envío se pierde, el registro queda **Sin confirmar** y el
+trabajo se pausa. **Verificar envíos** vuelve a consultar Calibre: si encuentra
+la revisión, confirma el resultado; si no puede confirmarla, mantiene la pausa.
+No vuelve a subir automáticamente ese archivo. Esta protección también funciona
+tras reiniciar EPL Sync, y evita reenvíos mientras exista una solicitud sin confirmar.
+Un añadido realizado simultáneamente desde otra aplicación sigue pudiendo coincidir
+con el envío: el servidor de Calibre no ofrece una operación atómica por EPL ID y revisión.
+
+Los libros verificados actualizan la copia local cuando el destino es la biblioteca
+configurada. Si todavía no había una sincronización completa, se indica que la copia
+es parcial; **Sincronizar biblioteca** obtiene el listado completo. Los envíos a
+otras bibliotecas quedan reflejados en sus trabajos.
+
+Límites: 1000 EPUB por trabajo, 256 MiB por EPUB y 10000 archivos pendientes en total.
+Se usa un archivo temporal por envío, eliminado al terminar; los temporales
+abandonados se revisan cada hora. Los trabajos terminados o cancelados se conservan
+90 días. Los que tengan envíos sin confirmar no se eliminan por retención.
+
+Las tablas de trabajos se incorporan mediante la migración
+`V1_2_0__calibre_transfers.sql`; las migraciones publicadas no se modifican.
+
+Los logs INFO muestran el inicio y el final del trabajo con sus resúmenes.
+Los registros de cada archivo y los controles del trabajo se escriben en DEBUG.
+Los EPUB sin EPL ID o revisión no permiten comprobar duplicados por esa combinación.
+Si la respuesta de un envío sin identificadores se pierde y no hay Calibre ID confirmado,
+el trabajo queda pendiente de verificación y no se repite automáticamente.

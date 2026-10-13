@@ -144,7 +144,7 @@ for (const kind of ["state", "job"] as const) {
         await report.locator("summary").click();
         await expect.poll(() => sorts[0]).toBe("position,asc");
         await expect(
-          table.getByRole("cell", { name: "1,4", exact: true }),
+          table.getByRole("cell", { name: "1.4", exact: true }),
         ).toBeVisible();
         const reportWidth = await page
           .locator(".job-report-groups")

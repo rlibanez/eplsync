@@ -111,6 +111,8 @@ export const test = base.extend<{ eventTransport: void }>({
               "CALIBRE_READ",
               "CALIBRE_SYNC",
               "CALIBRE_FILES_READ",
+              "CALIBRE_SEND",
+              "CALIBRE_JOBS_MANAGE",
               "CATALOG_READ",
               "BOOK_HISTORY_READ",
               "DOWNLOADS_FILES_READ",

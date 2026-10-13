@@ -3,6 +3,8 @@ export function useLocale() {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? "es";
   return {
+    revision: (value: number | string | null | undefined) =>
+      value == null ? "—" : String(value),
     number: (value: number | null, options?: Intl.NumberFormatOptions) =>
       value === null
         ? "—"

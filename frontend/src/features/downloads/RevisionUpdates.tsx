@@ -30,7 +30,7 @@ interface Update {
 }
 export function RevisionUpdates() {
   const { t } = useTranslation();
-  const { status, number, date } = useLocale();
+  const { status, date, revision } = useLocale();
   const auth = useAuth();
   const cache = useQueryClient();
   const [opened, setOpened] = useState(false);
@@ -283,8 +283,8 @@ export function RevisionUpdates() {
                               <span>{row.title}</span>
                             </Link>
                           </td>,
-                          <td>{number(row.registeredRevision)}</td>,
-                          <td>{number(row.availableRevision)}</td>,
+                          <td>{revision(row.registeredRevision)}</td>,
+                          <td>{revision(row.availableRevision)}</td>,
                           <td>{status(row.status)}</td>,
                         ])}
                       </tr>

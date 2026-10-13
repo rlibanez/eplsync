@@ -1,3 +1,4 @@
+import { ListTodo } from "lucide-react";
 import { ApplicationUpdateNotice } from "../features/settings/applicationUpdates";
 import { useAuth } from "../features/auth/Auth";
 import { RouteAccess } from "../features/auth/RouteAccess";
@@ -175,6 +176,7 @@ function ShellContent() {
               </div>
               <NavLink
                 to="/calibre"
+                end
                 aria-label={t("calibre.libraryTitle")}
                 title={t("calibre.libraryTitle")}
                 onClick={() => setOpen(false)}
@@ -182,6 +184,18 @@ function ShellContent() {
                 <BookOpen size={19} />
                 <span className="nav-text">{t("calibre.libraryTitle")}</span>
               </NavLink>
+              {(auth.can("CALIBRE_SEND") ||
+                auth.can("CALIBRE_JOBS_MANAGE")) && (
+                <NavLink
+                  to="/calibre/jobs"
+                  aria-label={t("calibreSend.jobs")}
+                  title={t("calibreSend.jobs")}
+                  onClick={() => setOpen(false)}
+                >
+                  <ListTodo size={19} />
+                  <span className="nav-text">{t("calibreSend.jobs")}</span>
+                </NavLink>
+              )}
             </>
           )}
         </nav>
