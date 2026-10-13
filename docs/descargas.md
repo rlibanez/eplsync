@@ -13,6 +13,17 @@ En cola, Descargando, Pausado o Descargado proceden de las comprobaciones del cl
 **No encontrado** indica que el torrent no aparece en la última comprobación;
 no implica que sus archivos se hayan borrado.
 
+En la columna **Acciones** puedes actualizar el estado o abrir **Eliminar** para
+un registro. Al seleccionar varios registros, aparecen esas mismas acciones para
+la selección completa, aunque pertenezcan a libros distintos.
+
+**Actualizar estado** requiere `TORRENT_SYNC` y consulta juntos los hashes elegidos.
+Eliminar registros de EPL Sync requiere `DOWNLOADS_DELETE`; eliminar torrents
+requiere `TORRENT_CLEANUP`, y eliminar también sus archivos requiere además
+`TORRENT_FILES_DELETE` y confirmación explícita. Se conservan las comprobaciones
+del cliente de destino, las protecciones de archivos compartidos y el registro en
+Eventos. Eliminar un registro local no cancela sus solicitudes de limpieza pendientes.
+
 ## Sincronizar con el cliente
 
 - **Previsualizar sincronización:** muestra el resultado previsto sin aplicar cambios.

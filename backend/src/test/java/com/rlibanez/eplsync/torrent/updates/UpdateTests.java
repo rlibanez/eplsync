@@ -343,6 +343,38 @@ class UpdateTests {
         queue.runAutomatic(100);verify(stubClient,never()).listTorrents();
     }
 
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_SYNC"})
+    void stateRefreshGroupsHashesAcrossBooksWithoutHistoryPermission() {
+        var first=downloads.findAll().getFirst();
+        var second=history(2,1.1,OTHER,DownloadStatus.SUBMITTED);
+        when(stubClient.listTorrents(Set.of(OLD,OTHER))).thenReturn(List.of(remote(OTHER,DownloadStatus.DOWNLOADED,"/second")));
+        var result=historyActions.refresh(new HistoryActions.Selection(null,List.of(first.getId(),second.getId()),null,null));
+        assertThat(result.items()).hasSize(2);
+        assertThat(downloads.findById(first.getId()).orElseThrow().getStatus()).isEqualTo(DownloadStatus.NOT_FOUND);
+        assertThat(downloads.findById(second.getId()).orElseThrow().getStatus()).isEqualTo(DownloadStatus.DOWNLOADED);
+        verify(stubClient,times(1)).listTorrents(Set.of(OLD,OTHER));
+        verify(stubClient,never()).listTorrents();
+    }
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_SYNC","DOWNLOADS_DELETE"})
+    void stateCanDeleteHistoryAcrossBooksWithoutCallingClient() throws Exception {
+        var first=downloads.findAll().getFirst();
+        var second=history(2,1.1,OTHER,DownloadStatus.SUBMITTED);
+        clearInvocations(stubClient);
+        mvc.perform(post("/api/torrent/downloads/remove-records").contentType("application/json")
+            .content("{\"ids\":[\""+first.getId()+"\",\""+second.getId()+"\"],\"deleteHistory\":true,\"clientAction\":\"keep\",\"confirm\":true}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2));
+        assertThat(downloads.count()).isZero();verifyNoInteractions(stubClient);
+    }
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_SYNC"})
+    void stateReadPermissionDoesNotAuthorizeDeletion() {
+        var first=downloads.findAll().getFirst();clearInvocations(stubClient);
+        assertThatThrownBy(() -> historyActions.removeRecords(new HistoryActions.Removal(null,List.of(first.getId()),true,"keep",true,false)))
+            .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> historyActions.removeRecords(new HistoryActions.Removal(null,List.of(first.getId()),false,"torrent",true,false)))
+            .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(downloads.existsById(first.getId())).isTrue();verifyNoInteractions(stubClient);
+    }
+
     @Test void deletingHistoryPreservesCleanupAndItsExecutionWithoutCallingClient() {
         var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
         var send=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();

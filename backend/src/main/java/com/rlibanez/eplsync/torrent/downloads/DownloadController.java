@@ -34,27 +34,27 @@ public class DownloadController {
     public DownloadRecord link(@RequestBody DownloadTrackingService.LinkRequest request) {
         return client.linkDownload(request);
     }
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('BOOK_HISTORY_READ') and hasAuthority('TORRENT_SYNC')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")
     @PostMapping("/refresh-selected")
     public com.rlibanez.eplsync.torrent.updates.HistoryActions.Result refreshSelected(
             @RequestBody com.rlibanez.eplsync.torrent.updates.HistoryActions.Selection selection) {
         return actions.refresh(selection);
     }
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('BOOK_HISTORY_READ') and hasAuthority('TORRENT_CLEANUP')")
+    @org.springframework.security.access.prepost.PreAuthorize("(hasAuthority('BOOK_HISTORY_READ') or hasAuthority('TORRENT_SYNC')) and hasAuthority('TORRENT_CLEANUP')")
     @PostMapping("/remove-selected")
     public com.rlibanez.eplsync.torrent.updates.HistoryActions.Result removeSelected(
             @RequestParam(defaultValue="false") boolean retryUnconfirmed,
             @RequestBody com.rlibanez.eplsync.torrent.updates.HistoryActions.Selection selection) {
         return actions.remove(selection,retryUnconfirmed);
     }
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('BOOK_HISTORY_READ') and hasAuthority('DOWNLOADS_DELETE')")
+    @org.springframework.security.access.prepost.PreAuthorize("(hasAuthority('BOOK_HISTORY_READ') or hasAuthority('TORRENT_SYNC')) and hasAuthority('DOWNLOADS_DELETE')")
     @PostMapping("/delete-history")
     public com.rlibanez.eplsync.torrent.updates.HistoryActions.DeletionResult deleteHistory(
             @RequestParam(defaultValue="false") boolean preview,
             @RequestBody com.rlibanez.eplsync.torrent.updates.HistoryActions.HistoryDeletion request) {
         return actions.deleteHistory(request,preview);
     }
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('BOOK_HISTORY_READ')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('BOOK_HISTORY_READ') or hasAuthority('TORRENT_SYNC')")
     @PostMapping("/remove-records")
     public com.rlibanez.eplsync.torrent.updates.HistoryActions.RemovalResult removeRecords(
             @RequestBody com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal request) {

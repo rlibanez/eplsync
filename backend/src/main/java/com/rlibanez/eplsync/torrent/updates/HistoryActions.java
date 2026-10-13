@@ -26,18 +26,26 @@ public class HistoryActions {
             UpdateCleanupRepository entries,CleanupQueue queue,EventJournal events,org.springframework.transaction.PlatformTransactionManager manager) {
         this.downloads=downloads;this.tracking=tracking;this.client=client;this.entries=entries;this.queue=queue;this.events=events;this.tx=new org.springframework.transaction.support.TransactionTemplate(manager);
     }
-    private void requireBook(Selection selection) {
-        if (selection==null || selection.eplId()==null || selection.eplId()<1) throw new UserInputException("EPL ID inválido");
-    }
-    private List<DownloadRecord> validate(Selection selection) { return validate(selection,true); }
-    private List<DownloadRecord> validate(Selection selection,boolean requireCurrentClient) {
-        if (selection==null || selection.eplId()==null || selection.eplId()<1 || selection.ids()==null
+    private void requireSelection(Selection selection) {
+        if (selection==null || (selection.eplId()!=null && selection.eplId()<1) || selection.ids()==null
                 || selection.ids().isEmpty() || selection.ids().size()>1000
                 || selection.ids().stream().anyMatch(id -> id==null || id.isBlank() || id.length()>64)
                 || new HashSet<>(selection.ids()).size()!=selection.ids().size())
-            throw new UserInputException("Selecciona entre 1 y 1000 registros del mismo libro, sin duplicados");
+            throw new UserInputException("Selecciona entre 1 y 1000 registros, sin duplicados y con EPL ID válido si se especifica");
+    }
+    private Map<String,Object> eventScope(Selection selection) {
+        var scope=new LinkedHashMap<String,Object>();
+        if(selection.eplId()!=null) scope.put("eplId",selection.eplId());
+        scope.put("selected",selection.ids().size());return scope;
+    }
+    private void requireReadAccess() {
+        if(!Permission.has(Permission.BOOK_HISTORY_READ)) Permission.require(Permission.TORRENT_SYNC);
+    }
+    private List<DownloadRecord> validate(Selection selection) { return validate(selection,true); }
+    private List<DownloadRecord> validate(Selection selection,boolean requireCurrentClient) {
+        requireSelection(selection);
         var rows=downloads.findAllById(selection.ids());
-        if (rows.size()!=selection.ids().size() || rows.stream().anyMatch(r -> !r.getEplId().equals(selection.eplId())))
+        if (rows.size()!=selection.ids().size() || (selection.eplId()!=null && rows.stream().anyMatch(r -> !r.getEplId().equals(selection.eplId()))))
             throw new UserInputException("Los registros seleccionados no pertenecen al libro");
         if (requireCurrentClient && rows.stream().anyMatch(r -> !r.getClientInstanceId().equals(tracking.instanceId())))
             throw new TorrentOperationException(HttpStatus.CONFLICT,"Los registros pertenecen a otro cliente; restaura su destino antes de actuar");
@@ -46,7 +54,7 @@ public class HistoryActions {
     public record HistoryDeletion(Long eplId,List<String> ids,Boolean confirm) {}
     public record DeletionResult(int deleted,long pendingCleanup) {}
     public DeletionResult deleteHistory(HistoryDeletion request,boolean preview) {
-        Permission.require(Permission.BOOK_HISTORY_READ);
+        requireReadAccess();
         Permission.require(Permission.DOWNLOADS_DELETE);
         if(request==null) throw new UserInputException("Selecciona registros del historial");
         if(!preview && !Boolean.TRUE.equals(request.confirm())) throw new UserInputException("Confirma la eliminación irreversible del historial");
@@ -58,14 +66,14 @@ public class HistoryActions {
             return new DeletionResult(preview ? 0 : rows.size(),pending);
         });
         if(preview) return operation.get();
-        return events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOAD_HISTORY",Map.of("eplId",request.eplId()),
+        return events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOAD_HISTORY",eventScope(selection),
             operation,r -> Map.of("historyDeleted",r.deleted(),"pendingCleanup",r.pendingCleanup()));
     }
     public record Removal(Long eplId,List<String> ids,Boolean deleteHistory,String clientAction,Boolean confirm,Boolean confirmFiles) {}
     public record RemovalItem(String id,DownloadStatus status,String cleanupState,String message,boolean historyDeleted) {}
     public record RemovalResult(List<RemovalItem> items) {}
     public RemovalResult removeRecords(Removal request) {
-        Permission.require(Permission.BOOK_HISTORY_READ);
+        requireReadAccess();
         if(request==null || !Set.of("keep","torrent","files").contains(request.clientAction()==null ? "" : request.clientAction()))
             throw new UserInputException("Acción de eliminación inválida");
         boolean history=Boolean.TRUE.equals(request.deleteHistory());
@@ -94,8 +102,8 @@ public class HistoryActions {
     }
     public Result refresh(Selection selection) {
         Permission.require(Permission.TORRENT_SYNC);
-        requireBook(selection);
-        return events.run(EventJournal.Category.TORRENT,"REFRESH_DOWNLOADS",Map.of("eplId",selection.eplId()),() ->
+        requireSelection(selection);
+        return events.run(EventJournal.Category.TORRENT,"REFRESH_DOWNLOADS",eventScope(selection),() ->
             client.exclusiveClient(adapter -> {
                 var rows=validate(selection);
                 var hashes=new HashSet<String>(); rows.forEach(r -> hashes.add(r.getHash()));
@@ -111,14 +119,15 @@ public class HistoryActions {
     public Result remove(Selection selection) { return remove(selection,false); }
     public Result remove(Selection selection,boolean retryUnconfirmed) {
         Permission.require(Permission.TORRENT_CLEANUP);
-        requireBook(selection);
+        requireSelection(selection);
         java.util.Objects.requireNonNull(selection);
         boolean files=Boolean.TRUE.equals(selection.deleteFiles());
         if (files) {
             Permission.require(Permission.TORRENT_FILES_DELETE);
             if (!Boolean.TRUE.equals(selection.confirmFiles())) throw new UserInputException("Confirma la eliminación irreversible de los archivos");
         }
-        return events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOADS",Map.of("eplId",selection.eplId(),"deleteFiles",files),() ->
+        var scope=new LinkedHashMap<String,Object>(eventScope(selection));scope.put("deleteFiles",files);
+        return events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOADS",scope,() ->
             client.exclusiveClient(adapter -> {
                 var rows=validate(selection);
                 // Validate the complete response before persisting any removal intent.

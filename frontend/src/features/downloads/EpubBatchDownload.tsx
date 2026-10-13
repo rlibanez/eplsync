@@ -11,11 +11,13 @@ export function EpubBatchDownload({
   selected,
   endpoint = "/torrent/downloads/epub-batches",
   inline = false,
+  toolbar = true,
   selectionLabel = "historyActions.selected",
 }: {
   selected: (string | number)[];
   endpoint?: string;
   inline?: boolean;
+  toolbar?: boolean;
   selectionLabel?: string;
 }) {
   const { t } = useTranslation();
@@ -53,7 +55,7 @@ export function EpubBatchDownload({
   );
   return (
     <>
-      {inline ? (
+      {inline || !toolbar ? (
         button
       ) : (
         <div className="catalog-selection-bar has-selection">
@@ -67,7 +69,7 @@ export function EpubBatchDownload({
       )}
       {batch.isError &&
         batch.variables?.join("|") === selected.join("|") &&
-        (inline ? (
+        (inline || !toolbar ? (
           <AppModal
             opened
             onClose={() => batch.reset()}

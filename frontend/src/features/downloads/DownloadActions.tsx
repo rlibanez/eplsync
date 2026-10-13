@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Alert, Button, Checkbox, Select } from "@mantine/core";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -6,8 +6,8 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/Auth";
 import { useLocale } from "../../locales/useLocale";
 import { AppModal, ModalActions } from "../../components/AppModal";
-import { post, ActionError } from "../downloads/shared";
-import type { Download } from "../downloads/DownloadState";
+import { post, ActionError } from "./shared";
+import type { Download } from "./DownloadState";
 
 type Outcome = {
   id: string;
@@ -16,61 +16,84 @@ type Outcome = {
   message: string | null;
   historyDeleted?: boolean;
   revision?: number;
+  eplId?: number;
 };
-export function HistorySelection({
+type Row = Pick<Download, "id" | "hash" | "revision"> & { eplId?: number };
+type Targets = { eplId?: number; ids: string[]; rows: Row[] };
+type Operation = Targets & {
+  operation: "refresh" | "remove";
+  clientAction?: string;
+  deleteHistory?: boolean;
+  confirmFiles?: boolean;
+};
+type RowActions = {
+  pending: boolean;
+  refreshingIds: string[];
+  refreshRow: (row: Row) => void;
+  removeRow: (row: Row) => void;
+};
+export function DownloadActions({
   eplId,
   selected,
   rows,
   onDone,
+  extraActions,
+  children,
 }: {
-  eplId: number;
+  eplId?: number;
   selected: string[];
-  rows: Pick<Download, "id" | "hash" | "revision">[];
-  onDone: () => void;
+  rows: Row[];
+  onDone: (ids: string[]) => void;
+  extraActions?: ReactNode;
+  children?: (actions: RowActions) => ReactNode;
 }) {
   const { t } = useTranslation();
   const { can } = useAuth();
   const { status, number } = useLocale();
   const cache = useQueryClient();
   const [removal, setRemoval] = useState(false);
+  const [targets, setTargets] = useState<Targets>({ ids: [], rows: [] });
   const [clientAction, setClientAction] = useState("keep");
   const [deleteHistory, setDeleteHistory] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [outcomes, setOutcomes] = useState<Outcome[] | null>(null);
   const preview = useMutation({
-    mutationFn: () =>
+    mutationFn: (target: Targets) =>
       post<{ pendingCleanup: number }>(
         "/torrent/downloads/delete-history?preview=true",
-        { eplId, ids: selected },
+        { eplId: target.eplId, ids: target.ids },
       ),
     retry: false,
   });
   const action = useMutation({
     meta: { backendEvents: true },
-    mutationFn: (operation: "refresh" | "remove") =>
+    mutationFn: (request: Operation) =>
       post<{ items: Outcome[] }>(
-        `/torrent/downloads/${operation === "refresh" ? "refresh-selected" : "remove-records"}`,
+        `/torrent/downloads/${request.operation === "refresh" ? "refresh-selected" : "remove-records"}`,
         {
-          eplId,
-          ids: selected,
-          ...(operation === "remove"
+          eplId: request.eplId,
+          ids: request.ids,
+          ...(request.operation === "remove"
             ? {
-                clientAction,
-                deleteHistory,
+                clientAction: request.clientAction,
+                deleteHistory: request.deleteHistory,
                 confirm: true,
-                confirmFiles: confirmed,
+                confirmFiles: request.confirmFiles,
               }
             : {}),
         },
       ),
     retry: false,
-    onSuccess: (data) => {
+    onSuccess: (data, request) => {
       setRemoval(false);
       setConfirmed(false);
       setOutcomes(
         data.items.map((item) => ({
           ...item,
-          revision: rows.find((row) => row.id === item.id)?.revision,
+          revision: request.rows.find((row) => row.id === item.id)?.revision,
+          eplId:
+            request.rows.find((row) => row.id === item.id)?.eplId ??
+            request.eplId,
         })),
       );
       for (const key of [
@@ -84,17 +107,30 @@ export function HistorySelection({
         "revision-updates",
       ])
         void cache.invalidateQueries({ queryKey: [key] });
-      onDone();
+      onDone(request.ids);
     },
   });
-  function openRemoval() {
+  function selection(): Targets {
+    return {
+      eplId,
+      ids: [...selected],
+      rows: rows.filter((row) => selected.includes(row.id)),
+    };
+  }
+  function refresh(target: Targets) {
+    setOutcomes(null);
+    action.mutate({ ...target, operation: "refresh" });
+  }
+  function openRemoval(target: Targets) {
+    setTargets(target);
+    setOutcomes(null);
     action.reset();
     preview.reset();
     setConfirmed(false);
     setDeleteHistory(false);
     setClientAction("keep");
     setRemoval(true);
-    if (can("DOWNLOADS_DELETE")) preview.mutate();
+    if (can("DOWNLOADS_DELETE")) preview.mutate(target);
   }
   return (
     <>
@@ -106,11 +142,12 @@ export function HistorySelection({
             </span>
           </div>
           <div className="catalog-selection-actions">
+            {extraActions}
             {can("TORRENT_SYNC") && (
               <Button
                 leftSection={<RefreshCw size={16} />}
                 loading={action.isPending}
-                onClick={() => action.mutate("refresh")}
+                onClick={() => refresh(selection())}
               >
                 {t("historyActions.refresh")}
               </Button>
@@ -121,7 +158,7 @@ export function HistorySelection({
                 variant="light"
                 disabled={action.isPending}
                 leftSection={<Trash2 size={16} />}
-                onClick={openRemoval}
+                onClick={() => openRemoval(selection())}
               >
                 {t("historyActions.delete")}
               </Button>
@@ -129,6 +166,15 @@ export function HistorySelection({
           </div>
         </div>
       )}
+      {children?.({
+        pending: action.isPending,
+        refreshingIds:
+          action.isPending && action.variables.operation === "refresh"
+            ? action.variables.ids
+            : [],
+        refreshRow: (row) => refresh({ eplId, ids: [row.id], rows: [row] }),
+        removeRow: (row) => openRemoval({ eplId, ids: [row.id], rows: [row] }),
+      })}
       {action.isError && !removal && (
         <Alert color="red" role="alert">
           {(action.error instanceof ActionError && action.error.details) ||
@@ -155,7 +201,9 @@ export function HistorySelection({
           {deleteHistory && (
             <>
               <p>
-                {t("historyActions.confirmHistory", { count: selected.length })}
+                {t("historyActions.confirmHistory", {
+                  count: targets.ids.length,
+                })}
               </p>
               <p className="muted">{t("historyActions.rediscovery")}</p>
               {preview.data && preview.data.pendingCleanup > 0 && (
@@ -199,6 +247,7 @@ export function HistorySelection({
             <Checkbox
               mt="md"
               checked={confirmed}
+              disabled={action.isPending}
               onChange={(e) => setConfirmed(e.currentTarget.checked)}
               label={t("historyActions.irreversible")}
             />
@@ -208,14 +257,17 @@ export function HistorySelection({
           <p className="muted">{t("historyActions.combinedHelp")}</p>
         )}
         <ul className="history-action-records">
-          {rows
-            .filter((row) => selected.includes(row.id))
-            .map((row) => (
-              <li key={row.id}>
-                {t("downloads.revision")} {number(row.revision)}{" "}
-                <small className="hash-text">{row.hash}</small>
-              </li>
-            ))}
+          {targets.rows.map((row) => (
+            <li key={row.id}>
+              {(row.eplId ?? targets.eplId) != null && (
+                <>
+                  {t("filters.eplId")} {row.eplId ?? targets.eplId} ·{" "}
+                </>
+              )}
+              {t("downloads.revision")} {number(row.revision)}{" "}
+              <small className="hash-text">{row.hash}</small>
+            </li>
+          ))}
         </ul>
         {action.isError && (
           <Alert color="red" role="alert">
@@ -238,7 +290,15 @@ export function HistorySelection({
               (deleteHistory && !preview.isSuccess) ||
               (clientAction === "files" && !confirmed)
             }
-            onClick={() => action.mutate("remove")}
+            onClick={() =>
+              action.mutate({
+                ...targets,
+                operation: "remove",
+                clientAction,
+                deleteHistory,
+                confirmFiles: confirmed,
+              })
+            }
           >
             {t("historyActions.delete")}
           </Button>
@@ -255,6 +315,11 @@ export function HistorySelection({
           {outcomes?.map((item) => (
             <li key={item.id}>
               <span>
+                {item.eplId != null && (
+                  <>
+                    {t("filters.eplId")} {item.eplId} ·{" "}
+                  </>
+                )}
                 {t("downloads.revision")} {number(item.revision ?? null)}
               </span>
               {" · "}

@@ -6,12 +6,14 @@ export function TableAction({
   children,
   href,
   loading,
+  disabled,
   onClick,
 }: {
   label: string;
   children: ReactNode;
   href?: string;
   loading?: boolean;
+  disabled?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -34,6 +36,7 @@ export function TableAction({
           size="md"
           aria-label={label}
           loading={loading}
+          disabled={disabled}
           onClick={onClick}
         >
           {children}

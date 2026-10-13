@@ -1,3 +1,6 @@
+import { DownloadActions } from "./DownloadActions";
+import { TableAction } from "../../components/TableAction";
+import { RefreshCw, Trash2 } from "lucide-react";
 import { EpubBatchDownload } from "./EpubBatchDownload";
 import { EpubDownload } from "./EpubDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
@@ -16,6 +19,7 @@ import {
 import {
   Button,
   Checkbox,
+  Group,
   Select,
   MultiSelect,
   TextInput,
@@ -66,7 +70,11 @@ function DownloadHistory() {
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
   const pageSizeChoice = usePageSizeChoice(size);
-  const selectable = auth.can("DOWNLOADS_FILES_READ");
+  const selectable =
+    auth.can("DOWNLOADS_FILES_READ") ||
+    auth.can("TORRENT_SYNC") ||
+    auth.can("DOWNLOADS_DELETE") ||
+    auth.can("TORRENT_CLEANUP");
   const [selected, setSelected] = useState<string[]>([]);
   useEffect(() => setSelected([]), [page, size, filters]);
   useEffect(() => {
@@ -94,10 +102,14 @@ function DownloadHistory() {
       get<Page<Download>>(`/torrent/downloads?${params}`, signal),
   });
   useEffect(() => {
-    if (result.data)
+    if (result.data) {
+      setPage((current) =>
+        Math.min(current, Math.max(0, result.data.meta.totalPages - 1)),
+      );
       setSelected((previous) =>
         previous.filter((id) => result.data.items.some((row) => row.id === id)),
       );
+    }
   }, [result.data]);
   const sync = useMutation({
     mutationKey: ["torrent-sync"],
@@ -144,7 +156,7 @@ function DownloadHistory() {
       {
         field: "actions",
         label: "historyActions.actions",
-        width: 100,
+        width: 150,
         sortable: false,
       },
     ],
@@ -248,105 +260,149 @@ function DownloadHistory() {
         <div className="table-toolbar">
           <div className="catalog-table-controls">{columns.controls}</div>
         </div>
-        {selectable && <EpubBatchDownload selected={selected} />}
-        {result.isPending ? (
-          <Loading />
-        ) : result.isError ? (
-          <Failure error={result.error} retry={() => result.refetch()} />
-        ) : (
-          <>
-            <div className="table-scroll">
-              <table
-                className="download-record-table"
-                style={{ width: columns.width }}
-              >
-                {columns.colgroup}
-                <thead>
-                  {columns.selectionHeadings(
-                    selectable && (
-                      <th className="history-selection">
-                        <Checkbox
-                          aria-label={t("historyActions.selectPage")}
-                          checked={
-                            result.data.items.length > 0 &&
-                            result.data.items.every((row) =>
-                              selected.includes(row.id),
-                            )
-                          }
-                          indeterminate={
-                            selected.length > 0 &&
-                            !result.data.items.every((row) =>
-                              selected.includes(row.id),
-                            )
-                          }
-                          disabled={!result.data.items.length}
-                          onChange={(event) =>
-                            setSelected(
-                              event.currentTarget.checked
-                                ? result.data.items.map((row) => row.id)
-                                : [],
-                            )
-                          }
-                        />
-                      </th>
-                    ),
+        <DownloadActions
+          selected={selected}
+          rows={result.data?.items ?? []}
+          onDone={(ids) =>
+            setSelected((previous) =>
+              previous.filter((id) => !ids.includes(id)),
+            )
+          }
+          extraActions={
+            auth.can("DOWNLOADS_FILES_READ") && (
+              <EpubBatchDownload selected={selected} toolbar={false} />
+            )
+          }
+        >
+          {({ pending, refreshingIds, refreshRow, removeRow }) => (
+            <>
+              {result.isPending ? (
+                <Loading />
+              ) : result.isError ? (
+                <Failure error={result.error} retry={() => result.refetch()} />
+              ) : (
+                <>
+                  <div className="table-scroll">
+                    <table
+                      className="download-record-table"
+                      style={{ width: columns.width }}
+                    >
+                      {columns.colgroup}
+                      <thead>
+                        {columns.selectionHeadings(
+                          selectable && (
+                            <th className="history-selection">
+                              <Checkbox
+                                aria-label={t("historyActions.selectPage")}
+                                checked={
+                                  result.data.items.length > 0 &&
+                                  result.data.items.every((row) =>
+                                    selected.includes(row.id),
+                                  )
+                                }
+                                indeterminate={
+                                  selected.length > 0 &&
+                                  !result.data.items.every((row) =>
+                                    selected.includes(row.id),
+                                  )
+                                }
+                                disabled={!result.data.items.length}
+                                onChange={(event) =>
+                                  setSelected(
+                                    event.currentTarget.checked
+                                      ? result.data.items.map((row) => row.id)
+                                      : [],
+                                  )
+                                }
+                              />
+                            </th>
+                          ),
+                        )}
+                      </thead>
+                      <tbody>
+                        {result.data.items.map((d) => (
+                          <tr key={d.id}>
+                            {selectable && (
+                              <td className="history-selection">
+                                <Checkbox
+                                  aria-label={t("epubDownload.selectRecord", {
+                                    id: d.eplId,
+                                    revision: number(d.revision),
+                                  })}
+                                  checked={selected.includes(d.id)}
+                                  onChange={(event) => {
+                                    const checked = event.currentTarget.checked;
+                                    setSelected((previous) =>
+                                      checked
+                                        ? [...previous, d.id]
+                                        : previous.filter((id) => id !== d.id),
+                                    );
+                                  }}
+                                />
+                              </td>
+                            )}
+                            {columns.cells([
+                              <td>
+                                <Link to={`/catalog/${d.eplId}`}>
+                                  {d.eplId}
+                                </Link>
+                              </td>,
+                              <td className="catalog-title-cell">
+                                <DownloadBook book={d} />
+                              </td>,
+                              <td>
+                                <small className="hash-text">{d.hash}</small>
+                              </td>,
+                              <td>{number(d.revision)}</td>,
+                              <td>
+                                <span className="badge">
+                                  {status(d.status)}
+                                </span>
+                              </td>,
+                              <td title={d.clientInstanceId}>{d.client}</td>,
+                              <td>{d.origin}</td>,
+                              <td>{date(d.lastCheckedAt)}</td>,
+                              <td>{date(d.completedAt)}</td>,
+                              <td>{d.lastError || "—"}</td>,
+                              <td>
+                                <Group gap={4} wrap="nowrap">
+                                  <EpubDownload id={d.id} />
+                                  {auth.can("TORRENT_SYNC") && (
+                                    <TableAction
+                                      label={t("historyActions.refresh")}
+                                      disabled={pending}
+                                      loading={refreshingIds.includes(d.id)}
+                                      onClick={() => refreshRow(d)}
+                                    >
+                                      <RefreshCw size={16} aria-hidden="true" />
+                                    </TableAction>
+                                  )}
+                                  {(auth.can("DOWNLOADS_DELETE") ||
+                                    auth.can("TORRENT_CLEANUP")) && (
+                                    <TableAction
+                                      label={t("historyActions.delete")}
+                                      disabled={pending}
+                                      onClick={() => removeRow(d)}
+                                    >
+                                      <Trash2 size={16} aria-hidden="true" />
+                                    </TableAction>
+                                  )}
+                                </Group>
+                              </td>,
+                            ])}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!result.data.items.length && (
+                    <p className="empty-list">{t("downloads.empty")}</p>
                   )}
-                </thead>
-                <tbody>
-                  {result.data.items.map((d) => (
-                    <tr key={d.id}>
-                      {selectable && (
-                        <td className="history-selection">
-                          <Checkbox
-                            aria-label={t("epubDownload.selectRecord", {
-                              id: d.eplId,
-                              revision: number(d.revision),
-                            })}
-                            checked={selected.includes(d.id)}
-                            onChange={(event) => {
-                              const checked = event.currentTarget.checked;
-                              setSelected((previous) =>
-                                checked
-                                  ? [...previous, d.id]
-                                  : previous.filter((id) => id !== d.id),
-                              );
-                            }}
-                          />
-                        </td>
-                      )}
-                      {columns.cells([
-                        <td>
-                          <Link to={`/catalog/${d.eplId}`}>{d.eplId}</Link>
-                        </td>,
-                        <td className="catalog-title-cell">
-                          <DownloadBook book={d} />
-                        </td>,
-                        <td>
-                          <small className="hash-text">{d.hash}</small>
-                        </td>,
-                        <td>{number(d.revision)}</td>,
-                        <td>
-                          <span className="badge">{status(d.status)}</span>
-                        </td>,
-                        <td title={d.clientInstanceId}>{d.client}</td>,
-                        <td>{d.origin}</td>,
-                        <td>{date(d.lastCheckedAt)}</td>,
-                        <td>{date(d.completedAt)}</td>,
-                        <td>{d.lastError || "—"}</td>,
-                        <td>
-                          <EpubDownload id={d.id} />
-                        </td>,
-                      ])}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {!result.data.items.length && (
-              <p className="empty-list">{t("downloads.empty")}</p>
-            )}
-          </>
-        )}
+                </>
+              )}
+            </>
+          )}
+        </DownloadActions>
         <Paging
           choice={pageSizeChoice}
           meta={result.data?.meta}

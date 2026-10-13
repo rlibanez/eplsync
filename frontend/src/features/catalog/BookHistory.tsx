@@ -1,6 +1,6 @@
 import { EpubDownload } from "../downloads/EpubDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
-import { HistorySelection } from "./HistorySelection";
+import { DownloadActions } from "../downloads/DownloadActions";
 import { useAuth } from "../auth/Auth";
 import { Checkbox } from "@mantine/core";
 import { useDownloadColumns } from "../downloads/DownloadTable";
@@ -98,7 +98,7 @@ export function BookHistory({ id }: { id: number }) {
         <Failure error={result.error} retry={() => result.refetch()} />
       ) : result.data.meta.totalItems === 0 ? null : (
         <>
-          <HistorySelection
+          <DownloadActions
             eplId={id}
             selected={selected}
             rows={result.data.items}
