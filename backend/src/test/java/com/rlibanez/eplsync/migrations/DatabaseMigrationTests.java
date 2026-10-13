@@ -41,7 +41,7 @@ class DatabaseMigrationTests {
         assertEquals("preserved", jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='sample'", String.class));
         assertThrows(FlywayException.class, migration::clean);
     }
-    @Test void upgradesRelease101To110WithoutLosingExistingData() {
+    @Test void upgradesRelease101To120WithoutLosingExistingData() {
         var source=new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()));
         Flyway.configure().dataSource(source).locations("classpath:migrations/released-1.0.1").load().migrate();
         // Fixture copied verbatim from tag v1.0.1; that release used schema 1.0.0.
@@ -60,6 +60,25 @@ class DatabaseMigrationTests {
         assertTrue(jdbc().queryForList("PRAGMA foreign_key_check").isEmpty());
         upgrade.validate();
         assertEquals(0,upgrade.migrate().migrationsExecuted);
+    }
+    @Test void upgrades110To120PreservingCalibreLibraryAndSettings() {
+        var source=new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()));
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("1.1.0").load().migrate();
+        var jdbc=jdbc();
+        jdbc.update("INSERT INTO app_settings VALUES('calibre.connection','preserved-settings')");
+        jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('book','generation',1,9,123,1.2,'Preserved Calibre book','Author')");
+        var upgrade=flyway("classpath:db/migration");
+        assertEquals(1,upgrade.migrate().migrationsExecuted);
+        assertEquals("1.2.0",upgrade.info().current().getVersion().toString());
+        assertEquals("Preserved Calibre book",jdbc.queryForObject("SELECT title FROM calibre_books WHERE calibre_id=9",String.class));
+        assertEquals("preserved-settings",jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='calibre.connection'",String.class));
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('job','now','now','Owner','destination','main','source','QUEUED')");
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('item','job',0,'record',0,'book.epub',1,123,'1.2','PENDING')");
+        assertEquals(0,jdbc.queryForObject("SELECT identity_complete FROM calibre_job_items WHERE id='item'",Integer.class));
+        jdbc.update("DELETE FROM calibre_jobs WHERE id='job'");
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM calibre_job_items",Integer.class));
+        assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
+        upgrade.validate();assertEquals(0,upgrade.migrate().migrationsExecuted);
     }
     @Test void catalogueOrderingAndRevisionLookupsUseTheirIndexes() {
         flyway("classpath:db/migration").migrate();

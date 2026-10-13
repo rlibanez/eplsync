@@ -26,7 +26,7 @@ public class CalibreTransfers {
     public record Request(String library,List<FileChoice> files) {}
     public record Job(String id,String createdAt,String updatedAt,String username,String library,String state,String message,
         long total,long pending,long accepted,long skipped,long failed,long uncertain) {}
-    public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message) {}
+    public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete) {}
     public record Meta(int page,int size,long totalItems,long totalPages,boolean hasPrevious,boolean hasNext) {}
     public record Page<T>(List<T> items,Meta meta) {}
     private final JdbcTemplate jdbc;
@@ -50,8 +50,11 @@ public class CalibreTransfers {
             TorrentProperties torrent,AccountStore accounts,EventJournal events) {
         this.jdbc=jdbc;this.tx=new TransactionTemplate(manager);this.settings=settings;this.client=client;this.catalog=catalog;
         this.files=files;this.downloads=downloads;this.tracking=tracking;this.torrent=torrent;this.accounts=accounts;this.events=events;
+        recoverInterrupted();
+    }
+    void recoverInterrupted() {
         tx.executeWithoutResult(s -> {
-            jdbc.update("UPDATE calibre_job_items SET state='UNCERTAIN',message='El proceso se interrumpió; verifica el envío antes de continuar' WHERE state='SENDING'");
+            jdbc.update("UPDATE calibre_job_items SET state='UNCERTAIN',message=coalesce(message || '. ','') || 'El proceso se interrumpió; verifica el envío antes de continuar' WHERE state='SENDING'");
             jdbc.update("UPDATE calibre_jobs SET state='PAUSED',message='El proceso se interrumpió; reanuda para verificar los envíos' WHERE state='RUNNING' OR id IN (SELECT job_id FROM calibre_job_items WHERE state='UNCERTAIN') AND state='QUEUED'");
         });
     }
@@ -114,7 +117,7 @@ public class CalibreTransfers {
     }
     private static final String SUMMARY="SELECT j.*,count(i.id) AS total,sum(CASE WHEN i.state IN ('PENDING','SENDING') THEN 1 ELSE 0 END) AS pending,sum(CASE WHEN i.state='ACCEPTED' THEN 1 ELSE 0 END) AS accepted,sum(CASE WHEN i.state='SKIPPED' THEN 1 ELSE 0 END) AS skipped,sum(CASE WHEN i.state='FAILED' THEN 1 ELSE 0 END) AS failed,sum(CASE WHEN i.state='UNCERTAIN' THEN 1 ELSE 0 END) AS uncertain FROM calibre_jobs j LEFT JOIN calibre_job_items i ON i.job_id=j.id";
     private static Job mapJob(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Job(r.getString("id"),r.getString("created_at"),r.getString("updated_at"),r.getString("owner_username"),r.getString("library"),r.getString("state"),r.getString("message"),r.getLong("total"),r.getLong("pending"),r.getLong("accepted"),r.getLong("skipped"),r.getLong("failed"),r.getLong("uncertain")); }
-    private static Item mapItem(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Item(r.getString("id"),r.getString("record_id"),r.getInt("file_index"),r.getString("name"),r.getLong("size"),r.getLong("epl_id"),r.getString("revision"),r.getString("state"),r.getObject("calibre_id")==null ? null : r.getLong("calibre_id"),r.getString("message")); }
+    private static Item mapItem(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Item(r.getString("id"),r.getString("record_id"),r.getInt("file_index"),r.getString("name"),r.getLong("size"),r.getLong("epl_id"),r.getString("revision"),r.getString("state"),r.getObject("calibre_id")==null ? null : r.getLong("calibre_id"),r.getString("message"),r.getBoolean("identity_complete")); }
     public Job job(String id) {
         var result=jdbc.query(SUMMARY+" WHERE j.id=? GROUP BY j.id",CalibreTransfers::mapJob,id);
         if(result.isEmpty()) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"Trabajo de Calibre no encontrado");return result.getFirst();
@@ -218,7 +221,7 @@ public class CalibreTransfers {
         Path temp=null;boolean sending=false;Long remoteId=item.calibreId();String metadataNotice="";
         try {
             if(item.state().equals("UNCERTAIN")) {
-                remoteId=remoteId==null && (item.message()==null || !item.message().contains("sin ")) ? client.findRevision(connection,item.eplId(),new BigDecimal(item.revision())) : remoteId;
+                remoteId=remoteId==null && item.identityComplete() ? client.findRevision(connection,item.eplId(),new BigDecimal(item.revision())) : remoteId;
                 if(remoteId==null) {pause(job,actor,"El envío anterior no está confirmado. Comprueba Calibre; no se repetirá automáticamente");return;}
                 publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"ACCEPTED",remoteId,"Envío anterior verificado");return;
             }
@@ -240,7 +243,7 @@ public class CalibreTransfers {
             connection=new CalibreSettings.Connection(current.url(),current.username(),current.password(),connection.library());
             Boolean claimed=tx.execute(s -> {
                 if(!job(job).state().equals("RUNNING")) return false;
-                boolean acquired=jdbc.update("UPDATE calibre_job_items SET state='SENDING' WHERE id=? AND state='PENDING'",item.id())==1;
+                boolean acquired=jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=? WHERE id=? AND state='PENDING'",identity.eplId()!=null && identity.revision()!=null,item.id())==1;
                 return acquired;
             });if(!Boolean.TRUE.equals(claimed)) return;
             sending=true;

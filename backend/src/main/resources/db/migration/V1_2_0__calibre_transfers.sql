@@ -21,6 +21,7 @@ CREATE TABLE calibre_job_items (
     epl_id bigint NOT NULL CHECK(epl_id>0),
     revision varchar(40) NOT NULL,
     state varchar(16) NOT NULL CHECK(state IN ('PENDING','SENDING','ACCEPTED','SKIPPED','FAILED','UNCERTAIN','CANCELLED')),
+    identity_complete integer NOT NULL DEFAULT 0 CHECK(identity_complete IN (0,1)),
     calibre_id bigint CHECK(calibre_id IS NULL OR calibre_id>0),
     message varchar(1024),
     UNIQUE(job_id,record_id,file_index),

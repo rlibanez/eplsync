@@ -182,6 +182,29 @@ class CalibreTransfersTests {
         verify(client,never()).findRevision(any(),anyLong(),any());
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
     }
+    @Test void restartPreservesWarningAndDoesNotInferMissingIdentifiers() {
+        var job=create();
+        jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=0,message='El tamaño del EPUB no coincide con el registrado por el cliente torrent. El archivo podría haber sido modificado.' WHERE job_id=?",job.id());
+        jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",job.id());
+        transfers.recoverInterrupted();
+        when(client.findRevision(any(),anyLong(),any())).thenReturn(9L);
+        transfers.control(job.id(),"resume");transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).contains("tamaño del EPUB");
+        verify(client,never()).findRevision(any(),anyLong(),any());
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void restartVerifiesCompleteIdentityWithoutRepeatingUpload() {
+        var job=create();
+        jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=1 WHERE job_id=?",job.id());
+        jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",job.id());
+        transfers.recoverInterrupted();
+        when(client.findRevision(any(),anyLong(),any())).thenReturn(9L);
+        transfers.control(job.id(),"resume");transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
     @Test void ambiguousUploadIsNeverAutomaticallyRepeatedAndCanBeVerified() {
         when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());
         var job=create();transfers.cycle();assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
