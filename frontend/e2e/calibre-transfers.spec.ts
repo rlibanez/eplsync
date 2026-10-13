@@ -239,3 +239,66 @@ test("job validation errors stop polling until the user retries", async ({
   await page.getByRole("button", { name: "Reintentar", exact: true }).click();
   await expect.poll(() => requests).toBe(initialRequests + 1);
 });
+
+test("Calibre jobs filter by clicking state and user", async ({ page }) => {
+  await page.route("**/api/calibre/transfers?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            id: "job",
+            createdAt: "2026-10-13T10:00:00Z",
+            username: "Roberto",
+            library: "main",
+            state: "COMPLETED",
+            total: 1,
+            accepted: 1,
+            failed: 0,
+          },
+        ],
+        meta: { ...meta, totalItems: 1 },
+      },
+    }),
+  );
+  await page.goto("/calibre/jobs");
+  await expect(
+    page.getByRole("heading", { name: "Trabajos de Calibre", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("thead th").first()).toHaveText(/Trabajo/);
+  await expect(
+    page.locator("tbody").getByRole("link", { name: "job", exact: true }),
+  ).toHaveAttribute("href", "/calibre/jobs/job");
+  const sorted = page.waitForRequest(
+    (r) =>
+      r.url().includes("/api/calibre/transfers?") &&
+      new URL(r.url()).searchParams.getAll("sort").includes("id,asc"),
+  );
+  await page
+    .locator("thead")
+    .getByRole("button", { name: "Trabajo", exact: true })
+    .click();
+  await sorted;
+  let request = page.waitForRequest(
+    (r) =>
+      r.url().includes("/api/calibre/transfers?") &&
+      new URL(r.url()).searchParams.get("state") === "COMPLETED",
+  );
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Terminado", exact: true })
+    .click();
+  await request;
+  request = page.waitForRequest(
+    (r) =>
+      r.url().includes("/api/calibre/transfers?") &&
+      new URL(r.url()).searchParams.get("username") === "Roberto",
+  );
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Roberto", exact: true })
+    .click();
+  await request;
+  await expect(page.getByLabel("Usuario", { exact: true })).toHaveValue(
+    "Roberto",
+  );
+});

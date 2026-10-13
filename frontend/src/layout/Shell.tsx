@@ -188,12 +188,12 @@ function ShellContent() {
                 auth.can("CALIBRE_JOBS_MANAGE")) && (
                 <NavLink
                   to="/calibre/jobs"
-                  aria-label={t("calibreSend.jobs")}
-                  title={t("calibreSend.jobs")}
+                  aria-label={t("nav.jobs")}
+                  title={t("nav.jobs")}
                   onClick={() => setOpen(false)}
                 >
                   <ListTodo size={19} />
-                  <span className="nav-text">{t("calibreSend.jobs")}</span>
+                  <span className="nav-text">{t("nav.jobs")}</span>
                 </NavLink>
               )}
             </>

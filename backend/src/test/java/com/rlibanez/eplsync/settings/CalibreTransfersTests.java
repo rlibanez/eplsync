@@ -50,6 +50,19 @@ class CalibreTransfersTests {
         when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true));
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
+    @Test void jobsFilterByUsernameAndState() {
+        String now=Instant.now().toString();
+        for(String name:List.of("Roberto","Otra cuenta")) jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,?)",UUID.randomUUID().toString(),now,now,owner.id(),name,"destination","main","source",name.equals("Roberto") ? "COMPLETED" : "QUEUED");
+        assertThat(transfers.jobs(0,20,"COMPLETED"," rober ",List.of("id,asc")).items()).extracting(job -> job.username()).containsExactly("Roberto");
+        assertThat(transfers.jobs(0,20,"QUEUED","Roberto",List.of("createdAt,desc")).meta().totalItems()).isZero();
+    }
+    @Test void jobsFilterByCreationDates() {
+        String id=UUID.randomUUID().toString(),created="2026-10-13T12:00:00Z";
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,?)",id,created,created,owner.id(),"Owner","destination","main","source","COMPLETED");
+        assertThat(transfers.jobs(0,20,"","",Instant.parse(created),Instant.parse("2026-10-14T00:00:00Z"),List.of("createdAt,desc")).meta().totalItems()).isEqualTo(1);
+        assertThat(transfers.jobs(0,20,"","",null,Instant.parse(created),List.of("createdAt,desc")).meta().totalItems()).isZero();
+        assertThatThrownBy(() -> transfers.jobs(0,20,"","",Instant.parse(created),Instant.parse(created),List.of("createdAt,desc"))).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+    }
     static byte[] epub(long epl,String revision) throws Exception {
         var output=new java.io.ByteArrayOutputStream();
         try(var zip=new java.util.zip.ZipOutputStream(output)) {

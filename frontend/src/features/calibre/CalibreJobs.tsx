@@ -1,10 +1,18 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Group, Progress, Select } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Group,
+  Progress,
+  Select,
+  TextInput,
+} from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Pause, Play, X } from "lucide-react";
 import { BookCover } from "../catalog/BookCover";
+import { dateBounds } from "../events/eventTypes";
 import { get } from "../../api/catalog";
 import { useAuth } from "../auth/Auth";
 import { useLocale } from "../../locales/useLocale";
@@ -138,13 +146,20 @@ export function CalibreJobs() {
   const [page, setPage] = useState(0),
     [size, setSize] = useState(20),
     [state, setState] = useState<string | null>(null),
+    [username, setUsername] = useState(""),
+    [from, setFrom] = useState(""),
+    [to, setTo] = useState(""),
     [sort, setSort] = useState("createdAt,desc");
+  const bounds = dateBounds(from, to);
+  const dates = new URLSearchParams();
+  if (bounds.from) dates.set("from", bounds.from);
+  if (bounds.before) dates.set("before", bounds.before);
   const choice = usePageSizeChoice(size);
   const result = useQuery({
-    queryKey: ["calibre-jobs", page, size, state, sort],
+    queryKey: ["calibre-jobs", page, size, state, username, from, to, sort],
     queryFn: ({ signal }) =>
       get<Page<Job>>(
-        `/calibre/transfers?page=${page}&size=${size}&state=${state ?? ""}&${sortQuery(sort)}`,
+        `/calibre/transfers?page=${page}&size=${size}&state=${state ?? ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
         signal,
       ),
     retry: false,
@@ -153,13 +168,14 @@ export function CalibreJobs() {
   const columns = useDownloadColumns(
     "eplsync.calibre.jobs.columns",
     [
+      { field: "id", label: "downloads.job", width: 320 },
       { field: "createdAt", label: "downloads.createdAt", width: 200 },
-      { field: "username", label: "events.user", width: 180 },
       { field: "library", label: "calibre.library", width: 180 },
       { field: "state", label: "downloads.status", width: 180 },
-      { field: "total", label: "calibreSend.files", width: 100 },
-      { field: "accepted", label: "calibreSend.accepted", width: 100 },
-      { field: "failed", label: "calibreSend.failedCount", width: 100 },
+      { field: "total", label: "calibreSend.filesColumn", width: 100 },
+      { field: "accepted", label: "downloads.accepted", width: 100 },
+      { field: "failed", label: "downloads.failedCount", width: 100 },
+      { field: "username", label: "events.user", width: 180 },
     ],
     sort,
     (value) => {
@@ -176,7 +192,16 @@ export function CalibreJobs() {
   }, [result.data]);
   return (
     <section>
-      <h1>{t("calibreSend.jobs")}</h1>
+      <div className="page-heading">
+        <h1>{t("calibreSend.jobs")}</h1>
+        <Button
+          variant="filled"
+          loading={result.isFetching}
+          onClick={() => void result.refetch()}
+        >
+          {t(result.isFetching ? "downloads.refreshing" : "downloads.refresh")}
+        </Button>
+      </div>
       <p className="muted">{t("calibreSend.jobsHelp")}</p>
       <div className="filters jobs-filters">
         <Select
@@ -191,13 +216,51 @@ export function CalibreJobs() {
             (value) => ({ value, label: t(`calibreSend.states.${value}`) }),
           )}
         />
+        <TextInput
+          label={t("events.user")}
+          value={username}
+          maxLength={64}
+          onChange={(event) => {
+            setUsername(event.currentTarget.value);
+            setPage(0);
+          }}
+        />
+        <TextInput
+          type="date"
+          label={t("filters.from")}
+          value={from}
+          max={to || undefined}
+          onChange={(event) => {
+            setFrom(event.currentTarget.value);
+            setPage(0);
+          }}
+        />
+        <TextInput
+          type="date"
+          label={t("filters.to")}
+          value={to}
+          min={from || undefined}
+          onChange={(event) => {
+            setTo(event.currentTarget.value);
+            setPage(0);
+          }}
+        />
+        <Button
+          type="button"
+          variant="subtle"
+          onClick={() => {
+            setState(null);
+            setUsername("");
+            setFrom("");
+            setTo("");
+            setPage(0);
+          }}
+        >
+          {t("catalog.clear")}
+        </Button>
       </div>
       <section className="panel">
         <div className="table-toolbar">
-          <span>
-            {result.data ? number(result.data.meta.totalItems) : ""}{" "}
-            {t("calibreSend.jobsCount")}
-          </span>
           <div className="catalog-table-controls">{columns.controls}</div>
         </div>
         {result.isPending ? (
@@ -218,20 +281,44 @@ export function CalibreJobs() {
                     <tr key={job.id}>
                       {columns.cells([
                         <td>
-                          <Link to={`/calibre/jobs/${job.id}`}>
-                            {date(job.createdAt)}
+                          <Link
+                            className="book-title"
+                            to={`/calibre/jobs/${job.id}`}
+                          >
+                            {job.id}
                           </Link>
                         </td>,
-                        <td>{job.username}</td>,
+                        <td>{date(job.createdAt)}</td>,
                         <td>{job.library}</td>,
                         <td>
-                          <span className="badge">
-                            {t(`calibreSend.states.${job.state}`)}
-                          </span>
+                          <button
+                            type="button"
+                            className="catalog-value-filter"
+                            onClick={() => {
+                              setState(job.state);
+                              setPage(0);
+                            }}
+                          >
+                            <span className="badge">
+                              {t(`calibreSend.states.${job.state}`)}
+                            </span>
+                          </button>
                         </td>,
                         <td>{number(job.total)}</td>,
                         <td>{number(job.accepted)}</td>,
                         <td>{number(job.failed)}</td>,
+                        <td>
+                          <button
+                            type="button"
+                            className="catalog-value-filter"
+                            onClick={() => {
+                              setUsername(job.username);
+                              setPage(0);
+                            }}
+                          >
+                            {job.username}
+                          </button>
+                        </td>,
                       ])}
                     </tr>
                   ))}

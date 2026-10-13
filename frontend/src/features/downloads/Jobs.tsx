@@ -76,7 +76,7 @@ export function Jobs() {
       if (request === refreshRequest.current) {
         setRefresh(response.isError ? "error" : "success");
         notify({
-          title: t("nav.jobs"),
+          title: t("nav.downloadJobs"),
           message: t(
             response.isError ? "downloads.refreshError" : "downloads.refreshed",
           ),
@@ -88,7 +88,7 @@ export function Jobs() {
       if (request === refreshRequest.current) {
         setRefresh("error");
         notify({
-          title: t("nav.jobs"),
+          title: t("nav.downloadJobs"),
           message: t("downloads.refreshError"),
           tone: "error",
           href: "/downloads/jobs",
@@ -100,18 +100,19 @@ export function Jobs() {
     "eplsync.jobs.columns",
     [
       { field: "jobId", label: "downloads.job", width: 310 },
+      { field: "createdAt", label: "downloads.createdAt", width: 200 },
       { field: "type", label: "downloads.type", width: 140 },
       { field: "status", label: "downloads.status", width: 160 },
-      { field: "username", label: "events.user", width: 180 },
       { field: "progress", label: "downloads.progress", width: 180 },
       {
         field: "selectedBooks",
-        label: "downloads.selectedBooks",
+        label: "downloads.jobBooks",
         width: 160,
       },
       { field: "accepted", label: "downloads.accepted", width: 120 },
       { field: "failed", label: "downloads.failedCount", width: 120 },
-      { field: "createdAt", label: "downloads.createdAt", width: 200 },
+
+      { field: "username", label: "events.user", width: 180 },
     ],
     sort,
     (value) => {
@@ -123,7 +124,7 @@ export function Jobs() {
   return (
     <>
       <div className="page-heading">
-        <h1>{t("nav.jobs")}</h1>
+        <h1>{t("nav.downloadJobs")}</h1>
         <Button
           variant="filled"
           loading={refresh === "pending"}
@@ -240,13 +241,33 @@ export function Jobs() {
                             {job.jobId}
                           </Link>
                         </td>,
+                        <td>{date(job.createdAt)}</td>,
                         <td>
-                          {t(
-                            `historyActions.jobTypes.${job.type ?? "DOWNLOAD"}`,
-                          )}
+                          <button
+                            type="button"
+                            className="catalog-value-filter"
+                            onClick={() => {
+                              setType(job.type ?? "DOWNLOAD");
+                              setPage(0);
+                            }}
+                          >
+                            {t(
+                              `historyActions.jobTypes.${job.type ?? "DOWNLOAD"}`,
+                            )}
+                          </button>
                         </td>,
-                        <td>{status(job.status)}</td>,
-                        <td>{job.username || "—"}</td>,
+                        <td>
+                          <button
+                            type="button"
+                            className="catalog-value-filter"
+                            onClick={() => {
+                              setFilter(job.status);
+                              setPage(0);
+                            }}
+                          >
+                            <span className="badge">{status(job.status)}</span>
+                          </button>
+                        </td>,
                         <td>
                           {number(job.processedItems)} /{" "}
                           {number(job.selectedItems)}
@@ -254,7 +275,22 @@ export function Jobs() {
                         <td>{number(job.selectedBooks)}</td>,
                         <td>{number(job.accepted)}</td>,
                         <td>{number(job.failed)}</td>,
-                        <td>{date(job.createdAt)}</td>,
+                        <td>
+                          {job.username ? (
+                            <button
+                              type="button"
+                              className="catalog-value-filter"
+                              onClick={() => {
+                                setUsername(job.username!);
+                                setPage(0);
+                              }}
+                            >
+                              {job.username}
+                            </button>
+                          ) : (
+                            "—"
+                          )}
+                        </td>,
                       ])}
                     </tr>
                   ))}
@@ -371,7 +407,7 @@ export function JobDetail() {
   return (
     <>
       <Link className="back-link" to="/downloads/jobs">
-        ← {t("nav.jobs")}
+        ← {t("nav.downloadJobs")}
       </Link>
       <h1>{t("downloads.job")}</h1>
       <p className="hash-text">{id}</p>

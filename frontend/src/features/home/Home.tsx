@@ -220,7 +220,7 @@ export function Home() {
         <article className="home-panel">
           <Link className="home-panel-title" to="/downloads/jobs">
             <ListChecks size={20} />
-            <h2>{t("nav.jobs")}</h2>
+            <h2>{t("nav.downloadJobs")}</h2>
             <ArrowRight size={16} />
           </Link>
           {summary.isError ? (

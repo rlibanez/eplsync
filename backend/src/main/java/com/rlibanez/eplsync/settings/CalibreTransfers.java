@@ -128,10 +128,20 @@ public class CalibreTransfers {
     }
     private static void paging(int page,int size) { if(page<0 || size<1 || size>1000) throw new UserInputException("Paginación inválida"); }
     public Page<Job> jobs(int page,int size,String state,List<String> sort) {
+        return jobs(page,size,state,"",sort);
+    }
+    public Page<Job> jobs(int page,int size,String state,String username,List<String> sort) {
+        return jobs(page,size,state,username,null,null,sort);
+    }
+    public Page<Job> jobs(int page,int size,String state,String username,Instant from,Instant before,List<String> sort) {
+        if(from!=null && before!=null && !from.isBefore(before)) throw new UserInputException("Rango de fechas inválido");
         paging(page,size);if(!state.isEmpty() && !Set.of("QUEUED","RUNNING","PAUSED","COMPLETED","CANCELLED").contains(state)) throw new UserInputException("Estado de trabajo inválido");
         String where=state.isEmpty() ? "" : " WHERE j.state=?";var args=new ArrayList<Object>();if(!state.isEmpty()) args.add(state);
+        if(!username.isBlank()) { where+=(where.isEmpty() ? " WHERE " : " AND ")+"instr(lower(j.owner_username),lower(?))>0";args.add(username.trim()); }
+        if(from!=null) {where+=(where.isEmpty() ? " WHERE " : " AND ")+"julianday(j.created_at)>=julianday(?)";args.add(from.toString());}
+        if(before!=null) {where+=(where.isEmpty() ? " WHERE " : " AND ")+"julianday(j.created_at)<julianday(?)";args.add(before.toString());}
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_jobs j"+where,Long.class,args.toArray());args.add(size);args.add((long)page*size);
-        return new Page<>(jdbc.query(SUMMARY+where+" GROUP BY j.id ORDER BY "+order(sort,Map.of("createdAt","j.created_at","username","j.owner_username COLLATE EPL_TEXT","library","j.library COLLATE EPL_TEXT","state","j.state","total","total","accepted","accepted","failed","failed"))+",j.id LIMIT ? OFFSET ?",CalibreTransfers::mapJob,args.toArray()),meta(page,size,total));
+        return new Page<>(jdbc.query(SUMMARY+where+" GROUP BY j.id ORDER BY "+order(sort,Map.of("id","j.id","createdAt","j.created_at","username","j.owner_username COLLATE EPL_TEXT","library","j.library COLLATE EPL_TEXT","state","j.state","total","total","accepted","accepted","failed","failed"))+",j.id LIMIT ? OFFSET ?",CalibreTransfers::mapJob,args.toArray()),meta(page,size,total));
     }
     public Page<Item> items(String id,int page,int size,List<String> sort) {
         paging(page,size);job(id);long total=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items WHERE job_id=?",Long.class,id);

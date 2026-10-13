@@ -223,3 +223,47 @@ test("download row status and origin apply filters", async ({ page }) => {
   await row.getByRole("button", { name: "DISCOVERED", exact: true }).click();
   await request;
 });
+
+test("download jobs filter by row type, state and user", async ({ page }) => {
+  await page.route("**/api/torrent/jobs?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            jobId: "row-job",
+            type: "DOWNLOAD",
+            status: "COMPLETED",
+            username: "Roberto",
+            createdAt: "2026-10-13T10:00:00Z",
+            selectedItems: 1,
+            processedItems: 1,
+            selectedBooks: 1,
+            accepted: 1,
+            failed: 0,
+          },
+        ],
+        meta,
+      },
+    }),
+  );
+  await page.goto("/downloads/jobs");
+  await expect(
+    page.getByRole("heading", { name: "Trabajos de descargas", exact: true }),
+  ).toBeVisible();
+  for (const [name, key, value] of [
+    ["Descarga", "type", "DOWNLOAD"],
+    ["Terminado", "status", "COMPLETED"],
+    ["Roberto", "username", "Roberto"],
+  ]) {
+    const request = page.waitForRequest(
+      (r) =>
+        r.url().includes("/api/torrent/jobs?") &&
+        new URL(r.url()).searchParams.get(key) === value,
+    );
+    await page
+      .locator("tbody")
+      .getByRole("button", { name, exact: true })
+      .click();
+    await request;
+  }
+});
