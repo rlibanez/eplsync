@@ -6,7 +6,7 @@ import { sortQuery } from "./TableControls";
 import { useEffect, useState } from "react";
 import { Button, Checkbox, MultiSelect } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "../auth/Auth";
@@ -33,7 +33,8 @@ export function RevisionUpdates() {
   const { status, date, revision } = useLocale();
   const auth = useAuth();
   const cache = useQueryClient();
-  const [opened, setOpened] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [opened, setOpened] = useState(searchParams.get("search") === "1");
   const [options, setOptions] = useState<string[]>([]);
   const session = useUpdateSession();
   const { search, page, size, sort, registeredStatus } = session;
@@ -50,6 +51,14 @@ export function RevisionUpdates() {
     queryFn: ({ signal }) =>
       get<Preferences>("/settings/downloads/updates", signal),
   });
+  useEffect(() => {
+    if (searchParams.get("search") !== "1" || !defaults.data) return;
+    setOptions([...defaults.data.states]);
+    setOpened(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("search");
+    setSearchParams(next, { replace: true });
+  }, [defaults.data, searchParams, setSearchParams]);
   const result = useQuery({
     queryKey: [
       "revision-updates",
@@ -161,7 +170,7 @@ export function RevisionUpdates() {
           {t("revisionUpdates.search")}
         </Button>
       </div>
-      {!search && <p className="muted">{t("revisionUpdates.start")}</p>}
+      <p className="muted">{t("revisionUpdates.subtitle")}</p>
       {!auth.can("TORRENT_SYNC") && (
         <p className="muted">{t("revisionUpdates.syncPermission")}</p>
       )}

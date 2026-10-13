@@ -29,6 +29,11 @@ test("revision search shows the torrent connection error and can retry", async (
         });
   });
   await page.goto("/downloads/updates");
+  const subtitle = page.getByText(
+    "Compara las revisiones registradas de tus descargas con el Catálogo. Busca actualizaciones para sincronizar con el cliente torrent y consultar las nuevas revisiones disponibles.",
+    { exact: true },
+  );
+  await expect(subtitle).toBeVisible();
   await page
     .getByRole("button", { name: "Buscar actualizaciones", exact: true })
     .click();
@@ -39,6 +44,8 @@ test("revision search shows the torrent connection error and can retry", async (
   await dialog.getByRole("button", { name: "Reintentar" }).click();
   await expect(dialog).not.toBeVisible();
   expect(attempts).toBe(2);
+  await expect(subtitle).toBeVisible();
+  await expect(page.getByText(/Última búsqueda:/)).toBeVisible();
 });
 
 test("revision search synchronizes, uses temporary options, sorts and sends selected books", async ({
@@ -106,9 +113,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
   );
   await page.goto("/downloads/updates");
   await expect(
-    page
-      .locator(".sidebar")
-      .getByRole("link", { name: "Actualizaciones", exact: true }),
+    page.locator(".sidebar").locator('a[href="/downloads/updates"]'),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Buscar actualizaciones", exact: true })
@@ -349,10 +354,14 @@ test("last search, page, filter and ordering survive route changes and covers ma
     .click();
   await page
     .locator(".sidebar")
-    .getByRole("link", { name: "Actualizaciones", exact: true })
+    .locator('a[href="/downloads/updates"]')
     .click();
   await expect(title).toBeVisible();
-  await expect(page.locator(".filters .mantine-Pill-label").filter({hasText:"No encontrado"})).toBeVisible();
+  await expect(
+    page
+      .locator(".filters .mantine-Pill-label")
+      .filter({ hasText: "No encontrado" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("columnheader", { name: /Revisión disponible/ }),
   ).toHaveAttribute("aria-sort", "ascending");

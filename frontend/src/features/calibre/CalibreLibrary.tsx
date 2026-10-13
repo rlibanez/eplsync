@@ -3,6 +3,7 @@ import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { CalibreTable, calibreColumns, type CalibreBook } from "./CalibreTable";
 import { useNotifications } from "../notifications/Notifications";
+import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { Button, MultiSelect, TextInput } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -21,7 +22,10 @@ interface Snapshot {
   identified: number;
   complete?: boolean;
 }
-export function CalibreLibrary() {
+export function CalibreUpdates() {
+  return <CalibreLibrary updates />;
+}
+export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
   const { t } = useTranslation();
   const auth = useAuth();
   const { notify } = useNotifications();
@@ -35,7 +39,7 @@ export function CalibreLibrary() {
     [comparison, setComparison] = useState(""),
     [presence, setPresence] = useState(""),
     [sort, setSort] = useState("title,asc");
-  const selectable = auth.can("CALIBRE_FILES_READ");
+  const selectable = !updates && auth.can("CALIBRE_FILES_READ");
   const [selected, setSelected] = useState<number[]>([]);
   useEffect(
     () => setSelected([]),
@@ -50,9 +54,10 @@ export function CalibreLibrary() {
     ...(eplId ? { eplId } : {}),
     comparison,
     presence,
+    ...(updates ? { updatesOnly: "true" } : {}),
   });
   const result = useQuery({
-    queryKey: ["calibre-library", params.toString(), sort],
+    queryKey: ["calibre-library", params.toString(), sort, updates],
     queryFn: ({ signal }) =>
       get<Page<CalibreBook>>(
         `/calibre/books?${params}&${sortQuery(sort)}`,
@@ -90,8 +95,12 @@ export function CalibreLibrary() {
       }),
   });
   const columns = useDownloadColumns(
-    "eplsync.calibre.columns",
-    calibreColumns,
+    updates ? "eplsync.calibre.updates.columns" : "eplsync.calibre.columns",
+    updates
+      ? calibreColumns.filter(
+          (c) => !["actions", "presence", "comparison"].includes(c.field),
+        )
+      : calibreColumns,
     sort,
     (v) => {
       setSort(v);
@@ -105,19 +114,41 @@ export function CalibreLibrary() {
   return (
     <>
       <div className="page-heading">
-        <h1>{t("calibre.libraryHeading")}</h1>
+        <h1>
+          {t(updates ? "calibre.updatesHeading" : "calibre.libraryHeading")}
+        </h1>
         {auth.can("CALIBRE_SYNC") && (
-          <Button loading={sync.isPending} onClick={() => sync.mutate()}>
-            {t("calibre.sync")}
-          </Button>
+          <div className="action-row">
+            {!updates && (
+              <Button
+                component={Link}
+                to="/calibre/updates"
+                disabled={sync.isPending}
+              >
+                {t("revisionUpdates.search")}
+              </Button>
+            )}
+            <Button loading={sync.isPending} onClick={() => sync.mutate()}>
+              {t(updates ? "revisionUpdates.search" : "calibre.sync")}
+            </Button>
+          </div>
         )}
       </div>
-      <p className="muted">{t("calibre.libraryDescription")}</p>
+      <p className="muted">
+        {t(
+          updates ? "calibre.updatesDescription" : "calibre.libraryDescription",
+        )}
+      </p>
       {snapshot.data?.complete === false && <p>{t("calibreSend.partial")}</p>}
       {snapshot.data ? (
-        <p>
-          {t("calibre.library")}: {snapshot.data.library} ·{" "}
+        <p className="muted">
           {t("calibre.lastSync")}: {date(snapshot.data.syncedAt)}
+          {!updates && (
+            <>
+              {" "}
+              · {t("calibre.library")}: {snapshot.data.library}
+            </>
+          )}
         </p>
       ) : (
         !snapshot.isPending &&
@@ -154,36 +185,42 @@ export function CalibreLibrary() {
             setPage(0);
           }}
         />
-        <MultiSelect
-          searchable
-          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
-          label={t("calibre.comparison")}
-          clearable
-          value={comparison ? comparison.split(",") : []}
-          data={["CURRENT", "OUTDATED", "NEWER", "UNKNOWN"].map((value) => ({
-            value,
-            label: t(`calibre.filter.${value}`),
-          }))}
-          onChange={(v) => {
-            setComparison(v.join(","));
-            setPage(0);
-          }}
-        />
-        <MultiSelect
-          searchable
-          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
-          label={t("calibre.presence")}
-          clearable
-          value={presence ? presence.split(",") : []}
-          data={["PRESENT", "MISSING", "UNIDENTIFIED"].map((value) => ({
-            value,
-            label: t(`calibre.presenceValues.${value}`),
-          }))}
-          onChange={(v) => {
-            setPresence(v.join(","));
-            setPage(0);
-          }}
-        />
+        {!updates && (
+          <>
+            <MultiSelect
+              searchable
+              styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
+              label={t("calibre.comparison")}
+              clearable
+              value={comparison ? comparison.split(",") : []}
+              data={["CURRENT", "OUTDATED", "NEWER", "UNKNOWN"].map(
+                (value) => ({
+                  value,
+                  label: t(`calibre.filter.${value}`),
+                }),
+              )}
+              onChange={(v) => {
+                setComparison(v.join(","));
+                setPage(0);
+              }}
+            />
+            <MultiSelect
+              searchable
+              styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
+              label={t("calibre.presence")}
+              clearable
+              value={presence ? presence.split(",") : []}
+              data={["PRESENT", "MISSING", "UNIDENTIFIED"].map((value) => ({
+                value,
+                label: t(`calibre.presenceValues.${value}`),
+              }))}
+              onChange={(v) => {
+                setPresence(v.join(","));
+                setPage(0);
+              }}
+            />
+          </>
+        )}
         <Button
           variant="subtle"
           onClick={() => {
@@ -225,6 +262,9 @@ export function CalibreLibrary() {
           <>
             <CalibreTable
               items={result.data.items}
+              excludedFields={
+                updates ? ["actions", "presence", "comparison"] : []
+              }
               columns={columns}
               selected={selectable ? selected : undefined}
               onSelection={setSelected}

@@ -99,3 +99,8 @@ usa la ruta absoluta de la carpeta accesible al proceso de Java.
 Los archivos fuera de la carpeta configurada, incompletos, inaccesibles o
 con enlaces simbólicos en su ruta se rechazan. Si el archivo se mueve mediante
 qBittorrent, se consulta su ubicación actual.
+
+Desde **Descargas > Estado**, **Buscar actualizaciones** abre el mismo asistente
+que **Descargas > Actualizaciones**. Los resultados y los envíos se siguen
+consultando en esa vista; el acceso requiere los permisos de catálogo y
+sincronización con el cliente torrent.

@@ -184,6 +184,15 @@ function ShellContent() {
                 <BookOpen size={19} />
                 <span className="nav-text">{t("calibre.libraryTitle")}</span>
               </NavLink>
+              <NavLink
+                to="/calibre/updates"
+                aria-label={t("nav.updates")}
+                title={t("nav.updates")}
+                onClick={() => setOpen(false)}
+              >
+                <RefreshCw size={19} />
+                <span className="nav-text">{t("nav.updates")}</span>
+              </NavLink>
               {(auth.can("CALIBRE_SEND") ||
                 auth.can("CALIBRE_JOBS_MANAGE")) && (
                 <NavLink

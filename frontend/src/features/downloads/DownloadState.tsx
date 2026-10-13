@@ -178,6 +178,16 @@ function DownloadHistory() {
           <h1>{t("downloads.stateTitle")}</h1>
           {auth.can("TORRENT_SYNC") && (
             <div className="action-row">
+              {auth.can("CATALOG_READ") && (
+                <Button
+                  component={Link}
+                  to="/downloads/updates?search=1"
+                  disabled={syncPending}
+                >
+                  {t("revisionUpdates.search")}
+                </Button>
+              )}
+
               <Button
                 variant="default"
                 disabled={syncPending}

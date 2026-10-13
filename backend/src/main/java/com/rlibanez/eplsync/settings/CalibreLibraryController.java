@@ -34,11 +34,12 @@ public class CalibreLibraryController {
     @Transactional(readOnly=true)
     public Page books(@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,
                       @RequestParam(defaultValue="") String title,@RequestParam(defaultValue="") String author,@RequestParam(required=false) Long eplId,@RequestParam(defaultValue="") String comparison,
-                      @RequestParam(defaultValue="") String presence, jakarta.servlet.http.HttpServletRequest request) {
+                      @RequestParam(defaultValue="") String presence,@RequestParam(defaultValue="false") boolean updatesOnly, jakarta.servlet.http.HttpServletRequest request) {
         var sort=request.getParameterValues("sort")==null ? List.of("title,asc") : Arrays.asList(request.getParameterValues("sort"));
         if(page<0 || size<1 || size>1000 || title.length()>256 || author.length()>256 || (eplId!=null && eplId<=0) || sort.size()>8)
             throw new UserInputException("Paginación o búsqueda de Calibre inválida");
-        String base=" FROM (SELECT b.*, c.revision AS catalog_revision, c.cover_url, c.cover_available, CASE WHEN b.epl_id IS NULL THEN 'UNIDENTIFIED' WHEN c.epl_id IS NULL THEN 'MISSING' ELSE 'PRESENT' END AS presence, CASE WHEN c.epl_id IS NULL OR b.revision IS NULL THEN 'UNKNOWN' WHEN b.revision<c.revision THEN 'OUTDATED' WHEN b.revision>c.revision THEN 'NEWER' ELSE 'CURRENT' END AS comparison FROM calibre_books b LEFT JOIN catalog_books c ON c.epl_id=b.epl_id WHERE b.active=true) WHERE 1=1";
+        String latest=updatesOnly ? " AND b.revision<c.revision AND NOT EXISTS (SELECT 1 FROM calibre_books newer WHERE newer.active=true AND newer.epl_id=b.epl_id AND (newer.revision>b.revision OR newer.revision=b.revision AND newer.calibre_id<b.calibre_id))" : "";
+        String base=" FROM (SELECT b.*, c.revision AS catalog_revision, c.cover_url, c.cover_available, CASE WHEN b.epl_id IS NULL THEN 'UNIDENTIFIED' WHEN c.epl_id IS NULL THEN 'MISSING' ELSE 'PRESENT' END AS presence, CASE WHEN c.epl_id IS NULL OR b.revision IS NULL THEN 'UNKNOWN' WHEN b.revision<c.revision THEN 'OUTDATED' WHEN b.revision>c.revision THEN 'NEWER' ELSE 'CURRENT' END AS comparison FROM calibre_books b LEFT JOIN catalog_books c ON c.epl_id=b.epl_id WHERE b.active=true"+latest+") WHERE 1=1";
         var args=new ArrayList<Object>();
         if(!title.isBlank()) { base+=" AND instr(lower(title),lower(?))>0"; args.add(title.trim()); }
         if(!author.isBlank()) { base+=" AND instr(lower(authors),lower(?))>0"; args.add(author.trim()); }

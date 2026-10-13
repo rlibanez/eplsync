@@ -242,3 +242,17 @@ muestra un aviso y permite continuar. El aviso se conserva en el detalle del tra
 incluso después de finalizar el envío. Las descargas individuales y múltiples también
 advierten antes de iniciarse. La comprobación compara tamaños; no verifica que el
 contenido del archivo sea idéntico al original.
+
+## Actualizaciones
+
+En **Calibre > Actualizaciones** se comparan las revisiones de la biblioteca
+sincronizada con el Catálogo. Se muestra una entrada por EPL ID, usando la
+revisión más alta conocida en Calibre. Si esa revisión ya es igual o superior a
+la del Catálogo, el libro no aparece. Los libros sin EPL ID o sin revisión quedan
+fuera de la comparación.
+
+**Buscar actualizaciones** sincroniza la biblioteca antes de actualizar los
+resultados y requiere `CALIBRE_SYNC`; consultar los resultados requiere
+`CALIBRE_READ`. Se comparan los datos del Catálogo importado en EPL Sync.
+Esta primera fase no envía archivos ni elimina revisiones anteriores. Si la copia
+local es parcial, sincroniza la biblioteca para obtener una comparación completa.

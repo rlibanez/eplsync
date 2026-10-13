@@ -138,6 +138,16 @@ class CalibreCatalogTests {
         return new CalibreClient.Book(id,"Book",List.of("Author"),eplId,revision==null?null:java.math.BigDecimal.valueOf(revision),eplId!=null&&revision!=null);
     }
 
+    @Test @WithMockUser(authorities={"CALIBRE_READ"}) void updatesUseHighestRevisionPerEplAndIgnoreAlreadyCurrentBooks() throws Exception {
+        jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,3,'One','Author'),(2,2,'Two','Author'),(3,2,'Three','Author')");
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d),book(2,1L,2d),book(3,1L,2d),book(4,2L,1d),book(5,2L,2d),book(6,3L,null),book(7,null,1d),book(8,99L,1d)),8,0,100));
+        snapshots.sync();clearInvocations(client);
+        mvc.perform(get("/api/calibre/books").param("updatesOnly","true"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].calibreId").value(2)).andExpect(jsonPath("$.items[0].revision").value(2)).andExpect(jsonPath("$.items[0].catalogRevision").value(3));
+        mvc.perform(get("/api/calibre/books").param("updatesOnly","true").param("eplId","2"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(0));
+        verifyNoInteractions(client);
+    }
     @Test @WithMockUser(authorities={"CALIBRE_READ"}) void libraryFiltersSortsAndPaginatesWithoutCatalogPermission() throws Exception {
         jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,2,'Catalog title','Author')");
         when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d),book(2,1L,2d),book(3,99L,1d),book(4,null,null)),4,0,100));
