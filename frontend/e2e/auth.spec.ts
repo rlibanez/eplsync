@@ -55,7 +55,16 @@ test("login sends CSRF and enforces restricted navigation", async ({
     "",
   );
   await page.getByLabel("Nombre de usuario").fill(" reader ");
-  await page.getByLabel(/^Contraseña/).fill("reader-password");
+  const password = page.getByLabel(/^Contraseña/);
+  await password.evaluate((input) => {
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "A", modifierCapsLock: true, bubbles: true }));
+  });
+  await expect(page.getByRole("status")).toHaveText("⇧ Bloq Mayús activado");
+  await password.evaluate((input) => {
+    input.dispatchEvent(new KeyboardEvent("keyup", { key: "CapsLock", modifierCapsLock: false, bubbles: true }));
+  });
+  await expect(page.getByText("⇧ Bloq Mayús activado")).toHaveCount(0);
+  await password.fill("reader-password");
   await page
     .getByRole("button", { name: "Iniciar sesión", exact: true })
     .click();

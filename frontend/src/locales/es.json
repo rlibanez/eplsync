@@ -1151,6 +1151,7 @@
     "username": "Nombre de usuario",
     "email": "Correo electrónico",
     "password": "Contraseña",
+    "capsLock": "Bloq Mayús activado",
     "backLogin": "Volver al inicio de sesión",
     "pendingApproval": "Solicitud creada. Un administrador debe aprobarla antes de que puedas entrar.",
     "registered": "Cuenta creada. Ya puedes iniciar sesión.",

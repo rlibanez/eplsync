@@ -296,6 +296,7 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [capsLock, setCapsLock] = useState(false);
   const [passwordConfirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -469,6 +470,13 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                   }
                   disabled={pending}
                   onChange={(e) => setPassword(e.currentTarget.value)}
+                  onKeyDown={(e) => setCapsLock(e.getModifierState("CapsLock"))}
+                  onKeyUp={(e) => setCapsLock(e.getModifierState("CapsLock"))}
+                  onBlur={() => setCapsLock(false)}
+                  description={
+                    capsLock ? <span role="status">⇧ {t("auth.capsLock")}</span> : undefined
+                  }
+                  inputWrapperOrder={["label", "input", "description", "error"]}
                   error={passwordInvalid}
                 />
               </ValidationTip>

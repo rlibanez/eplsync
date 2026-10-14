@@ -1151,6 +1151,7 @@
     "username": "Username",
     "email": "Email",
     "password": "Password",
+    "capsLock": "Caps Lock is on",
     "backLogin": "Back to sign in",
     "pendingApproval": "Request created. An administrator must approve it before you can sign in.",
     "registered": "Account created. You can now sign in.",
