@@ -1,5 +1,6 @@
 import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
 import { Group } from "@mantine/core";
+import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
 import { EpubDownload } from "../downloads/EpubDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { DownloadActions } from "../downloads/DownloadActions";
@@ -34,7 +35,7 @@ export function BookHistory({ id }: { id: number }) {
   const { t } = useTranslation();
   const { can } = useAuth();
   const selectable =
-    (can("CALIBRE_SEND") && can("DOWNLOADS_FILES_READ")) ||
+    can("DOWNLOADS_FILES_READ") ||
     can("TORRENT_SYNC") ||
     can("TORRENT_CLEANUP") ||
     can("DOWNLOADS_DELETE");
@@ -110,7 +111,14 @@ export function BookHistory({ id }: { id: number }) {
               selected={selected}
               rows={result.data.items}
               onDone={() => setSelected([])}
-              extraActions={<SendToCalibre ids={selected} />}
+              extraActions={
+                <>
+                  {can("DOWNLOADS_FILES_READ") && (
+                    <EpubBatchDownload selected={selected} toolbar={false} />
+                  )}
+                  <SendToCalibre ids={selected} />
+                </>
+              }
             />
             <div className="table-scroll">
               <table

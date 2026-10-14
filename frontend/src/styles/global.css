@@ -2045,7 +2045,7 @@ summary {
   .selection-toolbar-actions { height: 40px; overflow-x: auto; }
   .selection-table-toolbar > .catalog-table-controls { justify-self: end; }
 }
-.book-section-heading { padding: 18px 22px 0; }
+.book-section-heading { padding: 18px 22px; }
 .book-section-heading h2 { margin: 0; }
 @media (max-width: 700px) {
   .book-section-heading { padding-inline: 15px; }
