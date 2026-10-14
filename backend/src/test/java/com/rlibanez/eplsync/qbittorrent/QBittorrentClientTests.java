@@ -100,6 +100,15 @@ class QBittorrentClientTests {
         System.out.println("100000 torrents streamed (~214 MiB): "+Duration.ofNanos(System.nanoTime()-start).toMillis()+" ms");
     }
 
+    @Test void pendingMetadataRequiresExplicitEvidenceOfNoDownloadedData() {
+        var qbit=client();
+        String base="{\"hash\":\""+"A".repeat(40)+"\",\"state\":\"queuedDL\",\"progress\":0,\"amount_left\":0,\"content_path\":\"\",\"save_path\":\"/downloads/Epublibre\",\"has_metadata\":false,\"completed\":0,\"downloaded\":0}";
+        torrentInfo="["+base+"]";
+        var remote=qbit.listTorrents().getFirst();assertThat(remote.awaitingMetadataWithoutData()).isTrue();assertThat(remote.savePath()).isEqualTo("/downloads/Epublibre");
+        for(String payload:java.util.List.of(base.replace("\"downloaded\":0","\"downloaded\":1"),base.replace("\"has_metadata\":false","\"has_metadata\":true"),base.replace(",\"completed\":0",""))) {
+            torrentInfo="["+payload+"]";assertThat(qbit.listTorrents().getFirst().awaitingMetadataWithoutData()).isFalse();
+        }
+    }
     @Test void deletionUsesRemoteIdAndExplicitFilePolicy() {
         var qbit = client();
         String remoteId = "B".repeat(40);

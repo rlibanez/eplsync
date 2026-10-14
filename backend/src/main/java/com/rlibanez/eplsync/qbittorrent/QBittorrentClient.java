@@ -348,7 +348,7 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
                         if (parser.currentToken() != tools.jackson.core.JsonToken.PROPERTY_NAME) throw new QBittorrentConnectionException(UPSTREAM);
                         var field = parser.currentName();
                         if (parser.nextToken() == null) throw new QBittorrentConnectionException(UPSTREAM);
-                        if (java.util.Set.of("hash","infohash_v1","infohash_v2","state","progress","amount_left","completion_on","content_path","name").contains(field)) {
+                        if (java.util.Set.of("hash","infohash_v1","infohash_v2","state","progress","amount_left","completion_on","content_path","name","save_path","has_metadata","downloaded","completed").contains(field)) {
                             if (!parser.currentToken().isScalarValue() || item.has(field)) throw new QBittorrentConnectionException(UPSTREAM);
                             item.set(field,jsonMapper.reader().without(tools.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(parser));
                         } else parser.skipChildren();
@@ -389,7 +389,11 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
                 try { completedAt = java.time.Instant.ofEpochSecond(completion); }
                 catch (java.time.DateTimeException ex) { throw new QBittorrentConnectionException(UPSTREAM); }
             }
-            result.add(new RemoteTorrent(hash, status, completedAt, torrentHashes(item), item.path("content_path").asString(""), item.path("name").asString("")));
+            result.add(new RemoteTorrent(hash, status, completedAt, torrentHashes(item), item.path("content_path").asString(""), item.path("name").asString(""), item.path("save_path").asString(""),
+                item.path("has_metadata").isBoolean() && !item.path("has_metadata").asBoolean()
+                    && item.path("downloaded").isIntegralNumber() && item.path("downloaded").asLong(-1)==0
+                    && item.path("completed").isIntegralNumber() && item.path("completed").asLong(-1)==0
+                    && progress==0 && completedAt==null));
         }
         return java.util.List.copyOf(result);
     }

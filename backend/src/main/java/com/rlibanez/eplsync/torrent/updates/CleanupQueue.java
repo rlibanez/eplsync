@@ -180,8 +180,14 @@ public class CleanupQueue {
                     save(entry,UpdateCleanup.State.BLOCKED,"Políticas de borrado incompatibles para el mismo torrent"); continue;
                 }
                 boolean files=entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES;
-                if (files && !TorrentRemovalSafety.exclusivePath(old,paths)) {
-                    save(entry,UpdateCleanup.State.BLOCKED,"Rutas compartidas o no verificables; no se borran archivos"); continue;
+                if (files) {
+                    var safety=TorrentRemovalSafety.assess(old,paths);
+                    if(safety==TorrentRemovalSafety.PathSafety.UNKNOWN) {
+                        save(entry,UpdateCleanup.State.WAITING,"Comprobación de rutas pendiente; todavía no se puede verificar que los archivos sean exclusivos");continue;
+                    }
+                    if(safety==TorrentRemovalSafety.PathSafety.SHARED) {
+                        save(entry,UpdateCleanup.State.BLOCKED,"Archivos o carpetas compartidos con otro torrent; no se borran archivos");continue;
+                    }
                 }
                 save(entry,UpdateCleanup.State.REQUESTED,"Eliminación solicitada; pendiente de confirmar ausencia");
                 if (!dispatched.add(old.hash())) continue;
