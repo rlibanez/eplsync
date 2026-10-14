@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
     action: entry.id === 3 ? "SYNC" : "UPDATE",
     createdAt: "2026-10-01T10:00:00Z",
     operationId: "long-operation-".repeat(20) + entry.id,
-    details: { message: "Un resumen muy largo ".repeat(100) },
+    details: { message: "Un resumen muy largo ".repeat(100), ...(entry.id === 3 ? { dryRun: false } : {}) },
   }));
   await page.route("**/api/events/operations?**", (r) =>
     r.fulfill({ json: operationResponse(entries, r.request().url()) }),
@@ -137,4 +137,12 @@ test("event table supports criteria and configurable columns", async ({
     "Fin",
     page.locator(".events-panel"),
   );
+});
+
+test("torrent synchronization summary omits the simulation field", async ({ page }) => {
+  const row = page.locator(".events-table tbody tr").filter({ hasText: "Sincronización torrent" });
+  await row.locator("summary").click();
+  await expect(row.locator(".event-timeline")).toBeVisible();
+  await expect(row.locator(".event-details dt")).not.toContainText(["Simulación"]);
+  await expect(row.locator(".event-details")).toContainText("Un resumen muy largo");
 });

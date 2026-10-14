@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import {
+  type AppEvent,
   type EventOperation,
   formatDuration,
   eventActorLabel,
@@ -29,13 +30,17 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
         : number.format(value);
     return value;
   };
+  const visibleDetails = (event: AppEvent) =>
+    Object.entries(event.details).filter(
+      ([key]) => event.action !== "SYNC" || key !== "dryRun",
+    );
   const copy = async () => {
     const text = [
       t("events.operation") + ": " + operation.latest.operationId,
       ...operation.events.flatMap((event) => [
         date(event.createdAt) + " — " + t("events.outcomes." + event.outcome),
         t("events.user") + ": " + eventActorLabel(event, t),
-        ...Object.entries(event.details).map(
+        ...visibleDetails(event).map(
           ([key, value]) =>
             t("events.fields." + key, { defaultValue: key }) +
             ": " +
@@ -66,9 +71,9 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
             <p className="muted">
               {t("events.user")}: {eventActorLabel(event, t)}
             </p>
-            {!!Object.keys(event.details).length && (
+            {!!visibleDetails(event).length && (
               <dl className="event-details">
-                {Object.entries(event.details).map(([key, value]) => (
+                {visibleDetails(event).map(([key, value]) => (
                   <div key={key}>
                     <dt>{t("events.fields." + key, { defaultValue: key })}</dt>
                     <dd>{valueLabel(key, value)}</dd>
