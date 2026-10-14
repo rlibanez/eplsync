@@ -167,6 +167,20 @@ class UpdateTests {
         verify(stubClient).deleteTorrent(OLD,true);
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
     }
+    @Test void immediateCleanupRemovesMetadataLessTargetWithoutDeletingFiles() {
+        var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        var send=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        var old=new RemoteTorrent(OLD,DownloadStatus.QUEUED,null,Set.of(),"","old","/downloads",true);
+        var replacement=remote(NEW,DownloadStatus.DOWNLOADING,"/downloads/new.epub");
+        when(stubClient.listTorrents()).thenReturn(List.of(old,replacement)).thenReturn(List.of(replacement));
+        queue.runImmediate(100,Instant.ofEpochMilli(System.currentTimeMillis()));
+        verify(stubClient).deleteTorrent(OLD,false);
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        assertThat(only(job.jobId()).getMessage()).isEqualTo("Torrent eliminado; sin datos descargados que borrar");
+        var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
+        assertThat(event.details()).containsEntry("deleteFiles",false).containsEntry("confirmed",true);
+    }
     @Test void unresolvedTargetWaitsAndIsDeletedOnlyAfterItsPathBecomesVerifiable() {
         var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
         var send=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();

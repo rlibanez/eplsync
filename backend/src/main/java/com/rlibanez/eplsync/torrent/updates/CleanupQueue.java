@@ -31,7 +31,8 @@ public class CleanupQueue {
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
     private final JsonMapper mapper = JsonMapper.builder().build();
     public record Result(String id, String downloadId, Long eplId, String hash, PreviousVersions policy, UpdateCleanup.State state, String message) {}
-    private record Attempt(UpdateCleanup entry, EventContext.Actor actor, EventContext.Origin origin, String operationId) {}
+    private static final String NO_DATA = "Sin datos descargados que borrar";
+    private record Attempt(UpdateCleanup entry, EventContext.Actor actor, EventContext.Origin origin, String operationId, boolean deleteFiles) {}
     private Map<String,Object> auditDetails(UpdateCleanup entry) {
         return Map.of("eplId",entry.getEplId(),"cleanupId",entry.getId(),"hash",entry.getHash(),
             "policy",entry.getPreviousVersions().name(),"deleteFiles",entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES);
@@ -179,7 +180,8 @@ public class CleanupQueue {
                 if ((!Boolean.TRUE.equals(entry.getImmediate()) || Boolean.TRUE.equals(entry.getAutomatic())) && policies.getOrDefault(old.hash(),Set.of()).size()>1) {
                     save(entry,UpdateCleanup.State.BLOCKED,"Políticas de borrado incompatibles para el mismo torrent"); continue;
                 }
-                boolean files=entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES;
+                boolean noData=old.awaitingMetadataWithoutData() && (old.contentPath()==null || old.contentPath().isBlank());
+                boolean files=entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES && !noData;
                 if (files) {
                     var safety=TorrentRemovalSafety.assess(old,paths);
                     if(safety==TorrentRemovalSafety.PathSafety.UNKNOWN) {
@@ -189,13 +191,15 @@ public class CleanupQueue {
                         save(entry,UpdateCleanup.State.BLOCKED,"Archivos o carpetas compartidos con otro torrent; no se borran archivos");continue;
                     }
                 }
-                save(entry,UpdateCleanup.State.REQUESTED,"Eliminación solicitada; pendiente de confirmar ausencia");
+                save(entry,UpdateCleanup.State.REQUESTED,"Eliminación solicitada; pendiente de confirmar ausencia" + (noData ? ". " + NO_DATA : ""));
                 if (!dispatched.add(old.hash())) continue;
                 try {
                     var actor=automatic ? new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()) : EventContext.actor();
-                    var attempt=new Attempt(entry,actor,EventContext.origin(),UUID.randomUUID().toString());
+                    var attempt=new Attempt(entry,actor,EventContext.origin(),UUID.randomUUID().toString(),files);
+                    var startDetails=new HashMap<String,Object>(auditDetails(entry));
+                    startDetails.put("deleteFiles",files);
                     events.recordAs(actor,EventJournal.Category.TORRENT,"CLEANUP",
-                        EventJournal.Outcome.STARTED,attempt.origin(),attempt.operationId(),auditDetails(entry));
+                        EventJournal.Outcome.STARTED,attempt.origin(),attempt.operationId(),startDetails);
                     attempts.add(attempt);
                     adapter.deleteTorrent(old.hash(),files);
                 }
@@ -237,6 +241,7 @@ public class CleanupQueue {
             var entry=entries.findById(attempt.entry().getId()).orElseThrow();
             boolean confirmed=entry.getState()==UpdateCleanup.State.REMOVED;
             var details=new HashMap<String,Object>(auditDetails(entry));
+            details.put("deleteFiles",attempt.deleteFiles());
             details.put("requested",true);
             details.put("confirmed",confirmed);
             details.put("reason",entry.getMessage());
@@ -255,6 +260,8 @@ public class CleanupQueue {
     private void save(UpdateCleanup entry,UpdateCleanup.State state,String message) {
         // Never forget an uncertain write until absence is confirmed.
         if (entry.getState()==UpdateCleanup.State.REQUESTED && state!=UpdateCleanup.State.REMOVED) state=UpdateCleanup.State.REQUESTED;
+        if (entry.getState()==UpdateCleanup.State.REQUESTED && entry.getMessage()!=null && entry.getMessage().contains(NO_DATA))
+            message=state==UpdateCleanup.State.REMOVED ? "Torrent eliminado; " + NO_DATA.toLowerCase(java.util.Locale.ROOT) : message.contains(NO_DATA) ? message : message + ". " + NO_DATA;
         entry.setState(state); entry.setMessage(message); entry.setUpdatedAt(Instant.now()); entries.saveAndFlush(entry);
     }
     public void resolve(Set<String> aliases) {
