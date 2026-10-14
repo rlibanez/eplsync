@@ -12,7 +12,7 @@ services:
       - "${DATA_DIR:-./data}:/app/data"
       - "${LOGS_DIR:-./logs}:/app/logs"
       # Opcional: carpeta de EPUB compartida con qBittorrent, solo lectura.
-      # - "/ruta/real/de/descargas:/app/downloads:ro"
+      # - "${TORRENT_DIR:-./torrent}:/app/downloads:ro"
     environment:
       # General
       TZ: "${TZ:-Europe/Madrid}"

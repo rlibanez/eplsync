@@ -155,6 +155,12 @@ mkdir -p data logs
 Si has cambiado `DATA_DIR` o `LOGS_DIR`, crea las carpetas correspondientes.
 Deben permitir escritura al usuario y grupo indicados en `PUID` y `PGID`.
 
+Para descargar EPUB o enviarlos a Calibre desde el cliente torrent, configura
+`TORRENT_DIR` con la carpeta de descargas de qBittorrent en el host y descomenta
+su montaje en `docker-compose.yml`. Configura también la carpeta base vista por
+qBittorrent en `EPLSYNC_TORRENT_FILES_REMOTE_ROOT` o en Ajustes > Torrent
+(por ejemplo, `/downloads`). Definir `TORRENT_DIR` por sí solo no activa el montaje.
+
 ### 6. Inicia EPL Sync
 
 ```sh
