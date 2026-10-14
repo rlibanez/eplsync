@@ -54,6 +54,7 @@ export function SecretKeyDialog({ onClose }: { onClose: () => void }) {
   }
   return (
     <AppModal
+      width="compact"
       icon={KeyRound}
       opened
       onClose={onClose}

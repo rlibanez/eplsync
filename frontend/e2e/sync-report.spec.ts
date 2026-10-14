@@ -1,6 +1,6 @@
 import { checkTableControls } from "./table-controls";
 import { test, expect } from "./fixtures";
-test("preview and execution show local searchable detail without repeating sync", async ({
+test("execution shows local searchable detail without repeating sync", async ({
   page,
 }) => {
   await page.route("**/api/catalog/covers/task", (r) =>
@@ -95,7 +95,7 @@ test("preview and execution show local searchable detail without repeating sync"
   await expect(page.locator(".empty-list")).toBeVisible();
   const initialReads = reads;
   await page
-    .getByRole("button", { name: "Previsualizar sincronización", exact: true })
+    .getByRole("button", { name: "Sincronizar con el cliente", exact: true })
     .click();
   const report = page.locator(".sync-report");
   await expect(report.locator("details").first()).not.toHaveAttribute(
@@ -104,9 +104,9 @@ test("preview and execution show local searchable detail without repeating sync"
   );
   await report.locator("summary").first().click();
   await expect(
-    report.getByText("Simulación: sin cambios guardados", { exact: true }),
+    report.getByText("Cambios aplicados", { exact: true }),
   ).toBeVisible();
-  expect(reads).toBe(initialReads);
+  await expect.poll(() => reads).toBe(initialReads + 1);
   await expect(report.locator(".book-cover img").first()).toHaveAttribute(
     "src",
     "https://example.org/sync-cover.jpg",
@@ -177,7 +177,7 @@ test("preview and execution show local searchable detail without repeating sync"
   await page.goBack();
   await expect(report).toBeVisible();
   await report.locator("summary").first().click();
-  expect(calls).toEqual([true]);
+  expect(calls).toEqual([false]);
   await report.getByRole("button", { name: "Siguiente", exact: true }).click();
   await expect(report.locator("tbody tr")).toHaveCount(5);
   await report
@@ -213,7 +213,7 @@ test("preview and execution show local searchable detail without repeating sync"
     "ajeno",
   );
   await expect(report.locator("tbody tr")).toHaveCount(1);
-  expect(calls).toEqual([true]);
+  expect(calls).toEqual([false]);
   await page
     .getByRole("button", { name: "Sincronizar con el cliente", exact: true })
     .click();
@@ -237,8 +237,8 @@ test("preview and execution show local searchable detail without repeating sync"
       { exact: true },
     ),
   ).toBeVisible();
-  expect(calls).toEqual([true, false]);
-  await expect.poll(() => reads).toBe(initialReads + 1);
+  expect(calls).toEqual([false, false]);
+  await expect.poll(() => reads).toBe(initialReads + 2);
   await report
     .getByRole("button", {
       name: "Cerrar resultado de la sincronización",
@@ -255,7 +255,7 @@ test("preview and execution show local searchable detail without repeating sync"
     .getByRole("link", { name: "Estado", exact: true })
     .click();
   await expect(report).toHaveCount(0);
-  expect(calls).toEqual([true, false]);
+  expect(calls).toEqual([false, false]);
 });
 
 test("ignored torrent can be linked with inferred editable identity", async ({
@@ -276,8 +276,8 @@ test("ignored torrent can be linked with inferred editable identity", async ({
   await page.route("**/api/torrent/downloads/sync", (r) =>
     r.fulfill({
       json: {
-        dryRun: true,
-        applied: false,
+        dryRun: false,
+        applied: true,
         client: "qbittorrent",
         clientInstanceId: "instance",
         checkedAt: "2026-10-01T12:00:00Z",
@@ -315,7 +315,7 @@ test("ignored torrent can be linked with inferred editable identity", async ({
   });
   await page.goto("/downloads");
   await page
-    .getByRole("button", { name: "Previsualizar sincronización", exact: true })
+    .getByRole("button", { name: "Sincronizar con el cliente", exact: true })
     .click();
   const report = page.locator(".sync-report");
   await expect(report.locator("details").first()).not.toHaveAttribute(

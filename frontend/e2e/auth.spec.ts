@@ -393,8 +393,8 @@ test("legacy sync route redirects to State with download history and synchroniza
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Previsualizar sincronización" }),
-  ).toBeVisible();
-  expect(historyRequests).toBeGreaterThan(0);
+  ).toHaveCount(0);
+  await expect.poll(() => historyRequests).toBeGreaterThan(0);
 });
 
 test("registration and return to login use full width buttons", async ({

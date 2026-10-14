@@ -105,7 +105,7 @@ public class EpubFiles {
     }
     Opened open(Planned entry) throws IOException { return open(entry.file()); }
 
-    private void requireRoots() {
+    public void requireRoots() {
         var f=properties.getFiles();
         if(f.getRemoteRoot().isBlank() || f.getLocalRoot().isBlank()) throw unavailable("Configura las carpetas de descarga en Ajustes > Torrent");
     }

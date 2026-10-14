@@ -99,6 +99,11 @@ function DownloadHistory() {
     }
   params.set("page", String(page));
   params.set("size", String(size));
+  const syncState = useQuery({
+    queryKey: ["downloads", "sync-state"],
+    queryFn: ({ signal }) =>
+      get<{ syncedAt: string | null }>("/torrent/downloads/sync-state", signal),
+  });
   const result = useQuery({
     queryKey: ["downloads", params.toString()],
     queryFn: ({ signal }) =>
@@ -189,14 +194,6 @@ function DownloadHistory() {
               )}
 
               <Button
-                variant="default"
-                disabled={syncPending}
-                loading={sync.isPending && sync.variables === true}
-                onClick={() => sync.mutate(true)}
-              >
-                {t("syncReport.previewAction")}
-              </Button>
-              <Button
                 disabled={syncPending}
                 loading={sync.isPending && sync.variables === false}
                 onClick={() => sync.mutate(false)}
@@ -207,6 +204,11 @@ function DownloadHistory() {
           )}
         </div>
         <p className="muted">{t("downloads.localNote")}</p>
+        {syncState.data?.syncedAt && (
+          <p className="muted">
+            {t("downloads.lastSync")}: {date(syncState.data.syncedAt)}
+          </p>
+        )}
         {session.report && (
           <SyncReport report={session.report} onClose={session.close} />
         )}
@@ -268,18 +270,19 @@ function DownloadHistory() {
           </Button>
         </form>
         <section className="panel">
-          <div className="table-toolbar">
-            {selectable && (
-              <SelectAllRows<Download, string>
-                url={`/torrent/downloads?${new URLSearchParams([...params].filter(([key]) => key !== "page" && key !== "size"))}`}
-                total={result.data?.meta.totalItems ?? 0}
-                identify={(row) => row.id}
-                onSelect={setSelected}
-              />
-            )}
-            <div className="catalog-table-controls">{columns.controls}</div>
-          </div>
           <DownloadActions
+            toolbar={{
+              onClear: () => setSelected([]),
+              controls: columns.controls,
+              selectAll: selectable && (
+                <SelectAllRows<Download, string>
+                  url={`/torrent/downloads?${new URLSearchParams([...params].filter(([key]) => key !== "page" && key !== "size"))}`}
+                  total={result.data?.meta.totalItems ?? 0}
+                  identify={(row) => row.id}
+                  onSelect={setSelected}
+                />
+              ),
+            }}
             selected={selected}
             rows={result.data?.items ?? []}
             onDone={(ids) =>

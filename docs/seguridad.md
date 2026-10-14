@@ -47,6 +47,7 @@ Los permisos de un usuario normal permiten controlar:
 | `CALIBRE_FILES_READ` | Descargar EPUB de Calibre; implica consulta. |
 | `CALIBRE_SEND` | Enviar EPUB a Calibre; implica consulta y requiere además `DOWNLOADS_FILES_READ`. |
 | `CALIBRE_JOBS_MANAGE` | Consultar y controlar los trabajos de Calibre; implica consulta. |
+| `CALIBRE_DELETE` | Eliminar revisiones anteriores de Calibre después de verificar la nueva; implica consulta. |
 | `DOWNLOADS_DELETE` | Eliminar registros del historial de EPL Sync. |
 | `CATALOG_IMPORT` | Previsualizar e importar el catálogo. |
 | `CATALOG_DELETE` | Revisar y eliminar libros ausentes del catálogo importado. |

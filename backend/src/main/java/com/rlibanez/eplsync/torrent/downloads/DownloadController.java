@@ -10,12 +10,15 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/torrent/downloads")
 public class DownloadController {
     private final TorrentClientService client;
+    private final DownloadTrackingService tracking;
     private final com.rlibanez.eplsync.torrent.updates.HistoryActions actions;
     private final DownloadQueryService queries;
     private final com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup;
-    public DownloadController(TorrentClientService client, DownloadQueryService queries, com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup, com.rlibanez.eplsync.torrent.updates.HistoryActions actions) {
-        this.client = client; this.queries = queries; this.cleanup = cleanup; this.actions=actions;
+    public DownloadController(DownloadTrackingService tracking,TorrentClientService client, DownloadQueryService queries, com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup, com.rlibanez.eplsync.torrent.updates.HistoryActions actions) {
+        this.tracking=tracking;this.client = client; this.queries = queries; this.cleanup = cleanup; this.actions=actions;
     }
+    @GetMapping("/sync-state")
+    public DownloadTrackingService.SyncState syncState() {return tracking.syncState();}
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")
     @PostMapping("/sync")
     public DownloadTrackingService.SyncResult sync(@RequestParam MultiValueMap<String, String> params,

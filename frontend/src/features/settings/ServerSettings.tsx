@@ -491,6 +491,7 @@ function SettingsForm({
         />
       )}
       <AppModal
+        width="compact"
         icon={RotateCcw}
         opened={confirm}
         onClose={() => setConfirm(false)}

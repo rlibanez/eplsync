@@ -70,7 +70,11 @@ test("editable URL wizard closes while importing and result survives navigation"
 }) => {
   let release!: () => void;
   let requests = 0;
-  await page.route("**/api/catalog/import/progress", route => route.fulfill({json: {active: true, phase: "IMPORTING", processedRows: 12300}}));
+  await page.route("**/api/catalog/import/progress", (route) =>
+    route.fulfill({
+      json: { active: true, phase: "IMPORTING", processedRows: 12300 },
+    }),
+  );
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
@@ -116,7 +120,9 @@ test("editable URL wizard closes while importing and result survives navigation"
   await expect(page.getByRole("main").getByRole("status")).toContainText(
     "Updating catalog",
   );
-  await expect(page.locator(".import-progress")).toContainText("12,300 records processed");
+  await expect(page.locator(".import-progress")).toContainText(
+    "12,300 records processed",
+  );
   release();
   await expect(
     page.getByRole("heading", { name: "Update results", exact: true }),
@@ -448,7 +454,7 @@ test("absent books are reviewed inside a scrollable dialog and deleted only afte
     await scroll.evaluate((node) => node.scrollHeight > node.clientHeight),
   ).toBe(true);
   await dialog.screenshot({ path: "test-results/absent-books-dialog.png" });
-  await dialog.getByRole("button", { name: "2", exact: true }).click();
+  await dialog.getByRole("button", { name: "Next", exact: true }).click();
   await expect(dialog.getByRole("table")).toContainText("Last absent book");
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   expect(deletes).toBe(0);
@@ -742,18 +748,39 @@ test("local ZIP is uploaded as multipart and invalid file cannot advance", async
   expect(uploads).toBe(1);
 });
 
-test("ZIP checksum stays on one line on desktop and narrow screens", async ({ page }) => {
-  const hash = "61ce56df6563c6180c24fae06e2bb5821e0c03379d36b789f4cbded679749046";
-  await page.route("**/api/catalog/import/metadata", route => route.fulfill({json: {metadata: {
-    sourceZipSha256: hash, sourceFileName: "books.csv", sourceUrl: null, importMode: "UPDATE",
-    importedAt: "2026-10-12T12:00:00Z", totalRows: 1, insertedRows: 1, updatedRows: 0,
-    unchangedRows: 0, errorRows: 0, durationMs: 100,
-  }}}));
+test("ZIP checksum stays on one line on desktop and narrow screens", async ({
+  page,
+}) => {
+  const hash =
+    "61ce56df6563c6180c24fae06e2bb5821e0c03379d36b789f4cbded679749046";
+  await page.route("**/api/catalog/import/metadata", (route) =>
+    route.fulfill({
+      json: {
+        metadata: {
+          sourceZipSha256: hash,
+          sourceFileName: "books.csv",
+          sourceUrl: null,
+          importMode: "UPDATE",
+          importedAt: "2026-10-12T12:00:00Z",
+          totalRows: 1,
+          insertedRows: 1,
+          updatedRows: 0,
+          unchangedRows: 0,
+          errorRows: 0,
+          durationMs: 100,
+        },
+      },
+    }),
+  );
   await page.goto("/settings/catalog");
   const checksum = page.locator(".catalog-checksum");
   await expect(checksum).toHaveText(hash);
   await expect(checksum).toHaveCSS("white-space", "nowrap");
-  await page.setViewportSize({width: 390, height: 844});
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(checksum).toHaveCSS("overflow-x", "auto");
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });

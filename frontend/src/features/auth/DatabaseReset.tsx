@@ -105,6 +105,7 @@ export function DatabaseReset() {
         {t("reset.action")}
       </Button>
       <AppModal
+        width="compact"
         icon={Trash2}
         opened={opened}
         onClose={() => {

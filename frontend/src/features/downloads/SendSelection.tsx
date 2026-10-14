@@ -199,12 +199,8 @@ export function SendSelection({
       onClose={() => !active && onClose()}
       title={t("selection.send")}
       icon={Send}
-      size="xl"
+      width="wide"
       centered
-      styles={{
-        inner: { overflowY: "auto", alignItems: "flex-start" },
-        content: { maxHeight: "none", marginBlock: "auto", flexShrink: 0 },
-      }}
     >
       <p>{t("selection.selected", { count })}</p>
       {allResults && <p className="muted">{t("send.liveSelection")}</p>}

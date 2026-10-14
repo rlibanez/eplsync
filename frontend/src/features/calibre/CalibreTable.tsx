@@ -12,6 +12,7 @@ import {
   type TableColumn,
 } from "../downloads/DownloadTable";
 export interface CalibreBook {
+  downloadAvailability?: string;
   calibreId: number;
   title: string;
   authors: string;
@@ -43,15 +44,22 @@ export const calibreColumns: TableColumn[] = [
     sortable: false,
   },
 ];
+calibreColumns.push({
+  field: "downloadAvailability",
+  label: "calibreUpdateSend.availability",
+  width: 210,
+});
 export function CalibreTable({
   items,
   columns,
+  emptyMessage,
   showCovers = true,
-  excludedFields = [],
+  excludedFields = ["downloadAvailability"],
   selected,
   onSelection,
 }: {
   items: CalibreBook[];
+  emptyMessage?: string;
   selected?: number[];
   onSelection?: (ids: number[]) => void;
   showCovers?: boolean;
@@ -62,7 +70,9 @@ export function CalibreTable({
   const auth = useAuth();
   const { revision } = useLocale();
   const selectable =
-    auth.can("CALIBRE_FILES_READ") && selected !== undefined && !!onSelection;
+    (auth.can("CALIBRE_FILES_READ") || auth.can("CALIBRE_SEND")) &&
+    selected !== undefined &&
+    !!onSelection;
   return (
     <div className="table-scroll">
       <table className="download-record-table" style={{ width: columns.width }}>
@@ -95,6 +105,13 @@ export function CalibreTable({
           )}
         </thead>
         <tbody>
+          {items.length === 0 && emptyMessage && (
+            <tr>
+              <td colSpan={columns.visible.length + (selectable ? 1 : 0)}>
+                <p className="empty-list">{emptyMessage}</p>
+              </td>
+            </tr>
+          )}
           {items.map((book) => (
             <tr key={book.calibreId}>
               {selectable && (
@@ -135,7 +152,7 @@ export function CalibreTable({
                       "—"
                     )}
                   </td>,
-                  <td>
+                  <td className={showCovers ? "catalog-title-cell" : undefined}>
                     {book.presence === "PRESENT" && book.eplId ? (
                       auth.can("CATALOG_READ") ? (
                         <Link
@@ -210,6 +227,11 @@ export function CalibreTable({
                         <ExternalLink size={16} aria-hidden="true" />
                       </TableAction>
                     </Group>
+                  </td>,
+                  <td>
+                    {t(
+                      `calibreUpdateSend.availabilityValues.${book.downloadAvailability ?? "UNKNOWN"}`,
+                    )}
                   </td>,
                 ].filter(
                   (_, index) =>

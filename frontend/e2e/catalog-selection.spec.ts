@@ -94,7 +94,7 @@ test("page selection persists across pages, supports hiding and clears on filter
   ).toHaveJSProperty("indeterminate", true);
   await page.getByRole("checkbox", { name: "Seleccionar esta página" }).check();
   await expect(
-    page.getByText("2 libros seleccionados", { exact: true }),
+    page.getByRole("button", { name: "Quitar selección (2)", exact: true }),
   ).toBeVisible();
   await page.screenshot({ path: "test-results/catalog-selection-toolbar.png" });
   await page.getByRole("button", { name: "Siguiente", exact: true }).click();
@@ -103,7 +103,7 @@ test("page selection persists across pages, supports hiding and clears on filter
   ).not.toBeChecked();
   await page.getByRole("checkbox", { name: "Seleccionar Book 3" }).check();
   await expect(
-    page.getByText("3 libros seleccionados", { exact: true }),
+    page.getByRole("button", { name: "Quitar selección (3)", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Columnas", exact: true }).click();
   await page
@@ -203,7 +203,9 @@ test("select all uses filters and exclusions without fetching the full catalog",
   await page
     .getByRole("checkbox", { name: "Seleccionar Book 1", exact: true })
     .uncheck();
-  await expect(page.getByText("39 resultados seleccionados")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Quitar selección (39)", exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Siguiente", exact: true }).click();
   await expect(
     page.getByRole("checkbox", { name: "Seleccionar esta página" }),
@@ -398,7 +400,7 @@ test("column sorting is server-side, resets pagination and preserves selection a
   await expect(page).toHaveURL(/page=0/);
   expect(new URL(page.url()).searchParams.get("author")).toBe("Asimov");
   await expect(
-    page.getByText("1 libros seleccionados", { exact: true }),
+    page.getByRole("button", { name: "Quitar selección (1)", exact: true }),
   ).toBeVisible();
   await expect(author).toHaveAttribute("aria-sort", "ascending");
   await author.getByRole("button", { name: "Autor", exact: true }).click();

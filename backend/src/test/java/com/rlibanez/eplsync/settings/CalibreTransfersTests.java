@@ -108,6 +108,15 @@ class CalibreTransfersTests {
         mvc.perform(get("/api/calibre/transfers").param("sort","createdAt,desc"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(0));
     }
+    @Test void filtersIndividualJobItemsByStateWithAccurateCounts() throws Exception {
+        var job=create();String url="/api/calibre/transfers/"+job.id()+"/items";
+        mvc.perform(get(url).param("state","PENDING")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].state").value("PENDING"));
+        mvc.perform(get(url).param("state","FAILED")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.meta.totalItems").value(0)).andExpect(jsonPath("$.items").isEmpty());
+        mvc.perform(get(url).param("state","INVALID")).andExpect(status().isBadRequest());
+        mvc.perform(get(url)).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1));
+    }
     @Test void apiPreservesCommaSeparatedAndRepeatedSortCriteria() throws Exception {
         var job=create();
         mvc.perform(get("/api/calibre/transfers").param("sort","createdAt,desc","username,asc"))

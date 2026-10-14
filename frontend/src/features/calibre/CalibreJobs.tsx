@@ -40,7 +40,8 @@ type Job = {
 };
 type Item = {
   id: string;
-  recordId: string;
+  recordId: string | null;
+  downloadJobId?: string | null;
   index: number;
   name: string;
   size: number;
@@ -112,6 +113,7 @@ function Controls({ job }: { job: Job }) {
         </Alert>
       )}
       <AppModal
+        width="compact"
         opened={cancel}
         onClose={() => {
           if (!control.isPending) setCancel(false);
@@ -351,6 +353,7 @@ export function CalibreJobDetail() {
   const [page, setPage] = useState(0),
     [size, setSize] = useState(20),
     [sort, setSort] = useState("position,asc");
+  const [itemState, setItemState] = useState<string | null>(null);
   const choice = usePageSizeChoice(size);
   const job = useQuery({
     queryKey: ["calibre-job", id],
@@ -359,10 +362,10 @@ export function CalibreJobDetail() {
     refetchInterval: (query) => (query.state.status === "error" ? false : 3000),
   });
   const result = useQuery({
-    queryKey: ["calibre-job-items", id, page, size, sort],
+    queryKey: ["calibre-job-items", id, page, size, sort, itemState],
     queryFn: ({ signal }) =>
       get<Page<Item>>(
-        `/calibre/transfers/${id}/items?page=${page}&size=${size}&${sortQuery(sort)}`,
+        `/calibre/transfers/${id}/items?page=${page}&size=${size}&state=${itemState ?? ""}&${sortQuery(sort)}`,
         signal,
       ),
     retry: false,
@@ -490,6 +493,32 @@ export function CalibreJobDetail() {
           {value.message}
         </Alert>
       )}
+      <div className="filters jobs-filters">
+        <Select
+          label={t("downloads.status")}
+          clearable
+          value={itemState}
+          data={[
+            "PENDING",
+            "WAITING_DOWNLOAD",
+            "BLOCKED_DOWNLOAD",
+            "SENDING",
+            "ACCEPTED",
+            "SKIPPED",
+            "FAILED",
+            "UNCERTAIN",
+            "CLEANUP_PENDING",
+            "CANCELLED",
+          ].map((value) => ({
+            value,
+            label: t(`calibreSend.states.${value}`),
+          }))}
+          onChange={(value) => {
+            setItemState(value);
+            setPage(0);
+          }}
+        />
+      </div>
       <section className="panel">
         <div className="table-toolbar">
           <span>{t("calibreSend.files")}</span>
@@ -531,7 +560,15 @@ export function CalibreJobDetail() {
                                 coverAvailable: null,
                               }}
                             />
-                            <span>{item.name}</span>
+                            <span>
+                              {can("CATALOG_READ") && item.eplId > 0 ? (
+                                <Link to={`/catalog/${item.eplId}`}>
+                                  {item.name}
+                                </Link>
+                              ) : (
+                                item.name
+                              )}
+                            </span>
                           </div>
                         </td>,
                         <td>{revision(item.revision)}</td>,
@@ -541,7 +578,19 @@ export function CalibreJobDetail() {
                           </span>
                         </td>,
                         <td>{item.calibreId ?? "—"}</td>,
-                        <td>{item.message ?? "—"}</td>,
+                        <td>
+                          {item.message ?? "—"}
+                          {item.downloadJobId && can("TORRENT_JOBS_MANAGE") && (
+                            <>
+                              <br />
+                              <Link
+                                to={`/downloads/jobs/${item.downloadJobId}`}
+                              >
+                                {t("calibreUpdateSend.downloadJob")}
+                              </Link>
+                            </>
+                          )}
+                        </td>,
                       ])}
                     </tr>
                   ))}

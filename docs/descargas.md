@@ -26,7 +26,6 @@ Eventos. Eliminar un registro local no cancela sus solicitudes de limpieza pendi
 
 ## Sincronizar con el cliente
 
-- **Previsualizar sincronización:** muestra el resultado previsto sin aplicar cambios.
 - **Sincronizar con el cliente:** actualiza los registros según el estado de qBittorrent.
 
 El resultado se presenta en un informe plegable, con resumen y tablas de registros
@@ -104,3 +103,10 @@ Desde **Descargas > Estado**, **Buscar actualizaciones** abre el mismo asistente
 que **Descargas > Actualizaciones**. Los resultados y los envíos se siguen
 consultando en esa vista; el acceso requiere los permisos de catálogo y
 sincronización con el cliente torrent.
+
+Las vistas de actualizaciones conservan el resultado y la fecha de la última
+búsqueda manual por usuario en este navegador. Recargar o volver a abrir la
+vista no consulta al servidor ni recalcula la comparación. La primera vez se
+muestra la tabla vacía. **Buscar actualizaciones** renueva el resultado; si
+falla, se conserva la búsqueda anterior. Borrar los datos del sitio elimina
+estas búsquedas guardadas; no se comparten entre dispositivos.

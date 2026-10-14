@@ -83,8 +83,9 @@ completarla: un error conserva la copia anterior y elimina los datos incompletos
 Al cambiar URL, usuario o biblioteca, se descarta la copia anterior y es necesario
 sincronizar otra vez. Las importaciones del catálogo no eliminan esa copia.
 
-Descargas → Estado permite enviar los EPUB descargados a Calibre. La sustitución
-o eliminación de revisiones anteriores en Calibre queda para una fase posterior.
+Descargas → Estado permite enviar los EPUB descargados a Calibre. Calibre →
+Actualizaciones permite descargar revisiones nuevas, enviarlas y limpiar
+las revisiones anteriores tras verificar la nueva copia.
 
 ## Biblioteca de Calibre
 
@@ -254,5 +255,51 @@ fuera de la comparación.
 **Buscar actualizaciones** sincroniza la biblioteca antes de actualizar los
 resultados y requiere `CALIBRE_SYNC`; consultar los resultados requiere
 `CALIBRE_READ`. Se comparan los datos del Catálogo importado en EPL Sync.
-Esta primera fase no envía archivos ni elimina revisiones anteriores. Si la copia
-local es parcial, sincroniza la biblioteca para obtener una comparación completa.
+Si la copia local es parcial, sincroniza la biblioteca para obtener una comparación completa.
+
+La columna **Nueva revisión descargada** indica **Sí**, **No** o **No accesible**
+y permite ordenar y filtrar. Se comprueba durante la búsqueda manual y requiere
+`DOWNLOADS_FILES_READ` y `CATALOG_READ`. Una búsqueda guardada sin esa comprobación
+muestra **Sin comprobar** hasta realizar otra búsqueda.
+
+Selecciona libros y pulsa **Enviar actualizaciones**. El diálogo comprueba otra vez
+los archivos y resume cuántos se enviarán a Calibre y cuántos necesitan descarga.
+Los EPUB ya descargados se envían por defecto. Si hay varios archivos, elige uno por libro. Para los
+EPUB no disponibles, activa **Enviar a descargar** y elige **Solo descargar** o
+**Enviar a Calibre cuando estén descargados**. La primera opción crea únicamente
+el trabajo de Descargas para esos libros; la segunda crea también un trabajo
+persistente de Calibre que espera la descarga. Una selección mixta puede crear
+ambos trabajos, enlazados desde el diálogo.
+
+Se requieren `CALIBRE_SEND`, `DOWNLOADS_FILES_READ` y `CATALOG_READ`; para solicitar
+descargas, también `TORRENT_SEND`, y para los envíos diferidos, `TORRENT_SYNC`.
+Los trabajos fijan la revisión solicitada y los hashes enviados, sin sustituirlos
+por otra revisión que aparezca posteriormente en el catálogo.
+
+La acción general se puede adaptar con **Personalizar por libro**. Puedes
+conservar las revisiones anteriores (opción predeterminada),
+eliminar solo su EPUB o eliminar el libro completo de Calibre. La eliminación
+requiere `CALIBRE_DELETE`. El borrado completo tiene una confirmación adicional:
+también elimina otros formatos y datos asociados. Solo se actúa sobre los Calibre ID
+seleccionados con el mismo EPL ID y una revisión inferior a la nueva. Los EPUB
+originales del cliente torrent permanecen intactos.
+
+La limpieza empieza después de verificar el EPUB y los identificadores de la nueva
+copia. Un fallo deja **Limpieza pendiente** y pausa el trabajo; al reanudar se
+comprueba el resultado sin volver a subir el EPUB. Si falta un identificador,
+se permite el envío pero se mantiene la limpieza pendiente hasta poder verificarlo.
+Los metadatos se comprueban de nuevo antes de cada borrado.
+
+Las descargas pendientes se consultan en conjunto cada 30 segundos. Los fallos,
+cancelaciones, archivos inaccesibles o esperas superiores a 30 días quedan visibles
+y pausan el trabajo. Reanudar vuelve a comprobar la descarga. Cancelar un trabajo
+de Calibre no cancela los torrents ya enviados ni deshace envíos o borrados completados.
+Los reinicios conservan las esperas; un envío interrumpido se verifica antes de continuar.
+Reintentar el mismo envío del diálogo reutiliza sus trabajos durante 90 días.
+
+Las vistas de actualizaciones conservan el resultado y la fecha de la última
+búsqueda manual por usuario en este navegador. Recargar o volver a abrir la
+vista no consulta al servidor ni recalcula la comparación. La primera vez se
+muestra la tabla vacía. **Buscar actualizaciones** renueva el resultado; si
+falla, se conserva la búsqueda anterior. Borrar los datos del sitio elimina
+estas búsquedas guardadas; no se comparten entre dispositivos.

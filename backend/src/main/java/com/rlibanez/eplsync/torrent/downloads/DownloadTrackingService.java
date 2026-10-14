@@ -40,6 +40,14 @@ public class DownloadTrackingService {
         this.entityManager = entityManager;
     }
 
+    public record SyncState(Instant syncedAt) {}
+    public SyncState syncState() {
+        return transactions.execute(tx -> {
+            var rows=entityManager.createNativeQuery("SELECT setting_value FROM app_settings WHERE setting_key=?1",String.class)
+                .setParameter(1,"downloads.last-sync."+instanceId()).getResultList();
+            return new SyncState(rows.isEmpty()?null:Instant.parse(rows.getFirst().toString()));
+        });
+    }
     public String instanceId() {
         if (operationInstance.get()!=null) return operationInstance.get();
         return identity(properties.getClient(),properties.getBaseUrl());
@@ -149,6 +157,8 @@ public class DownloadTrackingService {
             synchronized (writes) {
                 var result = transactions.execute(tx -> {
                     var summary = reconcile(remote, now, dryRun, report);
+                    if(!dryRun) entityManager.createNativeQuery("INSERT INTO app_settings(setting_key,setting_value) VALUES(?1,?2) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value")
+                        .setParameter(1,"downloads.last-sync."+instanceId()).setParameter(2,Instant.now().toString()).executeUpdate();
                     if (events != null && !dryRun) events.completed(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT, "SYNC",
                         java.util.Map.of("checked", summary.records().checked(), "created", summary.records().created(),
                             "updated", summary.records().updated(), "ignored", summary.remote().ignored()));

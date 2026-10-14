@@ -1,3 +1,4 @@
+import { SelectionToolbar } from "../../components/SelectionToolbar";
 import {
   PageSizeSelect,
   usePageSizeChoice,
@@ -154,8 +155,10 @@ export function Catalog() {
         onChange={setSearch}
       />
       <section className="panel">
-        <div className="table-toolbar">
-          <div className="catalog-toolbar-selection">
+        <SelectionToolbar
+          count={count}
+          onClear={selection.clear}
+          selectAll={
             <Button
               variant="subtle"
               size="compact-sm"
@@ -168,133 +171,108 @@ export function Catalog() {
                 formattedCount: String(result.data?.meta.totalItems ?? 0),
               })}
             </Button>
-          </div>
-          <div className="catalog-table-controls">
-            <Menu position="bottom-end" shadow="md">
-              <Menu.Target>
-                <Button
-                  variant="default"
-                  fw={400}
-                  leftSection={
-                    view === "table" ? (
-                      <Table2 size={16} />
-                    ) : view === "grid" ? (
-                      <LayoutGrid size={16} />
-                    ) : (
-                      <PanelsTopLeft size={16} />
-                    )
-                  }
-                  rightSection={<ChevronDown size={14} />}
-                  aria-label={t("catalog.viewSelector")}
-                >
-                  {t(
-                    view === "table"
-                      ? "catalog.viewTable"
-                      : view === "grid"
-                        ? "catalog.viewGrid"
-                        : "catalog.viewMosaic",
-                  )}
-                </Button>
-              </Menu.Target>
-              <Menu.Dropdown>
-                {(
-                  [
-                    {
-                      value: "table",
-                      label: "catalog.viewTable",
-                      icon: Table2,
-                    },
-                    {
-                      value: "grid",
-                      label: "catalog.viewGrid",
-                      icon: LayoutGrid,
-                    },
-                    {
-                      value: "mosaic",
-                      label: "catalog.viewMosaic",
-                      icon: PanelsTopLeft,
-                    },
-                  ] as const
-                ).map((option) => (
-                  <Menu.Item
-                    key={option.value}
-                    leftSection={<option.icon size={16} />}
-                    rightSection={
-                      view === option.value ? (
-                        <Check size={16} aria-hidden="true" />
-                      ) : null
+          }
+          controls={
+            <>
+              <Menu position="bottom-end" shadow="md">
+                <Menu.Target>
+                  <Button
+                    variant="default"
+                    fw={400}
+                    leftSection={
+                      view === "table" ? (
+                        <Table2 size={16} />
+                      ) : view === "grid" ? (
+                        <LayoutGrid size={16} />
+                      ) : (
+                        <PanelsTopLeft size={16} />
+                      )
                     }
-                    aria-current={view === option.value ? "true" : undefined}
-                    onClick={() => changeView(option.value)}
+                    rightSection={<ChevronDown size={14} />}
+                    aria-label={t("catalog.viewSelector")}
                   >
-                    {t(option.label)}
-                  </Menu.Item>
-                ))}
-              </Menu.Dropdown>
-            </Menu>
-            <CatalogSorting ordering={ordering} onChange={changeSort} />
-            {view === "table" && (
-              <CatalogColumns
-                settings={columns.settings}
-                update={columns.update}
-              />
-            )}
-          </div>
-        </div>
-        {count > 0 && (
-          <div className="catalog-selection-bar has-selection">
-            <div className="catalog-selection-info">
-              {count > 0 && (
-                <span className="catalog-selection-count" aria-live="polite">
-                  {t(
-                    selection.all
-                      ? "selection.allSelected"
-                      : "selection.selected",
-                    { count },
-                  )}
-                </span>
+                    {t(
+                      view === "table"
+                        ? "catalog.viewTable"
+                        : view === "grid"
+                          ? "catalog.viewGrid"
+                          : "catalog.viewMosaic",
+                    )}
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  {(
+                    [
+                      {
+                        value: "table",
+                        label: "catalog.viewTable",
+                        icon: Table2,
+                      },
+                      {
+                        value: "grid",
+                        label: "catalog.viewGrid",
+                        icon: LayoutGrid,
+                      },
+                      {
+                        value: "mosaic",
+                        label: "catalog.viewMosaic",
+                        icon: PanelsTopLeft,
+                      },
+                    ] as const
+                  ).map((option) => (
+                    <Menu.Item
+                      key={option.value}
+                      leftSection={<option.icon size={16} />}
+                      rightSection={
+                        view === option.value ? (
+                          <Check size={16} aria-hidden="true" />
+                        ) : null
+                      }
+                      aria-current={view === option.value ? "true" : undefined}
+                      onClick={() => changeView(option.value)}
+                    >
+                      {t(option.label)}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
+              <CatalogSorting ordering={ordering} onChange={changeSort} />
+              {view === "table" && (
+                <CatalogColumns
+                  settings={columns.settings}
+                  update={columns.update}
+                />
               )}
-              <div className="catalog-selection-controls">
-                {count > 0 && (
-                  <Button
-                    variant="subtle"
-                    size="compact-sm"
-                    onClick={selection.clear}
-                  >
-                    {t("selection.clear")}
-                  </Button>
-                )}
-              </div>
-            </div>
-            {count > 0 && (
-              <div className="catalog-selection-actions">
+            </>
+          }
+          actions={
+            <>
+              <Button
+                variant="light"
+                leftSection={<Download size={16} />}
+                loading={magnetExport.busy}
+                onClick={() => void magnetExport.save(selection.filters)}
+              >
+                {t("selection.export")}
+              </Button>
+              {auth.can("TORRENT_SEND") && (
                 <Button
-                  variant="light"
-                  leftSection={<Download size={16} />}
-                  loading={magnetExport.busy}
-                  onClick={() => void magnetExport.save(selection.filters)}
+                  leftSection={<Send size={16} />}
+                  onClick={() =>
+                    setAction({
+                      type: "send",
+                      filters: selection.filters,
+                      count,
+                      all: selection.all,
+                    })
+                  }
                 >
-                  {t("selection.export")}
+                  {t("selection.send")}
                 </Button>
-                {auth.can("TORRENT_SEND") && (
-                  <Button
-                    leftSection={<Send size={16} />}
-                    onClick={() =>
-                      setAction({
-                        type: "send",
-                        filters: selection.filters,
-                        count,
-                        all: selection.all,
-                      })
-                    }
-                  >
-                    {t("selection.send")}
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </>
+          }
+        />
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (

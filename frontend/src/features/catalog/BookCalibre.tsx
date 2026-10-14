@@ -1,3 +1,4 @@
+import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
 import { useAuth } from "../auth/Auth";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
@@ -14,7 +15,13 @@ import {
   type CalibreBook,
 } from "../calibre/CalibreTable";
 
-const excludedFields = ["eplId", "title", "authors", "presence"];
+const excludedFields = [
+  "downloadAvailability",
+  "eplId",
+  "title",
+  "authors",
+  "presence",
+];
 
 export function BookCalibre({ book }: { book: Book }) {
   const [sort, setSort] = useState("revision,desc"),
@@ -58,12 +65,25 @@ export function BookCalibre({ book }: { book: Book }) {
   }, [result.data]);
   return (
     <section className="panel book-calibre">
-      <div className="table-toolbar book-history-toolbar">
+      <div className="book-section-heading">
         <h2>Calibre</h2>
-        {result.data && result.data.meta.totalItems > 0 && (
-          <div className="catalog-table-controls">{columns.controls}</div>
-        )}
       </div>
+      {result.data && result.data.meta.totalItems > 0 && (
+        <SelectionToolbar
+          count={selected.length}
+          onClear={() => setSelected([])}
+          controls={columns.controls}
+          actions={
+            selectable && (
+              <EpubBatchDownload
+                selected={selected}
+                endpoint="/calibre/epub-downloads"
+                toolbar={false}
+              />
+            )
+          }
+        />
+      )}
       {!!book.calibre &&
         book.calibre.totalItems > 0 &&
         (result.isPending ? (
@@ -72,13 +92,6 @@ export function BookCalibre({ book }: { book: Book }) {
           <Failure error={result.error} retry={() => result.refetch()} />
         ) : result.data.meta.totalItems > 0 ? (
           <>
-            {selectable && (
-              <EpubBatchDownload
-                selected={selected}
-                endpoint="/calibre/epub-downloads"
-                selectionLabel="calibre.selectedBooks"
-              />
-            )}
             <CalibreTable
               items={result.data.items}
               columns={columns}

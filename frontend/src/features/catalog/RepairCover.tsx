@@ -124,6 +124,7 @@ export function RepairCover({ book }: { book: Book }) {
         </span>
       </Tooltip>
       <Modal
+        width="compact"
         icon={Wrench}
         opened={decision !== null}
         onClose={() => {

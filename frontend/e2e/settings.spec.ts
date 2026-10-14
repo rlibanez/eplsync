@@ -24,7 +24,7 @@ test("sidebar preserves icon positions, has separators and no language selector"
   const sidebar = page.locator("#sidebar");
   await expect(sidebar.locator("select")).toHaveCount(0);
   const icons = sidebar.locator("nav a svg");
-  await expect(icons).toHaveCount(6);
+  await expect(icons).toHaveCount(8);
   const before = await icons.evaluateAll((nodes) =>
     nodes.map((n) => n.getBoundingClientRect().y),
   );

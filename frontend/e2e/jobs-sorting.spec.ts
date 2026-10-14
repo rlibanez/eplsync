@@ -178,7 +178,7 @@ test("individual job has a compact filter and visible execution controls", async
   });
   await page.goto("/downloads/jobs/control-job");
   const filter = page.getByRole("textbox", {
-    name: "Estado de los elementos",
+    name: "Estado",
     exact: true,
   });
   await expect(filter).toBeVisible();

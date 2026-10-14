@@ -123,6 +123,7 @@ export function EventMaintenance() {
         </Button>
       </div>
       <AppModal
+        width="compact"
         icon={Trash2}
         opened={confirm}
         title={t("events.delete")}

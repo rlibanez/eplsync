@@ -125,7 +125,7 @@ test("unified torrent permission exposes download history and synchronization to
       name: "Previsualizar sincronización",
       exact: true,
     }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", {
       name: "Sincronizar con el cliente",

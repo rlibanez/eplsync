@@ -36,7 +36,9 @@ class QBittorrentClientTests {
     private QBittorrentProperties qbittorrent;
     private final CopyOnWriteArrayList<Call> calls = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> torrentQueries = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<String> fileQueries = new CopyOnWriteArrayList<>();
     private volatile String torrentInfo = "[]";
+    private volatile boolean primaryHashFilterOnly;
     private volatile String torrentFiles = "[]";
     private volatile int generatedTorrents;
     private volatile boolean chunked;
@@ -118,6 +120,25 @@ class QBittorrentClientTests {
         var result=client().listTorrents(java.util.Set.of(hash.toLowerCase(java.util.Locale.ROOT)));
         assertThat(result).singleElement().satisfies(t -> assertThat(t.hash()).isEqualTo(hash));
         assertThat(torrentQueries).contains("hashes="+hash);
+    }
+
+    @Test void resolvesHybridV1AliasesForSelectedStateAndFilePaths() {
+        primaryHashFilterOnly=true;
+        String v1="F192F9CEEDE8B4C2E486C61505FD142D99B0EB10",primary="CC5DD6B7EEE26DA1DC49D7C06204F3CFE270D77F";
+        torrentInfo="[{\"hash\":\""+primary.toLowerCase(java.util.Locale.ROOT)+"\",\"infohash_v1\":\""+v1.toLowerCase(java.util.Locale.ROOT)+"\",\"infohash_v2\":\""+primary.toLowerCase(java.util.Locale.ROOT)+"aa8e345d477a596ad48a502d\",\"state\":\"queuedUP\",\"progress\":1,\"amount_left\":0,\"save_path\":\"/downloads/books\"}]";
+        torrentFiles="[{\"index\":0,\"name\":\"book.epub\",\"size\":12,\"progress\":1}]";
+        var qbit=client();
+        assertThat(qbit.listTorrents(java.util.Set.of(v1))).singleElement().satisfies(t -> {
+            assertThat(t.hash()).isEqualTo(primary);
+            assertThat(t.status()).isEqualTo(com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADED);
+        });
+        assertThat(qbit.listFiles(v1)).containsExactly(new com.rlibanez.eplsync.torrent.TorrentClient.TorrentFile(0,"book.epub",12,1,"/downloads/books"));
+        assertThat(calls).anySatisfy(c -> assertThat(c.path()).endsWith("/torrents/files"));
+        assertThat(torrentQueries.stream().filter("null"::equals).count()).isEqualTo(2);
+        assertThat(fileQueries).containsExactly("hash="+primary.toLowerCase(java.util.Locale.ROOT));
+        assertThat(qbit.listTorrents(java.util.Set.of(primary+"AA8E345D477A596AD48A502D"))).hasSize(1);
+        assertThatThrownBy(()->qbit.listFiles("E".repeat(40))).isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class);
+        assertThat(qbit.listTorrents(java.util.Set.of("E".repeat(40)))).isEmpty();
     }
 
     @Test void readsHybridHashesAndRejectsMalformedAliases() {
@@ -253,6 +274,13 @@ class QBittorrentClientTests {
                     respond(exchange, 403, "Forbidden"); return;
                 }
                 if (call.path().endsWith("/torrents/info")) { torrentQueries.add(String.valueOf(exchange.getRequestURI().getRawQuery()));
+                    if(primaryHashFilterOnly && exchange.getRequestURI().getRawQuery()!=null) {
+                        var query=java.net.URLDecoder.decode(exchange.getRequestURI().getRawQuery(),StandardCharsets.UTF_8);
+                        var array=tools.jackson.databind.json.JsonMapper.builder().build().readTree(torrentInfo);
+                        var primary=array.get(0).path("hash").asString("");
+                        if(!query.equalsIgnoreCase("hashes="+primary)) {respond(exchange,200,"[]");return;}
+                    }
+
                     if (generatedTorrents > 0) {
                         exchange.sendResponseHeaders(200,0);
                         try (var output=exchange.getResponseBody()) {
@@ -272,7 +300,7 @@ class QBittorrentClientTests {
                             output.write(torrentInfo.getBytes(StandardCharsets.UTF_8));
                         }
                     } else respond(exchange, 200, torrentInfo); }
-                else if (call.path().endsWith("/torrents/files")) respond(exchange, 200, torrentFiles);
+                else if (call.path().endsWith("/torrents/files")) {fileQueries.add(String.valueOf(exchange.getRequestURI().getRawQuery()));respond(exchange, 200, torrentFiles);}
                 else if (call.path().endsWith("/torrents/categories")) respond(exchange, 200, categories);
                 else if (call.path().endsWith("/torrents/add")) respond(exchange, addStatus, addBody);
                 else if (call.path().endsWith("/torrents/rename")) respond(exchange, renameStatus, "");

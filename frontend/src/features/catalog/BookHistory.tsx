@@ -92,11 +92,8 @@ export function BookHistory({ id }: { id: number }) {
   return (
     <CalibreSendProvider>
       <section className="panel book-history">
-        <div className="table-toolbar book-history-toolbar">
+        <div className="book-section-heading">
           <h2>{t("detail.history")}</h2>
-          {result.data && result.data.meta.totalItems > 0 && (
-            <div className="catalog-table-controls">{columns.controls}</div>
-          )}
         </div>
         {result.isPending ? (
           <Loading />
@@ -105,6 +102,10 @@ export function BookHistory({ id }: { id: number }) {
         ) : result.data.meta.totalItems === 0 ? null : (
           <>
             <DownloadActions
+              toolbar={{
+                onClear: () => setSelected([]),
+                controls: columns.controls,
+              }}
               eplId={id}
               selected={selected}
               rows={result.data.items}

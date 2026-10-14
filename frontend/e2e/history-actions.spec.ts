@@ -103,26 +103,20 @@ test("history refreshes selected records and removes through a confirmed dialog 
   });
   await page.goto("/catalog/1");
   const section = page.locator(".book-history");
+  const tableTop = await section
+    .locator("table")
+    .evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
   await section
     .getByRole("checkbox", { name: "Seleccionar registros de esta página" })
     .check();
-  const selection = section.locator(".catalog-selection-bar.has-selection");
-  const count = selection.locator(".catalog-selection-count");
-  await expect(count).toHaveText("2 registros seleccionados");
-  await expect(count).toHaveCSS("font-size", "14px");
-  await expect(count).toHaveCSS("font-weight", "600");
-  const layout = await selection.evaluate((bar) => {
-    const actions = bar.querySelector(".catalog-selection-actions")!;
-    return {
-      rightGap:
-        bar.getBoundingClientRect().right -
-        actions.getBoundingClientRect().right,
-      leftGap:
-        actions.getBoundingClientRect().left - bar.getBoundingClientRect().left,
-    };
-  });
-  expect(layout.rightGap).toBeLessThan(20);
-  expect(layout.leftGap).toBeGreaterThan(layout.rightGap);
+  await expect(
+    section.getByRole("button", { name: "Quitar selección (2)", exact: true }),
+  ).toBeVisible();
+  expect(
+    await section
+      .locator("table")
+      .evaluate((el) => el.getBoundingClientRect().top + window.scrollY),
+  ).toBe(tableTop);
   await section
     .getByRole("button", { name: "Actualizar estado", exact: true })
     .click();

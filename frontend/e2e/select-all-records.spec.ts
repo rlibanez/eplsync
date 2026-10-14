@@ -58,17 +58,11 @@ for (const calibre of [false, true]) {
       .click();
     await expect.poll(() => requested).toEqual([0, 1]);
     await expect(
-      page.getByText(
-        calibre ? "4 libros seleccionados" : "4 registros seleccionados",
-        { exact: true },
-      ),
+      page.getByRole("button", { name: "Quitar selección (4)", exact: true }),
     ).toBeVisible();
     await page.getByRole("button", { name: "Siguiente", exact: true }).click();
     await expect(
-      page.getByText(
-        calibre ? "4 libros seleccionados" : "4 registros seleccionados",
-        { exact: true },
-      ),
+      page.getByRole("button", { name: "Quitar selección (4)", exact: true }),
     ).toBeVisible();
   });
 }

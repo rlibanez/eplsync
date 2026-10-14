@@ -92,7 +92,7 @@ export function LinkTorrent({
       onClose={() => {
         if (!link.isPending) onClose();
       }}
-      size="lg"
+      width="normal"
       title={t("torrentLink.title")}
       closeOnClickOutside={!link.isPending}
       closeOnEscape={!link.isPending}

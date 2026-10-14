@@ -1,3 +1,6 @@
+import { SelectionToolbar } from "../../components/SelectionToolbar";
+import { savedSearch, collectSearch, searchPage } from "./SavedUpdateSearch";
+import { SelectAllRows } from "../../components/SelectAllRows";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { useUpdateSession } from "./useUpdateSession";
 import { BookCover } from "../catalog/BookCover";
@@ -59,6 +62,32 @@ export function RevisionUpdates() {
     next.delete("search");
     setSearchParams(next, { replace: true });
   }, [defaults.data, searchParams, setSearchParams]);
+  const savedKey = `downloads:${auth.user?.id}`;
+  const previousSearch = useQuery({
+    queryKey: ["saved-download-updates", auth.user?.id],
+    queryFn: () => savedSearch<Update>(savedKey),
+  });
+  useEffect(() => {
+    if (!search && previousSearch.data)
+      session.setView({
+        search: {
+          states: previousSearch.data.states ?? [],
+          generation: previousSearch.data.searchedAt,
+        },
+      });
+  }, [previousSearch.data, search]);
+  const savedPage = async (page: number, size: number) => {
+    const saved = await savedSearch<Update>(savedKey);
+    return searchPage(
+      (saved?.rows ?? []).filter(
+        (row) =>
+          !registeredStatus || registeredStatus.split(",").includes(row.status),
+      ),
+      page,
+      size,
+      sort,
+    );
+  };
   const result = useQuery({
     queryKey: [
       "revision-updates",
@@ -69,11 +98,7 @@ export function RevisionUpdates() {
       sort,
       registeredStatus,
     ],
-    queryFn: () =>
-      post<Page<Update>>(
-        `/torrent/revision-updates/search?page=${page}&size=${size}&${sortQuery(sort)}${registeredStatus ? `&status=${registeredStatus}` : ""}`,
-        { states: search!.states },
-      ),
+    queryFn: () => savedPage(page, size),
     enabled: search !== null,
     staleTime: Infinity,
     gcTime: Infinity,
@@ -91,11 +116,20 @@ export function RevisionUpdates() {
   }, [cache, auth.user?.id, result.data]);
   const find = useMutation({
     mutationKey: ["torrent-sync"],
-    mutationFn: () =>
-      post<Page<Update>>(
-        `/torrent/revision-updates/search?synchronize=true&page=0&size=${size}&${sortQuery(sort)}`,
-        { states: options },
-      ),
+    mutationFn: async () => {
+      const rows = await collectSearch<Update>((page) =>
+        post<Page<Update>>(
+          `/torrent/revision-updates/search?synchronize=${page === 0}&page=${page}&size=1000&sort=eplId,asc`,
+          { states: options },
+        ),
+      );
+      await savedSearch(savedKey, {
+        rows,
+        states: [...options],
+        searchedAt: Date.now(),
+      });
+      return searchPage(rows, 0, size, sort);
+    },
     retry: false,
     onSuccess: (data) => {
       const generation = Date.now();
@@ -127,6 +161,7 @@ export function RevisionUpdates() {
     [
       { field: "eplId", label: "revisionUpdates.eplId", width: 100 },
       { field: "title", label: "revisionUpdates.title", width: 360 },
+      { field: "status", label: "revisionUpdates.status", width: 200 },
       {
         field: "registeredRevision",
         label: "revisionUpdates.registeredRevision",
@@ -137,7 +172,6 @@ export function RevisionUpdates() {
         label: "revisionUpdates.availableRevision",
         width: 190,
       },
-      { field: "status", label: "revisionUpdates.status", width: 200 },
     ],
     sort,
     (value) => {
@@ -203,124 +237,140 @@ export function RevisionUpdates() {
           }}
         />
       </div>
-      {search && (
-        <section className="panel">
-          <div className="table-toolbar">
-            <span>
-              {t("revisionUpdates.count", {
-                count: result.data?.meta.totalItems ?? 0,
-              })}
-            </span>
-            <div className="catalog-table-controls">{columns.controls}</div>
-          </div>
-          {result.isFetching ? (
-            <Loading />
-          ) : result.isError ? (
-            <Failure error={result.error} retry={() => result.refetch()} />
-          ) : (
-            <>
-              {auth.can("TORRENT_SEND") && selected.length > 0 && (
-                <div className="catalog-selection-bar has-selection">
-                  <div className="catalog-selection-info">
-                    <span
-                      className="catalog-selection-count"
-                      aria-live="polite"
-                    >
-                      {t("selection.selected", { count: selected.length })}
-                    </span>
-                  </div>
-                  <div className="catalog-selection-actions">
-                    <Button onClick={() => setSending(true)}>
-                      {t("revisionUpdates.send", { count: selected.length })}
-                    </Button>
-                  </div>
-                </div>
-              )}
-              <div className="table-scroll">
-                <table
-                  className="updates-table"
-                  style={{ width: columns.width }}
-                >
-                  {columns.colgroup}
-                  <thead>
-                    {columns.selectionHeadings(
-                      auth.can("TORRENT_SEND") && (
-                        <th className="updates-selection">
-                          <Checkbox
-                            aria-label={t("selection.page")}
-                            checked={allChecked}
-                            indeterminate={
-                              !allChecked &&
-                              rows.some((row) => selected.includes(row.eplId))
-                            }
-                            onChange={(e) => {
-                              const checked = e.currentTarget.checked;
-                              rows.forEach((row) => toggle(row.eplId, checked));
-                            }}
-                          />
-                        </th>
-                      ),
-                    )}
-                  </thead>
-
-                  <tbody>
-                    {rows.map((row) => (
-                      <tr key={row.eplId}>
-                        {auth.can("TORRENT_SEND") && (
-                          <td className="updates-selection">
-                            <Checkbox
-                              aria-label={`EPL ${row.eplId}`}
-                              checked={selected.includes(row.eplId)}
-                              onChange={(e) =>
-                                toggle(row.eplId, e.currentTarget.checked)
-                              }
-                            />
-                          </td>
-                        )}
-                        {columns.cells([
-                          <td>
-                            <Link to={`/catalog/${row.eplId}`}>
-                              {row.eplId}
-                            </Link>
-                          </td>,
-                          <td className="catalog-title-cell">
-                            <Link
-                              className="book-title"
-                              to={`/catalog/${row.eplId}`}
-                            >
-                              <BookCover book={row} />
-                              <span>{row.title}</span>
-                            </Link>
-                          </td>,
-                          <td>{revision(row.registeredRevision)}</td>,
-                          <td>{revision(row.availableRevision)}</td>,
-                          <td>{status(row.status)}</td>,
-                        ])}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {!rows.length && (
-                <p className="empty-list">{t("revisionUpdates.empty")}</p>
-              )}
-            </>
-          )}
-          <Paging
-            choice={pageSizeChoice}
-            meta={result.data?.meta}
-            page={page}
-            size={size}
-            onPage={setPage}
-            onSize={(value) => {
-              setSize(value);
-              setPage(0);
-            }}
-          />
-        </section>
+      {previousSearch.isError && (
+        <Failure
+          error={previousSearch.error}
+          retry={() => previousSearch.refetch()}
+        />
       )}
+      <section className="panel">
+        <SelectionToolbar
+          count={selected.length}
+          onClear={() => setSelected([])}
+          controls={columns.controls}
+          selectAll={
+            auth.can("TORRENT_SEND") &&
+            search &&
+            (result.data?.meta.totalItems ?? 0) > 0 && (
+              <SelectAllRows<Update, number>
+                url={`/torrent/revision-updates/search?${sortQuery(sort)}${registeredStatus ? `&status=${registeredStatus}` : ""}`}
+                total={result.data?.meta.totalItems ?? 0}
+                identify={(row) => row.eplId}
+                onSelect={setSelected}
+                loadPage={async (url) => {
+                  const params = new URLSearchParams(url.split("?")[1]);
+                  return savedPage(
+                    Number(params.get("page")),
+                    Number(params.get("size")),
+                  );
+                }}
+              />
+            )
+          }
+          actions={
+            auth.can("TORRENT_SEND") && (
+              <Button onClick={() => setSending(true)}>
+                {t("revisionUpdates.send", { count: selected.length })}
+              </Button>
+            )
+          }
+        />
+        {result.isFetching ? (
+          <Loading />
+        ) : result.isError ? (
+          <Failure error={result.error} retry={() => result.refetch()} />
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table className="updates-table" style={{ width: columns.width }}>
+                {columns.colgroup}
+                <thead>
+                  {columns.selectionHeadings(
+                    auth.can("TORRENT_SEND") && (
+                      <th className="updates-selection">
+                        <Checkbox
+                          aria-label={t("selection.page")}
+                          checked={allChecked}
+                          indeterminate={
+                            !allChecked &&
+                            rows.some((row) => selected.includes(row.eplId))
+                          }
+                          onChange={(e) => {
+                            const checked = e.currentTarget.checked;
+                            rows.forEach((row) => toggle(row.eplId, checked));
+                          }}
+                        />
+                      </th>
+                    ),
+                  )}
+                </thead>
+
+                <tbody>
+                  {!rows.length && (
+                    <tr>
+                      <td
+                        colSpan={
+                          columns.visible.length +
+                          (auth.can("TORRENT_SEND") ? 1 : 0)
+                        }
+                      >
+                        <p className="empty-list">
+                          {t("revisionUpdates.empty")}
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                  {rows.map((row) => (
+                    <tr key={row.eplId}>
+                      {auth.can("TORRENT_SEND") && (
+                        <td className="updates-selection">
+                          <Checkbox
+                            aria-label={`EPL ${row.eplId}`}
+                            checked={selected.includes(row.eplId)}
+                            onChange={(e) =>
+                              toggle(row.eplId, e.currentTarget.checked)
+                            }
+                          />
+                        </td>
+                      )}
+                      {columns.cells([
+                        <td>
+                          <Link to={`/catalog/${row.eplId}`}>{row.eplId}</Link>
+                        </td>,
+                        <td className="catalog-title-cell">
+                          <Link
+                            className="book-title"
+                            to={`/catalog/${row.eplId}`}
+                          >
+                            <BookCover book={row} />
+                            <span>{row.title}</span>
+                          </Link>
+                        </td>,
+                        <td>{status(row.status)}</td>,
+                        <td>{revision(row.registeredRevision)}</td>,
+                        <td>{revision(row.availableRevision)}</td>,
+                      ])}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        <Paging
+          choice={pageSizeChoice}
+          meta={result.data?.meta}
+          page={page}
+          size={size}
+          onPage={setPage}
+          onSize={(value) => {
+            setSize(value);
+            setPage(0);
+          }}
+        />
+      </section>
       <AppModal
-        size={520}
+        width="normal"
         opened={opened}
         onClose={() => {
           if (!find.isPending) setOpened(false);

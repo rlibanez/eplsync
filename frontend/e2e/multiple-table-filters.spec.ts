@@ -83,9 +83,19 @@ for (const item of cases) {
         await input.click();
         await page.getByRole("option", { name: label, exact: true }).click();
       }
-      await expect
-        .poll(() => queries.at(-1)?.get(item.key))
-        .toBe(item.values.join(","));
+      if (item.path !== "/downloads/updates") {
+        await expect
+          .poll(() => queries.at(-1)?.get(item.key))
+          .toBe(item.values.join(","));
+      } else {
+        await expect(
+          page
+            .locator(".mantine-MultiSelect-root")
+            .filter({ has: input })
+            .locator(".mantine-Pill-root"),
+        ).toHaveCount(2);
+        expect(queries).toHaveLength(1);
+      }
       expect(queries.at(-1)?.get("page")).toBe("0");
       await input.press("Escape");
       const root = page
@@ -96,9 +106,17 @@ for (const item of cases) {
         .filter({ hasText: item.choices[0] })
         .getByRole("button", { includeHidden: true })
         .click();
-      await expect
-        .poll(() => queries.at(-1)?.get(item.key))
-        .toBe(item.values[1]);
+      if (item.path !== "/downloads/updates") {
+        await expect
+          .poll(() => queries.at(-1)?.get(item.key))
+          .toBe(item.values[1]);
+      } else {
+        await expect(root.locator(".mantine-Pill-root")).toHaveCount(1);
+        await expect(root.locator(".mantine-Pill-label")).toHaveText(
+          item.choices[1],
+        );
+        expect(queries).toHaveLength(1);
+      }
     },
   );
 }

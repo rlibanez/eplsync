@@ -11,11 +11,13 @@ export function SelectAllRows<T, I extends string | number>({
   total,
   identify,
   onSelect,
+  loadPage,
 }: {
   url: string;
   total: number;
   identify: (row: T) => I;
   onSelect: (ids: I[]) => void;
+  loadPage?: (url: string, signal: AbortSignal) => Promise<Page<T>>;
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
@@ -42,7 +44,7 @@ export function SelectAllRows<T, I extends string | number>({
         const params = new URLSearchParams(query);
         params.set("page", String(page));
         params.set("size", "1000");
-        const result = await get<Page<T>>(
+        const result = await (loadPage ?? get<Page<T>>)(
           `${path}?${params}`,
           controller.signal,
         );

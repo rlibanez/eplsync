@@ -79,6 +79,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
     >
       {children}
       <AppModal
+        width="wide"
         opened={opened}
         onClose={() => {
           if (!send.isPending) setOpened(false);

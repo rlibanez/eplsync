@@ -409,7 +409,7 @@ export function JobDetail() {
       <Link className="back-link" to="/downloads/jobs">
         ← {t("nav.downloadJobs")}
       </Link>
-      <h1>{t("downloads.job")}</h1>
+      <h1>{t("downloads.jobHeading")}</h1>
       <p className="hash-text">{id}</p>
       <p className="muted">{t("downloads.jobNote")}</p>
       {job.isPending ? (
@@ -656,6 +656,7 @@ export function JobDetail() {
         />
       </section>
       <Modal
+        width="compact"
         icon={CircleStop}
         opened={cancel}
         onClose={() => setCancel(false)}

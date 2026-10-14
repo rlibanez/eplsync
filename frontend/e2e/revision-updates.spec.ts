@@ -62,15 +62,16 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     queries.push({ params, states: route.request().postDataJSON().states });
     return route.fulfill({
       json: {
-        items: [
-          {
-            eplId: 123,
-            title: "Test book",
+        items: Array.from({ length: 20 }, (_, index) => {
+          const offset = Number(params.get("page") ?? 0) * 20 + index;
+          return {
+            eplId: 123 + offset,
+            title: offset === 0 ? "A Test book" : `Other book ${offset}`,
             registeredRevision: 1.1,
             availableRevision: 1.2,
-            status: "NOT_FOUND",
-          },
-        ],
+            status: offset === 0 ? "NOT_FOUND" : "DOWNLOADED",
+          };
+        }),
         meta: {
           page: Number(params.get("page") ?? 0),
           size: 20,
@@ -140,7 +141,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
   await boxes.first().check();
   await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect(
-    page.getByRole("cell", { name: "Test book", exact: true }),
+    page.getByRole("cell", { name: "A Test book", exact: true }),
   ).toBeVisible();
   expect(
     (await page.locator(".updates-selection").first().boundingBox())!.width,
@@ -167,7 +168,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     )
     .toBe(5);
   await checkTableControls(page, "title", "Libro");
-  expect(queries.some((q) => q.params.getAll("sort").length === 2)).toBe(true);
+  expect(queries).toHaveLength(2);
   expect(queries[0].params.get("synchronize")).toBe("true");
   expect(queries[0].states).toContain("SUBMITTED");
   expect(writes).toBe(0);
@@ -178,15 +179,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
   await page
     .getByRole("button", { name: "Revisión disponible", exact: true })
     .click();
-  await expect
-    .poll(() =>
-      queries.some(
-        (q) =>
-          q.params.get("sort") === "availableRevision,asc" &&
-          q.params.get("page") === "0",
-      ),
-    )
-    .toBe(true);
+  expect(queries).toHaveLength(2);
   expect(
     queries.filter((q) => q.params.get("synchronize") === "true"),
   ).toHaveLength(1);
@@ -199,15 +192,8 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
   await page
     .getByRole("option", { name: "No encontrado", exact: true })
     .click();
-  await expect
-    .poll(() =>
-      queries.some(
-        (q) =>
-          q.params.get("status") === "NOT_FOUND" &&
-          q.params.get("page") === "0",
-      ),
-    )
-    .toBe(true);
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  expect(queries).toHaveLength(2);
   await statusFilter.press("Escape");
   await page.getByRole("checkbox", { name: "EPL 123", exact: true }).check();
   await page
@@ -269,7 +255,9 @@ test("failed synchronization does not show results or change saved settings", as
       .getByRole("dialog")
       .getByRole("button", { name: "Reintentar", exact: true }),
   ).toBeVisible();
-  await expect(page.locator("table")).toHaveCount(0);
+  await expect(page.locator("tbody")).toContainText(
+    "No hay actualizaciones pendientes.",
+  );
 });
 
 test("last search, page, filter and ordering survive route changes and covers match catalog", async ({
@@ -291,17 +279,16 @@ test("last search, page, filter and ordering survive route changes and covers ma
     const current = Number(params.get("page") ?? 0);
     return route.fulfill({
       json: {
-        items: [
-          {
-            eplId: 123,
-            title: "Test book",
-            registeredRevision: 1.1,
-            availableRevision: 1.2,
-            status: "NOT_FOUND",
-            coverUrl: "https://covers.example/123.jpg",
-            coverAvailable: true,
-          },
-        ],
+        items: Array.from({ length: 20 }, (_, index) => ({
+          eplId: 123 + current * 20 + index,
+          title:
+            index === 0 ? "A Test book" : `Other book ${current * 20 + index}`,
+          registeredRevision: 1.1,
+          availableRevision: 1.2,
+          status: "NOT_FOUND",
+          coverUrl: "https://covers.example/123.jpg",
+          coverAvailable: true,
+        })),
         meta: {
           page: current,
           size: 20,
@@ -325,7 +312,9 @@ test("last search, page, filter and ordering survive route changes and covers ma
     "data-update-column",
     "eplId",
   );
-  const title = page.getByRole("link", { name: "Test book", exact: true });
+  const title = page
+    .getByRole("link", { name: "A Test book", exact: true })
+    .first();
   await expect(title.locator(".mini-book img")).toHaveAttribute(
     "src",
     "https://covers.example/123.jpg",
@@ -352,6 +341,9 @@ test("last search, page, filter and ordering survive route changes and covers ma
     .locator(".sidebar")
     .getByRole("link", { name: "Ajustes", exact: true })
     .click();
+  await expect(
+    page.getByRole("heading", { name: "Ajustes", exact: true }),
+  ).toBeVisible();
   await page
     .locator(".sidebar")
     .locator('a[href="/downloads/updates"]')

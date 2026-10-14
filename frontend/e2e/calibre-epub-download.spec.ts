@@ -130,7 +130,10 @@ for (const path of ["/calibre", "/catalog/1"]) {
       .getByRole("checkbox", { name: "Seleccionar registros de esta página" })
       .check();
     await expect(
-      section.getByText("2 libros seleccionados", { exact: true }),
+      section.getByRole("button", {
+        name: "Quitar selección (2)",
+        exact: true,
+      }),
     ).toBeVisible();
     const multi = page.waitForEvent("download");
     await section

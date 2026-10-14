@@ -126,7 +126,7 @@ test("filters page and scroll survive leaving, returning and reload while data r
     })
     .first()
     .click();
-  await page.getByRole("button", { name: "2", exact: true }).click();
+  await page.getByRole("button", { name: "Siguiente", exact: true }).click();
   await expect.poll(() => requests.at(-1)?.get("page")).toBe("1");
   await expect(page.locator(".events-table tbody tr")).toHaveCount(20);
   await page.evaluate(() => window.scrollTo(0, 450));
@@ -194,7 +194,9 @@ test("notification preferences apply immediately and persist without hiding jour
   ).toBe(true);
   await page.setViewportSize({ width: 1920, height: 1080 });
   const toast = page.locator(".notification-toasts");
-  await page.getByRole("switch", { name: "Inicios de ejecución", exact: true }).uncheck();
+  await page
+    .getByRole("switch", { name: "Inicios de ejecución", exact: true })
+    .uncheck();
   await emitEvent(page, started);
   await expect(toast.getByRole("status")).toHaveCount(0);
   await page
@@ -242,73 +244,159 @@ test("notification preferences apply immediately and persist without hiding jour
   await expect(toast.getByRole("alert")).toHaveCount(0, { timeout: 3000 });
 });
 
-test("notification details open the exact operation with an expanded summary", async ({ page }) => {
-  await page.route("**/api/events/operations?**", r => {
+test("notification details open the exact operation with an expanded summary", async ({
+  page,
+}) => {
+  await page.route("**/api/events/operations?**", (r) => {
     const id = new URL(r.request().url()).searchParams.get("operationId");
-    return r.fulfill({ json: operationResponse(id === "one" ? [started] : [], r.request().url()) });
+    return r.fulfill({
+      json: operationResponse(id === "one" ? [started] : [], r.request().url()),
+    });
   });
   await page.goto("/events");
-  await expect(page.getByText("No hay eventos que coincidan con los filtros.", { exact: true })).toBeVisible();
-  await page.evaluate(() => sessionStorage.setItem("eplsync.events.navigation", JSON.stringify({
-    category: "JOB", outcome: "FAILED", origin: null, from: "", to: "", page: 8, scroll: 400, expanded: [],
-  })));
+  await expect(
+    page.getByText("No hay eventos que coincidan con los filtros.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    sessionStorage.setItem(
+      "eplsync.events.navigation",
+      JSON.stringify({
+        category: "JOB",
+        outcome: "FAILED",
+        origin: null,
+        from: "",
+        to: "",
+        page: 8,
+        scroll: 400,
+        expanded: [],
+      }),
+    ),
+  );
   await emitEvent(page, started);
-  await page.locator(".notification-toasts").getByRole("link", { name: "Ver detalles" }).click();
+  await page
+    .locator(".notification-toasts")
+    .getByRole("link", { name: "Ver detalles" })
+    .click();
   await expect(page).toHaveURL(/events\?operationId=one/);
   await expect(page.locator(".events-table tbody tr")).toHaveCount(1);
-  await expect(page.locator(".events-table details")).toHaveAttribute("open", "");
+  await expect(page.locator(".events-table details")).toHaveAttribute(
+    "open",
+    "",
+  );
   await page.reload();
-  await expect(page.locator(".events-table details")).toHaveAttribute("open", "");
+  await expect(page.locator(".events-table details")).toHaveAttribute(
+    "open",
+    "",
+  );
   await page.goto("/events?operationId=deleted");
-  await expect(page.getByText(/Este evento ya no está disponible/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "Ver todos los eventos" })).toBeVisible();
+  await expect(
+    page.getByText(/Este evento ya no está disponible/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Ver todos los eventos" }),
+  ).toBeVisible();
 });
 
-test("reconnection with a lower event cursor does not fight the frozen table read cursor", async ({ page }) => {
+test("reconnection with a lower event cursor does not fight the frozen table read cursor", async ({
+  page,
+}) => {
   const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
+  page.on("pageerror", (error) => errors.push(error.message));
   let cursor = 50;
-  await page.route("**/api/events/unread**", r => r.fulfill({ json: { count: 0, cursor } }));
-  await page.route("**/api/events/operations?**", r => r.fulfill({
-    json: { ...operationResponse([{ ...started, id: 50 }], r.request().url()), cursor: 50 },
-  }));
+  await page.route("**/api/events/unread**", (r) =>
+    r.fulfill({ json: { count: 0, cursor } }),
+  );
+  await page.route("**/api/events/operations?**", (r) =>
+    r.fulfill({
+      json: {
+        ...operationResponse([{ ...started, id: 50 }], r.request().url()),
+        cursor: 50,
+      },
+    }),
+  );
   await page.goto("/events");
   await expect(page.locator(".events-table tbody tr")).toHaveCount(1);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("eplsync.events.test-admin.lastRead"))).toBe("50");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        localStorage.getItem("eplsync.events.test-admin.lastRead"),
+      ),
+    )
+    .toBe("50");
   cursor = 2;
   await page.evaluate(() => {
-    (window as unknown as { __event: (name: string, data: unknown) => void }).__event("reset", { cursor: 2 });
+    (
+      window as unknown as { __event: (name: string, data: unknown) => void }
+    ).__event("reset", { cursor: 2 });
   });
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("eplsync.events.test-admin.lastRead"))).toBe("0");
-  await expect(page.getByRole("heading", { name: "Eventos", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Actualizar tabla" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        localStorage.getItem("eplsync.events.test-admin.lastRead"),
+      ),
+    )
+    .toBe("0");
+  await expect(
+    page.getByRole("heading", { name: "Eventos", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Actualizar tabla" }),
+  ).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test("opening one operation marks only that operation read and persists after reload", async ({ page }) => {
-  let entries = [{ ...started, id: 1, operationId: "one" }, { ...started, id: 2, operationId: "two" }];
-  await page.route("**/api/events/unread**", r => {
+test("opening one operation marks only that operation read and persists after reload", async ({
+  page,
+}) => {
+  let entries = [
+    { ...started, id: 1, operationId: "one" },
+    { ...started, id: 2, operationId: "two" },
+  ];
+  await page.route("**/api/events/unread**", (r) => {
     const { afterId, readIds } = r.request().postDataJSON();
-    const latest = new Map(entries.map(e => [e.operationId, e.id]));
-    return r.fulfill({ json: {
-      count: [...latest.values()].filter(id => id > afterId && !readIds.includes(id)).length,
-      cursor: Math.max(...latest.values()),
-    } });
+    const latest = new Map(entries.map((e) => [e.operationId, e.id]));
+    return r.fulfill({
+      json: {
+        count: [...latest.values()].filter(
+          (id) => id > afterId && !readIds.includes(id),
+        ).length,
+        cursor: Math.max(...latest.values()),
+      },
+    });
   });
-  await page.route("**/api/events/operations?**", r => {
+  await page.route("**/api/events/operations?**", (r) => {
     const id = new URL(r.request().url()).searchParams.get("operationId");
-    return r.fulfill({ json: { ...operationResponse(entries.filter(e => !id || e.operationId === id), r.request().url()), cursor: Math.max(...entries.map(e => e.id)) } });
+    return r.fulfill({
+      json: {
+        ...operationResponse(
+          entries.filter((e) => !id || e.operationId === id),
+          r.request().url(),
+        ),
+        cursor: Math.max(...entries.map((e) => e.id)),
+      },
+    });
   });
   await page.goto("/settings/general");
   const badge = page.locator(".event-unread-count");
   await expect(badge).toHaveText("2");
   await emitEvent(page, entries[1]);
-  await page.locator(".notification-toasts").getByRole("link", { name: "Ver detalles" }).click();
-  await expect(page.locator(".events-table details")).toHaveAttribute("open", "");
+  await page
+    .locator(".notification-toasts")
+    .getByRole("link", { name: "Ver detalles" })
+    .click();
+  await expect(page.locator(".events-table details")).toHaveAttribute(
+    "open",
+    "",
+  );
   await expect(badge).toHaveText("1");
   await page.reload();
   await expect(badge).toHaveText("1");
-  entries = [...entries, { ...started, id: 3, operationId: "two", outcome: "SUCCEEDED" }];
+  entries = [
+    ...entries,
+    { ...started, id: 3, operationId: "two", outcome: "SUCCEEDED" },
+  ];
   await emitEvent(page, entries[2]);
   await expect(badge).toHaveText("2");
   await page.getByRole("button", { name: "Actualizar tabla" }).click();

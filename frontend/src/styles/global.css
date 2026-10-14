@@ -1630,43 +1630,6 @@ summary {
   font-weight: 600;
 }
 
-.catalog-selection-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 16px 24px;
-  padding: 0 22px 16px;
-}
-.catalog-selection-bar.has-selection {
-  margin: 0 22px 18px;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-hover);
-}
-.catalog-selection-info {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  min-width: 0;
-}
-.catalog-selection-count { font-size: 14px; font-weight: 600; }
-.catalog-selection-controls,
-.catalog-selection-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.catalog-selection-controls .mantine-Button-root { font-weight: 400; }
-.catalog-selection-actions { margin-left: auto; }
-@media (max-width: 650px) {
-  .catalog-selection-bar { padding-inline: 15px; }
-  .catalog-selection-bar.has-selection { margin-inline: 15px; }
-  .catalog-selection-actions { margin-left: 0; width: 100%; }
-}
 .catalog-table th[data-column="selection"] { width: 70px; min-width: 70px; }
 
 .send-options-group {
@@ -1901,7 +1864,7 @@ summary {
 .user-editor-permissions h3, .user-editor-permissions p, .user-editor-recovery p { margin: 0; }
 .user-editor-legend { display: inline-flex; align-items: center; gap: 8px; }
 .user-editor-recovery .mantine-Checkbox-root { margin-top: 16px; }
-.user-editor-footer { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.user-editor-footer { margin-top: 16px; }
 .user-editor-footer .mantine-Group-root { margin-top: 0; }
 @media (max-width: 700px) {
   .user-editor-identity { flex-wrap: wrap; }
@@ -2040,3 +2003,50 @@ summary {
 }
 
 .catalog-range-grid { margin-top: 16px; }
+
+.calibre-update-dialog .send-options-group { margin: 0; }
+.calibre-update-summary { margin: 0; font-size: 14px; }
+.calibre-update-notes { margin: 4px 0; font-size: 13px; line-height: 1.5; }
+
+/* Shared dialog layout: width is selected centrally in AppModal. */
+.app-modal-body { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.app-modal-body p { margin-top: 0; margin-bottom: 0; }
+.app-modal-body .send-options-group { margin-top: 0; margin-bottom: 0; }
+.app-modal-body .app-modal-actions {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  margin-top: 4px;
+}
+.app-modal-actions > .mantine-Group-root { margin-left: auto; }
+.app-modal-actions .mantine-Button-root { flex-shrink: 0; }
+.app-modal-body .mantine-Button-label { white-space: normal; line-height: 1.3; }
+@media (max-width: 480px) {
+  .app-modal-actions > .mantine-Group-root { width: 100%; }
+}
+
+/* Selection never changes the vertical position of the table. */
+.table-toolbar.selection-table-toolbar { height: 76px; padding-block: 8px; flex-wrap: nowrap; }
+.table-toolbar.selection-table-toolbar > .selection-toolbar-left {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; width: auto;
+  height: 56px; overflow-x: auto; overflow-y: hidden;
+}
+.selection-toolbar-left > * { flex-shrink: 0; }
+.selection-toolbar-selection { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.selection-toolbar-selection > * { flex-shrink: 0; }
+.selection-toolbar-left .catalog-toolbar-selection { display: flex; flex-wrap: nowrap; }
+.selection-toolbar-actions { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+.selection-toolbar-actions > * { flex-shrink: 0; }
+.selection-toolbar-actions .mantine-Button-root { padding-inline: 8px; }
+.selection-table-toolbar > .catalog-table-controls { flex-shrink: 0; flex-wrap: nowrap; }
+@media (max-width: 900px) {
+  .table-toolbar.selection-table-toolbar { height: 136px; display: grid; grid-template-rows: 72px 40px; gap: 8px; }
+  .table-toolbar.selection-table-toolbar > .selection-toolbar-left { width: 100%; height: 72px; flex-direction: column; align-items: stretch; gap: 4px; overflow: visible; }
+  .selection-toolbar-selection { height: 28px; overflow-x: auto; }
+  .selection-toolbar-actions { height: 40px; overflow-x: auto; }
+  .selection-table-toolbar > .catalog-table-controls { justify-self: end; }
+}
+.book-section-heading { padding: 18px 22px 0; }
+.book-section-heading h2 { margin: 0; }
+@media (max-width: 700px) {
+  .book-section-heading { padding-inline: 15px; }
+}

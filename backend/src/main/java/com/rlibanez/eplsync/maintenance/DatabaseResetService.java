@@ -73,7 +73,9 @@ public class DatabaseResetService {
                     int metadata = delete("CatalogMetadata");
                     delete("CalibreBook");
                     em.createNativeQuery("DELETE FROM app_settings WHERE setting_key='calibre.snapshot'").executeUpdate();
+                    em.createNativeQuery("DELETE FROM app_settings WHERE setting_key LIKE 'downloads.last-sync.%'").executeUpdate();
                     em.createNativeQuery("DELETE FROM calibre_jobs").executeUpdate();
+                    em.createNativeQuery("DELETE FROM calibre_update_requests").executeUpdate();
                     int settingsCount = eraseUsersAndSettings ? delete("StoredSetting") : 0;
                     if (eraseUsersAndSettings) {
                         em.createNativeQuery("DELETE FROM revision_update_settings").executeUpdate();

@@ -106,7 +106,7 @@ export function ImportWizard({
       onClose={onClose}
       title={t("import.wizardTitle")}
       icon={Download}
-      size="lg"
+      width="normal"
       centered
     >
       <p className="muted">

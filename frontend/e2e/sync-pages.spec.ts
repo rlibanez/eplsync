@@ -30,8 +30,8 @@ test("sync details are fetched by page without repeating synchronization", async
         detailsId: "snapshot",
         client: "qbittorrent",
         clientInstanceId: "client",
-        dryRun: true,
-        applied: false,
+        dryRun: false,
+        applied: true,
         checkedAt: "2026-10-01T12:00:00Z",
         remote: { total: 25, matched: 25, ignored: 0 },
         records: { checked: 25, created: 25, updated: 0, unchanged: 0 },
@@ -79,7 +79,7 @@ test("sync details are fetched by page without repeating synchronization", async
   );
   await page.goto("/downloads");
   await page
-    .getByRole("button", { name: "Previsualizar sincronización", exact: true })
+    .getByRole("button", { name: "Sincronizar con el cliente", exact: true })
     .click();
   await page.locator(".sync-report summary").click();
   const report = page.locator(".sync-report");

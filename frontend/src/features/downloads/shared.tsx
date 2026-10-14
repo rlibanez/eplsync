@@ -27,11 +27,16 @@ export class ActionError extends Error {
     super(details);
   }
 }
-export async function post<T>(path: string, body?: unknown): Promise<T> {
+export async function post<T>(
+  path: string,
+  body?: unknown,
+  signal?: AbortSignal,
+): Promise<T> {
   let response: Response;
   try {
     response = await secureFetch(`/api${path}`, {
       method: "POST",
+      signal,
       headers: {
         Accept: "application/json",
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),

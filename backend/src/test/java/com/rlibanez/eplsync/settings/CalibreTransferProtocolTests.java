@@ -30,6 +30,18 @@ class CalibreTransferProtocolTests {
         });server.start();connection=new CalibreSettings.Connection("http://127.0.0.1:"+server.getAddress().getPort(),"","","Library with spaces");
     }
     @AfterEach void close() {server.stop(0);}
+    @Test void missingFormatsAreNotTreatedAsConfirmedEpubRemoval() {
+        assertThatThrownBy(()->client.hasEpub(connection,9)).hasMessageContaining("formatos");
+    }
+    @Test void removesOnlyRequestedFormatOrEntireBookWithoutRetries() {
+        uploadResponse="{}";
+        client.remove(connection,7,false);
+        assertThat(uri).contains("/cdb/set-fields/7/Library%20with%20spaces");
+        assertThat(new String(sent,StandardCharsets.UTF_8)).isEqualTo("{\"changes\":{\"removed_formats\":[\"EPUB\"]}}");
+        client.remove(connection,8,true);
+        assertThat(uri).contains("/cdb/delete-books/8/Library%20with%20spaces");assertThat(posts.get()).isEqualTo(2);
+        uploadStatus=500;assertThatThrownBy(()->client.remove(connection,8,true)).hasMessageContaining("HTTP 500");assertThat(posts.get()).isEqualTo(3);
+    }
     @Test void uploadsRawFileToSelectedLibraryAndParsesConfirmation() throws Exception {
         byte[] epub=CalibreTransfersTests.epub(1,"1.1");Path path=directory.resolve("book.epub");Files.write(path,epub);
         assertThat(client.uploadEpub(connection,path,"Libro & revisión.epub","token")).isEqualTo(9);

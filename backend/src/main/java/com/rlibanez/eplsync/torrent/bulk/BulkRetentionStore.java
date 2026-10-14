@@ -29,16 +29,19 @@ public class BulkRetentionStore {
     }
 
     private Result deleteExpired(Instant cutoff) {
-        var candidates = em.createQuery("select j.id from BulkJob j where j.state in :finished "
+        var protectedJobs=em.createNativeQuery("SELECT DISTINCT download_job_id FROM calibre_job_items WHERE download_job_id IS NOT NULL AND state IN ('WAITING_DOWNLOAD','BLOCKED_DOWNLOAD')",String.class).getResultList();
+        var query = em.createQuery("select j.id from BulkJob j where j.state in :finished "
                 + "and j.updatedAt < :cutoff and not exists "
                 + "(select i.id from BulkItem i where i.jobId=j.id and i.state in :unfinished) "
                 + "and not exists (select c.id from UpdateCleanup c where c.jobId=j.id and c.state in :pending) "
-                + "order by j.updatedAt,j.id", String.class)
+                + (protectedJobs.isEmpty()?"":"and j.id not in :protected ") + "order by j.updatedAt,j.id", String.class)
                 .setParameter("finished", List.of(BulkJob.State.COMPLETED, BulkJob.State.CANCELLED))
                 .setParameter("cutoff", cutoff)
                 .setParameter("unfinished", List.of(BulkItem.State.PENDING, BulkItem.State.IN_FLIGHT))
                 .setParameter("pending", List.of(UpdateCleanup.State.WAITING, UpdateCleanup.State.BLOCKED, UpdateCleanup.State.REQUESTED))
-                .setMaxResults(1).getResultList();
+                .setMaxResults(1);
+        if(!protectedJobs.isEmpty()) query.setParameter("protected",protectedJobs);
+        var candidates=query.getResultList();
         if (candidates.isEmpty()) return new Result(0,0,0);
         String id = candidates.getFirst();
         int items = em.createQuery("delete from BulkItem i where i.jobId=:id").setParameter("id",id).executeUpdate();

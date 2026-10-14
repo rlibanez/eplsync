@@ -493,7 +493,7 @@
     "resume": "Reanudar",
     "cancelJob": "Cancelar trabajo",
     "cancelConfirm": "Se cancelarán los elementos pendientes. Los envíos en curso pueden finalizar y los torrents ya enviados no se modificarán.",
-    "itemStatus": "Estado de los elementos",
+    "itemStatus": "Estado",
     "hash": "Hash",
     "attempts": "Intentos",
     "message": "Detalle",
@@ -511,7 +511,9 @@
     "refreshing": "Actualizando…",
     "refreshed": "Vista actualizada correctamente.",
     "refreshError": "No se pudo actualizar la vista. Revisa la conexión y vuelve a intentarlo.",
-    "type": "Tipo"
+    "type": "Tipo",
+    "jobHeading": "Trabajo de descarga",
+    "lastSync": "Última sincronización"
   },
   "send": {
     "openTorrentSettings": "Ajustes de torrent",
@@ -1016,7 +1018,8 @@
     "browserSave": "El destino depende de la configuración de descargas del navegador. Activa «Preguntar dónde guardar» si quieres elegir la carpeta.",
     "save": "Guardar",
     "exportError": "No se han podido exportar los enlaces. Inténtalo de nuevo.",
-    "noMagnets": "La selección no contiene enlaces magnet."
+    "noMagnets": "La selección no contiene enlaces magnet.",
+    "clearCount": "Quitar selección ({{count}})"
   },
   "serverSettings": {
     "destinationChangeWarning": "Al cambiar la URL del cliente torrent debes introducir las credenciales correspondientes al nuevo servidor antes de guardar.",
@@ -1207,7 +1210,8 @@
       "CALIBRE_FILES_READ": "Descargar EPUB de Calibre",
       "DOWNLOADS_FILES_READ": "Descargar archivos EPUB",
       "CALIBRE_SEND": "Enviar EPUB a Calibre",
-      "CALIBRE_JOBS_MANAGE": "Gestionar trabajos de Calibre"
+      "CALIBRE_JOBS_MANAGE": "Gestionar trabajos de Calibre",
+      "CALIBRE_DELETE": "Eliminar revisiones de Calibre"
     },
     "statuses": {
       "PENDING": "Pendiente de aprobación",
@@ -1415,7 +1419,7 @@
     "selectedBooks": "{{count}} libros seleccionados",
     "selectBook": "Seleccionar Calibre ID {{id}}",
     "updatesHeading": "Actualizaciones de Calibre",
-    "updatesDescription": "Compara la última revisión conocida de cada libro de Calibre con el Catálogo. Buscar actualizaciones sincroniza la biblioteca; esta vista no envía ni elimina archivos.",
+    "updatesDescription": "Compara las revisiones de Calibre con el Catálogo. Envía los EPUB actualizados y elige qué hacer con las revisiones anteriores.",
     "libraryHeading": "Biblioteca de Calibre",
     "browserUrl": "URL para abrir en el navegador",
     "browserUrlHelp": "Opcional. Si está vacía, se utiliza la URL del servidor de contenido.",
@@ -1466,9 +1470,54 @@
       "ACCEPTED": "Enviado",
       "SKIPPED": "Ya existe",
       "FAILED": "Error",
-      "UNCERTAIN": "Sin confirmar"
+      "UNCERTAIN": "Sin confirmar",
+      "WAITING_DOWNLOAD": "Esperando descarga",
+      "BLOCKED_DOWNLOAD": "Descarga pendiente de revisión",
+      "CLEANUP_PENDING": "Limpieza pendiente"
     },
     "cancel": "Cancelar",
     "detail": "Detalle"
+  },
+  "calibreUpdateSend": {
+    "open": "Enviar actualizaciones ({{count}})",
+    "heading": "Enviar actualizaciones a Calibre",
+    "preparing": "Comprobando EPUB disponibles…",
+    "summary": "{{ready}} libros con EPUB descargado; {{missing}} necesitan descarga.",
+    "download": "Enviar los EPUB no disponibles a descargar",
+    "afterDownload": "Cuando estén descargados",
+    "onlyDownload": "Solo descargar; no enviar a Calibre",
+    "deferred": "Enviar a Calibre cuando estén descargados",
+    "safety": "Las revisiones anteriores solo se eliminan después de verificar el EPUB actualizado en Calibre. Cancelar este trabajo no cancela los torrents enviados.",
+    "sendNow": "Enviar a Calibre",
+    "downloadBook": "Enviar a descargar",
+    "file": "Archivo EPUB",
+    "sizeWarning": "Hay un EPUB cuyo tamaño difiere del registrado por el cliente torrent. Puede haber sido modificado.",
+    "previous": "Revisiones anteriores (Calibre ID y revisión)",
+    "cleanup": "Acción sobre las revisiones anteriores",
+    "keep": "Conservar",
+    "removeEpub": "Eliminar solo el formato EPUB",
+    "removeBook": "Eliminar el libro completo de Calibre",
+    "confirmDelete": "Confirmo que se eliminará el libro completo, incluidos otros formatos y sus datos asociados.",
+    "confirm": "Crear trabajos",
+    "created": "Trabajos creados.",
+    "downloadJob": "Ver trabajo de descargas",
+    "calibreJob": "Ver trabajo de Calibre",
+    "availability": "Nueva revisión descargada",
+    "availabilityValues": {
+      "READY": "Sí",
+      "MISSING": "No",
+      "INACCESSIBLE": "No accesible",
+      "UNKNOWN": "Sin comprobar"
+    },
+    "readySummary": "{{count}} actualizaciones disponibles para enviar a Calibre",
+    "missingSummary": "{{count}} actualizaciones aún no están descargadas",
+    "customize": "Personalizar por libro",
+    "jobsSummary": "Trabajos a crear: Calibre ({{calibre}}), descargas ({{downloads}}).",
+    "readySummary_one": "{{count}} actualización disponible para enviar a Calibre",
+    "readySummary_other": "{{count}} actualizaciones disponibles para enviar a Calibre",
+    "missingSummary_one": "{{count}} actualización aún no está descargada",
+    "missingSummary_other": "{{count}} actualizaciones aún no están descargadas",
+    "pendingDownloads": "Descargas pendientes",
+    "previousSection": "Versiones anteriores"
   }
 }

@@ -46,6 +46,20 @@ public class CalibreCatalogService {
             });
         } finally {gate.release();}
     }
+    void removeObserved(CalibreSettings.Connection connection,long id) {
+        if(!gate.tryAcquire()) throw new UserInputException("La biblioteca se está sincronizando; reanuda para actualizar la copia local");
+        try {tx.executeWithoutResult(s -> {
+            if(!connection.equals(settings.connection())) return;
+            jdbc.update("DELETE FROM calibre_books WHERE active=true AND calibre_id=?",id);
+            var previous=snapshot();
+            if(previous!=null) {
+                long total=jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Long.class);
+                long identified=jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true AND epl_id IS NOT NULL",Long.class);
+                var value=new Snapshot(previous.library(),previous.syncedAt(),total,identified,previous.complete());
+                jdbc.update("UPDATE app_settings SET setting_value=? WHERE setting_key=?",json.writeValueAsString(value),KEY);
+            }
+        });} finally {gate.release();}
+    }
     public CalibreCatalogService(JdbcTemplate jdbc, CalibreSettings settings, CalibreClient client, PlatformTransactionManager manager) {
         this.jdbc=jdbc; this.settings=settings; this.client=client; this.tx=new TransactionTemplate(manager);
         // Interrupted staging generations have no public references.

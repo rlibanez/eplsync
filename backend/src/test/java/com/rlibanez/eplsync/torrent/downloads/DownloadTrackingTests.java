@@ -327,6 +327,18 @@ class DownloadTrackingTests {
         } finally { worker.close(); }
     }
 
+    @Test void lastSyncDateSurvivesPreviewsAndFailuresAndBelongsToTheClientInstance() {
+        service.syncDownloads(false,false);
+        var saved=tracking.syncState().syncedAt();assertThat(saved).isNotNull();
+        service.syncDownloads(true,false);assertThat(tracking.syncState().syncedAt()).isEqualTo(saved);
+        when(stubClient.listTorrents()).thenThrow(new IllegalStateException("offline"));
+        assertThatThrownBy(()->service.syncDownloads(false,false)).isInstanceOf(IllegalStateException.class);
+        assertThat(tracking.syncState().syncedAt()).isEqualTo(saved);
+        properties.effective().setBaseUrl("http://another-client:8080");
+        assertThat(tracking.syncState().syncedAt()).isNull();
+        properties.effective().setBaseUrl("http://localhost:8080");
+        assertThat(tracking.syncState().syncedAt()).isEqualTo(saved);
+    }
     @Test void hybridTorrentRepairsNotFoundWithoutDuplicatingRecordsOrRemoteCounts() {
         service.addTorrent(command(1.6, HASH));
         var id = only().getId();

@@ -104,7 +104,7 @@ export function MissingBooks({ disabled }: { disabled: boolean }) {
         withCloseButton={!busy}
         title={t("missing.title")}
         icon={Trash2}
-        size="lg"
+        width="wide"
         centered
       >
         {preview && preview.total > 0 ? (

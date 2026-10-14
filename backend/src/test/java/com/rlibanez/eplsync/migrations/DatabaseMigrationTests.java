@@ -27,7 +27,7 @@ class DatabaseMigrationTests {
         assertEquals(3, migration.migrate().migrationsExecuted);
         assertEquals("1.2.0", migration.info().current().getVersion().toString());
         var jdbc = jdbc();
-        assertEquals(16, jdbc.queryForObject("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT IN ('sqlite_sequence','flyway_schema_history')", Integer.class));
+        assertEquals(17, jdbc.queryForObject("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT IN ('sqlite_sequence','flyway_schema_history')", Integer.class));
         var indexes = jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='index'", String.class);
         assertTrue(indexes.containsAll(java.util.List.of("idx_catalog_title", "idx_events_operation",
                 "idx_bulk_item_queue", "idx_cleanup_state_checked", "uk_download_identity", "uq_cleanup_job_download")));

@@ -493,7 +493,7 @@
     "resume": "Resume",
     "cancelJob": "Cancel job",
     "cancelConfirm": "Pending items will be cancelled. In-flight submissions may finish and already submitted torrents will not be changed.",
-    "itemStatus": "Item status",
+    "itemStatus": "Status",
     "hash": "Hash",
     "attempts": "Attempts",
     "message": "Details",
@@ -511,7 +511,9 @@
     "refreshing": "Refreshing…",
     "refreshed": "View refreshed successfully.",
     "refreshError": "Could not refresh the view. Check your connection and try again.",
-    "type": "Type"
+    "type": "Type",
+    "jobHeading": "Download job",
+    "lastSync": "Last synchronized"
   },
   "send": {
     "openTorrentSettings": "Torrent settings",
@@ -1016,7 +1018,8 @@
     "browserSave": "The destination depends on your browser download settings. Enable “Ask where to save” to choose a folder.",
     "save": "Save",
     "exportError": "Could not export the links. Please try again.",
-    "noMagnets": "The selection contains no magnet links."
+    "noMagnets": "The selection contains no magnet links.",
+    "clearCount": "Clear selection ({{count}})"
   },
   "serverSettings": {
     "destinationChangeWarning": "When changing the torrent client URL, you must enter the credentials for the new server before saving.",
@@ -1207,7 +1210,8 @@
       "CALIBRE_FILES_READ": "Download EPUBs from Calibre",
       "DOWNLOADS_FILES_READ": "Download EPUB files",
       "CALIBRE_SEND": "Send EPUB to Calibre",
-      "CALIBRE_JOBS_MANAGE": "Manage Calibre jobs"
+      "CALIBRE_JOBS_MANAGE": "Manage Calibre jobs",
+      "CALIBRE_DELETE": "Delete Calibre revisions"
     },
     "statuses": {
       "PENDING": "Pending approval",
@@ -1415,7 +1419,7 @@
     "selectedBooks": "{{count}} books selected",
     "selectBook": "Select Calibre ID {{id}}",
     "updatesHeading": "Calibre updates",
-    "updatesDescription": "Compare the latest known revision of each Calibre book with the Catalog. Searching for updates synchronizes the library; this view does not send or delete files.",
+    "updatesDescription": "Compare Calibre revisions with the Catalog. Send updated EPUB files and choose what to do with previous revisions.",
     "libraryHeading": "Calibre library",
     "browserUrl": "Browser URL",
     "browserUrlHelp": "Optional. Uses the content server URL when empty.",
@@ -1466,9 +1470,54 @@
       "ACCEPTED": "Sent",
       "SKIPPED": "Already present",
       "FAILED": "Error",
-      "UNCERTAIN": "Unconfirmed"
+      "UNCERTAIN": "Unconfirmed",
+      "WAITING_DOWNLOAD": "Waiting for download",
+      "BLOCKED_DOWNLOAD": "Download needs attention",
+      "CLEANUP_PENDING": "Cleanup pending"
     },
     "cancel": "Cancel",
     "detail": "Details"
+  },
+  "calibreUpdateSend": {
+    "open": "Send updates ({{count}})",
+    "heading": "Send updates to Calibre",
+    "preparing": "Checking available EPUB files…",
+    "summary": "{{ready}} books have a downloaded EPUB; {{missing}} need downloading.",
+    "download": "Send unavailable EPUB files to download",
+    "afterDownload": "After downloading",
+    "onlyDownload": "Download only; do not send to Calibre",
+    "deferred": "Send to Calibre after downloading",
+    "safety": "Previous revisions are removed only after verifying the updated EPUB in Calibre. Cancelling this job does not cancel submitted torrents.",
+    "sendNow": "Send to Calibre",
+    "downloadBook": "Send to download",
+    "file": "EPUB file",
+    "sizeWarning": "An EPUB size differs from the torrent client record. It may have been modified.",
+    "previous": "Previous revisions (Calibre ID and revision)",
+    "cleanup": "Action for previous revisions",
+    "keep": "Keep",
+    "removeEpub": "Remove the EPUB format only",
+    "removeBook": "Remove the entire Calibre book",
+    "confirmDelete": "I confirm removal of the entire book, including other formats and associated data.",
+    "confirm": "Create jobs",
+    "created": "Jobs created.",
+    "downloadJob": "View download job",
+    "calibreJob": "View Calibre job",
+    "availability": "New revision downloaded",
+    "availabilityValues": {
+      "READY": "Yes",
+      "MISSING": "No",
+      "INACCESSIBLE": "Inaccessible",
+      "UNKNOWN": "Not checked"
+    },
+    "readySummary": "{{count}} updates available to send to Calibre",
+    "missingSummary": "{{count}} updates have not been downloaded yet",
+    "customize": "Customize per book",
+    "jobsSummary": "Jobs to create: Calibre ({{calibre}}), downloads ({{downloads}}).",
+    "readySummary_one": "{{count}} update available to send to Calibre",
+    "readySummary_other": "{{count}} updates available to send to Calibre",
+    "missingSummary_one": "{{count}} update has not been downloaded yet",
+    "missingSummary_other": "{{count}} updates have not been downloaded yet",
+    "pendingDownloads": "Pending downloads",
+    "previousSection": "Previous revisions"
   }
 }

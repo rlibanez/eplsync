@@ -277,6 +277,10 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
             var hashes=ordered.subList(start,Math.min(start+50,ordered.size()));
             result.addAll(readTorrents("torrents/info?hashes=" + encode(String.join("|",hashes))));
         }
+        var observed=result.stream().flatMap(t -> t.aliases().stream()).collect(java.util.stream.Collectors.toSet());
+        // qBittorrent filters by its primary ID, not every v1/v2 alias of a hybrid torrent.
+        // Resolve unmatched aliases against one bounded, streamed full snapshot.
+        if(!observed.containsAll(normalized)) result=new java.util.ArrayList<>(readTorrents("torrents/info"));
         return result.stream().filter(t -> t.aliases().stream().anyMatch(normalized::contains)).distinct().toList();
     }
 
@@ -285,11 +289,17 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
         if (dynamic()) return configured(c -> c.listFiles(hash));
         if (!hash.matches("(?i)[0-9a-f]{40}|[0-9a-f]{64}")) throw new com.rlibanez.eplsync.exception.UserInputException("Hash inválido");
         var info = readAuthenticatedJson("torrents/info?hashes=" + encode(hash));
+        if(info.isArray() && info.isEmpty()) {
+            var matches=readTorrents("torrents/info").stream().filter(t -> t.aliases().contains(hash.toUpperCase(java.util.Locale.ROOT))).toList();
+            if(matches.size()>1) throw new QBittorrentConnectionException(UPSTREAM);
+            if(matches.size()==1) info=readAuthenticatedJson("torrents/info?hashes="+encode(matches.getFirst().hash()));
+        }
         if (!info.isArray() || info.size() != 1) throw new TorrentOperationException(HttpStatus.NOT_FOUND, "El torrent ya no está en el cliente");
         if (!torrentHashes(info.get(0)).contains(hash.toUpperCase(java.util.Locale.ROOT)))
             throw new QBittorrentConnectionException(UPSTREAM);
         var savePath = info.get(0).path("save_path").asString("");
-        var files = readAuthenticatedJson("torrents/files?hash=" + encode(hash));
+        var remoteId=info.get(0).path("hash").asString("");
+        var files = readAuthenticatedJson("torrents/files?hash=" + encode(remoteId));
         if (!files.isArray() || files.size() > 10000) throw new QBittorrentConnectionException(UPSTREAM);
         var result = new java.util.ArrayList<TorrentFile>();
         for (var file : files) {

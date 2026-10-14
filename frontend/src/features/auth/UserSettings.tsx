@@ -429,7 +429,7 @@ export function UserSettings() {
         onClose={() => {
           if (!pending) setCreating(false);
         }}
-        size={392}
+        width="compact"
         centered
       >
         {modalError && <Alert color="red">{modalError}</Alert>}
@@ -505,7 +505,7 @@ export function UserSettings() {
         onClose={() => {
           if (!pending) setEditing(undefined);
         }}
-        size="xl"
+        width="wide"
         centered
       >
         {modalError && <Alert color="red">{modalError}</Alert>}
@@ -530,6 +530,7 @@ export function UserSettings() {
         )}
       </AppModal>
       <AppModal
+        width="compact"
         icon={KeyRound}
         title={t("auth.resetPassword")}
         opened={!!resetting}
@@ -574,6 +575,7 @@ export function UserSettings() {
         </ModalActions>
       </AppModal>
       <AppModal
+        width="compact"
         icon={Trash2}
         title={t("auth.deleteUser")}
         opened={!!deleting}
@@ -749,7 +751,8 @@ function UserEditor({
                           (overrides.CALIBRE_SYNC === "ALLOW" ||
                             overrides.CALIBRE_FILES_READ === "ALLOW" ||
                             overrides.CALIBRE_SEND === "ALLOW" ||
-                            overrides.CALIBRE_JOBS_MANAGE === "ALLOW")
+                            overrides.CALIBRE_JOBS_MANAGE === "ALLOW" ||
+                            overrides.CALIBRE_DELETE === "ALLOW")
                             ? "ALLOW"
                             : (overrides[permission] ?? "INHERIT")
                         }
@@ -759,7 +762,8 @@ function UserEditor({
                           (overrides.CALIBRE_SYNC === "ALLOW" ||
                             overrides.CALIBRE_FILES_READ === "ALLOW" ||
                             overrides.CALIBRE_SEND === "ALLOW" ||
-                            overrides.CALIBRE_JOBS_MANAGE === "ALLOW")
+                            overrides.CALIBRE_JOBS_MANAGE === "ALLOW" ||
+                            overrides.CALIBRE_DELETE === "ALLOW")
                         }
                         data={[
                           {
@@ -782,7 +786,8 @@ function UserEditor({
                               (permission === "CALIBRE_SYNC" ||
                                 permission === "CALIBRE_FILES_READ" ||
                                 permission === "CALIBRE_SEND" ||
-                                permission === "CALIBRE_JOBS_MANAGE") &&
+                                permission === "CALIBRE_JOBS_MANAGE" ||
+                                permission === "CALIBRE_DELETE") &&
                               value === "ALLOW"
                             )
                               next.CALIBRE_READ = "ALLOW";

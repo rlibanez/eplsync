@@ -1,11 +1,18 @@
+import { SelectionToolbar } from "../../components/SelectionToolbar";
+import {
+  savedSearch,
+  collectSearch,
+  searchPage,
+} from "../downloads/SavedUpdateSearch";
+import { CalibreUpdateSend } from "./CalibreUpdateSend";
 import { SelectAllRows } from "../../components/SelectAllRows";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { CalibreTable, calibreColumns, type CalibreBook } from "./CalibreTable";
 import { useNotifications } from "../notifications/Notifications";
-import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { Button, MultiSelect, TextInput } from "@mantine/core";
+import { Link, useSearchParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Button, MultiSelect, Select, TextInput } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -31,6 +38,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
   const { notify } = useNotifications();
   const { date } = useLocale();
   const cache = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchHandled = useRef(false);
   const [page, setPage] = useState(0),
     [size, setSize] = useState(20),
     [title, setTitle] = useState(""),
@@ -39,7 +48,11 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     [comparison, setComparison] = useState(""),
     [presence, setPresence] = useState(""),
     [sort, setSort] = useState("title,asc");
-  const selectable = !updates && auth.can("CALIBRE_FILES_READ");
+  const selectable = updates
+    ? auth.can("CALIBRE_SEND") &&
+      auth.can("DOWNLOADS_FILES_READ") &&
+      auth.can("CATALOG_READ")
+    : auth.can("CALIBRE_FILES_READ");
   const [selected, setSelected] = useState<number[]>([]);
   useEffect(
     () => setSelected([]),
@@ -56,14 +69,56 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     presence,
     ...(updates ? { updatesOnly: "true" } : {}),
   });
-  const result = useQuery({
-    queryKey: ["calibre-library", params.toString(), sort, updates],
-    queryFn: ({ signal }) =>
-      get<Page<CalibreBook>>(
-        `/calibre/books?${params}&${sortQuery(sort)}`,
-        signal,
-      ),
+  const [availability, setAvailability] = useState<string | null>(null);
+  const canCheckFiles =
+    auth.can("DOWNLOADS_FILES_READ") && auth.can("CATALOG_READ");
+  const excludedFields = updates
+    ? [
+        "actions",
+        "presence",
+        "comparison",
+        ...(!canCheckFiles ? ["downloadAvailability"] : []),
+      ]
+    : ["downloadAvailability"];
+  const savedKey = `calibre:${auth.user?.id}`;
+  const previousSearch = useQuery({
+    queryKey: ["saved-calibre-updates", auth.user?.id],
+    queryFn: () => savedSearch<CalibreBook>(savedKey),
+    enabled: updates,
   });
+  const filteredSavedRows = () =>
+    (previousSearch.data?.rows ?? []).filter(
+      (book) =>
+        (!title ||
+          book.title.toLocaleLowerCase().includes(title.toLocaleLowerCase())) &&
+        (!author ||
+          book.authors
+            .toLocaleLowerCase()
+            .includes(author.toLocaleLowerCase())) &&
+        (!eplId || String(book.eplId) === eplId) &&
+        (!availability ||
+          (book.downloadAvailability ?? "UNKNOWN") === availability),
+    );
+  const result = useQuery({
+    queryKey: [
+      "calibre-library",
+      auth.user?.id,
+      params.toString(),
+      sort,
+      updates,
+      previousSearch.data?.searchedAt,
+      availability,
+    ],
+    queryFn: ({ signal }) =>
+      updates
+        ? Promise.resolve(searchPage(filteredSavedRows(), page, size, sort))
+        : get<Page<CalibreBook>>(
+            `/calibre/books?${params}&${sortQuery(sort)}`,
+            signal,
+          ),
+  });
+  const showSelectionActions =
+    selectable && (!updates || (result.data?.meta.totalItems ?? 0) > 0);
   const snapshot = useQuery({
     queryKey: ["calibre-snapshot"],
     queryFn: ({ signal }) =>
@@ -73,13 +128,40 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       ).then((d) => d.snapshot),
   });
   const sync = useMutation({
-    mutationFn: () => post<Snapshot>("/settings/calibre/sync", {}),
+    mutationFn: async () => {
+      const snapshot = await post<Snapshot>("/settings/calibre/sync", {});
+      if (updates) {
+        const rows = await collectSearch<CalibreBook>((page) =>
+          get<Page<CalibreBook>>(
+            `/calibre/books?updatesOnly=true&page=${page}&size=1000&sort=calibreId,asc`,
+          ),
+        );
+        if (canCheckFiles) {
+          for (let offset = 0; offset < rows.length; offset += 1000) {
+            const batch = rows.slice(offset, offset + 1000);
+            const states = await post<{ calibreId: number; state: string }[]>(
+              "/calibre/updates/availability",
+              { ids: batch.map((b) => b.calibreId) },
+            );
+            const byId = new Map(states.map((s) => [s.calibreId, s.state]));
+            batch.forEach((b) => {
+              b.downloadAvailability = byId.get(b.calibreId) ?? "UNKNOWN";
+            });
+          }
+        }
+        const saved = { rows, searchedAt: Date.now() };
+        await savedSearch(savedKey, saved);
+        cache.setQueryData(["saved-calibre-updates", auth.user?.id], saved);
+      }
+      return snapshot;
+    },
     retry: false,
     onSuccess: (data) => {
       cache.setQueryData(["calibre-snapshot"], data);
       void cache.invalidateQueries({ queryKey: ["calibre-library"] });
       void cache.invalidateQueries({ queryKey: ["book"] });
       setPage(0);
+      setSelected([]);
       notify({
         title: "Calibre",
         message: t("calibre.synced"),
@@ -94,13 +176,21 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         tone: "error",
       }),
   });
+  useEffect(() => {
+    if (!updates || searchParams.get("search") !== "1") {
+      searchHandled.current = false;
+      return;
+    }
+    if (searchHandled.current) return;
+    searchHandled.current = true;
+    const next = new URLSearchParams(searchParams);
+    next.delete("search");
+    setSearchParams(next, { replace: true });
+    if (auth.can("CALIBRE_SYNC")) sync.mutate();
+  }, [updates, searchParams, setSearchParams, auth, sync.mutate]);
   const columns = useDownloadColumns(
     updates ? "eplsync.calibre.updates.columns" : "eplsync.calibre.columns",
-    updates
-      ? calibreColumns.filter(
-          (c) => !["actions", "presence", "comparison"].includes(c.field),
-        )
-      : calibreColumns,
+    calibreColumns.filter((c) => !excludedFields.includes(c.field)),
     sort,
     (v) => {
       setSort(v);
@@ -122,7 +212,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             {!updates && (
               <Button
                 component={Link}
-                to="/calibre/updates"
+                to="/calibre/updates?search=1"
                 disabled={sync.isPending}
               >
                 {t("revisionUpdates.search")}
@@ -140,7 +230,17 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         )}
       </p>
       {snapshot.data?.complete === false && <p>{t("calibreSend.partial")}</p>}
-      {snapshot.data ? (
+      {updates ? (
+        previousSearch.data && (
+          <p className="muted">
+            {t("revisionUpdates.lastSearch", {
+              date: date(
+                new Date(previousSearch.data.searchedAt).toISOString(),
+              ),
+            })}
+          </p>
+        )
+      ) : snapshot.data ? (
         <p className="muted">
           {t("calibre.lastSync")}: {date(snapshot.data.syncedAt)}
           {!updates && (
@@ -153,6 +253,12 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       ) : (
         !snapshot.isPending &&
         !snapshot.isError && <p>{t("calibre.notSynced")}</p>
+      )}
+      {updates && previousSearch.isError && (
+        <Failure
+          error={previousSearch.error}
+          retry={() => previousSearch.refetch()}
+        />
       )}
       {snapshot.isError && (
         <Failure error={snapshot.error} retry={() => snapshot.refetch()} />
@@ -185,6 +291,24 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             setPage(0);
           }}
         />
+        {updates && canCheckFiles && (
+          <Select
+            label={t("calibreUpdateSend.availability")}
+            clearable
+            value={availability}
+            data={["READY", "MISSING", "INACCESSIBLE", "UNKNOWN"].map(
+              (value) => ({
+                value,
+                label: t(`calibreUpdateSend.availabilityValues.${value}`),
+              }),
+            )}
+            onChange={(value) => {
+              setAvailability(value);
+              setPage(0);
+              setSelected([]);
+            }}
+          />
+        )}
         {!updates && (
           <>
             <MultiSelect
@@ -229,6 +353,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             setEplId("");
             setComparison("");
             setPresence("");
+            setAvailability(null);
             setPage(0);
           }}
         >
@@ -236,24 +361,47 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         </Button>
       </div>
       <section className="panel">
-        <div className="table-toolbar">
-          {selectable && (
-            <SelectAllRows<CalibreBook, number>
-              url={`/calibre/books?${new URLSearchParams([...params].filter(([key]) => key !== "page" && key !== "size"))}&${sortQuery(sort)}`}
-              total={result.data?.meta.totalItems ?? 0}
-              identify={(book) => book.calibreId}
-              onSelect={setSelected}
-            />
-          )}
-          <div className="catalog-table-controls">{columns.controls}</div>
-        </div>
-        {selectable && (
-          <EpubBatchDownload
-            selected={selected}
-            endpoint="/calibre/epub-downloads"
-            selectionLabel="calibre.selectedBooks"
-          />
-        )}
+        <SelectionToolbar
+          count={selected.length}
+          onClear={() => setSelected([])}
+          controls={columns.controls}
+          selectAll={
+            showSelectionActions && (
+              <SelectAllRows<CalibreBook, number>
+                url={`/calibre/books?${new URLSearchParams([...params].filter(([key]) => key !== "page" && key !== "size"))}&${sortQuery(sort)}`}
+                total={result.data?.meta.totalItems ?? 0}
+                identify={(book) => book.calibreId}
+                onSelect={setSelected}
+                loadPage={
+                  updates
+                    ? async (url) => {
+                        const params = new URLSearchParams(url.split("?")[1]);
+                        return searchPage(
+                          filteredSavedRows(),
+                          Number(params.get("page")),
+                          Number(params.get("size")),
+                          sort,
+                        );
+                      }
+                    : undefined
+                }
+              />
+            )
+          }
+          actions={
+            updates ? (
+              <CalibreUpdateSend selected={selected} />
+            ) : (
+              selectable && (
+                <EpubBatchDownload
+                  selected={selected}
+                  endpoint="/calibre/epub-downloads"
+                  toolbar={false}
+                />
+              )
+            )
+          }
+        />
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
@@ -262,9 +410,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
           <>
             <CalibreTable
               items={result.data.items}
-              excludedFields={
-                updates ? ["actions", "presence", "comparison"] : []
-              }
+              emptyMessage={updates ? t("revisionUpdates.empty") : undefined}
+              excludedFields={excludedFields}
               columns={columns}
               selected={selectable ? selected : undefined}
               onSelection={setSelected}

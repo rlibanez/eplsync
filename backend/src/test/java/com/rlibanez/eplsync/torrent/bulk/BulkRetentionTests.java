@@ -31,6 +31,7 @@ class BulkRetentionTests {
     private final Instant cutoff=now.minus(Duration.ofDays(90));
 
     @BeforeEach void reset() {
+        jdbc.update("DELETE FROM calibre_jobs");
         cleanup.deleteAll(); plans.deleteAll(); items.deleteAll(); jobs.deleteAll(); downloads.deleteAll();
     }
 
@@ -48,6 +49,18 @@ class BulkRetentionTests {
         var entry=new UpdateCleanup();entry.setJobId(job.getId());entry.setDownloadId(UUID.randomUUID().toString());
         entry.setEplId(1L);entry.setHash("A".repeat(40));entry.setState(state);entry.setUpdatedAt(now);
         return cleanup.save(entry);
+    }
+
+    @Test void preservesDownloadsNeededByCalibreWithoutBlockingOtherExpiredJobs() {
+        var dependency=job(BulkJob.State.COMPLETED,cutoff.minusSeconds(2));
+        var expired=job(BulkJob.State.COMPLETED,cutoff.minusSeconds(1));
+        String now=Instant.now().toString();
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('calibre',?,?, 'Owner','destination','main','source','PAUSED')",now,now);
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,name,epl_id,revision,state,download_job_id,wait_until) VALUES('item','calibre',0,'Book',1,'1.1','BLOCKED_DOWNLOAD',?,?)",dependency.getId(),Instant.now().plus(Duration.ofDays(30)).toEpochMilli());
+        assertThat(retention.purgeOne(cutoff).jobs()).isEqualTo(1);
+        assertThat(jobs.existsById(dependency.getId())).isTrue();assertThat(jobs.existsById(expired.getId())).isFalse();
+        jdbc.update("UPDATE calibre_job_items SET state='CANCELLED'");
+        assertThat(retention.purgeOne(cutoff).jobs()).isEqualTo(1);
     }
 
     @ParameterizedTest @EnumSource(value=BulkJob.State.class,names={"COMPLETED","CANCELLED"})

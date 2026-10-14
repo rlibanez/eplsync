@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { TableAction } from "../../components/TableAction";
-import { AppModal } from "../../components/AppModal";
+import { AppModal, ModalActions } from "../../components/AppModal";
 import { Alert, Button, Stack } from "@mantine/core";
 import { Download } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
@@ -13,13 +13,11 @@ export function EpubBatchDownload({
   endpoint = "/torrent/downloads/epub-batches",
   inline = false,
   toolbar = true,
-  selectionLabel = "historyActions.selected",
 }: {
   selected: (string | number)[];
   endpoint?: string;
   inline?: boolean;
   toolbar?: boolean;
-  selectionLabel?: string;
 }) {
   const { t } = useTranslation();
   const [warning, setWarning] = useState<{
@@ -64,18 +62,7 @@ export function EpubBatchDownload({
   );
   return (
     <>
-      {inline || !toolbar ? (
-        button
-      ) : (
-        <div className="catalog-selection-bar has-selection">
-          <div className="catalog-selection-info">
-            <span className="catalog-selection-count" aria-live="polite">
-              {t(selectionLabel, { count: selected.length })}
-            </span>
-          </div>
-          <div className="catalog-selection-actions">{button}</div>
-        </div>
-      )}
+      {button}
       <AppModal
         opened={warning !== null}
         onClose={() => setWarning(null)}
@@ -87,14 +74,16 @@ export function EpubBatchDownload({
           {warning?.sizeWarnings.map((name, index) => (
             <div key={index}>{name}</div>
           ))}
-          <Button
-            onClick={() => {
-              if (warning) startDownload(warning.url);
-              setWarning(null);
-            }}
-          >
-            {t("epubDownload.continueDownload")}
-          </Button>
+          <ModalActions>
+            <Button
+              onClick={() => {
+                if (warning) startDownload(warning.url);
+                setWarning(null);
+              }}
+            >
+              {t("epubDownload.continueDownload")}
+            </Button>
+          </ModalActions>
         </Stack>
       </AppModal>
       {batch.isError &&

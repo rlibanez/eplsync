@@ -1,3 +1,4 @@
+import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { useState, type ReactNode } from "react";
 import { Alert, Button, Checkbox, Select } from "@mantine/core";
 import { RefreshCw, Trash2 } from "lucide-react";
@@ -38,6 +39,7 @@ export function DownloadActions({
   rows,
   onDone,
   extraActions,
+  toolbar,
   children,
 }: {
   eplId?: number;
@@ -45,6 +47,7 @@ export function DownloadActions({
   rows: Row[];
   onDone: (ids: string[]) => void;
   extraActions?: ReactNode;
+  toolbar: { selectAll?: ReactNode; controls: ReactNode; onClear: () => void };
   children?: (actions: RowActions) => ReactNode;
 }) {
   const { t } = useTranslation();
@@ -134,14 +137,14 @@ export function DownloadActions({
   }
   return (
     <>
-      {selected.length > 0 && (
-        <div className="catalog-selection-bar has-selection">
-          <div className="catalog-selection-info">
-            <span className="catalog-selection-count" aria-live="polite">
-              {t("historyActions.selected", { count: selected.length })}
-            </span>
-          </div>
-          <div className="catalog-selection-actions">
+      <SelectionToolbar
+        count={selected.length}
+        onClear={toolbar.onClear}
+        selectAll={toolbar.selectAll}
+        controls={toolbar.controls}
+        disabled={action.isPending}
+        actions={
+          <>
             {extraActions}
             {can("TORRENT_SYNC") && (
               <Button
@@ -163,9 +166,9 @@ export function DownloadActions({
                 {t("historyActions.delete")}
               </Button>
             )}
-          </div>
-        </div>
-      )}
+          </>
+        }
+      />
       {children?.({
         pending: action.isPending,
         refreshingIds:

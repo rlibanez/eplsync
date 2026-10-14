@@ -100,6 +100,7 @@ public class CalibreClient {
                 if (status == 401 || status == 403) throw failure("Calibre ha rechazado el acceso; revisa el usuario, la contraseña y los permisos de biblioteca");
                 if (status >= 300 && status < 400) throw failure("Calibre ha respondido con una redirección; configura la URL final del servidor de contenido");
                 if(upload && (status>=500 || status==200 && response.getEntity()==null)) throw new UnconfirmedUpload();
+                if (!upload && status==404) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"El libro ya no existe en Calibre");
                 if (status != 200 || response.getEntity() == null) throw failure("Calibre no ha devuelto una respuesta válida (HTTP " + status + ")");
                 var type = response.getFirstHeader("Content-Type");
                 if (type == null || !type.getValue().toLowerCase(Locale.ROOT).startsWith("application/json")) {
@@ -157,6 +158,22 @@ public class CalibreClient {
             var epl=positiveId(b.path("identifiers").path("epl").asString(""));
             var rev=revision(b.path("identifiers").path("revision").asString(""));
             return new Book(id,b.path("title").asString(""),authors,epl,rev,epl!=null && rev!=null);
+        });
+    }
+    public boolean hasEpub(CalibreSettings.Connection c,long id) {
+        return limited(() -> {
+            var b=get(c,"/ajax/book/"+id+"/"+segment(c.library()));
+            if(!b.path("formats").isArray()) throw failure("Calibre no devolvió los formatos del libro; no se puede verificar el EPUB");
+            for(var f:b.path("formats")) if(f.asString().equalsIgnoreCase("EPUB")) return true;
+            return false;
+        });
+    }
+    /** Delete calls are never retried by the HTTP client. The queue verifies their result separately. */
+    public void remove(CalibreSettings.Connection c,long id,boolean entireBook) {
+        limited(() -> {
+            var post=new org.apache.hc.client5.http.classic.methods.HttpPost(c.url()+(entireBook ? "/cdb/delete-books/" : "/cdb/set-fields/")+id+"/"+segment(c.library()));
+            post.setEntity(new org.apache.hc.core5.http.io.entity.StringEntity(entireBook ? "{}" : "{\"changes\":{\"removed_formats\":[\"EPUB\"]}}",org.apache.hc.core5.http.ContentType.APPLICATION_JSON));
+            request(c,post,false);return null;
         });
     }
     /** Fetch to a bounded temporary file, without following redirects or buffering the EPUB in memory. */
