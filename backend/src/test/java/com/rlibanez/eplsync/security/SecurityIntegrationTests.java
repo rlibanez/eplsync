@@ -57,6 +57,29 @@ class SecurityIntegrationTests {
         return login("admin",PASSWORD);
     }
     String json(Object value) {return tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(value);}
+    @Test void setupIsEnabledOnlyByFirstAdminAndResumesAcrossRequests() throws Exception {
+        jdbc.update("DELETE FROM app_settings WHERE setting_key=?", com.rlibanez.eplsync.settings.SetupController.KEY);
+        accounts.clear();
+        accounts.initialize("admin","admin@example.org",PASSWORD,PASSWORD);
+        var session=login("admin",PASSWORD);
+        mvc.perform(get("/api/settings/setup").session(session)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("active")).andExpect(jsonPath("$.step").value(0));
+        String progress="{\"step\":2,\"status\":\"deferred\",\"torrent\":\"skipped\",\"calibre\":\"pending\"}";
+        mvc.perform(post("/api/settings/setup").session(session).with(csrf()).contentType("application/json").content(progress)).andExpect(status().isOk());
+        mvc.perform(get("/api/settings/setup").session(session)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("deferred")).andExpect(jsonPath("$.step").value(2));
+        mvc.perform(post("/api/settings/setup").session(session).with(csrf()).contentType("application/json")
+            .content(progress.replace("\"step\":2","\"step\":99"))).andExpect(status().isBadRequest());
+        // Simulate an installation created before this feature: existing administrator, no marker.
+        jdbc.update("DELETE FROM app_settings WHERE setting_key=?", com.rlibanez.eplsync.settings.SetupController.KEY);
+        mvc.perform(get("/api/settings/setup").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("completed"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_settings WHERE setting_key=?",Integer.class,com.rlibanez.eplsync.settings.SetupController.KEY)).isZero();
+        var temp=accounts.create("reader","reader@example.org","USER","admin");
+        accounts.changePassword(accounts.find(temp.user().id()),temp.password(),PASSWORD);
+        var reader=login("reader",PASSWORD);
+        mvc.perform(get("/api/settings/setup").session(reader)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/setup").session(reader).with(csrf()).contentType("application/json").content(progress)).andExpect(status().isForbidden());
+    }
     @Test void authenticationActionsWriteApplicationLogsWithoutSecrets() throws Exception {
         var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(AuthenticationLog.class);
         var appender=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();

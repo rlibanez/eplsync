@@ -40,6 +40,16 @@ export const test = base.extend<{ eventTransport: void }>({
           });
         },
       );
+      await context.route("**/api/settings/setup", (route) =>
+        route.fulfill({
+          json: {
+            step: 0,
+            status: "completed",
+            torrent: "pending",
+            calibre: "pending",
+          },
+        }),
+      );
       await context.route("**/api/application/updates", (route) =>
         route.request().method() === "GET"
           ? route.fulfill({

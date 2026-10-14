@@ -1,9 +1,11 @@
 import { useAuth } from "../auth/Auth";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 export function SettingsLayout() {
   const { t } = useTranslation();
   const auth = useAuth();
+  const { pathname } = useLocation();
+  if (pathname === "/settings/setup") return <Outlet />;
   return (
     <>
       <h1>{t("nav.settings")}</h1>

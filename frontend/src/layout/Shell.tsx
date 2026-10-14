@@ -1,3 +1,4 @@
+import { SetupEntry } from "../features/settings/setupState";
 import { ListTodo } from "lucide-react";
 import { ApplicationUpdateNotice } from "../features/settings/applicationUpdates";
 import { useAuth } from "../features/auth/Auth";
@@ -324,6 +325,7 @@ function ShellContent() {
         <TorrentActivity />
         {auth.can("COVERS_MANAGE") && <CoverActivity />}
         {auth.user?.role === "ADMIN" && <ApplicationUpdateNotice />}
+        <SetupEntry automatic />
         <RouteAccess>
           <Outlet />
         </RouteAccess>

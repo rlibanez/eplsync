@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { Download, X } from "lucide-react";
 import { useImport } from "./ImportProvider";
 import { useLocale } from "../../locales/useLocale";
-export function ImportCatalog() {
+export function ImportCatalog({ guided = false }: { guided?: boolean }) {
   const { t } = useTranslation();
   const auth = useAuth();
   const { number } = useLocale();
@@ -39,8 +39,15 @@ export function ImportCatalog() {
   const pending = restoring || (operation?.pending ?? false);
   const progress = useQuery({
     queryKey: ["catalog-import-progress", operation?.startedAt],
-    queryFn: ({ signal }) => get<{ active: boolean; phase: string; processedRows: number }>("/catalog/import/progress", signal),
-    enabled: auth.can("CATALOG_IMPORT") && !!operation?.pending && operation.mode !== "reset",
+    queryFn: ({ signal }) =>
+      get<{ active: boolean; phase: string; processedRows: number }>(
+        "/catalog/import/progress",
+        signal,
+      ),
+    enabled:
+      auth.can("CATALOG_IMPORT") &&
+      !!operation?.pending &&
+      operation.mode !== "reset",
     refetchInterval: operation?.pending ? 1000 : false,
     retry: false,
   });
@@ -65,7 +72,12 @@ export function ImportCatalog() {
                 )}
               </span>
               {progress.data?.active && (
-                <span>{t(`import.progressPhases.${progress.data.phase}`)}{progress.data.processedRows > 0 ? ` · ${t("import.processedProgress", { count: progress.data.processedRows, number: number(progress.data.processedRows) })}` : ""}</span>
+                <span>
+                  {t(`import.progressPhases.${progress.data.phase}`)}
+                  {progress.data.processedRows > 0
+                    ? ` · ${t("import.processedProgress", { count: progress.data.processedRows, number: number(progress.data.processedRows) })}`
+                    : ""}
+                </span>
               )}
             </div>
           )}
@@ -203,15 +215,17 @@ export function ImportCatalog() {
           </div>
         </section>
       )}
-      {auth.can("CATALOG_DELETE") && (
+      {!guided && auth.can("CATALOG_DELETE") && (
         <section className="panel settings-section">
           <h2>{t("missing.sectionTitle")}</h2>
           <p>{t("missing.sectionDescription")}</p>
           <MissingBooks disabled={pending} />
         </section>
       )}
-      {auth.can("SETTINGS_MANAGE") && <ServerSettings section="catalog" />}
-      {auth.can("COVERS_MANAGE") && <CoverSettings />}
+      {!guided && auth.can("SETTINGS_MANAGE") && (
+        <ServerSettings section="catalog" />
+      )}
+      {!guided && auth.can("COVERS_MANAGE") && <CoverSettings />}
       {auth.can("CATALOG_IMPORT") && (
         <ImportWizard
           opened={wizard}

@@ -1,4 +1,26 @@
 {
+  "setup": {
+    "title": "Asistente de configuración",
+    "description": "Configura el Catálogo y las integraciones. Puedes omitirlo y retomarlo más tarde desde Ajustes.",
+    "open": "Abrir asistente de configuración",
+    "catalog": "Catálogo",
+    "torrent": "Torrent",
+    "calibre": "Calibre",
+    "summary": "Resumen",
+    "torrentHelp": "Guarda la conexión, compruébala y sincroniza. El acceso a las carpetas de EPUB es opcional; en Docker requiere un montaje de solo lectura.",
+    "calibreHelp": "Comprueba la conexión, elige la biblioteca, guarda la configuración y sincroniza.",
+    "done": "Configurado",
+    "pending": "Pendiente",
+    "skipped": "Omitido",
+    "synced": "Sincronización completada.",
+    "imported": "Catálogo importado correctamente.",
+    "close": "Cerrar",
+    "back": "Anterior",
+    "skip": "Omitir",
+    "sync": "Sincronizar",
+    "next": "Siguiente",
+    "finish": "Finalizar e ir al inicio"
+  },
   "jobReport": {
     "work": "Trabajo",
     "submission": "Envío"

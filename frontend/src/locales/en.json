@@ -1,4 +1,26 @@
 {
+  "setup": {
+    "title": "Setup wizard",
+    "description": "Set up the Catalog and integrations. You can skip the wizard and resume it later from Settings.",
+    "open": "Open setup wizard",
+    "catalog": "Catalog",
+    "torrent": "Torrent",
+    "calibre": "Calibre",
+    "summary": "Summary",
+    "torrentHelp": "Save and test the connection, then synchronize. EPUB folder access is optional; Docker requires a read-only mount.",
+    "calibreHelp": "Test the connection, choose the library, save the settings and synchronize.",
+    "done": "Configured",
+    "pending": "Pending",
+    "skipped": "Skipped",
+    "synced": "Synchronization completed.",
+    "imported": "Catalog imported successfully.",
+    "close": "Close",
+    "back": "Back",
+    "skip": "Skip",
+    "sync": "Synchronize",
+    "next": "Next",
+    "finish": "Finish and go home"
+  },
   "jobReport": {
     "work": "Job",
     "submission": "Submission"

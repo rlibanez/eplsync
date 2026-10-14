@@ -1,3 +1,4 @@
+import { SetupEntry } from "./setupState";
 import { NotificationSettings } from "../notifications/NotificationSettings";
 import { useTranslation } from "react-i18next";
 import { palettes, useAppearance, type Palette } from "../../layout/Appearance";
@@ -50,6 +51,7 @@ export function Settings() {
           ))}
         </fieldset>
       </section>
+      <SetupEntry />
       <NotificationSettings />
     </>
   );

@@ -244,8 +244,13 @@ guardados desde la interfaz tienen prioridad.
 1. Abre `http://localhost:8088` o la dirección y puerto que hayas configurado.
 2. Crea la primera cuenta de administrador con nombre de usuario, correo
    electrónico, contraseña y, si está configurada, la clave de configuración inicial `EPLSYNC_INITIAL_ADMIN_KEY`.
-3. Importa el catálogo desde **Ajustes → Catálogo → Importar catálogo**.
-4. Configura qBittorrent desde **Ajustes → Torrent** y comprueba la conexión.
+3. Sigue el asistente para importar el Catálogo, configurar y sincronizar
+   qBittorrent y conectar la biblioteca de Calibre. Torrent y Calibre son
+   opcionales: puedes omitirlos.
+
+Puedes continuar más tarde y retomar el asistente desde
+**Ajustes → General → Abrir asistente de configuración**. Solo se abre
+automáticamente en instalaciones nuevas; una actualización no lo activa.
 
 ## Actualizar la instalación con Docker
 

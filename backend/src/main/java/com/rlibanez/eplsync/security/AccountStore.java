@@ -139,6 +139,8 @@ public class AccountStore {
         if (initialized()) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,"La instalación ya está inicializada");
         if (!Objects.equals(password,passwordConfirmation)) throw new com.rlibanez.eplsync.exception.UserInputException("Las contraseñas no coinciden");
         String id=insert(username,email,password,"ADMIN","ACTIVE",false,null,null);
+        jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO NOTHING",
+            com.rlibanez.eplsync.settings.SetupController.KEY, "{\"step\":0,\"status\":\"active\",\"torrent\":\"pending\",\"calibre\":\"pending\"}");
         return find(id).authenticatedNow();
     }
     @Transactional public Temporary create(String username,String email,String role,String actor) {

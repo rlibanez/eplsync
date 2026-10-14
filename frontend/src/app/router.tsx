@@ -30,6 +30,13 @@ export const router = createBrowserRouter([
         }),
         children: [
           {
+            path: "setup",
+            lazy: async () => ({
+              Component: (await import("../features/settings/SetupWizard"))
+                .SetupWizard,
+            }),
+          },
+          {
             path: "database",
             lazy: async () => ({
               Component: (await import("../features/auth/DatabaseReset"))

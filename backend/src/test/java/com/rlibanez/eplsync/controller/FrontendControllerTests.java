@@ -9,7 +9,7 @@ class FrontendControllerTests {
     @Test
     void forwardsOnlyKnownFrontendRoutes() throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(new FrontendController(new org.springframework.core.io.ByteArrayResource(new byte[0]))).build();
-        for (var path : new String[]{"/downloads/sync", "/events", "/maintenance/catalog", "/settings", "/settings/database", "/settings/home", "/settings/account", "/settings/users", "/settings/reset", "/settings/missing", "/settings/general", "/settings/catalog", "/settings/events", "/settings/covers", "/settings/downloads", "/settings/about", "/settings/calibre", "/settings/torrent", "/directory", "/calibre", "/calibre/updates", "/calibre/jobs", "/calibre/jobs/abc-123", "/downloads", "/downloads/updates", "/downloads/jobs", "/downloads/jobs/abc-123", "/", "/catalog", "/catalog/32"}) {
+        for (var path : new String[]{"/downloads/sync", "/events", "/maintenance/catalog", "/settings", "/settings/database", "/settings/home", "/settings/account", "/settings/users", "/settings/reset", "/settings/missing", "/settings/general", "/settings/setup", "/settings/catalog", "/settings/events", "/settings/covers", "/settings/downloads", "/settings/about", "/settings/calibre", "/settings/torrent", "/directory", "/calibre", "/calibre/updates", "/calibre/jobs", "/calibre/jobs/abc-123", "/downloads", "/downloads/updates", "/downloads/jobs", "/downloads/jobs/abc-123", "/", "/catalog", "/catalog/32"}) {
             mvc.perform(get(path)).andExpect(status().isOk())
                     .andExpect(forwardedUrl("/index.html"))
                     .andExpect(header().string("Cache-Control","no-cache"));
