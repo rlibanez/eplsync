@@ -283,6 +283,25 @@ class UpdateTests {
         assertThat(event.details().toString()).doesNotContain("private technical detail");
     }
 
+    @Test void repeatedManualSynchronizationAuditsOnlyNewOrChangedCleanupBlocks() {
+        create(PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/shared"),remote(NEW,DownloadStatus.DOWNLOADED,"/shared")));
+        long before=journal.cursor();
+        cleaner.synchronize(false,false);
+        var filter=new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null);
+        var first=journal.search(filter,0,100).items().stream().filter(event -> event.id()>before).toList();
+        assertThat(first).hasSize(2);
+        cleaner.synchronize(false,false);
+        assertThat(journal.search(filter,0,100).items().stream().filter(event -> event.id()>before).toList()).hasSize(2);
+        assertThat(only(cleanup.findAll().getFirst().getJobId()).getState()).isEqualTo(UpdateCleanup.State.BLOCKED);
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+        var entry=cleanup.findAll().getFirst();
+        entry.setMessage("Motivo anterior");
+        cleanup.saveAndFlush(entry);
+        cleaner.synchronize(false,false);
+        assertThat(journal.search(filter,0,100).items().stream().filter(event -> event.id()>before).toList()).hasSize(4);
+    }
+
     @Test void manualCleanupAuditsBlockedFilesWithExecutingUser() {
         create(PreviousVersions.REMOVE_TORRENT_AND_FILES);
         when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/shared"),remote(NEW,DownloadStatus.DOWNLOADED,"/shared")));

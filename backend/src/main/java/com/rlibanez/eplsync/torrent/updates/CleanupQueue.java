@@ -226,7 +226,7 @@ public class CleanupQueue {
             }
         }
         for (var entry:entries.findAllById(selected.stream().map((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getId()).toList())) {
-            if(entry.getState()==UpdateCleanup.State.BLOCKED && (!automatic || !Objects.equals(previousBlocks.get(entry.getId()),entry.getMessage()))) {
+            if(entry.getState()==UpdateCleanup.State.BLOCKED && !Objects.equals(previousBlocks.get(entry.getId()),entry.getMessage())) {
                 var actor=automatic ? new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()) : EventContext.actor();
                 var details=new HashMap<String,Object>(auditDetails(entry));
                 details.put("requested",false); details.put("confirmed",false); details.put("reason",entry.getMessage());
