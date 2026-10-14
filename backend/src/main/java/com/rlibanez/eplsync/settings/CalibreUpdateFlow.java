@@ -33,20 +33,15 @@ public class CalibreUpdateFlow {
     private final CalibreTransfers transfers;
     private final com.rlibanez.eplsync.service.TorrentClientService torrent;
     private final TransactionTemplate tx;
-    private final long downloadCheckMillis;
+    private final com.rlibanez.eplsync.tasks.InternalTaskSettings internalSettings;
     private final JsonMapper json=JsonMapper.builder().build();
     public CalibreUpdateFlow(JdbcTemplate jdbc,CalibreSettings settings,CalibreClient client,DownloadRepository downloads,
         DownloadTrackingService tracking,EpubFiles files,BulkStore bulk,CalibreTransfers transfers,
         com.rlibanez.eplsync.service.TorrentClientService torrent,org.springframework.transaction.PlatformTransactionManager manager,
-        @org.springframework.beans.factory.annotation.Value("${eplsync.calibre.transfers.download-check-interval:30s}") String downloadCheckInterval) {
+        com.rlibanez.eplsync.tasks.InternalTaskSettings internalSettings) {
         this.jdbc=jdbc;this.settings=settings;this.client=client;this.downloads=downloads;this.tracking=tracking;
         this.files=files;this.bulk=bulk;this.transfers=transfers;this.torrent=torrent;tx=new TransactionTemplate(manager);
-        downloadCheckMillis=downloadCheckMillis(downloadCheckInterval);
-    }
-    static long downloadCheckMillis(String value) {
-        long millis=org.springframework.boot.convert.DurationStyle.detectAndParse(value).toMillis();
-        if(millis<=0) throw new IllegalArgumentException("calibre.transfers.download-check-interval debe ser positivo y al menos 1ms");
-        return millis;
+        this.internalSettings=internalSettings;
     }
     private static void require() {Permission.require(Permission.CALIBRE_SEND);Permission.require(Permission.DOWNLOADS_FILES_READ);Permission.require(Permission.CATALOG_READ);}
     public List<Book> prepare(List<Long> ids) {
@@ -162,7 +157,7 @@ public class CalibreUpdateFlow {
             var remote=new HashMap<String,RemoteTorrent>();for(var t:adapter.listTorrents(hashes)) for(String alias:t.aliases()) remote.put(alias,t);
             tracking.observeSelected(remote,hashes);return null;
         });
-        jdbc.update("UPDATE calibre_jobs SET next_probe=? WHERE id=?",now+downloadCheckMillis,job);
+        jdbc.update("UPDATE calibre_jobs SET next_probe=? WHERE id=?",now+internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE).toMillis(),job);
     }
     boolean waiting(String job,CalibreTransfers.Item item) {
         var row=jdbc.queryForMap("SELECT i.download_job_id,i.wait_until FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.id=?",item.id());
@@ -180,7 +175,7 @@ public class CalibreUpdateFlow {
             var f=available.getFirst();if(f.size()>268435456) throw new UserInputException("El EPUB supera 256 MiB");
             jdbc.update("UPDATE calibre_job_items SET state='PENDING',record_id=?,file_index=?,name=?,size=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",d.getId(),f.index(),f.name(),f.size(),f.size()!=f.expectedSize()?CalibreTransfers.SIZE_WARNING:null,item.id());return true;
         }
-        jdbc.update("UPDATE calibre_job_items SET next_check=? WHERE id=?",Instant.now().plusMillis(downloadCheckMillis).toEpochMilli(),item.id());return false;
+        jdbc.update("UPDATE calibre_job_items SET next_check=? WHERE id=?",Instant.now().plus(internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE)).toEpochMilli(),item.id());return false;
     }
     void cleanup(String job,CalibreSettings.Connection c,CalibreTransfers.Item item) {
         var row=jdbc.queryForMap("SELECT cleanup_policy,cleanup_ids FROM calibre_job_items WHERE id=?",item.id());

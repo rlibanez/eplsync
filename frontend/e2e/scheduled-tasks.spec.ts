@@ -1,0 +1,272 @@
+import { test, expect } from "./fixtures";
+
+test("creates, edits and toggles cron tasks and changes required check periods", async ({
+  page,
+}) => {
+  const tasks: Record<string, unknown>[] = [];
+  const internal = [
+    { id: "torrent-cleanup", interval: "30s" },
+    { id: "calibre-download-check", interval: "30s" },
+  ];
+  const changes: Record<string, unknown>[] = [];
+  await page.route("**/api/settings/tasks**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/cron")) {
+      const cron = new URL(route.request().url()).searchParams.get("cron")!;
+      if (cron === "bad")
+        return route.fulfill({
+          status: 400,
+          json: { details: "Cron inválido" },
+        });
+      return route.fulfill({
+        json: {
+          expression:
+            cron.trim().split(/\s+/).length === 5 ? `0 ${cron}` : cron,
+          timezone: "Europe/Madrid",
+          executions: [
+            "2026-10-15T03:00:00Z",
+            "2026-10-16T03:00:00Z",
+            "2026-10-17T03:00:00Z",
+            "2026-10-18T03:00:00Z",
+            "2026-10-19T03:00:00Z",
+          ],
+        },
+      });
+    }
+    if (route.request().method() === "GET")
+      return route.fulfill({
+        json: { tasks, internal, defaultTimezone: "Europe/Madrid" },
+      });
+    if (path.endsWith("/restore")) {
+      const item = internal.find((period) => path.includes(period.id))!;
+      item.interval = "30s";
+      return route.fulfill({ json: item });
+    }
+    const input = route.request().postDataJSON();
+    changes.push(input);
+    expect(input).not.toHaveProperty("timezone");
+    expect(input).not.toHaveProperty("ownerId");
+    if (path.includes("/internal/")) {
+      expect(Object.keys(input)).toEqual(["interval"]);
+      const item = internal.find((period) => path.endsWith(period.id))!;
+      if (["9", "9s"].includes(input.interval))
+        return route.fulfill({
+          status: 400,
+          json: { details: "Introduce un intervalo entre 10s y 365 días" },
+        });
+      item.interval =
+        input.interval === "1m"
+          ? "60s"
+          : /^\d+$/.test(input.interval)
+            ? `${input.interval}s`
+            : input.interval;
+      return route.fulfill({ json: item });
+    }
+    if (path.endsWith("/enabled")) {
+      tasks[0].enabled = input.enabled;
+      tasks[0].nextRun = input.enabled ? "2026-10-15T01:00:00Z" : null;
+      return route.fulfill({ json: tasks[0] });
+    }
+    if (input.cron === "bad")
+      return route.fulfill({
+        status: 400,
+        json: { details: "Cron o zona horaria inválidos" },
+      });
+    const task = {
+      ...input,
+      timezone: "Europe/Madrid",
+      id: "task-1",
+      ownerId: "test-admin",
+      ownerUsername: "admin",
+      running: false,
+      nextRun: "2026-10-15T01:00:00Z",
+      lastRun: null,
+      lastFinished: null,
+      lastResult: null,
+      lastMessage: null,
+    };
+    tasks.splice(0, tasks.length, task);
+    return route.fulfill({ json: task });
+  });
+  await page.goto("/settings/tasks");
+  await expect(
+    page.getByRole("link", { name: "Tareas programadas", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("No hay tareas programadas.")).toBeVisible();
+  const required = page.locator(".settings-section").filter({
+    has: page.getByRole("heading", { name: "Comprobaciones de trabajos" }),
+  });
+  await expect(required.getByRole("switch")).toHaveCount(0);
+  await required
+    .getByRole("textbox", { name: "Descargas pendientes para Calibre" })
+    .fill("1m");
+  await required
+    .getByRole("button", { name: "Guardar", exact: true })
+    .nth(1)
+    .click();
+  await expect(
+    required.getByRole("textbox", {
+      name: "Descargas pendientes para Calibre",
+    }),
+  ).toHaveValue("60s");
+  await required
+    .getByRole("button", { name: "Restablecer", exact: true })
+    .nth(1)
+    .click();
+  await expect(
+    required.getByRole("textbox", {
+      name: "Descargas pendientes para Calibre",
+    }),
+  ).toHaveValue("30s");
+  await required
+    .getByRole("textbox", { name: "Descargas pendientes para Calibre" })
+    .fill("9");
+  await required
+    .getByRole("button", { name: "Guardar", exact: true })
+    .nth(1)
+    .click();
+  await expect(required.getByRole("alert")).toContainText("10s");
+  await required
+    .getByRole("textbox", { name: "Descargas pendientes para Calibre" })
+    .fill("30");
+  await required
+    .getByRole("button", { name: "Guardar", exact: true })
+    .nth(1)
+    .click();
+  await expect(
+    required.getByRole("textbox", {
+      name: "Descargas pendientes para Calibre",
+    }),
+  ).toHaveValue("30s");
+  await page.getByRole("button", { name: "Crear tarea", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("textbox", { name: /^Operación/ })).toHaveValue(
+    "",
+  );
+  await expect(dialog.getByRole("textbox", { name: /^Cron/ })).toHaveValue(
+    "0 5 * * *",
+  );
+  await expect(
+    dialog.getByRole("textbox", { name: /^Zona horaria/ }),
+  ).toHaveCount(0);
+  await expect(
+    dialog.getByRole("link", { name: "crontab.guru" }),
+  ).toHaveAttribute("href", "https://crontab.guru/");
+  await expect(
+    dialog.getByRole("link", { name: "Formato con segundos" }),
+  ).toHaveAttribute(
+    "href",
+    "https://docs.spring.io/spring-framework/reference/integration/scheduling.html#scheduling-cron-expression",
+  );
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Información del cron" }).hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toContainText(
+    "Próximas cinco ejecuciones (Europe/Madrid)",
+  );
+  await expect(tooltip.locator("ol li")).toHaveCount(5);
+  await expect(tooltip).toContainText("05:00, cada día");
+  await dialog.getByRole("textbox", { name: /^Nombre/ }).hover();
+  await expect(tooltip).toBeHidden();
+  await dialog
+    .getByRole("textbox", { name: /^Nombre/ })
+    .fill("Calibre nocturno");
+  await expect(
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeDisabled();
+  await dialog.getByRole("textbox", { name: /^Operación/ }).click();
+  await expect(
+    page.getByRole("option", {
+      name: "Buscar actualizaciones del catálogo",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("option", {
+      name: "Buscar actualizaciones de Calibre",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("option", { name: "Sincronizar Calibre", exact: true })
+    .click();
+  await expect(dialog.getByRole("textbox", { name: /^Usuario/ })).toHaveCount(
+    0,
+  );
+  await dialog.getByRole("textbox", { name: /^Cron/ }).fill("bad");
+  await expect(
+    dialog.getByText("Cron inválido", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeDisabled();
+  await dialog.getByRole("textbox", { name: /^Cron/ }).fill("0 5 * * *");
+  await expect(
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeEnabled();
+  await dialog.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const row = page.locator("tbody tr").filter({ hasText: "Calibre nocturno" });
+  await expect(row).toContainText("admin");
+  await expect(row).toContainText("Europe/Madrid");
+  await row.getByRole("switch").press("Space");
+  await expect(row.getByRole("switch")).not.toBeChecked();
+  await row.getByRole("button", { name: "Editar tarea" }).click();
+  await dialog
+    .getByRole("textbox", { name: /^Nombre/ })
+    .fill("Calibre semanal");
+  await dialog.getByRole("textbox", { name: /^Cron/ }).fill("0 0 4 * * MON");
+  await expect(
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeEnabled();
+  await dialog.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("tbody tr")).toContainText("Calibre semanal");
+  await page.locator("tbody tr").getByRole("switch").press("Space");
+  await expect(page.locator("tbody tr").getByRole("switch")).toBeChecked();
+  expect(
+    changes.some((change) => change.operation === "CALIBRE_SYNC"),
+  ).toBeTruthy();
+  await page.locator(".table-scroll").evaluate((el) => {
+    el.scrollLeft = 0;
+  });
+  await page.getByRole("button", { name: "Crear tarea", exact: true }).click();
+  await dialog
+    .getByRole("textbox", { name: /^Nombre/ })
+    .fill("Catálogo diario");
+  await dialog.getByRole("textbox", { name: /^Operación/ }).click();
+  await page
+    .getByRole("option", { name: "Importar catálogo", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeEnabled();
+  await dialog.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("tbody tr")).toContainText("Importar catálogo");
+  await page.screenshot({
+    path: "/tmp/eplsync-scheduled-tasks.png",
+    fullPage: true,
+  });
+});
+
+test("task settings are restricted to administrators", async ({ page }) => {
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        id: "reader",
+        username: "reader",
+        role: "USER",
+        permissions: ["CATALOG_READ"],
+        mustChangePassword: false,
+      },
+    }),
+  );
+  await page.goto("/settings/tasks");
+  await expect(
+    page.getByText("No tienes permiso para acceder a este apartado"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Tareas programadas", exact: true }),
+  ).toHaveCount(0);
+});

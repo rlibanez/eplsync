@@ -40,6 +40,7 @@ export function RouteAccess({ children }: { children: ReactNode }) {
       "/settings/database",
       "/settings/calibre",
       "/settings/setup",
+      "/settings/tasks",
     ].includes(pathname) &&
     auth.user?.role !== "ADMIN"
   )

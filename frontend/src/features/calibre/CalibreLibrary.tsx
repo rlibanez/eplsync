@@ -1,9 +1,5 @@
 import { SelectionToolbar } from "../../components/SelectionToolbar";
-import {
-  savedSearch,
-  collectSearch,
-  searchPage,
-} from "../downloads/SavedUpdateSearch";
+import { latestSavedSearch, searchPage } from "../downloads/SavedUpdateSearch";
 import { CalibreUpdateSend } from "./CalibreUpdateSend";
 import { SelectAllRows } from "../../components/SelectAllRows";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
@@ -80,12 +76,15 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         ...(!canCheckFiles ? ["downloadAvailability"] : []),
       ]
     : ["downloadAvailability"];
-  const savedKey = `calibre:${auth.user?.id}`;
   const previousSearch = useQuery({
     queryKey: ["saved-calibre-updates", auth.user?.id],
-    queryFn: () => savedSearch<CalibreBook>(savedKey),
+    queryFn: ({ signal }) => latestSavedSearch<CalibreBook>("calibre", signal),
+    refetchInterval: 30000,
     enabled: updates,
   });
+  useEffect(() => {
+    if (updates) setSelected([]);
+  }, [updates, previousSearch.data?.searchedAt]);
   const filteredSavedRows = () =>
     (previousSearch.data?.rows ?? []).filter(
       (book) =>
@@ -129,31 +128,16 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
   });
   const sync = useMutation({
     mutationFn: async () => {
-      const snapshot = await post<Snapshot>("/settings/calibre/sync", {});
-      if (updates) {
-        const rows = await collectSearch<CalibreBook>((page) =>
-          get<Page<CalibreBook>>(
-            `/calibre/books?updatesOnly=true&page=${page}&size=1000&sort=calibreId,asc`,
-          ),
-        );
-        if (canCheckFiles) {
-          for (let offset = 0; offset < rows.length; offset += 1000) {
-            const batch = rows.slice(offset, offset + 1000);
-            const states = await post<{ calibreId: number; state: string }[]>(
-              "/calibre/updates/availability",
-              { ids: batch.map((b) => b.calibreId) },
-            );
-            const byId = new Map(states.map((s) => [s.calibreId, s.state]));
-            batch.forEach((b) => {
-              b.downloadAvailability = byId.get(b.calibreId) ?? "UNKNOWN";
-            });
-          }
-        }
-        const saved = { rows, searchedAt: Date.now() };
-        await savedSearch(savedKey, saved);
-        cache.setQueryData(["saved-calibre-updates", auth.user?.id], saved);
-      }
-      return snapshot;
+      if (!updates) return post<Snapshot>("/settings/calibre/sync", {});
+      const result = await post<{
+        snapshot: Snapshot;
+        search: import("../downloads/SavedUpdateSearch").SavedSearch<CalibreBook>;
+      }>("/settings/tasks/searches/calibre", {});
+      cache.setQueryData(
+        ["saved-calibre-updates", auth.user?.id],
+        result.search,
+      );
+      return result.snapshot;
     },
     retry: false,
     onSuccess: (data) => {

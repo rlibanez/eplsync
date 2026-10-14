@@ -35,6 +35,20 @@ class EventJournalTests {
         settings.getRetention().setMaxAgeDays(365);
         journal.delete(all);
     }
+    @Test void failureOnlyCaptureSuppressesSuccessfulAndNestedOperationsButKeepsPartialResults() {
+        journal.runFailuresOnly(Category.JOB,"SCHEDULED_TASK",Map.of(),()->
+            journal.run(Category.CATALOG,"UPDATE",()->Map.<String,Object>of("errors",0),result->result),result->result);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events",Long.class)).isZero();
+        journal.runFailuresOnly(Category.JOB,"SCHEDULED_TASK",Map.of(),()-> {
+            journal.completed(Category.JOB,"SCHEDULED_TASK",Map.of("errors",2));
+            return Map.<String,Object>of("errors",2);
+        },result->result);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events",Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT outcome FROM app_events",String.class)).isEqualTo("PARTIAL");
+        assertThatThrownBy(()->journal.runFailuresOnly(Category.JOB,"SCHEDULED_TASK",Map.of(),()->{throw new IllegalArgumentException("failure");},result->Map.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE outcome='FAILED'",Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE outcome='STARTED'",Long.class)).isZero();
+    }
     @AfterEach void restore() {
         settings.getRetention().setMaxCount(10000);
         settings.getRetention().setMaxAgeDays(365);

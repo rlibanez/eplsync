@@ -264,7 +264,7 @@ public class CatalogBookCsvImporter {
                 processed++;
                 if (processed % 100 == 0) CatalogOperationBudget.progress(preview || validateOnly ? "ANALYZING" : "IMPORTING", processed);
                 if (processed % PROGRESS_EVERY == 0) {
-                    log.info("Progreso importación: {} filas OK, {} errores", processed, errors);
+                    com.rlibanez.eplsync.events.EventContext.routineLog(log).log("Progreso importación: {} filas OK, {} errores", processed, errors);
                 }
             }
             CatalogOperationBudget.check();

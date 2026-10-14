@@ -16,6 +16,7 @@
     "@mantine/core": "^8.3.0",
     "@mantine/hooks": "^8.3.0",
     "@tanstack/react-query": "^5.90.0",
+    "cronstrue": "^3.32.0",
     "i18next": "^26.4.2",
     "lucide-react": "^0.468.0",
     "react": "^19.1.0",

@@ -92,7 +92,7 @@ logging:
     org.apache.hc.client5.http.headers: OFF
     org.apache.hc.core5.http: WARN
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
-    com.rlibanez.eplsync: DEBUG
+    com.rlibanez.eplsync: ${EPLSYNC_LOG_LEVEL:INFO}
 
 # Valores de instalación. Para catálogo, portadas, torrent y eventos,
 # los ajustes guardados desde la interfaz tienen prioridad.
@@ -132,7 +132,7 @@ eplsync:
     password: ${EPLSYNC_CALIBRE_PASSWORD:}
     library: ${EPLSYNC_CALIBRE_LIBRARY:}
     transfers:
-      # Intervalo entre comprobaciones de descargas pendientes, positivo.
+      # Intervalo inicial entre comprobaciones; Ajustes > Tareas programadas tiene prioridad.
       download-check-interval: ${EPLSYNC_CALIBRE_TRANSFERS_DOWNLOAD_CHECK_INTERVAL:30s}
 
   torrent:

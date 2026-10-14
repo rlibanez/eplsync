@@ -1,4 +1,52 @@
 {
+  "scheduledTasks": {
+    "title": "Scheduled tasks",
+    "description": "Schedule operations using cron. Disabling a task prevents new runs but does not interrupt one already in progress.",
+    "internalTitle": "Job checks",
+    "internalHelp": "These internal processes check pending downloads and cleanup requests.",
+    "create": "Create task",
+    "edit": "Edit task",
+    "name": "Name",
+    "operation": "Operation",
+    "owner": "User",
+    "cron": "Cron",
+    "timezone": "Time zone",
+    "next": "Next run",
+    "last": "Last run",
+    "result": "Result",
+    "enabled": "Enabled",
+    "actions": "Actions",
+    "empty": "No scheduled tasks.",
+    "toggle": "Enable or disable {{name}}",
+    "cronHelp": "Five fields: minute, hour, day, month and weekday. Example: 0 5 * * * (every day at 05:00).",
+    "intervalHelp": "Minimum: 10s. Values without a unit mean seconds. Examples: 30, 30s or 1m.",
+    "operations": {
+      "TORRENT_SYNC": "Synchronize Torrent",
+      "CALIBRE_SYNC": "Synchronize Calibre",
+      "CATALOG_IMPORT": "Import catalog",
+      "TORRENT_UPDATE_SEARCH": "Check catalog updates",
+      "CALIBRE_UPDATE_SEARCH": "Check Calibre updates"
+    },
+    "internal": {
+      "torrent-cleanup": "Torrent revision cleanup",
+      "calibre-download-check": "Pending downloads for Calibre"
+    },
+    "results": {
+      "RUNNING": "Running",
+      "SUCCEEDED": "Completed",
+      "FAILED": "Failed",
+      "INTERRUPTED": "Interrupted",
+      "PARTIAL": "Completed with errors"
+    },
+    "restore": "Reset",
+    "restoreHelp": "Restore the interval configured for this installation.",
+    "secondsFormat": "Format with seconds",
+    "validCron": "Valid cron expression.",
+    "nextExecutions": "Next five runs ({{timezone}})",
+    "info": "Info",
+    "cronInfo": "Cron information",
+    "chooseOperation": "Select an operation"
+  },
   "setup": {
     "title": "Setup wizard",
     "description": "Set up the Catalog and integrations. You can skip the wizard and resume it later from Settings.",
@@ -290,6 +338,7 @@
     "FAILED": "Failed"
   },
   "settings": {
+    "tasks": "Scheduled tasks",
     "home": "Home screen",
     "description": "Interface preferences for this browser.",
     "language": "Interface language",
@@ -928,6 +977,7 @@
       "SYSTEM": "System"
     },
     "actions": {
+      "SCHEDULED_TASK": "Scheduled task",
       "UPDATE": "Catalog update",
       "REPLACE": "Catalog replacement",
       "RESET": "Database reset",
@@ -951,6 +1001,9 @@
       "CALIBRE_JOB_CONTROL": "Control Calibre job"
     },
     "fields": {
+      "taskId": "Task ID",
+      "taskName": "Name",
+      "taskOperation": "Operation",
       "policy": "Deletion policy",
       "requested": "Deletion requested",
       "confirmed": "Absence confirmed",

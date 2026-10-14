@@ -16,10 +16,11 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @WithMockUser(authorities={"CALIBRE_READ","CALIBRE_SEND","CALIBRE_DELETE","DOWNLOADS_FILES_READ","CALIBRE_JOBS_MANAGE","CATALOG_READ","TORRENT_SEND","TORRENT_SYNC"})
-@SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.calibre.transfers.worker-enabled=false","eplsync.calibre.transfers.download-check-interval=7s","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.calibre.transfers.worker-enabled=false","eplsync.calibre.transfers.download-check-interval=15s","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
 class CalibreUpdateFlowTests {
     @Autowired CalibreTransfers transfers;
     @Autowired CalibreUpdateFlow flow;
+    @Autowired com.rlibanez.eplsync.tasks.InternalTaskSettings internalTasks;
     @Autowired CalibreSettings settings;
     @Autowired DownloadRepository downloads;
     @Autowired DownloadTrackingService tracking;
@@ -31,6 +32,7 @@ class CalibreUpdateFlowTests {
     @MockitoBean com.rlibanez.eplsync.service.TorrentClientService torrent;
     Account owner;String record;byte[] bytes;
     @BeforeEach void setup() throws Exception {
+        internalTasks.save(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE,"15s");
         jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM torrent_bulk_items");jdbc.update("DELETE FROM torrent_bulk_jobs");jdbc.update("DELETE FROM calibre_update_requests");jdbc.update("DELETE FROM calibre_books");jdbc.update("DELETE FROM catalog_books");downloads.deleteAll();accounts.clear();
         jdbc.update("DELETE FROM app_settings WHERE setting_key IN ('calibre.connection','calibre.snapshot')");
         owner=accounts.initialize("Owner","owner@example.com","password123","password123");
@@ -79,16 +81,23 @@ class CalibreUpdateFlowTests {
         long after=Instant.now().toEpochMilli();
         long probe=jdbc.queryForObject("SELECT next_probe FROM calibre_jobs WHERE id=?",Long.class,result.calibreJobId());
         long check=jdbc.queryForObject("SELECT next_check FROM calibre_job_items WHERE job_id=?",Long.class,result.calibreJobId());
-        assertThat(probe).isBetween(before+7000,after+7000);
-        assertThat(check).isBetween(before+7000,after+7000);
+        assertThat(probe).isBetween(before+15000,after+15000);
+        assertThat(check).isBetween(before+15000,after+15000);
         flow.refreshDownloads(result.calibreJobId());
         assertThat(jdbc.queryForObject("SELECT next_probe FROM calibre_jobs WHERE id=?",Long.class,result.calibreJobId())).isEqualTo(probe);
     }
+    @Test void changingIntervalInSettingsChangesWaitingChecksWithoutRestart() {
+        internalTasks.save(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE,"1m");
+        var result=submit(List.of(missing()),true,true);downloadItem("PENDING");long before=Instant.now().toEpochMilli();
+        transfers.cycle();long after=Instant.now().toEpochMilli();
+        assertThat(jdbc.queryForObject("SELECT next_probe FROM calibre_jobs WHERE id=?",Long.class,result.calibreJobId())).isBetween(before+60000,after+60000);
+        assertThat(jdbc.queryForObject("SELECT next_check FROM calibre_job_items WHERE job_id=?",Long.class,result.calibreJobId())).isBetween(before+60000,after+60000);
+    }
     @Test void downloadCheckIntervalRejectsNonPositiveAndSubMillisecondDurations() {
-        assertThat(CalibreUpdateFlow.downloadCheckMillis("30s")).isEqualTo(30000);
-        assertThat(CalibreUpdateFlow.downloadCheckMillis("1m")).isEqualTo(60000);
+        assertThat(com.rlibanez.eplsync.tasks.InternalTaskSettings.parse("30s").toMillis()).isEqualTo(30000);
+        assertThat(com.rlibanez.eplsync.tasks.InternalTaskSettings.parse("1m").toMillis()).isEqualTo(60000);
         for(String invalid:List.of("0s","-1s","0ns","invalid"))
-            assertThatThrownBy(()->CalibreUpdateFlow.downloadCheckMillis(invalid)).isInstanceOf(IllegalArgumentException.class);
+            assertThatThrownBy(()->com.rlibanez.eplsync.tasks.InternalTaskSettings.parse(invalid).toMillis()).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void waitingTurnsIntoSendAfterDownloadAndPinsRevisionAndHash() throws Exception {
         var result=submit(List.of(missing()),true,true);downloadItem("PENDING");transfers.cycle();

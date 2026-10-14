@@ -63,6 +63,20 @@ class DownloadTrackingTests {
     List<DownloadTrackingService.IgnoredTorrent> ignored(DownloadTrackingService.SyncResult result) {
         return reports.page(result.detailsId(),"ignored",0,1000,List.of(),Set.of(),List.of(),DownloadTrackingService.IgnoredTorrent.class).items();
     }
+    @Test void syncLogsIdentifyTheOriginAndScheduledRunsUseDebug() {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(DownloadTrackingService.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
+            com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,()->tracking.sync(List::of,false,false));
+            assertThat(capture.list).hasSize(2).allMatch(e -> e.getLevel()==ch.qos.logback.classic.Level.DEBUG);
+            assertThat(capture.list).allMatch(e -> e.getFormattedMessage().contains("programada"));
+            capture.list.clear();
+            tracking.sync(List::of,false,false);
+            assertThat(capture.list).hasSize(2).allMatch(e -> e.getLevel()==ch.qos.logback.classic.Level.INFO);
+            assertThat(capture.list).allMatch(e -> e.getFormattedMessage().contains("manual"));
+        } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
+    }
     @BeforeEach void setup() {
         bulkItems.deleteAll(); bulkJobs.deleteAll(); downloads.deleteAll(); books.deleteAll(); reset(stubClient);
         properties.effective().setEnabled(true); properties.effective().setBaseUrl("http://localhost:8080");

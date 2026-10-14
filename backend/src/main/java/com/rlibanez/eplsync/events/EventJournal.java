@@ -44,7 +44,7 @@ public class EventJournal {
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final CopyOnWriteArrayList<Runnable> listeners = new CopyOnWriteArrayList<>();
     private static class Run {
-        final Category category; final String action, id; final Map<String, ?> context; boolean recorded;
+        final Category category; final String action, id; final Map<String, ?> context; boolean recorded, failuresOnly;
         Run(Category category, String action, String id, Map<String, ?> context) { this.category = category; this.action = action; this.id = id; this.context = context; }
     }
     private final ThreadLocal<Run> capturing = new ThreadLocal<>();
@@ -146,22 +146,28 @@ public class EventJournal {
         return run(category, action, Map.of(), work, summary);
     }
     public <T> T run(Category category, String action, Map<String, ?> context, Supplier<T> work, Function<T, Map<String, ?>> summary) {
-        return EventContext.withActor(EventContext.actor(), () -> runCaptured(category, action, context, work, summary));
+        return EventContext.withActor(EventContext.actor(), () -> runCaptured(category, action, context, work, summary, false));
     }
-    private <T> T runCaptured(Category category, String action, Map<String, ?> context, Supplier<T> work, Function<T, Map<String, ?>> summary) {
+    /** Records only a partial result or failure, while still suppressing nested operation events. */
+    public <T> T runFailuresOnly(Category category, String action, Map<String, ?> context, Supplier<T> work, Function<T, Map<String, ?>> summary) {
+        return EventContext.withActor(EventContext.actor(), () -> runCaptured(category, action, context, work, summary, true));
+    }
+    private <T> T runCaptured(Category category, String action, Map<String, ?> context, Supplier<T> work, Function<T, Map<String, ?>> summary, boolean failuresOnly) {
         if (capturing.get() != null) return work.get();
         String operationId = UUID.randomUUID().toString();
-        record(category, action, Outcome.STARTED, EventContext.origin(), operationId, context);
+        if (!failuresOnly) record(category, action, Outcome.STARTED, EventContext.origin(), operationId, context);
         if (org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()
                 instanceof org.springframework.web.context.request.ServletRequestAttributes request && request.getResponse() != null)
             request.getResponse().setHeader("X-EPLSync-Operation-Id", operationId);
-        capturing.set(new Run(category, action, operationId, context));
+        var capture = new Run(category, action, operationId, context);
+        capture.failuresOnly = failuresOnly;
+        capturing.set(capture);
         try {
             T result = work.get();
             var details = new LinkedHashMap<String, Object>(context);
             details.putAll(summary.apply(result));
             var outcome = details.get("errors") instanceof Number n && n.longValue() > 0 ? Outcome.PARTIAL : Outcome.SUCCEEDED;
-            if (!capturing.get().recorded) record(category, action, outcome, EventContext.origin(), operationId, details);
+            if (!capturing.get().recorded && (!failuresOnly || outcome == Outcome.PARTIAL)) record(category, action, outcome, EventContext.origin(), operationId, details);
             return result;
         } catch (RuntimeException ex) {
             try {
@@ -180,8 +186,9 @@ public class EventJournal {
         if (run == null || run.category != category || !run.action.equals(action) || run.recorded) return;
         var details = new LinkedHashMap<String, Object>(run.context);
         details.putAll(summary);
-        record(category, action, summary.get("errors") instanceof Number n && n.longValue() > 0 ? Outcome.PARTIAL : Outcome.SUCCEEDED,
-                EventContext.origin(), run.id, details);
+        var outcome = summary.get("errors") instanceof Number n && n.longValue() > 0 ? Outcome.PARTIAL : Outcome.SUCCEEDED;
+        if (!run.failuresOnly || outcome == Outcome.PARTIAL)
+            record(category, action, outcome, EventContext.origin(), run.id, details);
         run.recorded = true;
     }
 

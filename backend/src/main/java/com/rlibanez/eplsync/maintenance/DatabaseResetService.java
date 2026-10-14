@@ -23,6 +23,8 @@ public class DatabaseResetService {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.security.AccountStore accounts;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.settings.CalibreCatalogService calibre;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.settings.CalibreTransfers calibreTransfers;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.rlibanez.eplsync.tasks.ScheduledTasks scheduledTasks;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.rlibanez.eplsync.tasks.InternalTaskSettings internalTasks;
     private final com.rlibanez.eplsync.service.CatalogOperationGate catalogOperations;
     private final BulkStore bulk;
     private final ObjectProvider<BulkWorker> workers;
@@ -47,7 +49,8 @@ public class DatabaseResetService {
         return reset(false);
     }
     public ResetResult reset(boolean eraseUsersAndSettings) {
-        return calibreTransfers.exclusive(() -> calibre.exclusive(() -> catalogOperations.run(() -> resetAdmitted(eraseUsersAndSettings))));
+        java.util.function.Supplier<ResetResult> action=() -> calibreTransfers.exclusive(() -> calibre.exclusive(() -> catalogOperations.run(() -> resetAdmitted(eraseUsersAndSettings))));
+        return scheduledTasks==null ? action.get() : scheduledTasks.exclusive(action);
     }
     private ResetResult resetAdmitted(boolean eraseUsersAndSettings) {
         // Worker dispatch and job creation use this same monitor. Do not hold a
@@ -76,9 +79,11 @@ public class DatabaseResetService {
                     em.createNativeQuery("DELETE FROM app_settings WHERE setting_key LIKE 'downloads.last-sync.%'").executeUpdate();
                     em.createNativeQuery("DELETE FROM calibre_jobs").executeUpdate();
                     em.createNativeQuery("DELETE FROM calibre_update_requests").executeUpdate();
+                    em.createNativeQuery("DELETE FROM update_search_results").executeUpdate();
                     int settingsCount = eraseUsersAndSettings ? delete("StoredSetting") : 0;
                     if (eraseUsersAndSettings) {
                         em.createNativeQuery("DELETE FROM revision_update_settings").executeUpdate();
+                        em.createNativeQuery("DELETE FROM scheduled_tasks").executeUpdate();
                         accounts.clear();
                     }
                     int eventCount = events == null ? em.createNativeQuery("delete from app_events").executeUpdate() : events.clearForReset();
@@ -87,6 +92,7 @@ public class DatabaseResetService {
                 });
                 // Only discard the in-memory queue after the transaction commits.
                 if (settings != null && eraseUsersAndSettings) settings.resetAfterCommit();
+                if (internalTasks != null && eraseUsersAndSettings) internalTasks.resetAfterCommit();
                 if (worker != null) worker.clearIdleState();
                 if (coverTasks != null) coverTasks.clearIdleState();
                 if (missing != null) missing.clear();

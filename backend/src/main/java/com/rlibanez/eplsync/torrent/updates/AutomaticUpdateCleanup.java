@@ -12,6 +12,8 @@ public class AutomaticUpdateCleanup {
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(AutomaticUpdateCleanup.class);
     private final CleanupQueue queue;
     private final BulkStore bulk;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.tasks.InternalTaskSettings internalSettings;
+    private long lastCycle=System.nanoTime();
     @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.cleanup.enabled:true}") private boolean enabled=true;
     @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.cleanup.batch-size:100}") private int batchSize=100;
     @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.cleanup.interval:30s}") private String interval="30s";
@@ -24,7 +26,13 @@ public class AutomaticUpdateCleanup {
         if (duration.isZero() || duration.isNegative()) throw new IllegalArgumentException("cleanup.interval debe ser positivo");
         if (batchSize<1 || batchSize>1000) throw new IllegalArgumentException("cleanup.batch-size debe estar entre 1 y 1000");
     }
-    @Scheduled(fixedDelayString="${eplsync.torrent.cleanup.interval:30s}",initialDelayString="${eplsync.torrent.cleanup.interval:30s}")
+    @Scheduled(fixedDelay=1000)
+    public void schedule() {
+        if(!enabled) return;
+        long now=System.nanoTime();
+        if(now-lastCycle<internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CLEANUP).toNanos()) return;
+        try {tick();} finally {lastCycle=System.nanoTime();}
+    }
     public void tick() {
         if (!enabled) return;
         try {

@@ -10,22 +10,22 @@ test("revision search shows the torrent connection error and can retry", async (
   const details =
     "No se puede conectar con el cliente torrent; revisa la URL y que el cliente esté disponible";
   let attempts = 0;
-  await page.route("**/api/torrent/revision-updates/search?**", (route) => {
+  let persistedSearch: Record<string, unknown> | null = null;
+  await page.route("**/api/settings/tasks/searches/downloads", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { search: persistedSearch } });
+
     attempts++;
     return attempts === 1
       ? route.fulfill({ status: 502, json: { details } })
       : route.fulfill({
-          json: {
-            items: [],
-            meta: {
-              page: 0,
-              size: 20,
-              totalItems: 0,
-              totalPages: 0,
-              hasNext: false,
-              hasPrevious: false,
-            },
-          },
+          json: (persistedSearch = {
+            rows: [],
+            searchedAt: Date.now(),
+            states: route.request().postDataJSON().states,
+            origin: "MANUAL",
+            criteria: { states: route.request().postDataJSON().states },
+          }),
         });
   });
   await page.goto("/downloads/updates");
@@ -57,12 +57,16 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     if (route.request().method() === "PUT") writes++;
     return route.fulfill({ json: { states: ["DOWNLOADED", "NOT_FOUND"] } });
   });
-  await page.route("**/api/torrent/revision-updates/search?**", (route) => {
+  let persistedSearch: Record<string, unknown> | null = null;
+  await page.route("**/api/settings/tasks/searches/downloads", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { search: persistedSearch } });
+
     const params = new URL(route.request().url()).searchParams;
     queries.push({ params, states: route.request().postDataJSON().states });
     return route.fulfill({
-      json: {
-        items: Array.from({ length: 20 }, (_, index) => {
+      json: (persistedSearch = {
+        rows: Array.from({ length: 40 }, (_, index) => {
           const offset = Number(params.get("page") ?? 0) * 20 + index;
           return {
             eplId: 123 + offset,
@@ -72,15 +76,11 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
             status: offset === 0 ? "NOT_FOUND" : "DOWNLOADED",
           };
         }),
-        meta: {
-          page: Number(params.get("page") ?? 0),
-          size: 20,
-          totalItems: 40,
-          totalPages: 2,
-          hasNext: params.get("page") !== "1",
-          hasPrevious: params.get("page") === "1",
-        },
-      },
+        searchedAt: Date.now(),
+        states: route.request().postDataJSON().states,
+        origin: "MANUAL",
+        criteria: { states: route.request().postDataJSON().states },
+      }),
     });
   });
   await page.route("**/api/torrent/options", (route) =>
@@ -168,21 +168,17 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     )
     .toBe(5);
   await checkTableControls(page, "title", "Libro");
-  expect(queries).toHaveLength(2);
-  expect(queries[0].params.get("synchronize")).toBe("true");
+  expect(queries).toHaveLength(1);
+  expect(queries[0].params.toString()).toBe("");
   expect(queries[0].states).toContain("SUBMITTED");
   expect(writes).toBe(0);
   await page.getByRole("button", { name: "Siguiente", exact: true }).click();
-  await expect
-    .poll(() => queries.some((q) => q.params.get("page") === "1"))
-    .toBe(true);
+  await expect(page.locator("tbody tr")).toHaveCount(20);
   await page
     .getByRole("button", { name: "Revisión disponible", exact: true })
     .click();
-  expect(queries).toHaveLength(2);
-  expect(
-    queries.filter((q) => q.params.get("synchronize") === "true"),
-  ).toHaveLength(1);
+  expect(queries).toHaveLength(1);
+  expect(queries).toHaveLength(1);
   const statusFilter = page.getByRole("textbox", {
     name: "Estado registrado",
     exact: true,
@@ -193,7 +189,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     .getByRole("option", { name: "No encontrado", exact: true })
     .click();
   await expect(page.locator("tbody tr")).toHaveCount(1);
-  expect(queries).toHaveLength(2);
+  expect(queries).toHaveLength(1);
   await statusFilter.press("Escape");
   await page.getByRole("checkbox", { name: "EPL 123", exact: true }).check();
   await page
@@ -233,15 +229,18 @@ test("failed synchronization does not show results or change saved settings", as
   await page.route("**/api/settings/downloads/updates", (route) =>
     route.fulfill({ json: { states: ["DOWNLOADED"] } }),
   );
-  await page.route("**/api/torrent/revision-updates/search?**", (route) =>
-    route.fulfill({
+  let persistedSearch: Record<string, unknown> | null = null;
+  await page.route("**/api/settings/tasks/searches/downloads", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { search: persistedSearch } });
+    return route.fulfill({
       status: 503,
       json: {
         code: "TORRENT_CONNECTION_FAILED",
         details: "No se puede conectar con el cliente torrent",
       },
-    }),
-  );
+    });
+  });
   await page.goto("/downloads/updates");
   await page
     .getByRole("button", { name: "Buscar actualizaciones", exact: true })
@@ -273,31 +272,33 @@ test("last search, page, filter and ordering survive route changes and covers ma
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="64"><rect width="44" height="64" fill="navy"/></svg>',
     }),
   );
-  await page.route("**/api/torrent/revision-updates/search?**", (route) => {
+  let persistedSearch: Record<string, unknown> | null = null;
+  await page.route("**/api/settings/tasks/searches/downloads", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { search: persistedSearch } });
+
     requests++;
     const params = new URL(route.request().url()).searchParams;
     const current = Number(params.get("page") ?? 0);
     return route.fulfill({
-      json: {
-        items: Array.from({ length: 20 }, (_, index) => ({
+      json: (persistedSearch = {
+        rows: Array.from({ length: 40 }, (_, index) => ({
           eplId: 123 + current * 20 + index,
           title:
-            index === 0 ? "A Test book" : `Other book ${current * 20 + index}`,
+            index % 20 === 0
+              ? "A Test book"
+              : `Other book ${current * 20 + index}`,
           registeredRevision: 1.1,
           availableRevision: 1.2,
           status: "NOT_FOUND",
           coverUrl: "https://covers.example/123.jpg",
           coverAvailable: true,
         })),
-        meta: {
-          page: current,
-          size: 20,
-          totalItems: 40,
-          totalPages: 2,
-          hasNext: current === 0,
-          hasPrevious: current === 1,
-        },
-      },
+        searchedAt: Date.now(),
+        states: route.request().postDataJSON().states,
+        origin: "MANUAL",
+        criteria: { states: route.request().postDataJSON().states },
+      }),
     });
   });
   await page.goto("/downloads/updates");
@@ -362,4 +363,41 @@ test("last search, page, filter and ordering survive route changes and covers ma
   ).toBeDisabled();
   await expect(page.getByText(/^Última búsqueda:/)).toBeVisible();
   expect(requests).toBe(previous);
+});
+
+test("opens the last scheduled catalog update search without synchronizing again", async ({
+  page,
+}) => {
+  await page.route("**/api/settings/downloads/updates", (r) =>
+    r.fulfill({ json: { states: ["DOWNLOADED"] } }),
+  );
+  await page.route("**/api/settings/tasks/searches/downloads", (r) =>
+    r.fulfill({
+      json: {
+        search: {
+          searchedAt: Date.now(),
+          states: ["DOWNLOADED"],
+          rows: [
+            {
+              eplId: 77182,
+              title: "Actualización programada",
+              registeredRevision: 1,
+              availableRevision: 2,
+              status: "DOWNLOADED",
+              coverAvailable: false,
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.goto("/downloads/updates");
+  await expect(
+    page.getByRole("link", { name: "Actualización programada", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/Última búsqueda:/)).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("link", { name: "Actualización programada", exact: true }),
+  ).toBeVisible();
 });

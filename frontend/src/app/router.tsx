@@ -30,6 +30,14 @@ export const router = createBrowserRouter([
         }),
         children: [
           {
+            path: "tasks",
+            lazy: async () => ({
+              Component: (
+                await import("../features/settings/ScheduledTaskSettings")
+              ).ScheduledTaskSettings,
+            }),
+          },
+          {
             path: "setup",
             lazy: async () => ({
               Component: (await import("../features/settings/SetupWizard"))

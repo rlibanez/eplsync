@@ -101,13 +101,16 @@ export function EventConnection() {
         href: "/events?operationId=" + encodeURIComponent(event.operationId),
       });
       refresh();
+      if (event.action === "SCHEDULED_TASK")
+        void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
       void cache.invalidateQueries({ queryKey: ["home-summary"] });
       if (event.category === "JOB") {
         void cache.invalidateQueries({ queryKey: ["jobs", "home"] });
       }
       if (event.outcome !== "STARTED") {
         const keys =
-          event.category === "CATALOG"
+          event.category === "CATALOG" ||
+          event.details.taskOperation === "CATALOG_IMPORT"
             ? ["catalog", "book", "catalog-metadata", "directory"]
             : event.category === "COVERS"
               ? ["cover-task", "catalog", "book"]

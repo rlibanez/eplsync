@@ -1,49 +1,11 @@
+import { get } from "../../api/catalog";
 import type { Page } from "./shared";
 export interface SavedSearch<T> {
   rows: T[];
   searchedAt: number;
   states?: string[];
-}
-function database(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open("eplsync-update-searches", 1);
-    request.onupgradeneeded = () =>
-      request.result.createObjectStore("searches");
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-export async function savedSearch<T>(
-  key: string,
-  value?: SavedSearch<T>,
-): Promise<SavedSearch<T> | null> {
-  const db = await database();
-  try {
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction("searches", value ? "readwrite" : "readonly");
-      const store = tx.objectStore("searches");
-      const request = value ? store.put(value, key) : store.get(key);
-      tx.oncomplete = () => resolve(value ?? request.result ?? null);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  } finally {
-    db.close();
-  }
-}
-export async function collectSearch<T>(
-  fetchPage: (page: number) => Promise<Page<T>>,
-): Promise<T[]> {
-  const rows: T[] = [];
-  for (let page = 0; ; page++) {
-    const result = await fetchPage(page);
-    rows.push(...result.items);
-    if (rows.length > 100000)
-      throw new Error(
-        "La búsqueda supera el límite de 100000 resultados guardados",
-      );
-    if (!result.meta.hasNext || !result.items.length) return rows;
-  }
+  origin?: "MANUAL" | "SCHEDULED";
+  criteria?: Record<string, unknown>;
 }
 export function searchPage<T>(
   rows: T[],
@@ -79,4 +41,16 @@ export function searchPage<T>(
       hasPrevious: page > 0,
     },
   };
+}
+
+/** Results belong to the authenticated user and are stored only in the backend. */
+export async function latestSavedSearch<T>(
+  type: "downloads" | "calibre",
+  signal?: AbortSignal,
+): Promise<SavedSearch<T> | null> {
+  const result = await get<{ search: SavedSearch<T> | null }>(
+    `/settings/tasks/searches/${type}`,
+    signal,
+  );
+  return result.search;
 }

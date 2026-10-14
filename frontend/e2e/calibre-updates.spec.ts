@@ -15,16 +15,42 @@ test("Calibre updates compare the snapshot and refresh it without sending files"
       },
     }),
   );
-  await page.route("**/api/settings/calibre/sync", (r) =>
-    r.fulfill({
+  let persistedSearch: Record<string, unknown> | null = null;
+  await page.route("**/api/settings/tasks/searches/calibre", (r) => {
+    if (r.request().method() === "GET")
+      return r.fulfill({ json: { search: persistedSearch } });
+    return r.fulfill({
       json: {
-        library: "main",
-        syncedAt: "2026-10-13T13:00:00Z",
-        total: 1,
-        identified: 1,
+        snapshot: {
+          library: "main",
+          syncedAt: "2026-10-13T13:00:00Z",
+          total: 1,
+          identified: 1,
+        },
+        search: (persistedSearch = {
+          rows: [
+            {
+              calibreId: 2,
+              eplId: 1,
+              title: "Libro antiguo",
+              authors: "Autor",
+              revision: 1.2,
+              catalogRevision: 2,
+              comparison: "OUTDATED",
+              presence: "PRESENT",
+              coverAvailable: false,
+            },
+          ].map((b: Record<string, unknown>) => ({
+            ...b,
+            downloadAvailability: b.calibreId === 1 ? "READY" : "MISSING",
+          })),
+          searchedAt: Date.now(),
+          origin: "MANUAL",
+          criteria: { updatesOnly: true, library: "main" },
+        }),
       },
-    }),
-  );
+    });
+  });
   await page.route("**/api/calibre/books?**", (r) => {
     expect(new URL(r.request().url()).searchParams.get("updatesOnly")).toBe(
       "true",
@@ -79,7 +105,8 @@ test("Calibre updates compare the snapshot and refresh it without sending files"
   ).toHaveCount(0);
   const sync = page.waitForRequest(
     (r) =>
-      r.url().endsWith("/api/settings/calibre/sync") && r.method() === "POST",
+      r.url().endsWith("/api/settings/tasks/searches/calibre") &&
+      r.method() === "POST",
   );
   await page
     .getByRole("button", { name: "Buscar actualizaciones", exact: true })
@@ -127,16 +154,42 @@ test("Downloads state opens the existing update search dialog", async ({
 test("Mixed Calibre updates offer deferred sending and confirmed per-book cleanup", async ({
   page,
 }) => {
-  await page.route("**/api/settings/calibre/sync", (r) =>
-    r.fulfill({
+  let persistedSearch: Record<string, unknown> | null = null;
+  await page.route("**/api/settings/tasks/searches/calibre", (r) => {
+    if (r.request().method() === "GET")
+      return r.fulfill({ json: { search: persistedSearch } });
+    return r.fulfill({
       json: {
-        library: "main",
-        syncedAt: "2026-10-13T13:00:00Z",
-        total: 2,
-        identified: 2,
+        snapshot: {
+          library: "main",
+          syncedAt: "2026-10-13T13:00:00Z",
+          total: 2,
+          identified: 2,
+        },
+        search: (persistedSearch = {
+          rows: [1, 2]
+            .map((id) => ({
+              calibreId: id,
+              eplId: id,
+              title: `Libro ${id}`,
+              authors: "Autor",
+              revision: 1,
+              catalogRevision: 2,
+              comparison: "OUTDATED",
+              presence: "PRESENT",
+              coverAvailable: false,
+            }))
+            .map((b: Record<string, unknown>) => ({
+              ...b,
+              downloadAvailability: b.calibreId === 1 ? "READY" : "MISSING",
+            })),
+          searchedAt: Date.now(),
+          origin: "MANUAL",
+          criteria: { updatesOnly: true, library: "main" },
+        }),
       },
-    }),
-  );
+    });
+  });
   await page.route("**/api/settings/calibre/snapshot", (r) =>
     r.fulfill({
       json: {
@@ -289,14 +342,29 @@ test("library shortcut searches once and reload only restores the result", async
   await page.route("**/api/settings/calibre/snapshot", (r) =>
     r.fulfill({ json: { snapshot: null } }),
   );
-  await page.route("**/api/settings/calibre/sync", (r) => {
+  let persistedSearch: Record<string, unknown> | null = null;
+  await page.route("**/api/settings/tasks/searches/calibre", (r) => {
+    if (r.request().method() === "GET")
+      return r.fulfill({ json: { search: persistedSearch } });
+
     syncs++;
     return r.fulfill({
       json: {
-        library: "main",
-        syncedAt: "2026-10-14T12:00:00Z",
-        total: 0,
-        identified: 0,
+        snapshot: {
+          library: "main",
+          syncedAt: "2026-10-14T12:00:00Z",
+          total: 0,
+          identified: 0,
+        },
+        search: (persistedSearch = {
+          rows: [].map((b: Record<string, unknown>) => ({
+            ...b,
+            downloadAvailability: b.calibreId === 1 ? "READY" : "MISSING",
+          })),
+          searchedAt: Date.now(),
+          origin: "MANUAL",
+          criteria: { updatesOnly: true, library: "main" },
+        }),
       },
     });
   });
@@ -325,4 +393,43 @@ test("library shortcut searches once and reload only restores the result", async
   await page.reload();
   await expect(page.getByText(/Última búsqueda:/)).toBeVisible();
   expect(syncs).toBe(1);
+});
+
+test("opens the last scheduled Calibre update search without synchronizing again", async ({
+  page,
+}) => {
+  await page.route("**/api/settings/calibre/snapshot", (r) =>
+    r.fulfill({ json: { snapshot: null } }),
+  );
+  await page.route("**/api/settings/tasks/searches/calibre", (r) =>
+    r.fulfill({
+      json: {
+        search: {
+          searchedAt: Date.now(),
+          rows: [
+            {
+              calibreId: 7,
+              eplId: 77182,
+              title: "Calibre programado",
+              authors: "Autor",
+              revision: 1,
+              catalogRevision: 2,
+              comparison: "OUTDATED",
+              presence: "PRESENT",
+              coverAvailable: false,
+              downloadAvailability: "READY",
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.goto("/calibre/updates");
+  await expect(
+    page.getByRole("link", { name: "Calibre programado", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("link", { name: "Calibre programado", exact: true }),
+  ).toBeVisible();
 });

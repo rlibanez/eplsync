@@ -35,5 +35,12 @@ public final class EventContext {
         origin.set(value);
         try { return action.get(); } finally { origin.set(previous); }
     }
+    /** Routine progress is quieter when an operation is run by the scheduler. */
+    public static org.slf4j.spi.LoggingEventBuilder routineLog(org.slf4j.Logger logger) {
+        return origin()==Origin.SCHEDULED ? logger.atDebug() : logger.atInfo();
+    }
+    public static String operationOriginLabel() {
+        return switch(origin()) {case SCHEDULED -> "programada";case SYSTEM -> "automática";case MANUAL -> "manual";};
+    }
     private EventContext() {}
 }

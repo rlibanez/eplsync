@@ -1,4 +1,52 @@
 {
+  "scheduledTasks": {
+    "title": "Tareas programadas",
+    "description": "Programa operaciones mediante cron. Desactivar una tarea impide nuevas ejecuciones, pero no interrumpe la que ya esté en curso.",
+    "internalTitle": "Comprobaciones de trabajos",
+    "internalHelp": "Estos procesos internos revisan descargas y limpiezas pendientes.",
+    "create": "Crear tarea",
+    "edit": "Editar tarea",
+    "name": "Nombre",
+    "operation": "Operación",
+    "owner": "Usuario",
+    "cron": "Cron",
+    "timezone": "Zona horaria",
+    "next": "Próxima ejecución",
+    "last": "Última ejecución",
+    "result": "Resultado",
+    "enabled": "Activa",
+    "actions": "Acciones",
+    "empty": "No hay tareas programadas.",
+    "toggle": "Activar o desactivar {{name}}",
+    "cronHelp": "Cinco campos: minuto, hora, día, mes y día de la semana. Ejemplo: 0 5 * * * (todos los días a las 05:00).",
+    "intervalHelp": "Mínimo: 10s. Sin unidad se interpreta en segundos. Ejemplos: 30, 30s o 1m.",
+    "operations": {
+      "TORRENT_SYNC": "Sincronizar Torrent",
+      "CALIBRE_SYNC": "Sincronizar Calibre",
+      "CATALOG_IMPORT": "Importar catálogo",
+      "TORRENT_UPDATE_SEARCH": "Buscar actualizaciones del catálogo",
+      "CALIBRE_UPDATE_SEARCH": "Buscar actualizaciones de Calibre"
+    },
+    "internal": {
+      "torrent-cleanup": "Limpieza de revisiones torrent",
+      "calibre-download-check": "Descargas pendientes para Calibre"
+    },
+    "results": {
+      "RUNNING": "En ejecución",
+      "SUCCEEDED": "Completada",
+      "FAILED": "Fallida",
+      "INTERRUPTED": "Interrumpida",
+      "PARTIAL": "Completada con errores"
+    },
+    "restore": "Restablecer",
+    "restoreHelp": "Restaurar el intervalo configurado para la instalación.",
+    "secondsFormat": "Formato con segundos",
+    "validCron": "Expresión cron válida.",
+    "nextExecutions": "Próximas cinco ejecuciones ({{timezone}})",
+    "info": "Info",
+    "cronInfo": "Información del cron",
+    "chooseOperation": "Selecciona una operación"
+  },
   "setup": {
     "title": "Asistente de configuración",
     "description": "Configura el Catálogo y las integraciones. Puedes omitirlo y retomarlo más tarde desde Ajustes.",
@@ -290,6 +338,7 @@
     "FAILED": "Fallido"
   },
   "settings": {
+    "tasks": "Tareas programadas",
     "home": "Pantalla inicial",
     "description": "Preferencias de la interfaz para este navegador.",
     "language": "Idioma de la interfaz",
@@ -928,6 +977,7 @@
       "SYSTEM": "Sistema"
     },
     "actions": {
+      "SCHEDULED_TASK": "Tarea programada",
       "UPDATE": "Actualización del catálogo",
       "REPLACE": "Reemplazo del catálogo",
       "RESET": "Reinicio de la base de datos",
@@ -951,6 +1001,9 @@
       "CALIBRE_JOB_CONTROL": "Controlar trabajo de Calibre"
     },
     "fields": {
+      "taskId": "ID de tarea",
+      "taskName": "Nombre",
+      "taskOperation": "Operación",
       "policy": "Política de borrado",
       "requested": "Borrado solicitado",
       "confirmed": "Ausencia confirmada",

@@ -24,10 +24,10 @@ class DatabaseMigrationTests {
     }
     @Test void createsCompleteSchemaAndDoesNotRepeatMigrations() {
         var migration = flyway("classpath:db/migration");
-        assertEquals(3, migration.migrate().migrationsExecuted);
-        assertEquals("1.2.0", migration.info().current().getVersion().toString());
+        assertEquals(4, migration.migrate().migrationsExecuted);
+        assertEquals("1.3.0", migration.info().current().getVersion().toString());
         var jdbc = jdbc();
-        assertEquals(17, jdbc.queryForObject("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT IN ('sqlite_sequence','flyway_schema_history')", Integer.class));
+        assertEquals(19, jdbc.queryForObject("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT IN ('sqlite_sequence','flyway_schema_history')", Integer.class));
         var indexes = jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='index'", String.class);
         assertTrue(indexes.containsAll(java.util.List.of("idx_catalog_title", "idx_events_operation",
                 "idx_bulk_item_queue", "idx_cleanup_state_checked", "uk_download_identity", "uq_cleanup_job_download")));
@@ -50,8 +50,8 @@ class DatabaseMigrationTests {
         jdbc().update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('user','alice','alice','alice@example.org','hash','USER','ACTIVE','now','now')");
         jdbc().update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('history',123,1,'hash','qbittorrent','client','DOWNLOADED','EPLSYNC',0)");
         var upgrade=flyway("classpath:db/migration");
-        assertEquals(2,upgrade.migrate().migrationsExecuted);
-        assertEquals("1.2.0",upgrade.info().current().getVersion().toString());
+        assertEquals(3,upgrade.migrate().migrationsExecuted);
+        assertEquals("1.3.0",upgrade.info().current().getVersion().toString());
         assertEquals("value",jdbc().queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='preserved'",String.class));
         assertEquals(0,jdbc().queryForObject("SELECT count(*) FROM calibre_books",Integer.class));
         assertEquals("Preserved book",jdbc().queryForObject("SELECT title FROM catalog_books WHERE epl_id=123",String.class));
@@ -68,8 +68,8 @@ class DatabaseMigrationTests {
         jdbc.update("INSERT INTO app_settings VALUES('calibre.connection','preserved-settings')");
         jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('book','generation',1,9,123,1.2,'Preserved Calibre book','Author')");
         var upgrade=flyway("classpath:db/migration");
-        assertEquals(1,upgrade.migrate().migrationsExecuted);
-        assertEquals("1.2.0",upgrade.info().current().getVersion().toString());
+        assertEquals(2,upgrade.migrate().migrationsExecuted);
+        assertEquals("1.3.0",upgrade.info().current().getVersion().toString());
         assertEquals("Preserved Calibre book",jdbc.queryForObject("SELECT title FROM calibre_books WHERE calibre_id=9",String.class));
         assertEquals("preserved-settings",jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='calibre.connection'",String.class));
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('job','now','now','Owner','destination','main','source','QUEUED')");
@@ -138,11 +138,60 @@ class DatabaseMigrationTests {
         jdbc.update("DELETE FROM catalog_books");
         assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM torrent_downloads",Integer.class));
     }
+    @Test void movesSavedSearchJsonWithoutMixingUsersOrDeletingUnmigratableSettings() {
+        Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url())))
+            .locations("classpath:db/migration").target("1.2.0").load().migrate();
+        var jdbc=jdbc();
+        for(String id:java.util.List.of("alice","bob")) jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES(?,?,?,?,'hash','USER','ACTIVE','now','now')",id,id,id,id+"@example.org");
+        String downloads="{\"rows\":[{\"eplId\":77182,\"title\":\"Árbol\",\"availableRevision\":3.4}],\"searchedAt\":123,\"origin\":\"MANUAL\",\"states\":[\"DOWNLOADED\"],\"criteria\":{\"states\":[\"DOWNLOADED\"],\"synchronize\":true}}";
+        String calibre="{\"rows\":[{\"calibreId\":7,\"eplId\":77182,\"revision\":1.1,\"downloadAvailability\":\"READY\"}],\"searchedAt\":456,\"origin\":\"SCHEDULED\",\"states\":[],\"criteria\":{\"library\":\"main\",\"updatesOnly\":true}}";
+        jdbc.update("INSERT INTO app_settings VALUES(?,?)","tasks.update-search.downloads.alice",downloads);
+        jdbc.update("INSERT INTO app_settings VALUES(?,?)","tasks.update-search.calibre.alice",calibre);
+        jdbc.update("INSERT INTO app_settings VALUES(?,?)","tasks.update-search.downloads.bob","{\"rows\":[],\"searchedAt\":789,\"states\":[\"NOT_FOUND\"]}");
+        jdbc.update("INSERT INTO app_settings VALUES(?,?)","tasks.update-search.calibre.bob","broken JSON");
+        jdbc.update("INSERT INTO app_settings VALUES(?,?)","tasks.update-search.downloads.deleted",downloads);
+        jdbc.update("INSERT INTO app_settings VALUES('tasks.internal.torrent-cleanup','60s')");
+        var migration=flyway("classpath:db/migration");assertEquals(1,migration.migrate().migrationsExecuted);
+        assertEquals(3,jdbc.queryForObject("SELECT count(*) FROM update_search_results",Integer.class));
+        assertEquals(123L,jdbc.queryForObject("SELECT searched_at FROM update_search_results WHERE user_id='alice' AND search_type='downloads'",Long.class));
+        assertEquals("MANUAL",jdbc.queryForObject("SELECT origin FROM update_search_results WHERE user_id='alice' AND search_type='downloads'",String.class));
+        assertEquals("Árbol",jdbc.queryForObject("SELECT json_extract(results_json,'$[0].title') FROM update_search_results WHERE user_id='alice' AND search_type='downloads'",String.class));
+        assertEquals(3.4,jdbc.queryForObject("SELECT json_extract(results_json,'$[0].availableRevision') FROM update_search_results WHERE user_id='alice' AND search_type='downloads'",Double.class));
+        assertEquals("main",jdbc.queryForObject("SELECT json_extract(criteria_json,'$.library') FROM update_search_results WHERE user_id='alice' AND search_type='calibre'",String.class));
+        assertEquals("SCHEDULED",jdbc.queryForObject("SELECT origin FROM update_search_results WHERE user_id='bob'",String.class));
+        assertEquals("NOT_FOUND",jdbc.queryForObject("SELECT json_extract(criteria_json,'$.states[0]') FROM update_search_results WHERE user_id='bob'",String.class));
+        assertEquals(2,jdbc.queryForObject("SELECT count(*) FROM app_settings WHERE setting_key LIKE 'tasks.update-search.%'",Integer.class));
+        assertEquals("broken JSON",jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='tasks.update-search.calibre.bob'",String.class));
+        assertEquals("60s",jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='tasks.internal.torrent-cleanup'",String.class));
+        migration.validate();assertEquals(0,migration.migrate().migrationsExecuted);
+        jdbc.update("DELETE FROM users WHERE id='alice'");
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM update_search_results",Integer.class));
+        assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("INSERT INTO update_search_results VALUES('missing','downloads',1,'MANUAL','{}','[]')"));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE update_search_results SET results_json='{}'"));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE update_search_results SET criteria_json='[]'"));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE update_search_results SET origin='unknown'"));
+    }
+    @Test void upgrades120WithCalibreJobsAndCreatesEmptyTaskManager() {
+        Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url())))
+            .locations("classpath:db/migration").target("1.2.0").load().migrate();
+        jdbc().update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('owner','alice','alice','a@b.c','hash','ADMIN','ACTIVE','now','now')");
+        jdbc().update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES('job','now','now','owner','alice','target','main','DOWNLOADS','PAUSED')");
+        jdbc().update("INSERT INTO app_settings VALUES('tasks.internal.calibre-download-check','60s')");
+        assertEquals(1,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals("PAUSED",jdbc().queryForObject("SELECT state FROM calibre_jobs WHERE id='job'",String.class));
+        assertEquals("60s",jdbc().queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='tasks.internal.calibre-download-check'",String.class));
+        assertEquals(0,jdbc().queryForObject("SELECT count(*) FROM scheduled_tasks",Integer.class));
+        jdbc().update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,next_run,created_at,updated_at) VALUES('task','Nightly','CALIBRE_SYNC','0 0 3 * * *','UTC','owner','alice',1,1,1,1)");
+        jdbc().update("DELETE FROM users WHERE id='owner'");
+        assertNull(jdbc().queryForObject("SELECT owner_id FROM scheduled_tasks WHERE id='task'",String.class));
+        assertTrue(jdbc().queryForList("PRAGMA foreign_key_check").isEmpty());
+    }
     @Test void upgradesWithDataAndRejectsModifiedPublishedMigration() throws Exception {
         flyway("classpath:db/migration").migrate();
         jdbc().update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('user','alice','alice','alice@example.org','hash','USER','ACTIVE','now','now')");
         var scripts = Files.createDirectory(directory.resolve("migrations"));
-        var next = scripts.resolve("V1_2_1__test_upgrade.sql");
+        var next = scripts.resolve("V9_0_0__test_upgrade.sql");
         Files.writeString(next, "ALTER TABLE users ADD COLUMN migration_test TEXT; UPDATE users SET migration_test='retained';");
         var upgrade = flyway("classpath:db/migration", "filesystem:" + scripts);
         assertEquals(1, upgrade.migrate().migrationsExecuted);
@@ -155,7 +204,7 @@ class DatabaseMigrationTests {
     @Test void rejectsDowngradeToAnApplicationMissingAppliedMigrations() throws Exception {
         flyway("classpath:db/migration").migrate();
         var scripts = Files.createDirectory(directory.resolve("future"));
-        Files.writeString(scripts.resolve("V1_2_1__future.sql"), "CREATE TABLE future_data(id INTEGER);");
+        Files.writeString(scripts.resolve("V9_0_0__future.sql"), "CREATE TABLE future_data(id INTEGER);");
         flyway("classpath:db/migration", "filesystem:" + scripts).migrate();
         assertThrows(FlywayException.class, () -> flyway("classpath:db/migration").migrate());
     }
@@ -168,10 +217,10 @@ class DatabaseMigrationTests {
         flyway("classpath:db/migration").migrate();
         jdbc().update("INSERT INTO app_settings VALUES('sample','original')");
         var scripts = Files.createDirectory(directory.resolve("broken"));
-        Files.writeString(scripts.resolve("V1_2_1__broken.sql"), "CREATE TABLE test_partial(id INTEGER); UPDATE app_settings SET setting_value='changed'; INSERT INTO nonexistent VALUES(1);");
+        Files.writeString(scripts.resolve("V9_0_0__broken.sql"), "CREATE TABLE test_partial(id INTEGER); UPDATE app_settings SET setting_value='changed'; INSERT INTO nonexistent VALUES(1);");
         assertThrows(FlywayException.class, () -> flyway("classpath:db/migration", "filesystem:" + scripts).migrate());
         assertEquals("original", jdbc().queryForObject("SELECT setting_value FROM app_settings", String.class));
         assertEquals(0, jdbc().queryForObject("SELECT count(*) FROM sqlite_master WHERE name='test_partial'", Integer.class));
-        assertEquals("1.2.0", flyway("classpath:db/migration").info().current().getVersion().toString());
+        assertEquals("1.3.0", flyway("classpath:db/migration").info().current().getVersion().toString());
     }
 }

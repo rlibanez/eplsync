@@ -12,10 +12,11 @@ services:
       - "${DATA_DIR:-./data}:/app/data"
       - "${LOGS_DIR:-./logs}:/app/logs"
       # Opcional: carpeta de EPUB compartida con qBittorrent, solo lectura.
-      # - "${TORRENT_DIR:-./torrent}:/app/downloads:ro"
+      - "${TORRENT_DIR:-./torrent}:/app/downloads:ro"
     environment:
       # General
       TZ: "${TZ:-Europe/Madrid}"
+      EPLSYNC_LOG_LEVEL: "${EPLSYNC_LOG_LEVEL:-INFO}"
 
       # Seguridad
       EPLSYNC_INITIAL_ADMIN_KEY: "${EPLSYNC_INITIAL_ADMIN_KEY:-}"

@@ -285,7 +285,7 @@ public class CatalogImportService {
         if (zipUrl == null) {
             zipUrl = configuredUrl();
         }
-        log.info("Iniciando descarga del catálogo");
+        com.rlibanez.eplsync.events.EventContext.routineLog(log).log("Iniciando descarga del catálogo");
 
         Path zipFile = null;
         Path csvFile = null;
@@ -293,12 +293,12 @@ public class CatalogImportService {
         try {
             // Paso 1: Descargar el ZIP
             zipFile = fileDownloader.download(zipUrl, "epublibre-", ".zip");
-            log.info("ZIP descargado: {} ({} bytes)", zipFile, Files.size(zipFile));
+            com.rlibanez.eplsync.events.EventContext.routineLog(log).log("ZIP descargado: {} ({} bytes)", zipFile, Files.size(zipFile));
 
             // Paso 2: Extraer el CSV del ZIP
             var extracted = zipExtractor.extractCsvWithMetadata(zipFile);
             csvFile = extracted.path();
-            log.info("CSV extraído: {} ({} bytes), fecha del CSV: {}", csvFile, Files.size(csvFile),
+            com.rlibanez.eplsync.events.EventContext.routineLog(log).log("CSV extraído: {} ({} bytes), fecha del CSV: {}", csvFile, Files.size(csvFile),
                     extracted.modifiedAt() == null ? "desconocida" : extracted.modifiedAt());
 
             // Paso 3: Procesar el CSV según la operación solicitada: reemplazar, actualizar o previsualizar.

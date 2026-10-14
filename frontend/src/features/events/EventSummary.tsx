@@ -21,6 +21,7 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
       timeStyle: "medium",
     }).format(new Date(value));
   const valueLabel = (key: string, value: string | number | boolean) => {
+    if (key === "taskOperation") return t("scheduledTasks.operations." + value);
     if (key === "submissionStatus") return t("statuses." + value);
     if (typeof value === "boolean")
       return t(value ? "downloads.yes" : "downloads.no");

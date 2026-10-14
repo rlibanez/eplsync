@@ -16,4 +16,5 @@
 - [Trabajos](jobs.md): seguimiento, pausa y cancelación de envíos.
 - [Estado e historial de descargas](descargas.md): sincronización y gestión de registros.
 - [Actualizaciones de libros](actualizaciones.md): revisiones nuevas y limpieza de versiones anteriores.
+- [Tareas programadas](tareas-programadas.md): cron, usuario asociado e intervalos de comprobación.
 - [Logs y diagnóstico](logs.md): consultar errores y registros de acceso.

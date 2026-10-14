@@ -216,6 +216,8 @@ public class AccountStore {
                 && jdbc.queryForObject("SELECT count(*) FROM users WHERE role='ADMIN' AND status='ACTIVE'",Long.class)<=1)
             throw new com.rlibanez.eplsync.exception.UserInputException("Debe permanecer al menos un administrador activo");
         jdbc.update("DELETE FROM user_permission_overrides WHERE user_id=?",id);
+        // Also remove unmigratable legacy results that may have been retained for diagnosis.
+        jdbc.update("DELETE FROM app_settings WHERE setting_key IN (?,?)","tasks.update-search.downloads."+id,"tasks.update-search.calibre."+id);
         jdbc.update("DELETE FROM users WHERE id=?",id);
         audit("USER_DELETE",id,user.username(),null);
         AuthenticationLog.invalidated(user,"ACCOUNT_DELETED");

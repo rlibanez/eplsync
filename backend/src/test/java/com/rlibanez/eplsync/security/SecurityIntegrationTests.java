@@ -80,6 +80,34 @@ class SecurityIntegrationTests {
         mvc.perform(get("/api/settings/setup").session(reader)).andExpect(status().isForbidden());
         mvc.perform(post("/api/settings/setup").session(reader).with(csrf()).contentType("application/json").content(progress)).andExpect(status().isForbidden());
     }
+    @Test void scheduledSearchResultsBelongToTheAuthenticatedUser() throws Exception {
+        var adminSession=admin();
+        jdbc.update("INSERT INTO update_search_results VALUES(?,?,?,?,?,?)",initial.user().id(),"downloads",123,"MANUAL","{\"states\":[\"DOWNLOADED\"]}","[]");
+        mvc.perform(get("/api/settings/tasks/searches/downloads").param("ownerId","foreign").session(adminSession)).andExpect(status().isOk()).andExpect(jsonPath("$.search.searchedAt").value(123));
+        var temp=accounts.create("searchreader","searchreader@example.org","USER",initial.user().id());accounts.changePassword(accounts.find(temp.user().id()),temp.password(),PASSWORD);
+        var reader=login("searchreader",PASSWORD);
+        mvc.perform(get("/api/settings/tasks/searches/downloads").session(reader)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/tasks/searches/downloads").session(reader).with(csrf()).contentType("application/json").content("{\"states\":[\"DOWNLOADED\"]}")).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/tasks/searches/calibre").session(reader).with(csrf()).contentType("application/json").content("{}")).andExpect(status().isForbidden());
+        accounts.update(temp.user().id(),"USER","ACTIVE",Map.of("TORRENT_SYNC","ALLOW"),initial.user().id());reader=login("searchreader",PASSWORD);
+        mvc.perform(get("/api/settings/tasks/searches/downloads").session(reader)).andExpect(status().isOk()).andExpect(jsonPath("$.search").isEmpty());
+    }
+    @Test void scheduledTaskSettingsRequireAdministratorAndNeverAllowDisablingInternalChecks() throws Exception {
+        var session=admin();
+        mvc.perform(get("/api/settings/tasks").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.internal.length()").value(2));
+        mvc.perform(get("/api/settings/tasks/cron").param("cron","0 5 * * *").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.executions.length()").value(5)).andExpect(jsonPath("$.expression").value("0 0 5 * * *"));
+        mvc.perform(get("/api/settings/tasks/cron").param("cron","bad").session(session)).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/settings/tasks").session(session).with(csrf()).contentType("application/json").content(json(Map.of("name","Own task","operation","CALIBRE_SYNC","cron","0 5 * * *","ownerId","forged-user","enabled",true))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.ownerId").value(initial.user().id()));
+        mvc.perform(put("/api/settings/tasks/internal/calibre-download-check").session(session).with(csrf()).contentType("application/json").content("{\"interval\":\"1m\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.interval").value("60s"));
+        mvc.perform(put("/api/settings/tasks/internal/calibre-download-check").session(session).with(csrf()).contentType("application/json").content("{\"enabled\":false}")).andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/settings/tasks/internal/calibre-download-check").session(session).with(csrf())).andExpect(status().isMethodNotAllowed());
+        var temp=accounts.create("reader","reader@example.org","USER","admin");accounts.changePassword(accounts.find(temp.user().id()),temp.password(),PASSWORD);
+        var reader=login("reader",PASSWORD);
+        mvc.perform(get("/api/settings/tasks").session(reader)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/settings/tasks/cron").param("cron","0 5 * * *").session(reader)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/tasks").session(reader).with(csrf()).contentType("application/json").content(json(Map.of("name","Unauthorized","operation","CALIBRE_SYNC","cron","0 0 3 * * *","timezone","UTC","ownerId",initial.user().id(),"enabled",true)))).andExpect(status().isForbidden());
+    }
     @Test void authenticationActionsWriteApplicationLogsWithoutSecrets() throws Exception {
         var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(AuthenticationLog.class);
         var appender=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
@@ -334,11 +362,15 @@ class SecurityIntegrationTests {
     @Test void normalResetPreservesAccountsSettingsAndFullResetRequiresConfirmation() throws Exception {
         var session=admin();
         mvc.perform(put("/api/settings/events").session(session).with(csrf()).contentType("application/json").content("{\"events.retention.max-count\":1234}")).andExpect(status().isOk());
+        jdbc.update("INSERT INTO update_search_results VALUES(?,?,?,?,?,?)",initial.user().id(),"downloads",123,"MANUAL","{}","[]");
         mvc.perform(post("/api/maintenance/reset").session(session).with(csrf()).contentType("application/json").content("{\"confirm\":true}")).andExpect(status().isOk());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM update_search_results",Integer.class)).isZero();
+        jdbc.update("INSERT INTO update_search_results VALUES(?,?,?,?,?,?)",initial.user().id(),"calibre",456,"SCHEDULED","{}","[]");
         assertThat(accounts.initialized()).isTrue();assertThat(jdbc.queryForObject("SELECT count(*) FROM app_settings",Integer.class)).isPositive();
         mvc.perform(post("/api/maintenance/reset").session(session).with(csrf()).contentType("application/json").content("{\"confirm\":true,\"eraseUsersAndSettings\":true}")).andExpect(status().isBadRequest());
         mvc.perform(post("/api/maintenance/reset").session(session).with(csrf()).contentType("application/json").content("{\"confirm\":true,\"eraseUsersAndSettings\":true,\"fullResetConfirmation\":\"BORRAR TODO\"}")).andExpect(status().isOk());
         assertThat(accounts.initialized()).isFalse();assertThat(accounts.policy().registrationEnabled()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM update_search_results",Integer.class)).isZero();
         mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isUnauthorized());
         assertThat(accounts.initialize("newadmin","new@example.org",PASSWORD,PASSWORD)).isNotNull();
     }

@@ -73,7 +73,7 @@ public class CatalogImportStore {
             var archive = new Archive(UUID.randomUUID().toString(), name, sourceUrl, now,
                     now.plus(properties.getRetention()), Files.size(zipPath()), digest(zipPath()), csv.name(), csv.modifiedAt());
             save(new State(archive, null)); published = true;
-            log.info("ZIP de importación guardado: nombre={}, bytes={}, SHA-256={}, fecha CSV={}, caduca={}",
+            com.rlibanez.eplsync.events.EventContext.routineLog(log).log("ZIP de importación guardado: nombre={}, bytes={}, SHA-256={}, fecha CSV={}, caduca={}",
                     name, archive.size(), archive.sha256(), csv.modifiedAt(), archive.expiresAt());
             com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
             return work.run(archive, csv);
@@ -99,7 +99,7 @@ public class CatalogImportStore {
             com.rlibanez.eplsync.importer.CatalogImportLimits.checkZip(zipPath());
             if (!state.archive().sha256().equals(digest(zipPath()))) throw new CatalogPreviewException("PREVIEW_FILE_CHANGED");
             csv = extractor.extractCsvWithMetadata(zipPath());
-            log.info("CSV extraído del ZIP guardado: nombre={}, bytes={}, fecha del CSV={}", csv.name(), Files.size(csv.path()), csv.modifiedAt());
+            com.rlibanez.eplsync.events.EventContext.routineLog(log).log("CSV extraído del ZIP guardado: nombre={}, bytes={}, fecha del CSV={}", csv.name(), Files.size(csv.path()), csv.modifiedAt());
             com.rlibanez.eplsync.importer.CatalogOperationBudget.check();
             return work.run(state.archive(), csv);
         } catch (IOException ex) { throw new com.rlibanez.eplsync.exception.CatalogImportException("No se pudo leer el ZIP guardado", ex); }
@@ -147,7 +147,7 @@ public class CatalogImportStore {
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 60000)
     public synchronized void prune() {
         if (state != null && !state.archive().expiresAt().isAfter(Instant.now())) {
-            clear(); log.info("ZIP de importación eliminado por caducidad");
+            clear(); com.rlibanez.eplsync.events.EventContext.routineLog(log).log("ZIP de importación eliminado por caducidad");
         }
     }
     private void remove(Path file) {

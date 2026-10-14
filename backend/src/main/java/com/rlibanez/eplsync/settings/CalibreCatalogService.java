@@ -15,6 +15,9 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 @org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 public class CalibreCatalogService {
+    public static String updatesPredicate() {
+        return " AND b.revision<c.revision AND NOT EXISTS (SELECT 1 FROM calibre_books newer WHERE newer.active=true AND newer.epl_id=b.epl_id AND (newer.revision>b.revision OR newer.revision=b.revision AND newer.calibre_id<b.calibre_id))";
+    }
     static final String KEY = "calibre.snapshot";
     private static final int MAX_BOOKS = 500_000;
     private final JdbcTemplate jdbc;

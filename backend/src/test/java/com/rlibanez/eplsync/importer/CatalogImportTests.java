@@ -53,6 +53,20 @@ class CatalogImportTests {
 
     @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
 
+    @Test void scheduledImportProgressUsesDebugAndManualProgressRemainsInfo() throws Exception {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CatalogBookCsvImporter.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        var rows=new StringBuilder();for(int i=1;i<=10000;i++) rows.append(i).append(",1,Autor,Libro ").append(i).append("\n");
+        var file=csv(rows.toString());
+        try {
+            com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,()->{try {return importer.importFile(file,false);} catch(IOException ex) {throw new java.io.UncheckedIOException(ex);}});
+            assertThat(capture.list).anyMatch(e -> e.getFormattedMessage().contains("Progreso importación") && e.getLevel()==ch.qos.logback.classic.Level.DEBUG);
+            assertThat(capture.list).noneMatch(e -> e.getLevel()==ch.qos.logback.classic.Level.INFO);
+            capture.list.clear();importer.importFile(file,false);
+            assertThat(capture.list).anyMatch(e -> e.getFormattedMessage().contains("Progreso importación") && e.getLevel()==ch.qos.logback.classic.Level.INFO);
+        } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
+    }
     @Test void expiryBeforeCommitRollsBackReplacementAndUpdate() throws Exception {
         importer.importFile(csv("1,1,Autor,Original\n"),true);
         for(boolean replace:new boolean[]{true,false}) {

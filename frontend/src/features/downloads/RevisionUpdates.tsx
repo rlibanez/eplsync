@@ -1,5 +1,5 @@
 import { SelectionToolbar } from "../../components/SelectionToolbar";
-import { savedSearch, collectSearch, searchPage } from "./SavedUpdateSearch";
+import { latestSavedSearch, searchPage } from "./SavedUpdateSearch";
 import { SelectAllRows } from "../../components/SelectAllRows";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { useUpdateSession } from "./useUpdateSession";
@@ -17,7 +17,7 @@ import { get } from "../../api/catalog";
 import { useLocale } from "../../locales/useLocale";
 import { AppModal, ModalActions } from "../../components/AppModal";
 import { Loading, Failure } from "../../components/Feedback";
-import { Paging, post, downloadStates, type Page } from "./shared";
+import { Paging, post, downloadStates } from "./shared";
 import { SendSelection } from "./SendSelection";
 interface Preferences {
   states: string[];
@@ -62,22 +62,28 @@ export function RevisionUpdates() {
     next.delete("search");
     setSearchParams(next, { replace: true });
   }, [defaults.data, searchParams, setSearchParams]);
-  const savedKey = `downloads:${auth.user?.id}`;
   const previousSearch = useQuery({
     queryKey: ["saved-download-updates", auth.user?.id],
-    queryFn: () => savedSearch<Update>(savedKey),
+    queryFn: ({ signal }) => latestSavedSearch<Update>("downloads", signal),
+    refetchInterval: 30000,
   });
   useEffect(() => {
-    if (!search && previousSearch.data)
+    if (
+      previousSearch.data &&
+      (!search || previousSearch.data.searchedAt > search.generation)
+    ) {
+      setSelected([]);
       session.setView({
+        page: 0,
         search: {
           states: previousSearch.data.states ?? [],
           generation: previousSearch.data.searchedAt,
         },
       });
+    }
   }, [previousSearch.data, search]);
   const savedPage = async (page: number, size: number) => {
-    const saved = await savedSearch<Update>(savedKey);
+    const saved = previousSearch.data;
     return searchPage(
       (saved?.rows ?? []).filter(
         (row) =>
@@ -116,23 +122,16 @@ export function RevisionUpdates() {
   }, [cache, auth.user?.id, result.data]);
   const find = useMutation({
     mutationKey: ["torrent-sync"],
-    mutationFn: async () => {
-      const rows = await collectSearch<Update>((page) =>
-        post<Page<Update>>(
-          `/torrent/revision-updates/search?synchronize=${page === 0}&page=${page}&size=1000&sort=eplId,asc`,
-          { states: options },
-        ),
-      );
-      await savedSearch(savedKey, {
-        rows,
-        states: [...options],
-        searchedAt: Date.now(),
-      });
-      return searchPage(rows, 0, size, sort);
-    },
+    mutationFn: () =>
+      post<import("./SavedUpdateSearch").SavedSearch<Update>>(
+        "/settings/tasks/searches/downloads",
+        { states: options },
+      ),
     retry: false,
-    onSuccess: (data) => {
-      const generation = Date.now();
+    onSuccess: (saved) => {
+      const generation = saved.searchedAt;
+      const data = searchPage(saved.rows, 0, size, sort);
+      cache.setQueryData(["saved-download-updates", auth.user?.id], saved);
       cache.setQueryData(
         ["revision-updates", auth.user?.id, generation, 0, size, sort, null],
         data,

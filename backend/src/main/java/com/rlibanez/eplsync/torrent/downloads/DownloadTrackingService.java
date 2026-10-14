@@ -149,7 +149,7 @@ public class DownloadTrackingService {
         if (!coordination.writeLock().tryLock()) throw new TorrentOperationException(HttpStatus.CONFLICT,
                 "Hay envíos o una sincronización en curso; vuelve a intentarlo al terminar");
         try {
-            log.info("Sincronización manual de descargas: client={}, dryRun={}", properties.getClient(), dryRun);
+            com.rlibanez.eplsync.events.EventContext.routineLog(log).log("Sincronización {} de descargas: client={}, dryRun={}", com.rlibanez.eplsync.events.EventContext.operationOriginLabel(), properties.getClient(), dryRun);
             // Sin transacción/connection SQL durante la consulta de red. Si falla no se modifica ningún registro.
             var remote = remoteReader.get();
             var now = Instant.now();
@@ -164,7 +164,7 @@ public class DownloadTrackingService {
                             "updated", summary.records().updated(), "ignored", summary.remote().ignored()));
                     return summary;
                 });
-                log.info("Sincronización finalizada: dryRun={}, remote={}, records={}, outcomes={}", dryRun, result.remote(), result.records(), result.outcomes());
+                com.rlibanez.eplsync.events.EventContext.routineLog(log).log("Sincronización {} finalizada: dryRun={}, remote={}, records={}, outcomes={}", com.rlibanez.eplsync.events.EventContext.operationOriginLabel(), dryRun, result.remote(), result.records(), result.outcomes());
                 if (report != null) report.finish();
                 return result;
             }
@@ -215,7 +215,7 @@ public class DownloadTrackingService {
                     row.setDiscoveredAt(now);
                     observe(row, torrent, now);
                     entityManager.persist(row);
-                    log.info("Torrent vinculado: eplId={}, revision={}, hash={}", row.getEplId(), row.getRevision(), row.getHash());
+                    com.rlibanez.eplsync.events.EventContext.routineLog(log).log("Torrent vinculado: eplId={}, revision={}, hash={}", row.getEplId(), row.getRevision(), row.getHash());
                     return row;
                 });
             }
