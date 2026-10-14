@@ -425,7 +425,9 @@ export function JobDetail() {
           <section className="panel settings-section job-report-panel">
             <div className="job-controls-heading">
               <div className="action-row">
-                {["QUEUED", "RUNNING", "RETRY_WAIT"].includes(data.status) && (
+                {["QUEUED", "RUNNING", "RETRY_WAIT", "CLEANUP_WAIT"].includes(
+                  data.status,
+                ) && (
                   <Button
                     disabled={control.isPending}
                     onClick={() => control.mutate("pause")}
@@ -488,23 +490,35 @@ export function JobDetail() {
                     },
                     {
                       title: "jobReport.submission",
-                      values: (
+                      values: [
                         [
-                          "selectedBooks",
-                          "processedItems",
-                          "selectedItems",
-                          "accepted",
-                          "alreadyExists",
-                          "skipped",
-                          "failed",
-                          "pending",
-                          "inFlight",
-                          "cancelled",
-                        ] as const
-                      ).map((key) => [
-                        `downloads.${key === "failed" ? "failedCount" : key}`,
-                        number(data[key]),
-                      ]),
+                          "jobReport.phaseStatus",
+                          status(
+                            data.pending + data.inFlight === 0
+                              ? data.cancelled > 0
+                                ? "CANCELLED"
+                                : "COMPLETED"
+                              : data.status,
+                          ),
+                        ],
+                        ...(
+                          [
+                            "selectedBooks",
+                            "processedItems",
+                            "selectedItems",
+                            "accepted",
+                            "alreadyExists",
+                            "skipped",
+                            "failed",
+                            "pending",
+                            "inFlight",
+                            "cancelled",
+                          ] as const
+                        ).map((key) => [
+                          `downloads.${key === "failed" ? "failedCount" : key}`,
+                          number(data[key]),
+                        ]),
+                      ],
                     },
                     {
                       title: "send.options",
@@ -523,8 +537,25 @@ export function JobDetail() {
                     ...(data.previousVersions || data.cleanup
                       ? [
                           {
-                            title: "send.previousVersions",
+                            title: "jobReport.cleanup",
                             values: [
+                              [
+                                "jobReport.phaseStatus",
+                                data.status === "PAUSED"
+                                  ? status("PAUSED")
+                                  : data.cleanup?.blocked
+                                    ? t("jobReport.cleanupBlocked")
+                                    : data.cleanup &&
+                                        data.cleanup.waiting +
+                                          data.cleanup.requested >
+                                          0
+                                      ? status("CLEANUP_WAIT")
+                                      : data.cleanup?.cancelled
+                                        ? status("CANCELLED")
+                                        : data.previousVersions === "keep"
+                                          ? t("jobReport.notRequired")
+                                          : status("COMPLETED"),
+                              ],
                               ...(data.previousVersions
                                 ? [
                                     [

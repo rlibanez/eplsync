@@ -247,9 +247,8 @@ public class BulkStore {
     }
     @Transactional public View finishPrepared(String id,long selectedBooks) {
         em.flush(); var job=job(id); job.setSelectedBooks(selectedBooks);
-        if(items.countByJobId(id)==0) job.setState(BulkJob.State.COMPLETED);
         jobs.saveAndFlush(job); event(job,com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED);
-        if(job.getState()==BulkJob.State.COMPLETED) event(job,com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
+        if(items.countByJobId(id)==0) complete(job);
         return view(id);
     }
     @Transactional public View createPrepared(List<TorrentDownload> commands,BulkRequest input) {
@@ -399,7 +398,10 @@ public class BulkStore {
             throw new TorrentOperationException(HttpStatus.CONFLICT, "El trabajo ya ha finalizado");
         var previousState = job.getState();
         switch (action) {
-            case "pause" -> job.setState(BulkJob.State.PAUSED);
+            case "pause" -> {
+                if (job.getState()==BulkJob.State.PAUSED) return view(id);
+                job.setState(BulkJob.State.PAUSED);
+            }
             case "resume" -> {
                 client.requireEnabled();
                 if (!job.getTargetFingerprint().equals(fingerprint())) throw new TorrentOperationException(HttpStatus.CONFLICT,
@@ -423,6 +425,7 @@ public class BulkStore {
             case "resume" -> com.rlibanez.eplsync.events.EventJournal.Outcome.RESUMED;
             default -> com.rlibanez.eplsync.events.EventJournal.Outcome.CANCELLED;
         });
+        if (action.equals("resume")) complete(job);
         return view(id);
     }
 
@@ -435,6 +438,8 @@ public class BulkStore {
                 event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.RECOVERED);
             }
         }
+        for (var job : jobs.findByStateOrderByCreatedAtAsc(BulkJob.State.CLEANUP_WAIT, Pageable.unpaged()))
+            complete(job);
         // Los elementos en vuelo de trabajos cancelados tampoco se vuelven a enviar.
         for (var job : jobs.findByStateOrderByCreatedAtAsc(BulkJob.State.CANCELLED, Pageable.unpaged()))
             items.transition(job.getId(), BulkItem.State.PENDING, BulkItem.State.CANCELLED);
@@ -526,13 +531,24 @@ public class BulkStore {
 
     @Transactional
     public void completeIfEmpty(String id) { complete(job(id)); }
+    /** Cleanup is part of the update job, even after all submissions have finished. */
+    @Transactional
+    public void cleanupChanged(String id) {
+        if (id!=null) jobs.findById(id).ifPresent(this::complete);
+    }
     private void complete(BulkJob job) {
-        if (job.getState() == BulkJob.State.RUNNING && count(job.getId(), BulkItem.State.PENDING) == 0
-                && count(job.getId(), BulkItem.State.IN_FLIGHT) == 0) {
-            job.setState(BulkJob.State.COMPLETED); job.setUpdatedAt(Instant.now()); job.setMessage(null); job.setRetryAt(null);
-            event(job, count(job.getId(), BulkItem.State.FAILED) > 0
-                ? com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL : com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
-        }
+        if (!List.of(BulkJob.State.RUNNING,BulkJob.State.QUEUED,BulkJob.State.CLEANUP_WAIT).contains(job.getState())
+                || count(job.getId(), BulkItem.State.PENDING)>0 || count(job.getId(), BulkItem.State.IN_FLIGHT)>0) return;
+        long unfinishedCleanup=job.getType()==BulkJob.Type.UPDATE ? em.createQuery(
+            "select count(c) from UpdateCleanup c where c.jobId=:job and c.state in :pending",Long.class)
+            .setParameter("job",job.getId()).setParameter("pending",com.rlibanez.eplsync.torrent.updates.CleanupQueue.PENDING)
+            .getSingleResult() : 0;
+        var state=unfinishedCleanup>0 ? BulkJob.State.CLEANUP_WAIT : BulkJob.State.COMPLETED;
+        if (job.getState()==state) return;
+        job.setState(state); job.setUpdatedAt(Instant.now()); job.setMessage(null); job.setRetryAt(null);
+        jobs.saveAndFlush(job);
+        if(state==BulkJob.State.COMPLETED) event(job, count(job.getId(), BulkItem.State.FAILED)>0
+            ? com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL : com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
     }
     public BulkJob job(String id) { return jobs.findById(id).orElseThrow(() -> new TorrentOperationException(HttpStatus.NOT_FOUND, "Trabajo torrent inexistente")); }
     private long count(String id, BulkItem.State state) { return items.countByJobIdAndState(id, state); }

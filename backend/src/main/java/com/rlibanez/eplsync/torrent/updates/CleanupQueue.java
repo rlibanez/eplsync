@@ -28,6 +28,7 @@ public class CleanupQueue {
     private final MagnetLinkBuilder magnets;
     private final TransactionTemplate tx;
     @org.springframework.beans.factory.annotation.Autowired private EventJournal events;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.torrent.bulk.BulkStore bulk;
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
     private final JsonMapper mapper = JsonMapper.builder().build();
     public record Result(String id, String downloadId, Long eplId, String hash, PreviousVersions policy, UpdateCleanup.State state, String message) {}
@@ -158,6 +159,9 @@ public class CleanupQueue {
             try {
                 var old=byHash.get(entry.getHash());
                 if (old==null) { resolve(Set.of(entry.getHash())); continue; }
+                var job=entry.getJobId()==null ? null : em.find(com.rlibanez.eplsync.torrent.bulk.BulkJob.class,entry.getJobId());
+                if (job!=null && (job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED
+                        || job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED)) continue;
                 if (uncertain.contains(old.hash()) && !retryUnconfirmed) {
                     save(entry,UpdateCleanup.State.REQUESTED,"Eliminación sin confirmar; no se repetirá automáticamente"); continue;
                 }
@@ -263,6 +267,7 @@ public class CleanupQueue {
         if (entry.getState()==UpdateCleanup.State.REQUESTED && entry.getMessage()!=null && entry.getMessage().contains(NO_DATA))
             message=state==UpdateCleanup.State.REMOVED ? "Torrent eliminado; " + NO_DATA.toLowerCase(java.util.Locale.ROOT) : message.contains(NO_DATA) ? message : message + ". " + NO_DATA;
         entry.setState(state); entry.setMessage(message); entry.setUpdatedAt(Instant.now()); entries.saveAndFlush(entry);
+        bulk.cleanupChanged(entry.getJobId());
     }
     public void resolve(Set<String> aliases) {
         tx.executeWithoutResult(status -> {

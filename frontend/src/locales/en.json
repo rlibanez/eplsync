@@ -71,7 +71,11 @@
   },
   "jobReport": {
     "work": "Job",
-    "submission": "Submission"
+    "submission": "Submission",
+    "cleanup": "Cleanup",
+    "phaseStatus": "Status",
+    "notRequired": "Not required",
+    "cleanupBlocked": "Blocked"
   },
   "suggestions": {
     "loading": "Loading suggestions…",
@@ -335,7 +339,8 @@
     "IN_FLIGHT": "In flight",
     "ACCEPTED": "Accepted",
     "SKIPPED": "Skipped",
-    "FAILED": "Failed"
+    "FAILED": "Failed",
+    "CLEANUP_WAIT": "Waiting for cleanup"
   },
   "settings": {
     "tasks": "Scheduled tasks",

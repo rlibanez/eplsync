@@ -71,7 +71,11 @@
   },
   "jobReport": {
     "work": "Trabajo",
-    "submission": "Envío"
+    "submission": "Envío",
+    "cleanup": "Limpieza",
+    "phaseStatus": "Estado",
+    "notRequired": "No necesaria",
+    "cleanupBlocked": "Bloqueada"
   },
   "suggestions": {
     "loading": "Buscando sugerencias…",
@@ -335,7 +339,8 @@
     "IN_FLIGHT": "Enviando",
     "ACCEPTED": "Aceptado",
     "SKIPPED": "Omitido",
-    "FAILED": "Fallido"
+    "FAILED": "Fallido",
+    "CLEANUP_WAIT": "Pendiente de limpieza"
   },
   "settings": {
     "tasks": "Tareas programadas",

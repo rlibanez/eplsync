@@ -196,3 +196,72 @@ test("individual job has a compact filter and visible execution controls", async
   await expect(cancel).toHaveCount(0);
   expect(actions).toEqual(["pause", "resume", "cancel"]);
 });
+
+test("update job shows completed submission and pending cleanup until removal", async ({
+  page,
+}) => {
+  let cleaned = false;
+  await page.route("**/api/torrent/jobs/cleanup-job**", async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith("/items"))
+      return route.fulfill({
+        json: {
+          items: [],
+          meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+        },
+      });
+    return route.fulfill({
+      json: {
+        jobId: "cleanup-job",
+        type: "UPDATE",
+        status: cleaned ? "COMPLETED" : "CLEANUP_WAIT",
+        previousVersions: "removeTorrent",
+        cleanupTiming: "afterDownload",
+        cleanup: {
+          waiting: cleaned ? 0 : 1,
+          blocked: 0,
+          requested: 0,
+          removed: cleaned ? 1 : 0,
+          cancelled: 0,
+        },
+        client: "qbittorrent",
+        selectedBooks: 1,
+        selectedItems: 1,
+        processedItems: 1,
+        pending: 0,
+        inFlight: 0,
+        cancelled: 0,
+        accepted: 1,
+        alreadyExists: 0,
+        skipped: 0,
+        failed: 0,
+        batchSize: 1,
+        concurrency: 1,
+        interval: "0ms",
+        multipleHashes: "ALL",
+        createdAt: "2026-10-15T00:00:00Z",
+        updatedAt: "2026-10-15T00:01:00Z",
+      },
+    });
+  });
+  await page.goto("/downloads/jobs/cleanup-job");
+  await page
+    .locator("summary")
+    .filter({ hasText: "Informe del trabajo" })
+    .click();
+  const submission = page
+    .locator(".job-report-group")
+    .filter({ has: page.getByRole("heading", { name: "Envío", exact: true }) });
+  const cleanup = page.locator(".job-report-group").filter({
+    has: page.getByRole("heading", { name: "Limpieza", exact: true }),
+  });
+  await expect(submission).toContainText("Terminado");
+  await expect(cleanup).toContainText("Pendiente de limpieza");
+  await expect(
+    page.getByRole("button", { name: "Pausar", exact: true }),
+  ).toBeVisible();
+  cleaned = true;
+  await expect(cleanup).toContainText("Terminado", { timeout: 10000 });
+  await expect(
+    page.getByRole("button", { name: "Pausar", exact: true }),
+  ).toHaveCount(0);
+});

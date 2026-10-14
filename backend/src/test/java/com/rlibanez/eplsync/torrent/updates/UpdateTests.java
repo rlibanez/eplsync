@@ -157,6 +157,45 @@ class UpdateTests {
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.BLOCKED);
     }
 
+    @Test void updateJobWaitsForCleanupAndCompletesOnlyAfterConfirmedRemoval() {
+        var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        var item=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();
+        bulk.finish(item.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        assertThat(bulk.view(job.jobId()).status()).isEqualTo(BulkJob.State.CLEANUP_WAIT);
+        assertThat(bulk.view(job.jobId()).pending()).isZero();
+        assertThat(bulk.next()).isNull();
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/shared.epub"),remote(NEW,DownloadStatus.DOWNLOADED,"/shared.epub")));
+        queue.runImmediate(100,Instant.now());
+        assertThat(bulk.view(job.jobId()).status()).isEqualTo(BulkJob.State.CLEANUP_WAIT);
+        assertThat(bulk.view(job.jobId()).cleanup().blocked()).isEqualTo(1);
+        bulk.recover();
+        assertThat(bulk.view(job.jobId()).status()).isEqualTo(BulkJob.State.CLEANUP_WAIT);
+        var replacement=remote(NEW,DownloadStatus.DOWNLOADED,"/new.epub");
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old.epub"),replacement)).thenReturn(List.of(replacement));
+        queue.runImmediate(100,Instant.now().plusSeconds(60));
+        assertThat(bulk.view(job.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
+        assertThat(bulk.view(job.jobId()).cleanup().removed()).isEqualTo(1);
+    }
+    @Test void pauseAndCancelAlsoControlTheCleanupPhase() {
+        var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT);
+        var item=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();
+        bulk.finish(item.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        assertThat(bulk.control(job.jobId(),"pause").status()).isEqualTo(BulkJob.State.PAUSED);
+        queue.runAutomatic(100);
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(bulk.control(job.jobId(),"resume").status()).isEqualTo(BulkJob.State.CLEANUP_WAIT);
+        assertThat(bulk.control(job.jobId(),"cancel").status()).isEqualTo(BulkJob.State.CANCELLED);
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.CANCELLED);
+        queue.runAutomatic(100);
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void keepingPreviousVersionsCompletesAfterSubmissionWithoutWaitingForDownload() {
+        var job=immediateJob(NEW,PreviousVersions.KEEP);
+        var item=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();
+        bulk.finish(item.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        assertThat(bulk.view(job.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
+        verify(stubClient,never()).listTorrents();
+    }
     @Test void immediateFilesCleanupSucceedsDespiteAReplacementAwaitingMetadata() {
         var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
         var send=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();

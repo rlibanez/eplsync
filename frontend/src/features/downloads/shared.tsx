@@ -130,6 +130,7 @@ export const jobStates = [
   "QUEUED",
   "RUNNING",
   "RETRY_WAIT",
+  "CLEANUP_WAIT",
   "PAUSED",
   "COMPLETED",
   "CANCELLED",

@@ -9,9 +9,12 @@ public interface UpdateCleanupRepository extends org.springframework.data.jpa.re
     java.util.List<UpdateCleanup> findByClientInstanceIdIsNull(org.springframework.data.domain.Pageable page);
     @org.springframework.data.jpa.repository.Query("select e from UpdateCleanup e where e.immediate=true and e.automatic=true and e.state in :states "
         + "and (e.lastCheckedAt is null or e.lastCheckedAt<:cycle) and e.replacementAccepted=true "
+        + "and not exists (select j.id from BulkJob j where j.id=e.jobId and j.state in (com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED,com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED)) "
         + "order by e.createdAt,e.id")
     java.util.List<UpdateCleanup> readyImmediate(java.util.Collection<UpdateCleanup.State> states,java.time.Instant cycle,org.springframework.data.domain.Pageable page);
     @org.springframework.data.jpa.repository.Query("select e from UpdateCleanup e where (e.automatic=true or e.state=com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REQUESTED) and e.state in :states "
+        + "and (e.state=com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REQUESTED or not exists "
+        + "(select j.id from BulkJob j where j.id=e.jobId and j.state in (com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED,com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED))) "
         + "order by coalesce(e.lastCheckedAt,e.createdAt),e.createdAt,e.id")
     java.util.List<UpdateCleanup> pendingAutomatic(java.util.Collection<UpdateCleanup.State> states, org.springframework.data.domain.Pageable page);
 }

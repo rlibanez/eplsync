@@ -138,6 +138,25 @@ class DatabaseMigrationTests {
         jdbc.update("DELETE FROM catalog_books");
         assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM torrent_downloads",Integer.class));
     }
+    @Test void upgradesUpdateJobsWithChildReferencesAndPendingCleanup() {
+        var source=new DriverManagerDataSource(url());
+        var properties=new java.util.Properties();properties.setProperty("foreign_keys","true");
+        source.setConnectionProperties(properties);
+        var collated=new com.rlibanez.eplsync.ordering.TextCollationDataSource(source);
+        Flyway.configure().dataSource(collated).locations("classpath:db/migration").target("1.2.0").load().migrate();
+        var jdbc=jdbc();
+        jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,type,state) VALUES('job',1,1,0,1,'UPDATE','COMPLETED')");
+        jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,state) VALUES('item','job',0,0,'ACCEPTED')");
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('record',1,1,'hash','qbittorrent','client','DOWNLOADED','EPLSYNC',0)");
+        jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,created_at,snapshot) VALUES('job','client','REMOVE_TORRENT',0,'{}')");
+        jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state) VALUES('cleanup','job','record',1,'hash','BLOCKED')");
+        Flyway.configure().dataSource(collated).locations("classpath:db/migration").load().migrate();
+        assertEquals("CLEANUP_WAIT",jdbc.queryForObject("SELECT state FROM torrent_bulk_jobs WHERE id='job'",String.class));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id='job'",Integer.class));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id='job'",Integer.class));
+        assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
+        assertThrows(org.springframework.dao.DataAccessException.class,() -> jdbc.update("UPDATE torrent_bulk_jobs SET state='INVALID'"));
+    }
     @Test void movesSavedSearchJsonWithoutMixingUsersOrDeletingUnmigratableSettings() {
         Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url())))
             .locations("classpath:db/migration").target("1.2.0").load().migrate();
