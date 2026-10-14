@@ -60,7 +60,7 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 | `EPLSYNC_TORRENT_BULK_RETENTION_DAYS` | Días de conservación desde la última actualización del trabajo finalizado, entre 1 y 36500. | `90` |
 | `EPLSYNC_TORRENT_BULK_RETENTION_INTERVAL` | Espera positiva entre ciclos de retención. Cada ciclo elimina como máximo 20 trabajos, en transacciones independientes. | `1h` |
 | `EPLSYNC_TORRENT_CLEANUP_ENABLED` | Activa las comprobaciones periódicas de limpieza. Desactivarla conserva los pendientes y permite acciones manuales. | `true` |
-| `EPLSYNC_TORRENT_CLEANUP_INTERVAL` | Espera entre ciclos de limpieza, positiva; por ejemplo `30s` o `1m`. | `60s` |
+| `EPLSYNC_TORRENT_CLEANUP_INTERVAL` | Espera entre ciclos de limpieza, positiva; por ejemplo `30s` o `1m`. | `30s` |
 | `EPLSYNC_TORRENT_CLEANUP_BATCH_SIZE` | Solicitudes de limpieza por ciclo, entre 1 y 1000. El límite se aplica a registros, no a trabajos. | `100` |
 | `EPLSYNC_TORRENT_DOWNLOAD_START` | true inicia las descargas enviadas; false las deja detenidas. | `true` |
 | `EPLSYNC_TORRENT_DOWNLOAD_SAVEPATH` | Ruta de destino en qBittorrent, no en EPL Sync. Vacío utiliza la ruta del cliente. | Vacío |
@@ -81,9 +81,10 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 | `EPLSYNC_CALIBRE_USERNAME` | Usuario del servidor de contenido. | Vacío |
 | `EPLSYNC_CALIBRE_PASSWORD` | Contraseña del servidor de contenido. No se copia a la base de datos. | Vacío |
 | `EPLSYNC_CALIBRE_LIBRARY` | Identificador de biblioteca, disponible al comprobar la conexión en Ajustes > Calibre. | Vacío |
+| `EPLSYNC_CALIBRE_TRANSFERS_DOWNLOAD_CHECK_INTERVAL` | Espera entre comprobaciones de qBittorrent para los trabajos de Calibre que esperan descargas. Duración positiva, al menos `1ms`. Requiere reiniciar la aplicación; no se configura en la interfaz. | `30s` |
 
-Los ajustes guardados desde la interfaz tienen prioridad sobre estos valores de
-instalación. Las variables se aplican inicialmente cuando todavía no hay una
+Para la conexión con Calibre, los ajustes guardados desde la interfaz tienen
+prioridad sobre los valores de instalación. Las variables se aplican inicialmente cuando todavía no hay una
 configuración guardada. Guardar sin introducir una contraseña nueva conserva la
 contraseña de entorno para el mismo servidor y usuario; cambiar cualquiera de
 ellos impide reutilizarla. Eliminar la contraseña desde Ajustes impide su

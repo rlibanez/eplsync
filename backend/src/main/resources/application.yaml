@@ -131,6 +131,9 @@ eplsync:
     username: ${EPLSYNC_CALIBRE_USERNAME:}
     password: ${EPLSYNC_CALIBRE_PASSWORD:}
     library: ${EPLSYNC_CALIBRE_LIBRARY:}
+    transfers:
+      # Intervalo entre comprobaciones de descargas pendientes, positivo.
+      download-check-interval: ${EPLSYNC_CALIBRE_TRANSFERS_DOWNLOAD_CHECK_INTERVAL:30s}
 
   torrent:
     files:
@@ -153,7 +156,7 @@ eplsync:
     # Temporizador provisional; el ejecutor de limpieza es independiente de su programación.
     cleanup:
       enabled: ${EPLSYNC_TORRENT_CLEANUP_ENABLED:true}
-      interval: ${EPLSYNC_TORRENT_CLEANUP_INTERVAL:60s}
+      interval: ${EPLSYNC_TORRENT_CLEANUP_INTERVAL:30s}
       batch-size: ${EPLSYNC_TORRENT_CLEANUP_BATCH_SIZE:100}
 
     bulk:

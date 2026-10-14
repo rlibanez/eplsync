@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @WithMockUser(authorities={"CALIBRE_READ","CALIBRE_SEND","CALIBRE_DELETE","DOWNLOADS_FILES_READ","CALIBRE_JOBS_MANAGE","CATALOG_READ","TORRENT_SEND","TORRENT_SYNC"})
-@SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.calibre.transfers.worker-enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
+@SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.calibre.transfers.worker-enabled=false","eplsync.calibre.transfers.download-check-interval=7s","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
 class CalibreUpdateFlowTests {
     @Autowired CalibreTransfers transfers;
     @Autowired CalibreUpdateFlow flow;
@@ -71,6 +71,24 @@ class CalibreUpdateFlowTests {
     void downloadItem(String state) {
         jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,state) VALUES('download-job',100,1,500,1,'RUNNING')");
         jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,epl_id,revision,hash,state) VALUES('download-item','download-job',0,0,2,1.1,?,?)","B".repeat(40),state);
+    }
+    @Test void configuredIntervalControlsBothClientProbeAndWaitingItem() {
+        var result=submit(List.of(missing()),true,true);downloadItem("PENDING");
+        long before=Instant.now().toEpochMilli();
+        transfers.cycle();
+        long after=Instant.now().toEpochMilli();
+        long probe=jdbc.queryForObject("SELECT next_probe FROM calibre_jobs WHERE id=?",Long.class,result.calibreJobId());
+        long check=jdbc.queryForObject("SELECT next_check FROM calibre_job_items WHERE job_id=?",Long.class,result.calibreJobId());
+        assertThat(probe).isBetween(before+7000,after+7000);
+        assertThat(check).isBetween(before+7000,after+7000);
+        flow.refreshDownloads(result.calibreJobId());
+        assertThat(jdbc.queryForObject("SELECT next_probe FROM calibre_jobs WHERE id=?",Long.class,result.calibreJobId())).isEqualTo(probe);
+    }
+    @Test void downloadCheckIntervalRejectsNonPositiveAndSubMillisecondDurations() {
+        assertThat(CalibreUpdateFlow.downloadCheckMillis("30s")).isEqualTo(30000);
+        assertThat(CalibreUpdateFlow.downloadCheckMillis("1m")).isEqualTo(60000);
+        for(String invalid:List.of("0s","-1s","0ns","invalid"))
+            assertThatThrownBy(()->CalibreUpdateFlow.downloadCheckMillis(invalid)).isInstanceOf(IllegalArgumentException.class);
     }
     @Test void waitingTurnsIntoSendAfterDownloadAndPinsRevisionAndHash() throws Exception {
         var result=submit(List.of(missing()),true,true);downloadItem("PENDING");transfers.cycle();
