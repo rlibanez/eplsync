@@ -9,57 +9,71 @@ libros con qBittorrent.
 <table>
   <tr>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Home.png"><img src="docs/screenshots/Home.png" alt="Pantalla inicial" width="320"></a>
+      <a href="docs/media/screenshots/Principal.png"><img src="docs/media/screenshots/Principal.png" alt="Pantalla inicial" width="320"></a>
       <br><sub>Pantalla inicial</sub>
     </td>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Catalogo_tabla.png"><img src="docs/screenshots/Catalogo_tabla.png" alt="Catálogo" width="320"></a>
+      <a href="docs/media/screenshots/Catalogo.png"><img src="docs/media/screenshots/Catalogo.png" alt="Catálogo" width="320"></a>
       <br><sub>Catálogo</sub>
     </td>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Catalogo_buscador.png"><img src="docs/screenshots/Catalogo_buscador.png" alt="Búsqueda avanzada" width="320"></a>
+      <a href="docs/media/screenshots/Catalogo_BusquedaAvanzada.png"><img src="docs/media/screenshots/Catalogo_BusquedaAvanzada.png" alt="Búsqueda avanzada" width="320"></a>
       <br><sub>Búsqueda avanzada</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Catalogo_enviardescargar.png"><img src="docs/screenshots/Catalogo_enviardescargar.png" alt="Envío de libros" width="320"></a>
-      <br><sub>Envío de libros</sub>
+      <a href="docs/media/screenshots/Catalogo_Libro1.png"><img src="docs/media/screenshots/Catalogo_Libro1.png" alt="Ficha del libro" width="320"></a>
+      <br><sub>Ficha del libro</sub>
     </td>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Directorio_colecciones.png"><img src="docs/screenshots/Directorio_colecciones.png" alt="Directorio de colecciones" width="320"></a>
+      <a href="docs/media/screenshots/Catalogo_Libro2.png"><img src="docs/media/screenshots/Catalogo_Libro2.png" alt="Ficha del libro · descargas y Calibre" width="320"></a>
+      <br><sub>Ficha del libro · descargas y Calibre</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/media/screenshots/Directorio_Colecciones.png"><img src="docs/media/screenshots/Directorio_Colecciones.png" alt="Directorio de colecciones" width="320"></a>
       <br><sub>Directorio de colecciones</sub>
     </td>
+  </tr>
+  <tr>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Estado_sincronizacion.png"><img src="docs/screenshots/Estado_sincronizacion.png" alt="Sincronización" width="320"></a>
-      <br><sub>Sincronización</sub>
+      <a href="docs/media/screenshots/Descargas_Estado.png"><img src="docs/media/screenshots/Descargas_Estado.png" alt="Estado de las descargas" width="320"></a>
+      <br><sub>Estado de las descargas</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/media/screenshots/Descargas_Actualizaciones.png"><img src="docs/media/screenshots/Descargas_Actualizaciones.png" alt="Actualizaciones de descargas" width="320"></a>
+      <br><sub>Actualizaciones de descargas</sub>
+    </td>
+    <td align="center" width="33%">
+      <a href="docs/media/screenshots/Descargas_Trabajos.png"><img src="docs/media/screenshots/Descargas_Trabajos.png" alt="Trabajos de descargas" width="320"></a>
+      <br><sub>Trabajos de descargas</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Actualizaciones_tabla.png"><img src="docs/screenshots/Actualizaciones_tabla.png" alt="Actualizaciones" width="320"></a>
-      <br><sub>Actualizaciones</sub>
+      <a href="docs/media/screenshots/Calibre_Biblioteca.png"><img src="docs/media/screenshots/Calibre_Biblioteca.png" alt="Biblioteca de Calibre" width="320"></a>
+      <br><sub>Biblioteca de Calibre</sub>
     </td>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Actualizaciones_enviar.png"><img src="docs/screenshots/Actualizaciones_enviar.png" alt="Envío de actualizaciones" width="320"></a>
-      <br><sub>Envío de actualizaciones</sub>
+      <a href="docs/media/screenshots/Calibre_Actualizaciones.png"><img src="docs/media/screenshots/Calibre_Actualizaciones.png" alt="Actualizaciones de Calibre" width="320"></a>
+      <br><sub>Actualizaciones de Calibre</sub>
     </td>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Eventos_tabla.png"><img src="docs/screenshots/Eventos_tabla.png" alt="Eventos" width="320"></a>
+      <a href="docs/media/screenshots/Calibre_Trabajos.png"><img src="docs/media/screenshots/Calibre_Trabajos.png" alt="Trabajos de Calibre" width="320"></a>
+      <br><sub>Trabajos de Calibre</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <a href="docs/media/screenshots/Eventos.png"><img src="docs/media/screenshots/Eventos.png" alt="Eventos" width="320"></a>
       <br><sub>Eventos</sub>
     </td>
-  </tr>
-  <tr>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Ajustes_catalogo.png"><img src="docs/screenshots/Ajustes_catalogo.png" alt="Ajustes del catálogo" width="320"></a>
-      <br><sub>Ajustes del catálogo</sub>
+      <a href="docs/media/screenshots/Ajustes_UsuarioSeguridad.png"><img src="docs/media/screenshots/Ajustes_UsuarioSeguridad.png" alt="Usuarios y seguridad" width="320"></a>
+      <br><sub>Usuarios y seguridad</sub>
     </td>
     <td align="center" width="33%">
-      <a href="docs/screenshots/Ajustes_azul.png"><img src="docs/screenshots/Ajustes_azul.png" alt="Ajustes · tema azul" width="320"></a>
-      <br><sub>Ajustes · tema azul</sub>
-    </td>
-    <td align="center" width="33%">
-      <a href="docs/screenshots/Ajustes_verdeclaro.png"><img src="docs/screenshots/Ajustes_verdeclaro.png" alt="Ajustes · tema verde claro" width="320"></a>
+      <a href="docs/media/screenshots/Ajustes_VerdeClaro.png"><img src="docs/media/screenshots/Ajustes_VerdeClaro.png" alt="Ajustes · tema verde claro" width="320"></a>
       <br><sub>Ajustes · tema verde claro</sub>
     </td>
   </tr>
@@ -100,7 +114,7 @@ cd eplsync
 ### 3. Descarga Docker Compose
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.1.2/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.2.0/docker-compose.yml -o docker-compose.yml
 ```
 
 ### 4. Configura `.env`
@@ -108,7 +122,7 @@ curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.1.2/docker-comp
 Después, descarga la plantilla de configuración:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.1.2/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.2.0/.env.example -o .env
 chmod 600 .env
 ```
 
@@ -116,7 +130,7 @@ Edita `.env`. Para empezar, revisa estas variables:
 
 | Variable | Descripción | Valor predeterminado |
 | --- | --- | --- |
-| `EPLSYNC_VERSION` | Versión de la imagen. | `1.1.2` |
+| `EPLSYNC_VERSION` | Versión de la imagen. | `1.2.0` |
 | `PUID` | ID del usuario que puede escribir en las carpetas. En Linux, consulta su valor con `id -u`. | `1000` |
 | `PGID` | ID del grupo que puede escribir en las carpetas. En Linux, consulta su valor con `id -g`. | `1000` |
 | `HOST_PORT` | Puerto publicado. | `8088` |
@@ -159,8 +173,8 @@ instrucciones para su ejecución en Windows/Linux.
 ### 1. Descarga y descomprime el paquete
 
 Instala [Java 25](https://adoptium.net/temurin/releases/?version=25) y descarga
-`EPL-Sync-1.1.2.zip` desde los archivos de la
-[Release 1.1.2](https://github.com/rlibanez/eplsync/releases/tag/v1.1.2).
+`EPL-Sync-1.2.0.zip` desde los archivos de la
+[Release 1.2.0](https://github.com/rlibanez/eplsync/releases/tag/v1.2.0).
 El mismo paquete sirve para Windows y Linux.
 
 Descomprímelo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
@@ -169,7 +183,7 @@ Descomprímelo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
 
 ```text
 EPL-Sync/
-├── eplsync-1.1.2.jar
+├── eplsync-1.2.0.jar
 ├── application.yaml
 ├── data/
 └── logs/
@@ -202,7 +216,7 @@ Conserva la configuración y no compartas sus claves.
 Abre una terminal en la carpeta del JAR y ejecuta, tanto en Windows como en Linux:
 
 ```sh
-java --enable-native-access=ALL-UNNAMED -jar eplsync-1.1.2.jar --spring.config.additional-location=file:./application.yaml
+java --enable-native-access=ALL-UNNAMED -jar eplsync-1.2.0.jar --spring.config.additional-location=file:./application.yaml
 ```
 
 El comando carga el archivo externo de configuración. En esta modalidad no se
