@@ -23,8 +23,6 @@
     "updateCatalog": "Update the catalog from its configured URL first",
     "calibreScope": "Check revisions of identified books in the configured Calibre library.",
     "torrentScope": "Check revisions of torrent records with the selected states.",
-    "title": "Title contains (optional)",
-    "author": "Author contains (optional)",
     "states": "States to check",
     "limit": "Maximum books per cycle",
     "reuse": "Available EPUBs and pending downloads of the same revision will be reused. The first torrent is used for books with multiple torrents.",

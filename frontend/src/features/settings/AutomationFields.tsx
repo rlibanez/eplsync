@@ -15,8 +15,6 @@ import { useTranslation } from "react-i18next";
 export interface AutomationConfiguration {
   updateCatalog: boolean;
   limit: number;
-  title: string;
-  author: string;
   states: string[];
   options: {
     hash: null;
@@ -82,22 +80,6 @@ export function AutomationFields({
           <Text size="sm" c="dimmed">
             {t(calibre ? "automation.calibreScope" : "automation.torrentScope")}
           </Text>
-          <SimpleGrid cols={{ base: 1, sm: 2 }}>
-            <TextInput
-              label={t("automation.title")}
-              maxLength={256}
-              value={value.title}
-              onChange={(e) => set("title", e.currentTarget.value)}
-              disabled={disabled}
-            />
-            <TextInput
-              label={t("automation.author")}
-              maxLength={256}
-              value={value.author}
-              onChange={(e) => set("author", e.currentTarget.value)}
-              disabled={disabled}
-            />
-          </SimpleGrid>
           {!calibre && (
             <MultiSelect
               label={t("automation.states")}

@@ -328,8 +328,6 @@ for (const operation of ["TORRENT_AUTO_UPDATE", "CALIBRE_AUTO_UPDATE"]) {
     const configuration = {
       updateCatalog: false,
       limit: 100,
-      title: "",
-      author: "",
       states: ["DOWNLOADED"],
       options: {
         hash: null,
@@ -413,9 +411,12 @@ for (const operation of ["TORRENT_AUTO_UPDATE", "CALIBRE_AUTO_UPDATE"]) {
     await page
       .getByRole("textbox", { name: "Máximo de libros por ciclo" })
       .fill("20");
-    await page
-      .getByRole("textbox", { name: "Autor contiene (opcional)" })
-      .fill("Weir");
+    await expect(
+      page.getByRole("textbox", { name: "Título contiene (opcional)" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("textbox", { name: "Autor contiene (opcional)" }),
+    ).toHaveCount(0);
     await page.getByRole("button", { name: "Siguiente", exact: true }).click();
     await page
       .getByRole("textbox", { name: "Categoría", exact: true })
@@ -453,7 +454,8 @@ for (const operation of ["TORRENT_AUTO_UPDATE", "CALIBRE_AUTO_UPDATE"]) {
       page.getByRole("cell", { name: "Mi automatización", exact: true }),
     ).toBeVisible();
     expect(submitted!.automation.limit).toBe(20);
-    expect(submitted!.automation.author).toBe("Weir");
+    expect(submitted!.automation).not.toHaveProperty("author");
+    expect(submitted!.automation).not.toHaveProperty("title");
     expect(submitted!.automation.options.qbittorrent.category).toBe(
       "Automáticos",
     );

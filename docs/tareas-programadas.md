@@ -127,8 +127,8 @@ Las operaciones **Buscar actualizaciones** siguen sirviendo solo para consultar.
 
 Al elegir una automatización, el asistente muestra cuatro pasos:
 
-1. **Alcance**: actualización opcional del catálogo desde su URL, filtros por título
-   y autor, estados torrent y máximo de libros por ciclo (100 inicialmente; de 1 a 1000).
+1. **Alcance**: actualización opcional del catálogo desde su URL, estados torrent
+   y máximo de libros por ciclo (100 inicialmente; de 1 a 1000).
 2. **Descargas**: inicio, gestión automática, carpeta, categoría, etiquetas, renombrado,
    concurrencia, lote e intervalo. Se utiliza el primer torrent de cada revisión.
 3. **Políticas**: acciones independientes sobre revisiones torrent y Calibre,

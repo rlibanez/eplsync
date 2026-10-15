@@ -20,7 +20,8 @@ import tools.jackson.databind.json.JsonMapper;
 /** A cron invocation plans work; its durable cycle remains pending until all linked phases finish. */
 @Service
 public class AutomaticUpdates {
-    public record Configuration(boolean updateCatalog,int limit,String title,String author,List<DownloadStatus> states,
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"title","author"})
+    public record Configuration(boolean updateCatalog,int limit,List<DownloadStatus> states,
         TorrentDownloadRequest options,int concurrency,int batchSize,String interval,MultipleHashes hashes,
         PreviousVersions torrentCleanup,String calibreCleanup,int maxRetries,String library,String torrentTarget,String calibreTarget) {}
     public record Job(String kind,String id,String state) {}
@@ -54,7 +55,7 @@ public class AutomaticUpdates {
     private String calibreTarget() {var c=calibre.view();return CalibreTransfers.destination(new CalibreSettings.Connection(c.url(),c.username(),"",c.library()))+"\n"+c.library();}
     public Configuration defaults() {
         var d=torrent.getDownload();var b=torrent.getBulk();var q=qb.getDownload();
-        return new Configuration(false,100,"","",preferences.get().states(),new TorrentDownloadRequest(null,d.isStart(),Objects.requireNonNullElse(d.getSavePath(),""),
+        return new Configuration(false,100,preferences.get().states(),new TorrentDownloadRequest(null,d.isStart(),Objects.requireNonNullElse(d.getSavePath(),""),
             new TorrentDownloadRequest.Rename(torrent.getRename().isEnabled(),torrent.getRename().getPattern()),
             new TorrentDownloadRequest.QBittorrent(Objects.requireNonNullElse(q.getCategory(),""),List.copyOf(q.getTags()),q.isAutoManagement())),
             b.getConcurrency(),b.getBatchSize(),b.getInterval().toMillis()+"ms",MultipleHashes.FIRST,PreviousVersions.KEEP,"KEEP",1,calibre.view().library(),tracking.instanceId(),calibre.view().url().isBlank() || calibre.view().library().isBlank()?null:calibreTarget());
@@ -69,7 +70,7 @@ public class AutomaticUpdates {
     public void save(ScheduledTasks.Task task,Configuration input) {
         if(active(task.id())!=null) throw new UserInputException("Hay un ciclo pendiente; completa o cancela sus trabajos antes de editar la tarea");
         if(!isAutomation(task.operation())) {jdbc.update("DELETE FROM scheduled_automation_settings WHERE task_id=?",task.id());return;}
-        if(input==null || input.limit()<1 || input.limit()>1000 || input.maxRetries()<0 || input.maxRetries()>3 || input.title()==null || input.author()==null || input.title().length()>256 || input.author().length()>256
+        if(input==null || input.limit()<1 || input.limit()>1000 || input.maxRetries()<0 || input.maxRetries()>3
             || input.options()==null || input.options().hash()!=null || input.options().start()==null || input.options().savePath()==null || input.options().rename()==null || input.options().rename().enabled()==null || input.options().rename().pattern()==null
             || input.options().qbittorrent()==null || input.options().qbittorrent().category()==null || input.options().qbittorrent().tags()==null || input.options().qbittorrent().autoManagement()==null
             || input.torrentCleanup()==null || !Set.of("KEEP","EPUB","BOOK").contains(Objects.requireNonNullElse(input.calibreCleanup(),"")) || input.hashes()!=MultipleHashes.FIRST)
@@ -84,7 +85,7 @@ public class AutomaticUpdates {
         if(!Objects.equals(input.torrentTarget(),tracking.instanceId()) || task.operation()==ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE && (!Objects.equals(input.library(),calibre.connection().library()) || !Objects.equals(input.calibreTarget(),calibreTarget())))
             throw new UserInputException("La conexión o biblioteca cambió mientras se configuraba la tarea; cierra y vuelve a abrir el asistente");
         if(task.operation()==ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE) epub.requireRoots();
-        var normalized=new Configuration(input.updateCatalog(),input.limit(),input.title().strip(),input.author().strip(),List.copyOf(input.states()),input.options(),input.concurrency(),input.batchSize(),input.interval(),input.hashes(),input.torrentCleanup(),input.calibreCleanup(),input.maxRetries(),task.operation()==ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE?calibre.connection().library():null,tracking.instanceId(),task.operation()==ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE?calibreTarget():null);
+        var normalized=new Configuration(input.updateCatalog(),input.limit(),List.copyOf(input.states()),input.options(),input.concurrency(),input.batchSize(),input.interval(),input.hashes(),input.torrentCleanup(),input.calibreCleanup(),input.maxRetries(),task.operation()==ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE?calibre.connection().library():null,tracking.instanceId(),task.operation()==ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE?calibreTarget():null);
         authorize(task,normalized);
         String value=json.writeValueAsString(normalized);if(value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>65536) throw new UserInputException("Configuración demasiado grande");
         jdbc.update("INSERT INTO scheduled_automation_settings VALUES(?,?) ON CONFLICT(task_id) DO UPDATE SET configuration=excluded.configuration",task.id(),value);
@@ -182,7 +183,7 @@ public class AutomaticUpdates {
         if(task.operation()==ScheduledTasks.Operation.TORRENT_AUTO_UPDATE) {
             for(var row:searches.searchDownloads(task.ownerId(),new UpdatePreferences.Preferences(c.states())).rows()) {
                 if(selected.size()>=c.limit()) break;
-                var book=(RevisionUpdates.Row)row;if(matches(book.eplId(),c) && selected.size()<c.limit()) selected.add(book.eplId());
+                var book=(RevisionUpdates.Row)row;if(selected.size()<c.limit()) selected.add(book.eplId());
             }
         } else {
             // Refresh torrent state before choosing between reusing and downloading an EPUB.
@@ -191,7 +192,7 @@ public class AutomaticUpdates {
             for(var row:searches.searchCalibre(task.ownerId()).search().rows()) {
                 if(selected.size()>=c.limit()) break;
                 var book=(Map<?,?>)row;long epl=((Number)book.get("eplId")).longValue();
-                if(matches(epl,c) && seen.add(epl) && selected.size()<c.limit()) selected.add(((Number)book.get("calibreId")).longValue());
+                if(seen.add(epl) && selected.size()<c.limit()) selected.add(((Number)book.get("calibreId")).longValue());
             }
         }
         jdbc.update("DELETE FROM scheduled_automation_runs WHERE task_id=? AND state='COMPLETED' AND id NOT IN(SELECT id FROM scheduled_automation_runs WHERE task_id=? AND state='COMPLETED' ORDER BY created_at DESC,id DESC LIMIT 19)",task.id(),task.id());
@@ -220,9 +221,5 @@ public class AutomaticUpdates {
         } catch(RuntimeException ex) {
             jdbc.update("UPDATE scheduled_automation_runs SET state=?,finished_at=?,message='No se pudo preparar el ciclo; revisa la configuración y los trabajos' WHERE id=?",jobs(run).isEmpty()?"COMPLETED":"ATTENTION",Instant.now().toEpochMilli(),run);throw ex;
         }
-    }
-    private boolean matches(long epl,Configuration c) {
-        var rows=jdbc.queryForList("SELECT title,author FROM catalog_books WHERE epl_id=?",epl);
-        return !rows.isEmpty() && rows.getFirst().get("title").toString().toLowerCase(Locale.ROOT).contains(c.title().toLowerCase(Locale.ROOT)) && rows.getFirst().get("author").toString().toLowerCase(Locale.ROOT).contains(c.author().toLowerCase(Locale.ROOT));
     }
 }

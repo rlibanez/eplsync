@@ -92,8 +92,19 @@ class AutomaticUpdatesTests {
         assertThat(jdbc.queryForObject("SELECT record_id FROM calibre_job_items WHERE job_id=?",String.class,cycle.jobs().getFirst().id())).isEqualTo("ready");
         assertThat(jdbc.queryForObject("SELECT state FROM calibre_job_items WHERE job_id=?",String.class,cycle.jobs().getFirst().id())).isEqualTo("PENDING");
     }
-    @Test void filtersNoUpdatesAndCatalogFailuresCreateNoUnwantedJobs() {
-        var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of("title","Other title"));
+    @Test void savedLegacyTitleAndAuthorFiltersAreIgnoredForBothAutomations() {
+        for(var operation:List.of(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE)) {
+            var task=task(operation,Map.of());
+            jdbc.update("UPDATE scheduled_automation_settings SET configuration=json_set(configuration,'$.title','Unmatched title','$.author','Unmatched author') WHERE task_id=?",task.id());
+            var view=automations.view().get(task.id()).configuration();
+            assertThat(json.writeValueAsString(view)).doesNotContain("\"title\":","\"author\":");
+            execute(task);
+            assertThat(automations.latest(task.id()).jobs()).isNotEmpty();
+        }
+    }
+    @Test void noUpdatesAndCatalogFailuresCreateNoUnwantedJobs() {
+        var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of());
+        when(searches.searchDownloads(anyString(),any())).thenReturn(new UpdateSearches.Search(List.of(),1,List.of(),EventContext.Origin.SCHEDULED,Map.of()));
         execute(task);assertThat(automations.latest(task.id()).state()).isEqualTo("COMPLETED");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Long.class)).isZero();
         automations.save(task,config(Map.of("updateCatalog",true)));
