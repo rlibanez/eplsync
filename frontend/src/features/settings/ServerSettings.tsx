@@ -158,6 +158,10 @@ function SettingsForm({
         ["import-source"],
       ])
         void cache.invalidateQueries({ queryKey });
+      if (view.section === "torrent") {
+        void cache.invalidateQueries({ queryKey: ["saved-download-updates"] });
+        void cache.invalidateQueries({ queryKey: ["saved-calibre-updates"] });
+      }
       notify({
         title: t("nav.settings"),
         message: t(

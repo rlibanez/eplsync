@@ -118,6 +118,7 @@ public class ServerSettings {
         maskInstallationCredentials(saved);
         if (credentialsError == null && (!saved.equals(loaded) || migration)) publish(saved);
         else { current = build(saved); overrides = Map.copyOf(saved); }
+        tx.executeWithoutResult(status -> refreshSearchContext(current));
         t.useEffective(() -> snapshot().torrent()); q.useEffective(() -> snapshot().qbittorrent());
         i.useEffective(() -> snapshot().catalogImport()); c.useEffective(() -> snapshot().covers());
         e.useEffective(() -> snapshot().events());
@@ -129,6 +130,10 @@ public class ServerSettings {
             : value == null ? "" : value);
     }
     public Snapshot snapshot() { var value = pinned.get(); return value == null ? current : value; }
+    public synchronized String updateSearchContext() {
+        tx.executeWithoutResult(status -> refreshSearchContext(current));
+        return com.rlibanez.eplsync.tasks.UpdateSearchContext.current(jdbc,"downloads");
+    }
     public AutoCloseable pin() { return pin(snapshot()); }
     public AutoCloseable pin(Snapshot value) {
         var previous = pinned.get(); pinned.set(value);
@@ -213,6 +218,7 @@ public class ServerSettings {
             }
         }
         tx.executeWithoutResult(status -> {
+            refreshSearchContext(candidate);
             jdbc.execute("PRAGMA secure_delete=ON");
             // app_settings is shared: only this component's explicit keys belong to this snapshot.
             var ownedKeys = new LinkedHashSet<>(installation.keySet());
@@ -228,6 +234,10 @@ public class ServerSettings {
             }
         });
         overrides = Map.copyOf(next); current = candidate;
+    }
+    private void refreshSearchContext(Snapshot snapshot) {
+        com.rlibanez.eplsync.tasks.UpdateSearchContext.refresh(jdbc,"downloads",snapshot.torrent().getClient(),
+            QBittorrentDestination.normalize(snapshot.torrent().getBaseUrl()));
     }
     /** Called only after the full database reset transaction commits. */
     public synchronized void resetAfterCommit() { unreadable.clear(); credentialsError=null; overrides = Map.of(); current = build(Map.of()); }

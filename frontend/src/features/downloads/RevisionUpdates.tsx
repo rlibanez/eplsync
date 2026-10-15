@@ -69,6 +69,12 @@ export function RevisionUpdates() {
     refetchInterval: 30000,
   });
   useEffect(() => {
+    if (previousSearch.data === null && search) {
+      setSelected([]);
+      session.setView({ page: 0, search: null });
+      cache.removeQueries({ queryKey: ["revision-updates", auth.user?.id] });
+      return;
+    }
     if (
       previousSearch.data &&
       (!search || previousSearch.data.searchedAt > search.generation)

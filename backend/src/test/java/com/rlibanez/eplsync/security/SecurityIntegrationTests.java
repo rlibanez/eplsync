@@ -82,7 +82,7 @@ class SecurityIntegrationTests {
     }
     @Test void scheduledSearchResultsBelongToTheAuthenticatedUser() throws Exception {
         var adminSession=admin();
-        jdbc.update("INSERT INTO update_search_results VALUES(?,?,?,?,?,?)",initial.user().id(),"downloads",123,"MANUAL","{\"states\":[\"DOWNLOADED\"]}","[]");
+        jdbc.update("INSERT INTO update_search_results VALUES(?,?,?,?,?,?)",initial.user().id(),"downloads",123,"MANUAL",json(Map.of("states",List.of("DOWNLOADED"),"context",com.rlibanez.eplsync.tasks.UpdateSearchContext.current(jdbc,"downloads"))),"[]");
         mvc.perform(get("/api/settings/tasks/searches/downloads").param("ownerId","foreign").session(adminSession)).andExpect(status().isOk()).andExpect(jsonPath("$.search.searchedAt").value(123));
         var temp=accounts.create("searchreader","searchreader@example.org","USER",initial.user().id());accounts.changePassword(accounts.find(temp.user().id()),temp.password(),PASSWORD);
         var reader=login("searchreader",PASSWORD);

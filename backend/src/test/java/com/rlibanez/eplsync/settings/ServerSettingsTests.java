@@ -167,7 +167,7 @@ class ServerSettingsTests {
             assertThat(torrent.getBulk().getConcurrency()).isEqualTo(before);
         }
         assertThat(torrent.getBulk().getConcurrency()).isEqualTo(3);
-        assertThat(jdbc.queryForObject("select count(*) from app_settings", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select count(*) from app_settings where setting_key not like 'updates.search-context.%'", Integer.class)).isEqualTo(1);
         assertThatThrownBy(() -> settings.save("torrent", Map.of("torrent.bulk.concurrency", 99))).isInstanceOf(IllegalArgumentException.class);
         assertThat(torrent.getBulk().getConcurrency()).isEqualTo(3);
         settings.restore("torrent");

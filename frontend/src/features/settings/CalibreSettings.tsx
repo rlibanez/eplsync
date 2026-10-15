@@ -101,6 +101,7 @@ function Form({ initial }: { initial: View }) {
       cache.setQueryData(["calibre-settings"], data);
       void cache.invalidateQueries({ queryKey: ["calibre-snapshot"] });
       void cache.invalidateQueries({ queryKey: ["calibre-library"] });
+      void cache.invalidateQueries({ queryKey: ["saved-calibre-updates"] });
       void cache.invalidateQueries({ queryKey: ["catalog"] });
       void cache.invalidateQueries({ queryKey: ["book"] });
       setUrl(data.url);

@@ -41,6 +41,7 @@ public class CalibreSettings {
         if (username.length() > 256 || library.length() > 256 || library.indexOf('/') >= 0
                 || library.indexOf('\\') >= 0 || password.length() > 4096)
             throw new UserInputException("Usuario, contraseña o biblioteca de Calibre inválidos");
+        refreshSearchContext();
     }
     public CalibreSettings(JdbcTemplate jdbc, String key) {
         this(jdbc, key, "", "", "", "", "");
@@ -99,7 +100,17 @@ public class CalibreSettings {
             jdbc.update("DELETE FROM calibre_books WHERE active=true");
             jdbc.update("DELETE FROM app_settings WHERE setting_key=?", CalibreCatalogService.KEY);
         }
+        refreshSearchContext();
         return view();
+    }
+    private void refreshSearchContext() {
+        var value=stored();
+        com.rlibanez.eplsync.tasks.UpdateSearchContext.refresh(jdbc,"calibre",value.url(),value.username(),value.library());
+    }
+    @org.springframework.transaction.annotation.Transactional
+    public synchronized String updateSearchContext() {
+        refreshSearchContext();
+        return com.rlibanez.eplsync.tasks.UpdateSearchContext.current(jdbc,"calibre");
     }
     static String normalize(String value) {
         try {

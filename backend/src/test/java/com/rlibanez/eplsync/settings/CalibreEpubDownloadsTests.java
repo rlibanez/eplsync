@@ -46,6 +46,7 @@ class CalibreEpubDownloadsTests {
         server.start();
         source=new SingleConnectionDataSource("jdbc:sqlite::memory:",true);jdbc=new JdbcTemplate(source);
         jdbc.execute("CREATE TABLE app_settings(setting_key TEXT PRIMARY KEY,setting_value TEXT)");
+        jdbc.execute("CREATE TABLE update_search_results(search_type TEXT)");
         jdbc.execute("CREATE TABLE calibre_books(calibre_id INTEGER,title TEXT,active BOOLEAN)");
         jdbc.update("INSERT INTO calibre_books VALUES(3,'El libro',true),(8,'El libro',true)");
         settings=new CalibreSettings(jdbc,"","http://127.0.0.1:"+server.getAddress().getPort(),"","reader","password","main");

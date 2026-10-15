@@ -107,9 +107,10 @@ class CalibreTests {
             var jdbc = new JdbcTemplate(source);
             jdbc.execute("CREATE TABLE calibre_books(active boolean)");
             jdbc.execute("CREATE TABLE app_settings(setting_key TEXT PRIMARY KEY,setting_value TEXT)");
+            jdbc.execute("CREATE TABLE update_search_results(search_type TEXT)");
             var settings = new CalibreSettings(jdbc, Base64.getEncoder().encodeToString(new byte[32]));
             settings.save(new CalibreSettings.Input(url, "reader", "private-password", false, "main"));
-            assertThat(jdbc.queryForObject("SELECT setting_value FROM app_settings", String.class)).doesNotContain("private-password").contains("encrypted:v1:");
+            assertThat(jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='calibre.connection'", String.class)).doesNotContain("private-password").contains("encrypted:v1:");
             assertThat(settings.view().passwordConfigured()).isTrue();
             assertThat(settings.connection().password()).isEqualTo("private-password");
             assertThat(settings.resolve(new CalibreSettings.Input("http://other:8080", "reader", "", false, "main")).password()).isEmpty();
@@ -125,14 +126,15 @@ class CalibreTests {
             var jdbc = new JdbcTemplate(source);
             jdbc.execute("CREATE TABLE calibre_books(active boolean)");
             jdbc.execute("CREATE TABLE app_settings(setting_key TEXT PRIMARY KEY,setting_value TEXT)");
+            jdbc.execute("CREATE TABLE update_search_results(search_type TEXT)");
             var settings = new CalibreSettings(jdbc, "", url + "/", "https://books.example", "reader", "env-secret", "main");
             assertThat(settings.view().url()).isEqualTo(url);
             assertThat(settings.view().browserUrl()).isEqualTo("https://books.example");
             assertThat(settings.view().passwordConfigured()).isTrue();
             assertThat(settings.connection().password()).isEqualTo("env-secret");
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM app_settings", Integer.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM app_settings WHERE setting_key='calibre.connection'", Integer.class)).isZero();
             settings.save(new CalibreSettings.Input(url, "reader", "", false, "main", "https://public.example"));
-            assertThat(jdbc.queryForObject("SELECT setting_value FROM app_settings", String.class)).doesNotContain("env-secret");
+            assertThat(jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='calibre.connection'", String.class)).doesNotContain("env-secret");
             assertThat(settings.connection().password()).isEqualTo("env-secret");
             assertThat(settings.resolve(new CalibreSettings.Input("http://other:8080", "reader", "", false, "main")).password()).isEmpty();
             assertThat(settings.resolve(new CalibreSettings.Input(url, "other", "", false, "main")).password()).isEmpty();
@@ -148,7 +150,7 @@ class CalibreTests {
             var encrypted = new CalibreSettings(jdbc, Base64.getEncoder().encodeToString(new byte[32]), url, "", "reader", "env-secret", "main");
             encrypted.save(new CalibreSettings.Input(url, "reader", "ui-secret", false, "main"));
             assertThat(encrypted.connection().password()).isEqualTo("ui-secret");
-            assertThat(jdbc.queryForObject("SELECT setting_value FROM app_settings", String.class)).doesNotContain("env-secret", "ui-secret");
+            assertThat(jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='calibre.connection'", String.class)).doesNotContain("env-secret", "ui-secret");
         } finally { source.destroy(); }
     }
     @Test void validatesUrls() {

@@ -46,3 +46,33 @@ test("download updates retain the last manual result across reload without anoth
   await expect(page.getByText(/Última búsqueda:/)).toBeVisible();
   expect(searches).toBe(1);
 });
+
+for (const type of ["downloads", "calibre"] as const) {
+  test(`${type} clears invalidated saved rows and selection without reloading`, async ({ page }) => {
+    await page.clock.install();
+    let saved: Record<string, unknown> | null = {
+      rows: [{
+        eplId: 123, calibreId: 1, title: "Resultado invalidado", authors: "Autor",
+        registeredRevision: 1, availableRevision: 2, revision: 1, catalogRevision: 2,
+        status: "DOWNLOADED", comparison: "OUTDATED", presence: "PRESENT",
+        downloadAvailability: "READY", coverAvailable: false,
+      }],
+      searchedAt: Date.now(), states: ["DOWNLOADED"], origin: "MANUAL",
+    };
+    await page.route(`**/api/settings/tasks/searches/${type}`, r => r.fulfill({ json: { search: saved } }));
+    if (type === "downloads") {
+      await page.route("**/api/settings/downloads/updates", r => r.fulfill({ json: { states: ["DOWNLOADED"] } }));
+    } else {
+      await page.route("**/api/settings/calibre/snapshot", r => r.fulfill({ json: { snapshot: { library: "main", syncedAt: new Date().toISOString(), total: 1, identified: 1 } } }));
+    }
+    await page.goto(type === "downloads" ? "/downloads/updates" : "/calibre/updates");
+    await expect(page.locator("tbody")).toContainText("Resultado invalidado");
+    await page.locator("tbody").getByRole("checkbox").first().check();
+    await expect(page.getByRole("button", { name: /Quitar selección/ })).toBeVisible();
+    saved = null;
+    await page.clock.fastForward(30_000);
+    await expect(page.locator("tbody")).not.toContainText("Resultado invalidado");
+    await expect(page.getByRole("button", { name: /Quitar selección/ })).toHaveCount(0);
+    if (type === "downloads") await expect(page.getByText(/Última búsqueda:/)).toHaveCount(0);
+  });
+}
