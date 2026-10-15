@@ -384,7 +384,7 @@ export function RevisionUpdates() {
         <p>{t("revisionUpdates.description")}</p>
         <fieldset className="send-options-group" disabled={find.isPending}>
           <legend>{t("updateSettings.states")}</legend>
-          <div className="settings-fields-grid">
+          <div className="revision-search-state-grid">
             {downloadStates.map((value) => (
               <Checkbox
                 key={value}

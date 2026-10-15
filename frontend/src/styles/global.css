@@ -2071,3 +2071,18 @@ summary {
 .settings-section .revision-update-state-grid > .mantine-Checkbox-root {
   margin: 0;
 }
+
+.revision-search-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+.revision-search-state-grid > .mantine-Checkbox-root {
+  min-width: 0;
+  margin: 0;
+}
+@media (max-width: 480px) {
+  .revision-search-state-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
