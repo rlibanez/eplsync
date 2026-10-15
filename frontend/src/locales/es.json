@@ -1,5 +1,7 @@
 {
   "scheduledTasks": {
+    "duration": "Duración",
+    "runNow": "Ejecutar ahora",
     "title": "Tareas programadas",
     "description": "Programa operaciones mediante cron. Desactivar una tarea impide nuevas ejecuciones, pero no interrumpe la que ya esté en curso.",
     "internalTitle": "Comprobaciones de trabajos",

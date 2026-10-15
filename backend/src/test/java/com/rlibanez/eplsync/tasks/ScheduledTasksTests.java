@@ -39,6 +39,52 @@ class ScheduledTasksTests {
     ScheduledTasks.Task due(String name,ScheduledTasks.Operation operation) {
         var task=tasks.save(null,input(name,operation));jdbc.update("UPDATE scheduled_tasks SET next_run=0 WHERE id=?",task.id());return task;
     }
+    @Test @WithMockUser(authorities={"CALIBRE_SYNC","CALIBRE_READ","CATALOG_READ"})
+    void explicitExecutionPreservesScheduleAndSharesClaimsWithCron() {
+        var task=due("Library",ScheduledTasks.Operation.CALIBRE_SYNC);
+        var claimed=tasks.claimNow(task.id(),Instant.now());
+        assertThat(claimed.running()).isTrue();
+        assertThat(claimed.nextRun()).isEqualTo(Instant.EPOCH);
+        assertThat(tasks.claim(Instant.now())).isEmpty();
+        assertThatThrownBy(()->tasks.claimNow(task.id(),Instant.now())).hasMessageContaining("ejecutándose");
+        var paired=due("Updates",ScheduledTasks.Operation.CALIBRE_UPDATE_SEARCH);
+        assertThatThrownBy(()->tasks.claimNow(paired.id(),Instant.now())).hasMessageContaining("ejecutándose");
+        tasks.finish(task.id(),"SUCCEEDED",null);
+        tasks.enable(task.id(),false);
+        var disabled=tasks.claimNow(task.id(),Instant.now());
+        assertThat(disabled.enabled()).isFalse();assertThat(disabled.nextRun()).isNull();
+        tasks.finish(task.id(),"SUCCEEDED",null);
+        assertThat(tasks.find(task.id()).lastFinished()).isNotNull();
+    }
+    @Test @WithMockUser(authorities="SETTINGS_MANAGE")
+    void explicitExecutionChecksCallerPermissions() {
+        var task=tasks.save(null,input("Library",ScheduledTasks.Operation.CALIBRE_SYNC));
+        assertThatThrownBy(()->tasks.claimNow(task.id(),Instant.now())).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(tasks.find(task.id()).running()).isFalse();
+    }
+    @Test @WithMockUser(authorities="CALIBRE_SYNC")
+    void runNowDispatchesAsynchronouslyAndRejectsADuplicate() throws Exception {
+        var entered=new java.util.concurrent.CountDownLatch(1);
+        var release=new java.util.concurrent.CountDownLatch(1);
+        when(calibre.sync()).thenAnswer(call->{
+            entered.countDown();
+            if(!release.await(5,java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("timeout");
+            return new CalibreCatalogService.Snapshot("main",Instant.now(),12,10);
+        });
+        var task=tasks.save(null,input("Library",ScheduledTasks.Operation.CALIBRE_SYNC));
+        var scheduler=new TaskScheduler(tasks,calibre,torrent,journal,catalog,searches);
+        try {
+            scheduler.start();
+            var next=tasks.find(task.id()).nextRun();
+            assertThat(scheduler.runNow(task.id()).running()).isTrue();
+            assertThat(entered.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(()->scheduler.runNow(task.id())).hasMessageContaining("ejecutándose");
+            assertThat(tasks.find(task.id()).nextRun()).isEqualTo(next);
+        } finally {release.countDown();scheduler.close();}
+        assertThat(tasks.find(task.id()).lastResult()).isEqualTo("SUCCEEDED");
+        assertThat(tasks.find(task.id()).running()).isFalse();
+        verify(calibre,times(1)).sync();
+    }
     @Test void editsActivationAndValidatesCronOwnerAndIntervals() {
         var task=tasks.save(null,input("Library",ScheduledTasks.Operation.CALIBRE_SYNC));
         assertThat(task.nextRun()).isAfter(Instant.now());

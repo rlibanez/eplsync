@@ -270,3 +270,53 @@ test("task settings are restricted to administrators", async ({ page }) => {
     page.getByRole("link", { name: "Tareas programadas", exact: true }),
   ).toHaveCount(0);
 });
+
+test("shows task execution data and runs once without changing its schedule", async ({
+  page,
+}) => {
+  const task = {
+    id: "run-task",
+    name: "Sincronizar biblioteca",
+    operation: "CALIBRE_SYNC",
+    cron: "0 5 * * *",
+    timezone: "Europe/Madrid",
+    ownerUsername: "admin",
+    enabled: false,
+    running: false,
+    nextRun: null,
+    lastRun: "2026-10-15T03:00:00Z",
+    lastFinished: "2026-10-15T03:00:02Z",
+    lastResult: "SUCCEEDED",
+    lastMessage: null,
+  };
+  let runs = 0;
+  await page.route("**/api/settings/tasks**", async (route) => {
+    if (route.request().method() === "POST") {
+      expect(new URL(route.request().url()).pathname).toBe(
+        "/api/settings/tasks/run-task/run",
+      );
+      runs++;
+      task.running = true;
+      return route.fulfill({ status: 202, json: task });
+    }
+    return route.fulfill({
+      json: { tasks: [task], internal: [], defaultTimezone: "Europe/Madrid" },
+    });
+  });
+  await page.goto("/settings/tasks");
+  await expect(
+    page.getByRole("columnheader", { name: "Duración", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("cell", { name: "2 s", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Ejecutar ahora" }).click();
+  await expect(
+    page.getByRole("button", { name: "Ejecutar ahora" }),
+  ).toBeDisabled();
+  expect(runs).toBe(1);
+  expect(task.nextRun).toBeNull();
+  await expect(
+    page.getByRole("cell", { name: "En ejecución", exact: true }),
+  ).toBeVisible();
+});

@@ -14,7 +14,7 @@ import {
   Alert,
   Tooltip,
 } from "@mantine/core";
-import { CalendarClock, Pencil, Plus } from "lucide-react";
+import { CalendarClock, Pencil, Plus, Play } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { get, ApiError, NetworkError } from "../../api/catalog";
 import { secureFetch } from "../auth/transport";
@@ -78,7 +78,7 @@ async function request<T>(
 }
 export function ScheduledTaskSettings() {
   const { t } = useTranslation();
-  const { date } = useLocale();
+  const { date, number } = useLocale();
   const cache = useQueryClient();
   const saved = useSettingsSaved();
   const query = useQuery({
@@ -94,6 +94,12 @@ export function ScheduledTaskSettings() {
       request<Task>(`/${id}/enabled`, "POST", { enabled }),
     onSuccess: () => {
       saved();
+      void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
+    },
+  });
+  const run = useMutation({
+    mutationFn: (id: string) => request<Task>(`/${id}/run`, "POST", {}),
+    onSuccess: () => {
       void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
     },
   });
@@ -149,20 +155,19 @@ export function ScheduledTaskSettings() {
           </Button>
         </Group>
         <p>{t("scheduledTasks.description")}</p>
-        {toggle.isError && (
+        {(toggle.isError || run.isError) && (
           <Alert color="red" role="alert">
-            {toggle.error instanceof ApiError && toggle.error.details
-              ? toggle.error.details
-              : toggle.error.message}
+            {((run.error ?? toggle.error) as ApiError)?.details ??
+              (run.error ?? toggle.error)?.message}
           </Alert>
         )}
         <div className="table-scroll">
           <table
             className="catalog-table"
-            style={{ minWidth: 1530, width: "100%" }}
+            style={{ minWidth: 1700, width: "100%" }}
           >
             <colgroup>
-              {[180, 170, 120, 180, 150, 180, 180, 150, 80, 140].map(
+              {[180, 170, 120, 180, 150, 180, 180, 100, 150, 80, 250].map(
                 (width, index) => (
                   <col key={index} style={{ width }} />
                 ),
@@ -178,6 +183,7 @@ export function ScheduledTaskSettings() {
                   "timezone",
                   "next",
                   "last",
+                  "duration",
                   "result",
                   "enabled",
                   "actions",
@@ -189,7 +195,7 @@ export function ScheduledTaskSettings() {
             <tbody>
               {query.data.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>{t("scheduledTasks.empty")}</td>
+                  <td colSpan={11}>{t("scheduledTasks.empty")}</td>
                 </tr>
               ) : (
                 query.data.tasks.map((task) => (
@@ -203,6 +209,11 @@ export function ScheduledTaskSettings() {
                     <td style={{ whiteSpace: "nowrap" }}>{task.timezone}</td>
                     <td>{date(task.nextRun)}</td>
                     <td>{date(task.lastRun)}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {task.lastRun && task.lastFinished && !task.running
+                        ? `${number(Math.max(0, (Date.parse(task.lastFinished) - Date.parse(task.lastRun)) / 1000), { maximumFractionDigits: 1 })} s`
+                        : "—"}
+                    </td>
                     <td>
                       <span className="badge">
                         {task.running
@@ -231,6 +242,15 @@ export function ScheduledTaskSettings() {
                       />
                     </td>
                     <td>
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        leftSection={<Play size={14} />}
+                        disabled={task.running || run.isPending}
+                        onClick={() => run.mutate(task.id)}
+                      >
+                        {t("scheduledTasks.runNow")}
+                      </Button>
                       <Button
                         size="xs"
                         variant="subtle"

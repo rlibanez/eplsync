@@ -124,6 +124,7 @@ class SecurityIntegrationTests {
         var temp=accounts.create("reader","reader@example.org","USER","admin");accounts.changePassword(accounts.find(temp.user().id()),temp.password(),PASSWORD);
         var reader=login("reader",PASSWORD);
         mvc.perform(get("/api/settings/tasks").session(reader)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/tasks/missing/run").session(reader).with(csrf())).andExpect(status().isForbidden());
         mvc.perform(get("/api/settings/tasks/cron").param("cron","0 5 * * *").session(reader)).andExpect(status().isForbidden());
         mvc.perform(post("/api/settings/tasks").session(reader).with(csrf()).contentType("application/json").content(json(Map.of("name","Unauthorized","operation","CALIBRE_SYNC","cron","0 0 3 * * *","timezone","UTC","ownerId",initial.user().id(),"enabled",true)))).andExpect(status().isForbidden());
     }

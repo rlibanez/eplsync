@@ -1,5 +1,7 @@
 {
   "scheduledTasks": {
+    "duration": "Duration",
+    "runNow": "Run now",
     "title": "Scheduled tasks",
     "description": "Schedule operations using cron. Disabling a task prevents new runs but does not interrupt one already in progress.",
     "internalTitle": "Job checks",

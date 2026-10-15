@@ -37,10 +37,23 @@ public class TaskScheduler {
             catch(RejectedExecutionException ex) {tasks.finish(task.get().id(),"INTERRUPTED","La aplicación está cerrándose");}
         }
     }
-    void run(ScheduledTasks.Task task) {
-        tasks.withExecution(()->{ execute(task);return null; });
+    public ScheduledTasks.Task runNow(String id) {
+        if(!ready || closed) throw new UserInputException("El programador no está disponible");
+        var task=tasks.claimNow(id,Instant.now());
+        try {executor.submit(()->run(task,EventContext.Origin.MANUAL));}
+        catch(RejectedExecutionException ex) {
+            tasks.finish(id,"INTERRUPTED","La aplicación está cerrándose");
+            throw new UserInputException("El programador no está disponible");
+        }
+        return task;
     }
-    private void execute(ScheduledTasks.Task task) {
+    void run(ScheduledTasks.Task task) {
+        run(task,EventContext.Origin.SCHEDULED);
+    }
+    private void run(ScheduledTasks.Task task,EventContext.Origin origin) {
+        tasks.withExecution(()->{ execute(task,origin);return null; });
+    }
+    private void execute(ScheduledTasks.Task task,EventContext.Origin origin) {
         String outcome="FAILED",message=null;
         Map<String,Object> details=Map.of();
         var previous=SecurityContextHolder.getContext();
@@ -48,7 +61,7 @@ public class TaskScheduler {
         try {
             var context=SecurityContextHolder.createEmptyContext();
             SecurityContextHolder.setContext(context);
-            var summary=EventContext.withActor(new EventContext.Actor(task.ownerId(),task.ownerUsername(),"USER"),()->EventContext.withOrigin(EventContext.Origin.SCHEDULED,()->
+            var summary=EventContext.withActor(new EventContext.Actor(task.ownerId(),task.ownerUsername(),"USER"),()->EventContext.withOrigin(origin,()->
                 journal.runFailuresOnly(EventJournal.Category.JOB,"SCHEDULED_TASK",Map.of("taskId",task.id(),"taskName",task.name(),"taskOperation",task.operation().name()),()->{
                     var owner=tasks.owner(task.ownerId(),task.operation());
                     var authorities=new ArrayList<SimpleGrantedAuthority>();

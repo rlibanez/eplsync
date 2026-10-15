@@ -9,7 +9,7 @@ Las operaciones disponibles son **Sincronizar Torrent**, **Sincronizar Calibre**
 **Importar catálogo**, **Buscar actualizaciones del catálogo** y
 **Buscar actualizaciones de Calibre**.
 Cada tarea tiene un nombre y una expresión cron. Se asigna automáticamente
-al usuario que la crea; editarla no cambia ese usuario. La tabla muestra la próxima y la última ejecución, su resultado y los
+al usuario que la crea; editarla no cambia ese usuario. La tabla muestra la próxima y la última ejecución, su resultado, duración y los
 problemas que haya encontrado.
 
 Cron utiliza cinco campos: **minuto, hora, día del mes, mes y día de la
@@ -42,6 +42,13 @@ Las búsquedas requieren además `CATALOG_READ`; la de Calibre también requiere
 cada ejecución; no hace falta mantener una sesión abierta. Si la cuenta se elimina,
 se desactiva o pierde el permiso, la tarea registra un fallo y no ejecuta la operación.
 Su usuario creador se conserva también al editarla.
+
+**Ejecutar ahora** inicia la tarea en segundo plano y actualiza esos mismos datos.
+También funciona si está desactivada, sin activarla ni modificar su próxima ejecución cron.
+Requiere ser administrador y tener los permisos de la operación; se vuelven a comprobar
+los permisos del propietario al ejecutarla. Comparte las protecciones de concurrencia
+con el cron. Los Eventos que genere esta ejecución tienen origen **Manual**; se
+mantiene la política de registrar solo fallos o resultados parciales.
 
 No se ejecutan simultáneamente dos tareas de la misma operación, ni una
 sincronización y una búsqueda de actualizaciones de la misma integración. Las

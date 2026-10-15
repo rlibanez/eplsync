@@ -107,6 +107,17 @@ public class ScheduledTasks {
         }
         return Optional.empty();
     }
+    /** Claims an explicit execution without changing the regular cron schedule, even when disabled. */
+    public Task claimNow(String id,Instant now) {
+        return withExecution(()->{
+            var task=find(id);
+            task.operation().permissions().forEach(Permission::require);
+            owner(task.ownerId(),task.operation());
+            if(jdbc.update("UPDATE scheduled_tasks SET running=1,last_run=?,last_finished=NULL,last_result='RUNNING',last_message=NULL WHERE id=? AND running=0 AND NOT EXISTS (SELECT 1 FROM scheduled_tasks other WHERE other.running=1 AND other.operation IN (?,?))",now.toEpochMilli(),id,task.operation().name(),task.operation().pairedOperation())!=1)
+                throw new UserInputException("La tarea u otra operación incompatible ya está ejecutándose");
+            return find(id);
+        });
+    }
     public <T> T withExecution(java.util.function.Supplier<T> action) {
         lifecycle.readLock().lock();try {return action.get();} finally {lifecycle.readLock().unlock();}
     }
