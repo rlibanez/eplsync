@@ -1,7 +1,6 @@
-import {
-  allowsNotification,
-  readNotificationPreferences,
-} from "./NotificationSettings";
+import { useEventDisplayPreferences } from "./eventDisplayPreferences";
+import { useAuth } from "../auth/Auth";
+import { allowsNotification } from "./notificationPreferences";
 import {
   createContext,
   useCallback,
@@ -87,9 +86,23 @@ function Toast({ notice, dismiss }: { notice: Notice; dismiss: () => void }) {
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
+  const accountId = useAuth().user?.id;
+  const display = useEventDisplayPreferences();
+  const floating = display.data?.floating ?? false;
+  const preferencesRef = useRef(display.data);
+  preferencesRef.current = display.data;
   const [toasts, setToasts] = useState<Notice[]>([]);
   const seen = useRef(new Set<string>());
+  useEffect(() => {
+    setToasts([]);
+    seen.current.clear();
+  }, [accountId]);
+  useEffect(() => {
+    if (!floating) setToasts([]);
+  }, [floating]);
   const notify = useCallback((input: Input) => {
+    const preferences = preferencesRef.current;
+    if (!preferences) return;
     const id =
       input.id ||
       globalThis.crypto?.randomUUID?.() ||
@@ -98,7 +111,6 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     seen.current.add(id);
     if (seen.current.size > 1000)
       seen.current.delete(seen.current.values().next().value!);
-    const preferences = readNotificationPreferences();
     if (!allowsNotification(preferences, input.tone, input.phase)) return;
     const notice = { ...input, id, durationMs: preferences.seconds * 1000 };
     setToasts((current) => [...current, notice].slice(-3));
@@ -239,7 +251,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           className="notification-toasts"
           aria-label={t("notifications.floating")}
         >
-          {toasts.map((notice) => (
+          {(floating ? toasts : []).map((notice) => (
             <Toast
               key={notice.id}
               notice={notice}

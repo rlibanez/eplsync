@@ -3,7 +3,7 @@ import {
   allowsNotification,
   notificationDefaults,
   parseNotificationPreferences,
-} from "./NotificationSettings";
+} from "./notificationPreferences";
 describe("notification preferences", () => {
   it("defaults to starts and all results", () => {
     expect(allowsNotification(notificationDefaults, "info", "start")).toBe(
@@ -30,5 +30,16 @@ describe("notification preferences", () => {
       parseNotificationPreferences('{"starts":"false","seconds":1000}'),
     ).toEqual({ ...notificationDefaults, seconds: 60 });
     expect(parseNotificationPreferences('{"seconds":-1}').seconds).toBe(1);
+  });
+  it("disables all floating notices independently of the badge", () => {
+    const off = { ...notificationDefaults, floating: false, unreadBadge: true };
+    expect(allowsNotification(off, "info", "start")).toBe(false);
+    expect(allowsNotification(off, "error")).toBe(false);
+    expect(
+      allowsNotification(
+        { ...notificationDefaults, unreadBadge: false },
+        "error",
+      ),
+    ).toBe(true);
   });
 });

@@ -909,12 +909,11 @@
     "view": "Ver detalles",
     "read": "Marcar como leída",
     "dismiss": "Cerrar notificación",
-    "floating": "Notificaciones flotantes",
+    "floating": "Mostrar notificaciones flotantes",
     "operationDone": "Operación completada.",
     "operationError": "No se ha podido completar la operación.",
     "jobCreated": "Trabajo de descarga creado.",
     "unreadCount": "{{count}} sin leer",
-    "preferencesHint": "Personaliza los avisos flotantes de este navegador. Todos los eventos se conservan en el registro.",
     "starts": "Inicios de ejecución",
     "finishes": "Finales de ejecución y cambios de estado",
     "results": "Resultados que se notifican",
@@ -924,7 +923,8 @@
     "seconds": "Tiempo en pantalla (segundos)",
     "when": "Cuándo avisar",
     "duration": "Duración",
-    "durationHint": "Puedes cerrar los avisos antes con la X."
+    "durationHint": "Puedes cerrar los avisos antes con la X.",
+    "unreadBadge": "Mostrar contador de eventos sin leer en el menú lateral"
   },
   "events": {
     "user": "Usuario",

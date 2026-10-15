@@ -1,5 +1,8 @@
 import { test, expect, emitEvent, operationResponse } from "./fixtures";
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/settings/events", (route) =>
+    route.fulfill({ json: { section: "events", fields: [] } }),
+  );
   await page.route("**/api/catalog/covers/task", (r) =>
     r.fulfill({ json: { task: null } }),
   );
@@ -135,8 +138,12 @@ test("filters page and scroll survive leaving, returning and reload while data r
     .locator("#sidebar")
     .getByRole("link", { name: "Ajustes", exact: true })
     .click();
+  await page
+    .locator(".settings-tabs")
+    .getByRole("link", { name: "Eventos", exact: true })
+    .click();
   await expect(
-    page.getByRole("switch", { name: "Inicios de ejecución", exact: true }),
+    page.getByRole("checkbox", { name: "Inicios de ejecución", exact: true }),
   ).toBeVisible();
   entries.push({
     ...entries[0],
@@ -144,6 +151,7 @@ test("filters page and scroll survive leaving, returning and reload while data r
     operationId: "new",
     createdAt: "2026-10-02T18:00:00Z",
   });
+  await page.goBack();
   await page.goBack();
   await expect(
     page.getByRole("textbox", { name: "Origen", exact: true }),
@@ -160,8 +168,12 @@ test("filters page and scroll survive leaving, returning and reload while data r
     .locator("#sidebar")
     .getByRole("link", { name: "Ajustes", exact: true })
     .click();
+  await page
+    .locator(".settings-tabs")
+    .getByRole("link", { name: "Eventos", exact: true })
+    .click();
   await expect(
-    page.getByRole("switch", { name: "Inicios de ejecución", exact: true }),
+    page.getByRole("checkbox", { name: "Inicios de ejecución", exact: true }),
   ).toBeVisible();
   await page
     .locator("#sidebar")
@@ -177,7 +189,7 @@ test("notification preferences apply immediately and persist without hiding jour
   page,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.goto("/settings/general");
+  await page.goto("/settings/events");
   await page.locator(".notification-settings").scrollIntoViewIfNeeded();
   await page
     .locator(".notification-settings")
@@ -194,43 +206,45 @@ test("notification preferences apply immediately and persist without hiding jour
   ).toBe(true);
   await page.setViewportSize({ width: 1920, height: 1080 });
   const toast = page.locator(".notification-toasts");
-  await page
-    .getByRole("switch", { name: "Inicios de ejecución", exact: true })
-    .uncheck();
+  const toggle = async (name: string) => {
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/auth/notifications") &&
+        response.request().method() === "PUT",
+    );
+    const checkbox = page.getByRole("checkbox", { name, exact: true });
+    await checkbox.click();
+    await saved;
+    await expect(checkbox).toBeEnabled();
+  };
+  await toggle("Inicios de ejecución");
   await emitEvent(page, started);
   await expect(toast.getByRole("status")).toHaveCount(0);
-  await page
-    .getByRole("switch", { name: "Inicios de ejecución", exact: true })
-    .check();
-  await page
-    .getByRole("switch", {
-      name: "Finales de ejecución y cambios de estado",
-      exact: true,
-    })
-    .uncheck();
+  await toggle("Inicios de ejecución");
+  await toggle("Finales de ejecución y cambios de estado");
   await emitEvent(page, { ...started, id: 2 });
   await expect(toast).toContainText("Importando catálogo…");
   await toast.getByRole("button", { name: "Cerrar notificación" }).click();
   await emitEvent(page, { ...started, id: 3, outcome: "SUCCEEDED" });
   await expect(toast.getByRole("status")).toHaveCount(0);
-  await page
-    .getByRole("switch", {
-      name: "Finales de ejecución y cambios de estado",
-      exact: true,
-    })
-    .check();
-  await page
-    .getByRole("checkbox", { name: "Correctos", exact: true })
-    .uncheck();
-  await page
-    .getByRole("checkbox", { name: "Con avisos", exact: true })
-    .uncheck();
+  await toggle("Finales de ejecución y cambios de estado");
+  await toggle("Correctos");
+  await toggle("Con avisos");
   await page
     .getByRole("textbox", { name: "Tiempo en pantalla (segundos)" })
     .fill("1");
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/auth/notifications") &&
+      response.request().method() === "PUT",
+  );
+  await page
+    .getByRole("textbox", { name: "Tiempo en pantalla (segundos)" })
+    .press("Tab");
+  await saved;
   await page.reload();
   await expect(
-    page.getByRole("switch", { name: "Inicios de ejecución", exact: true }),
+    page.getByRole("checkbox", { name: "Inicios de ejecución", exact: true }),
   ).toBeChecked();
   await expect(
     page.getByRole("checkbox", { name: "Correctos", exact: true }),
@@ -378,7 +392,7 @@ test("opening one operation marks only that operation read and persists after re
       },
     });
   });
-  await page.goto("/settings/general");
+  await page.goto("/settings/events");
   const badge = page.locator(".event-unread-count");
   await expect(badge).toHaveText("2");
   await emitEvent(page, entries[1]);

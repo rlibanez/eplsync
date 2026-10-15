@@ -28,7 +28,7 @@ export function useEventReadCursor() {
     () => 0,
   );
 }
-export function useUnreadEvents() {
+export function useUnreadEvents(enabled = true) {
   const auth = useAuth();
   const accountId = auth.user?.id;
   const read = useEventReadCursor();
@@ -39,7 +39,7 @@ export function useUnreadEvents() {
   );
   const result = useQuery({
     queryKey: ["event-unread", accountId, read, individual],
-    enabled: auth.can("EVENTS_MANAGE"),
+    enabled: enabled && auth.can("EVENTS_MANAGE"),
     queryFn: () =>
       post<{ count: number; cursor: number }>("/events/unread", {
         afterId: read,

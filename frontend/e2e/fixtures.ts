@@ -163,6 +163,21 @@ export const test = base.extend<{ eventTransport: void }>({
           },
         ],
       };
+      let notificationPreferences = {
+        floating: true,
+        unreadBadge: true,
+        starts: true,
+        finishes: true,
+        success: true,
+        warning: true,
+        error: true,
+        seconds: 5,
+      };
+      await page.route("**/api/auth/notifications", (route) => {
+        if (route.request().method() === "PUT")
+          notificationPreferences = route.request().postDataJSON();
+        return route.fulfill({ json: notificationPreferences });
+      });
       await page.route("**/api/auth/home", (route) => {
         if (route.request().method() === "PUT")
           homePreferences = route.request().postDataJSON();

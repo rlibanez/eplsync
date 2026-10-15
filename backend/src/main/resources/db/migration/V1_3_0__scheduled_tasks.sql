@@ -99,3 +99,10 @@ UPDATE torrent_bulk_jobs SET state='CLEANUP_WAIT'
 WHERE state='COMPLETED'
   AND EXISTS (SELECT 1 FROM torrent_update_cleanup c
               WHERE c.job_id=torrent_bulk_jobs.id AND c.state IN ('WAITING','BLOCKED','REQUESTED'));
+
+-- Personal presentation preferences; event retention and read cursors remain independent.
+ALTER TABLE users ADD COLUMN notification_preferences TEXT
+    CHECK(notification_preferences IS NULL OR (
+        json_valid(notification_preferences) AND json_type(notification_preferences)='object'
+        AND json_type(notification_preferences,'$.floating') IN ('true','false')
+        AND json_type(notification_preferences,'$.unreadBadge') IN ('true','false')));

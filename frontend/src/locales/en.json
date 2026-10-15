@@ -909,12 +909,11 @@
     "view": "View details",
     "read": "Mark as read",
     "dismiss": "Dismiss notification",
-    "floating": "Floating notifications",
+    "floating": "Show floating notifications",
     "operationDone": "Operation completed.",
     "operationError": "The operation could not be completed.",
     "jobCreated": "Download job created.",
     "unreadCount": "{{count}} unread",
-    "preferencesHint": "Customize floating notifications in this browser. All events remain in the journal.",
     "starts": "Execution starts",
     "finishes": "Execution finishes and status changes",
     "results": "Results to notify",
@@ -924,7 +923,8 @@
     "seconds": "Display time (seconds)",
     "when": "When to notify",
     "duration": "Duration",
-    "durationHint": "You can dismiss notifications earlier with the X."
+    "durationHint": "You can dismiss notifications earlier with the X.",
+    "unreadBadge": "Show unread event count in the sidebar"
   },
   "events": {
     "user": "User",

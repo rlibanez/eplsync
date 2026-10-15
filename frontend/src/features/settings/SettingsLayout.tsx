@@ -40,7 +40,6 @@ export function SettingsLayout() {
                 auth.can("SETTINGS_MANAGE") ||
                 auth.user?.role === "ADMIN"
               );
-            if (key === "events") return auth.can("EVENTS_MANAGE");
             if (key === "downloads")
               return auth.can("TORRENT_SYNC") && auth.can("CATALOG_READ");
             if (key === "torrent") return auth.can("SETTINGS_MANAGE");

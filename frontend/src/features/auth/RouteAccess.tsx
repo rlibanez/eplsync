@@ -33,7 +33,6 @@ export function RouteAccess({ children }: { children: ReactNode }) {
   else if (pathname === "/settings/downloads") permission = "TORRENT_SYNC";
   else if (pathname === "/settings/covers") permission = "COVERS_MANAGE";
   else if (pathname === "/settings/torrent") permission = "SETTINGS_MANAGE";
-  else if (pathname === "/settings/events") permission = "EVENTS_MANAGE";
   else if (
     [
       "/settings/users",

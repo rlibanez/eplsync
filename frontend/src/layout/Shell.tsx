@@ -1,3 +1,4 @@
+import { useEventDisplayPreferences } from "../features/notifications/eventDisplayPreferences";
 import { SetupEntry } from "../features/settings/setupState";
 import { ApplicationUpdateNotice } from "../features/settings/applicationUpdates";
 import { useAuth } from "../features/auth/Auth";
@@ -53,7 +54,9 @@ export function Shell() {
 function ShellContent() {
   const { notify } = useNotifications();
   const auth = useAuth();
-  const unread = useUnreadEvents();
+  const eventDisplay = useEventDisplayPreferences();
+  const showUnread = eventDisplay.data?.unreadBadge ?? false;
+  const unread = useUnreadEvents(showUnread);
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const { collapsed, setCollapsed } = usePreferences();
@@ -219,7 +222,7 @@ function ShellContent() {
             >
               <Bell size={19} />
               <span className="nav-text">{t("events.title")}</span>
-              {unread > 0 && (
+              {showUnread && unread > 0 && (
                 <span
                   className="event-unread-count"
                   role="status"
