@@ -1,6 +1,10 @@
 import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
-import { latestSavedSearch, searchPage } from "../downloads/SavedUpdateSearch";
+import {
+  latestSavedSearch,
+  savedSearchPage,
+  savedSearchUrl,
+} from "../downloads/SavedUpdateSearch";
 import { CalibreUpdateSend } from "./CalibreUpdateSend";
 import { SelectAllRows } from "../../components/SelectAllRows";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
@@ -79,26 +83,22 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     : ["downloadAvailability"];
   const previousSearch = useQuery({
     queryKey: ["saved-calibre-updates", auth.user?.id],
-    queryFn: ({ signal }) => latestSavedSearch<CalibreBook>("calibre", signal),
+    queryFn: ({ signal }) => latestSavedSearch("calibre", signal),
     refetchInterval: 30000,
     enabled: updates,
   });
   useEffect(() => {
-    if (updates) setSelected([]);
+    if (updates) {
+      setSelected([]);
+      setPage(0);
+    }
   }, [updates, previousSearch.data?.searchedAt]);
-  const filteredSavedRows = () =>
-    (previousSearch.data?.rows ?? []).filter(
-      (book) =>
-        (!title ||
-          book.title.toLocaleLowerCase().includes(title.toLocaleLowerCase())) &&
-        (!author ||
-          book.authors
-            .toLocaleLowerCase()
-            .includes(author.toLocaleLowerCase())) &&
-        (!eplId || String(book.eplId) === eplId) &&
-        (!availability ||
-          (book.downloadAvailability ?? "UNKNOWN") === availability),
-    );
+  const savedUrl = savedSearchUrl(
+    "calibre",
+    previousSearch.data?.searchedAt ?? 0,
+    sort,
+    { title, author, eplId, availability: availability ?? "" },
+  );
   const result = useQuery({
     queryKey: [
       "calibre-library",
@@ -109,9 +109,10 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       previousSearch.data?.searchedAt,
       availability,
     ],
+    enabled: !updates || previousSearch.data !== undefined,
     queryFn: ({ signal }) =>
       updates
-        ? Promise.resolve(searchPage(filteredSavedRows(), page, size, sort))
+        ? savedSearchPage<CalibreBook>(savedUrl, page, size, signal)
         : get<Page<CalibreBook>>(
             `/calibre/books?${params}&${sortQuery(sort)}`,
             signal,
@@ -132,7 +133,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       if (!updates) return post<Snapshot>("/settings/calibre/sync", {});
       const result = await post<{
         snapshot: Snapshot;
-        search: import("../downloads/SavedUpdateSearch").SavedSearch<CalibreBook>;
+        search: import("../downloads/SavedUpdateSearch").SavedSearch;
       }>("/settings/tasks/searches/calibre", {});
       cache.setQueryData(
         ["saved-calibre-updates", auth.user?.id],
@@ -355,23 +356,14 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
           selectAll={
             showSelectionActions && (
               <SelectAllRows<CalibreBook, number>
-                url={`/calibre/books?${new URLSearchParams([...params].filter(([key]) => key !== "page" && key !== "size"))}&${sortQuery(sort)}`}
+                url={
+                  updates
+                    ? savedUrl
+                    : `/calibre/books?${new URLSearchParams([...params].filter(([key]) => key !== "page" && key !== "size"))}&${sortQuery(sort)}`
+                }
                 total={result.data?.meta.totalItems ?? 0}
                 identify={(book) => book.calibreId}
                 onSelect={setSelected}
-                loadPage={
-                  updates
-                    ? async (url) => {
-                        const params = new URLSearchParams(url.split("?")[1]);
-                        return searchPage(
-                          filteredSavedRows(),
-                          Number(params.get("page")),
-                          Number(params.get("size")),
-                          sort,
-                        );
-                      }
-                    : undefined
-                }
               />
             )
           }

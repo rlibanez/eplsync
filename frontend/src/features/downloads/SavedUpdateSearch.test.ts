@@ -1,24 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { latestSavedSearch, searchPage } from "./SavedUpdateSearch";
+import {
+  latestSavedSearch,
+  savedSearchPage,
+  savedSearchUrl,
+} from "./SavedUpdateSearch";
 import { get } from "../../api/catalog";
 vi.mock("../../api/catalog", () => ({ get: vi.fn() }));
 describe("saved update searches", () => {
   beforeEach(() => vi.resetAllMocks());
-  it("sorts alphabetically and paginates without modifying the saved rows", () => {
-    const rows = [
-      { title: "Zorro", revision: 1 },
-      { title: "Árbol", revision: 2 },
-      { title: "Barco", revision: 3 },
-    ];
-    expect(
-      searchPage(rows, 0, 2, "title,asc").items.map((x) => x.title),
-    ).toEqual(["Árbol", "Barco"]);
-    expect(searchPage(rows, 1, 2, "revision,desc").items).toEqual([rows[0]]);
-    expect(rows[0].title).toBe("Zorro");
+  it("requests only a server page with filters, ordering and a stable generation", async () => {
+    const page = { items: [{ eplId: 7 }], meta: { totalItems: 1200 } };
+    vi.mocked(get).mockResolvedValue(page);
+    const url = savedSearchUrl("downloads", 123, "title,asc;eplId,desc", {
+      status: "DOWNLOADED,NOT_FOUND",
+    });
+    const signal = new AbortController().signal;
+    expect(await savedSearchPage(url, 1, 1000, signal)).toEqual(page);
+    const [request, passedSignal] = vi.mocked(get).mock.calls[0];
+    const params = new URL(request, "http://test").searchParams;
+    expect(params.getAll("sort")).toEqual(["title,asc", "eplId,desc"]);
+    expect(params.get("generation")).toBe("123");
+    expect(params.get("status")).toBe("DOWNLOADED,NOT_FOUND");
+    expect(params.get("page")).toBe("1");
+    expect(params.get("size")).toBe("1000");
+    expect(passedSignal).toBe(signal);
   });
   it("loads the authenticated user's server result without browser persistence", async () => {
     const search = {
-      rows: [{ id: 1 }],
       searchedAt: 123,
       origin: "MANUAL",
       criteria: { states: ["DOWNLOADED"] },

@@ -82,15 +82,21 @@ class SecurityIntegrationTests {
     }
     @Test void scheduledSearchResultsBelongToTheAuthenticatedUser() throws Exception {
         var adminSession=admin();
-        jdbc.update("INSERT INTO update_search_results VALUES(?,?,?,?,?,?)",initial.user().id(),"downloads",123,"MANUAL",json(Map.of("states",List.of("DOWNLOADED"),"context",com.rlibanez.eplsync.tasks.UpdateSearchContext.current(jdbc,"downloads"))),"[]");
+        jdbc.update("INSERT INTO update_search_results VALUES(?,?,?,?,?,?)",initial.user().id(),"downloads",123,"MANUAL",json(Map.of("states",List.of("DOWNLOADED"),"context",com.rlibanez.eplsync.tasks.UpdateSearchContext.current(jdbc,"downloads"))),json(List.of(Map.of("eplId",1,"title","Primero"),Map.of("eplId",2,"title","Segundo"))));
         mvc.perform(get("/api/settings/tasks/searches/downloads").param("ownerId","foreign").session(adminSession)).andExpect(status().isOk()).andExpect(jsonPath("$.search.searchedAt").value(123));
+        mvc.perform(get("/api/settings/tasks/searches/downloads").session(adminSession)).andExpect(status().isOk()).andExpect(jsonPath("$.search.rows").doesNotExist());
+        mvc.perform(get("/api/settings/tasks/searches/downloads/rows").param("generation","123").param("page","1").param("size","1").param("sort","eplId,asc").session(adminSession))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.items[0].eplId").value(2)).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(get("/api/settings/tasks/searches/downloads/rows").param("generation","123").param("size","1001").session(adminSession)).andExpect(status().isBadRequest());
         var temp=accounts.create("searchreader","searchreader@example.org","USER",initial.user().id());accounts.changePassword(accounts.find(temp.user().id()),temp.password(),PASSWORD);
         var reader=login("searchreader",PASSWORD);
         mvc.perform(get("/api/settings/tasks/searches/downloads").session(reader)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/settings/tasks/searches/downloads/rows").param("generation","123").session(reader)).andExpect(status().isForbidden());
         mvc.perform(post("/api/settings/tasks/searches/downloads").session(reader).with(csrf()).contentType("application/json").content("{\"states\":[\"DOWNLOADED\"]}")).andExpect(status().isForbidden());
         mvc.perform(post("/api/settings/tasks/searches/calibre").session(reader).with(csrf()).contentType("application/json").content("{}")).andExpect(status().isForbidden());
         accounts.update(temp.user().id(),"USER","ACTIVE",Map.of("TORRENT_SYNC","ALLOW"),initial.user().id());reader=login("searchreader",PASSWORD);
         mvc.perform(get("/api/settings/tasks/searches/downloads").session(reader)).andExpect(status().isOk()).andExpect(jsonPath("$.search").isEmpty());
+        mvc.perform(get("/api/settings/tasks/searches/downloads/rows").param("generation","123").param("ownerId",initial.user().id()).session(reader)).andExpect(status().isBadRequest());
     }
     @Test void scheduledTaskSettingsRequireAdministratorAndNeverAllowDisablingInternalChecks() throws Exception {
         var session=admin();

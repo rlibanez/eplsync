@@ -29,12 +29,30 @@ public class TaskController {
     }
     @PostMapping("/searches/downloads")
     @PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('TORRENT_SYNC')")
-    public UpdateSearches.Search searchDownloads(@RequestBody com.rlibanez.eplsync.security.UpdatePreferences.Preferences input) {
-        return searches.searchDownloads(sessions.current().id(),input);
+    public java.util.Map<String,Object> searchDownloads(@RequestBody com.rlibanez.eplsync.security.UpdatePreferences.Preferences input) {
+        return UpdateSearches.summary(searches.searchDownloads(sessions.current().id(),input));
     }
     @PostMapping("/searches/calibre")
     @PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('CALIBRE_READ') and hasAuthority('CALIBRE_SYNC')")
-    public UpdateSearches.CalibreSearch searchCalibre() {return searches.searchCalibre(sessions.current().id());}
+    public java.util.Map<String,Object> searchCalibre() {
+        var result=searches.searchCalibre(sessions.current().id());
+        return java.util.Map.of("snapshot",result.snapshot(),"search",UpdateSearches.summary(result.search()));
+    }
+    @GetMapping("/searches/{type}/rows")
+    @PreAuthorize("isAuthenticated()")
+    public com.rlibanez.eplsync.dto.PageResponse<java.util.Map<String,Object>> rows(@PathVariable String type,
+            @RequestParam long generation,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,
+            @RequestParam(defaultValue="") String status,@RequestParam(defaultValue="") String title,
+            @RequestParam(defaultValue="") String author,@RequestParam(defaultValue="") String eplId,
+            @RequestParam(defaultValue="") String availability,jakarta.servlet.http.HttpServletRequest request) {
+        com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.CATALOG_READ);
+        if(type.equals("downloads")) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_SYNC);
+        else if(type.equals("calibre")) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.CALIBRE_READ);
+        com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
+        return searches.page(type,sessions.current().id(),generation,page,size,
+                com.rlibanez.eplsync.config.TableOrdering.request(request,"title,asc"),
+                java.util.Map.of("status",status,"title",title,"author",author,"eplId",eplId,"availability",availability));
+    }
     public record Input(String name,ScheduledTasks.Operation operation,String cron,boolean enabled) {
         ScheduledTasks.Input ownedBy(String id) {return new ScheduledTasks.Input(name,operation,cron,id,enabled);}
     }

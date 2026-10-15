@@ -1,3 +1,4 @@
+import { fulfillSavedSearch } from "./saved-search-response";
 import { test, expect } from "./fixtures";
 const cases = [
   {
@@ -43,15 +44,17 @@ for (const item of cases) {
       const queries: URLSearchParams[] = [];
       let searches = 0;
       await page.route("**/api/settings/calibre/snapshot", (r) =>
-        r.fulfill({ json: { snapshot: null } }),
+        fulfillSavedSearch(r, { json: { snapshot: null } }),
       );
       await page.route("**/api/settings/downloads/updates", (r) =>
-        r.fulfill({ json: { states: ["DOWNLOADED", "NOT_FOUND"] } }),
+        fulfillSavedSearch(r, {
+          json: { states: ["DOWNLOADED", "NOT_FOUND"] },
+        }),
       );
       await page.route(item.api, (r) => {
         const params = new URL(r.request().url()).searchParams;
         queries.push(params);
-        return r.fulfill({
+        return fulfillSavedSearch(r, {
           json: {
             items: [],
             meta: {
@@ -67,10 +70,10 @@ for (const item of cases) {
       });
       if (item.path === "/downloads/updates") {
         await page.route(
-          "**/api/settings/tasks/searches/downloads",
+          "**/api/settings/tasks/searches/downloads**",
           (route) => {
             if (route.request().method() === "POST") searches++;
-            return route.fulfill({
+            return fulfillSavedSearch(route, {
               json:
                 route.request().method() === "GET"
                   ? { search: null }

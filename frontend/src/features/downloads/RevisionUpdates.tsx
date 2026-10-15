@@ -1,12 +1,15 @@
 import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
-import { latestSavedSearch, searchPage } from "./SavedUpdateSearch";
+import {
+  latestSavedSearch,
+  savedSearchPage,
+  savedSearchUrl,
+} from "./SavedUpdateSearch";
 import { SelectAllRows } from "../../components/SelectAllRows";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { useUpdateSession } from "./useUpdateSession";
 import { BookCover } from "../catalog/BookCover";
 import { useDownloadColumns } from "./DownloadTable";
-import { sortQuery } from "./TableControls";
 import { useEffect, useState } from "react";
 import { Button, Checkbox, MultiSelect } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -65,7 +68,7 @@ export function RevisionUpdates() {
   }, [defaults.data, searchParams, setSearchParams]);
   const previousSearch = useQuery({
     queryKey: ["saved-download-updates", auth.user?.id],
-    queryFn: ({ signal }) => latestSavedSearch<Update>("downloads", signal),
+    queryFn: ({ signal }) => latestSavedSearch("downloads", signal),
     refetchInterval: 30000,
   });
   useEffect(() => {
@@ -89,18 +92,9 @@ export function RevisionUpdates() {
       });
     }
   }, [previousSearch.data, search]);
-  const savedPage = async (page: number, size: number) => {
-    const saved = previousSearch.data;
-    return searchPage(
-      (saved?.rows ?? []).filter(
-        (row) =>
-          !registeredStatus || registeredStatus.split(",").includes(row.status),
-      ),
-      page,
-      size,
-      sort,
-    );
-  };
+  const savedUrl = savedSearchUrl("downloads", search?.generation ?? 0, sort, {
+    status: registeredStatus ?? "",
+  });
   const result = useQuery({
     queryKey: [
       "revision-updates",
@@ -111,7 +105,8 @@ export function RevisionUpdates() {
       sort,
       registeredStatus,
     ],
-    queryFn: () => savedPage(page, size),
+    queryFn: ({ signal }) =>
+      savedSearchPage<Update>(savedUrl, page, size, signal),
     enabled: search !== null,
     staleTime: Infinity,
     gcTime: Infinity,
@@ -130,19 +125,17 @@ export function RevisionUpdates() {
   const find = useMutation({
     mutationKey: ["torrent-sync"],
     mutationFn: () =>
-      post<import("./SavedUpdateSearch").SavedSearch<Update>>(
+      post<import("./SavedUpdateSearch").SavedSearch>(
         "/settings/tasks/searches/downloads",
         { states: options },
       ),
     retry: false,
     onSuccess: (saved) => {
       const generation = saved.searchedAt;
-      const data = searchPage(saved.rows, 0, size, sort);
       cache.setQueryData(["saved-download-updates", auth.user?.id], saved);
-      cache.setQueryData(
-        ["revision-updates", auth.user?.id, generation, 0, size, sort, null],
-        data,
-      );
+      void cache.invalidateQueries({
+        queryKey: ["revision-updates", auth.user?.id],
+      });
       setPage(0);
       setRegisteredStatus(null);
       setSelected([]);
@@ -262,17 +255,10 @@ export function RevisionUpdates() {
             search &&
             (result.data?.meta.totalItems ?? 0) > 0 && (
               <SelectAllRows<Update, number>
-                url={`/torrent/revision-updates/search?${sortQuery(sort)}${registeredStatus ? `&status=${registeredStatus}` : ""}`}
+                url={savedUrl}
                 total={result.data?.meta.totalItems ?? 0}
                 identify={(row) => row.eplId}
                 onSelect={setSelected}
-                loadPage={async (url) => {
-                  const params = new URLSearchParams(url.split("?")[1]);
-                  return savedPage(
-                    Number(params.get("page")),
-                    Number(params.get("size")),
-                  );
-                }}
               />
             )
           }

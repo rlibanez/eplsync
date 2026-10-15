@@ -1,10 +1,11 @@
+import { fulfillSavedSearch } from "./saved-search-response";
 import { test, expect } from "./fixtures";
 
 test("Calibre updates compare the snapshot and refresh it without sending files", async ({
   page,
 }) => {
   await page.route("**/api/settings/calibre/snapshot", (r) =>
-    r.fulfill({
+    fulfillSavedSearch(r, {
       json: {
         snapshot: {
           library: "main",
@@ -16,10 +17,10 @@ test("Calibre updates compare the snapshot and refresh it without sending files"
     }),
   );
   let persistedSearch: Record<string, unknown> | null = null;
-  await page.route("**/api/settings/tasks/searches/calibre", (r) => {
+  await page.route("**/api/settings/tasks/searches/calibre**", (r) => {
     if (r.request().method() === "GET")
-      return r.fulfill({ json: { search: persistedSearch } });
-    return r.fulfill({
+      return fulfillSavedSearch(r, { json: { search: persistedSearch } });
+    return fulfillSavedSearch(r, {
       json: {
         snapshot: {
           library: "main",
@@ -55,7 +56,7 @@ test("Calibre updates compare the snapshot and refresh it without sending files"
     expect(new URL(r.request().url()).searchParams.get("updatesOnly")).toBe(
       "true",
     );
-    return r.fulfill({
+    return fulfillSavedSearch(r, {
       json: {
         items: [
           {
@@ -82,7 +83,7 @@ test("Calibre updates compare the snapshot and refresh it without sending files"
     });
   });
   await page.route("**/api/calibre/updates/availability", (r) =>
-    r.fulfill({
+    fulfillSavedSearch(r, {
       json: r
         .request()
         .postDataJSON()
@@ -121,7 +122,7 @@ test("Downloads state opens the existing update search dialog", async ({
   page,
 }) => {
   await page.route("**/api/torrent/downloads?**", (r) =>
-    r.fulfill({
+    fulfillSavedSearch(r, {
       json: {
         items: [],
         meta: {
@@ -136,7 +137,7 @@ test("Downloads state opens the existing update search dialog", async ({
     }),
   );
   await page.route("**/api/settings/downloads/updates", (r) =>
-    r.fulfill({ json: { states: ["DOWNLOADED"] } }),
+    fulfillSavedSearch(r, { json: { states: ["DOWNLOADED"] } }),
   );
   await page.goto("/downloads");
   await page
@@ -155,10 +156,10 @@ test("Mixed Calibre updates offer deferred sending and confirmed per-book cleanu
   page,
 }) => {
   let persistedSearch: Record<string, unknown> | null = null;
-  await page.route("**/api/settings/tasks/searches/calibre", (r) => {
+  await page.route("**/api/settings/tasks/searches/calibre**", (r) => {
     if (r.request().method() === "GET")
-      return r.fulfill({ json: { search: persistedSearch } });
-    return r.fulfill({
+      return fulfillSavedSearch(r, { json: { search: persistedSearch } });
+    return fulfillSavedSearch(r, {
       json: {
         snapshot: {
           library: "main",
@@ -191,7 +192,7 @@ test("Mixed Calibre updates offer deferred sending and confirmed per-book cleanu
     });
   });
   await page.route("**/api/settings/calibre/snapshot", (r) =>
-    r.fulfill({
+    fulfillSavedSearch(r, {
       json: {
         snapshot: {
           library: "main",
@@ -203,7 +204,7 @@ test("Mixed Calibre updates offer deferred sending and confirmed per-book cleanu
     }),
   );
   await page.route("**/api/calibre/books?**", (r) =>
-    r.fulfill({
+    fulfillSavedSearch(r, {
       json: {
         items: [1, 2].map((id) => ({
           calibreId: id,
@@ -228,7 +229,7 @@ test("Mixed Calibre updates offer deferred sending and confirmed per-book cleanu
     }),
   );
   await page.route("**/api/calibre/updates/prepare", (r) =>
-    r.fulfill({
+    fulfillSavedSearch(r, {
       json: [1, 2].map((id) => ({
         calibreId: id,
         eplId: id,
@@ -254,12 +255,12 @@ test("Mixed Calibre updates offer deferred sending and confirmed per-book cleanu
   const requests: unknown[] = [];
   await page.route("**/api/calibre/updates", (r) => {
     requests.push(r.request().postDataJSON());
-    return r.fulfill({
+    return fulfillSavedSearch(r, {
       json: { downloadJobId: "download", calibreJobId: "calibre" },
     });
   });
   await page.route("**/api/calibre/updates/availability", (r) =>
-    r.fulfill({
+    fulfillSavedSearch(r, {
       json: r
         .request()
         .postDataJSON()
@@ -340,15 +341,15 @@ test("library shortcut searches once and reload only restores the result", async
 }) => {
   let syncs = 0;
   await page.route("**/api/settings/calibre/snapshot", (r) =>
-    r.fulfill({ json: { snapshot: null } }),
+    fulfillSavedSearch(r, { json: { snapshot: null } }),
   );
   let persistedSearch: Record<string, unknown> | null = null;
-  await page.route("**/api/settings/tasks/searches/calibre", (r) => {
+  await page.route("**/api/settings/tasks/searches/calibre**", (r) => {
     if (r.request().method() === "GET")
-      return r.fulfill({ json: { search: persistedSearch } });
+      return fulfillSavedSearch(r, { json: { search: persistedSearch } });
 
     syncs++;
-    return r.fulfill({
+    return fulfillSavedSearch(r, {
       json: {
         snapshot: {
           library: "main",
@@ -369,7 +370,7 @@ test("library shortcut searches once and reload only restores the result", async
     });
   });
   await page.route("**/api/calibre/books?**", (r) =>
-    r.fulfill({
+    fulfillSavedSearch(r, {
       json: {
         items: [],
         meta: {
@@ -399,10 +400,10 @@ test("opens the last scheduled Calibre update search without synchronizing again
   page,
 }) => {
   await page.route("**/api/settings/calibre/snapshot", (r) =>
-    r.fulfill({ json: { snapshot: null } }),
+    fulfillSavedSearch(r, { json: { snapshot: null } }),
   );
-  await page.route("**/api/settings/tasks/searches/calibre", (r) =>
-    r.fulfill({
+  await page.route("**/api/settings/tasks/searches/calibre**", (r) =>
+    fulfillSavedSearch(r, {
       json: {
         search: {
           searchedAt: Date.now(),

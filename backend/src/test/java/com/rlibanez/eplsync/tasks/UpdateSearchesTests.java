@@ -45,7 +45,8 @@ class UpdateSearchesTests {
         when(updates.search(input,1,1000,"eplId,asc")).thenReturn(new PageResponse<>(List.of(row),new PageResponse.PageMeta(1,1000,2,2,false,true,false,true)));
         assertThat(searches.downloads("owner")).containsEntry("updates",2);
         verify(torrent).synchronize(false,false);
-        var result=searches.latest("downloads","owner");assertThat((List<?>)result.get("rows")).hasSize(2);
+        var result=searches.latest("downloads","owner");assertThat(searches.page("downloads","owner",((Number)result.get("searchedAt")).longValue(),0,20,"title,asc",Map.of()).items()).hasSize(2);
+        assertThat(result).doesNotContainKey("rows");
         assertThat(result.get("states")).isEqualTo(List.of("DOWNLOADED"));
         assertThat(searches.latest("downloads","other")).isNull();
         when(updates.search(input,1,1000,"eplId,asc")).thenThrow(new IllegalStateException("fail"));
@@ -85,13 +86,23 @@ class UpdateSearchesTests {
         jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('one','g',true,1,1,1,'Libro','Autor'),('two','g',true,2,1,2,'Libro','Autor'),('duplicate','g',true,3,1,2,'Libro','Autor'),('other','g',true,4,2,1,'Ausente','Autor')");
         when(files.availability(List.of(2L))).thenReturn(List.of(new CalibreUpdateFlow.Availability(2,"READY")));
         assertThat(searches.calibre("owner")).containsEntry("updates",1);
-        var saved=searches.latest("calibre","owner");var rows=(List<?>)saved.get("rows");assertThat(rows).hasSize(1);
+        var saved=searches.latest("calibre","owner");var rows=searches.page("calibre","owner",((Number)saved.get("searchedAt")).longValue(),0,20,"title,asc",Map.of()).items();assertThat(rows).hasSize(1);
         var row=(Map<?,?>)rows.getFirst();assertThat(((Number)row.get("calibreId")).longValue()).isEqualTo(2);
         assertThat(row.get("downloadAvailability")).isEqualTo("READY");verify(calibre).sync();
         assertThat(searches.latest("calibre","other")).isNull();
         when(calibre.sync()).thenThrow(new IllegalStateException("offline"));
         assertThatThrownBy(()->searches.calibre("owner")).isInstanceOf(IllegalStateException.class);
         assertThat(searches.latest("calibre","owner")).isEqualTo(saved);
+    }
+    @Test void oversizedSearchKeepsThePreviousCompleteResult() {
+        searches.downloads("owner");
+        var previous=searches.latest("downloads","owner");
+        var title="é".repeat(1024*1024);
+        var rows=new ArrayList<RevisionUpdates.Row>();
+        for(long id=1;id<=9;id++) rows.add(new RevisionUpdates.Row(id,title,1.0,2.0,DownloadStatus.DOWNLOADED,null,false));
+        when(updates.search(any(),eq(0),eq(1000),eq("eplId,asc"))).thenReturn(new PageResponse<>(rows,new PageResponse.PageMeta(0,1000,9,1,true,true,false,false)));
+        assertThatThrownBy(()->searches.downloads("owner")).hasMessageContaining("16 MiB");
+        assertThat(searches.latest("downloads","owner")).isEqualTo(previous);
     }
     @Test void calibreDestinationChangesInvalidateEveryUsersResultsButKeepDownloadSearches() {
         searches.searchCalibre("owner");searches.downloads("owner");

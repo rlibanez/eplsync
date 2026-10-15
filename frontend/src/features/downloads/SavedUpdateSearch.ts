@@ -1,54 +1,37 @@
 import { get } from "../../api/catalog";
 import type { Page } from "./shared";
-export interface SavedSearch<T> {
-  rows: T[];
+export interface SavedSearch {
   searchedAt: number;
   states?: string[];
   origin?: "MANUAL" | "SCHEDULED";
   criteria?: Record<string, unknown>;
 }
-export function searchPage<T>(
-  rows: T[],
+export function savedSearchUrl(
+  type: "downloads" | "calibre",
+  generation: number,
+  sort: string,
+  filters: Record<string, string> = {},
+): string {
+  const params = new URLSearchParams({ generation: String(generation) });
+  for (const criterion of sort.split(";")) params.append("sort", criterion);
+  for (const [key, value] of Object.entries(filters))
+    if (value) params.set(key, value);
+  return `/settings/tasks/searches/${type}/rows?${params}`;
+}
+export function savedSearchPage<T>(
+  url: string,
   page: number,
   size: number,
-  sort: string,
-): Page<T> {
-  const criteria = sort.split(";").map((part) => part.split(","));
-  const sorted = [...rows].sort((a, b) => {
-    for (const [field, direction] of criteria) {
-      const x = (a as Record<string, unknown>)[field],
-        y = (b as Record<string, unknown>)[field];
-      const order =
-        typeof x === "number" && typeof y === "number"
-          ? x - y
-          : String(x ?? "").localeCompare(String(y ?? ""), "es", {
-              sensitivity: "base",
-              ignorePunctuation: true,
-            });
-      if (order) return direction === "desc" ? -order : order;
-    }
-    return 0;
-  });
-  const totalPages = Math.ceil(rows.length / size);
-  return {
-    items: sorted.slice(page * size, (page + 1) * size),
-    meta: {
-      page,
-      size,
-      totalItems: rows.length,
-      totalPages,
-      hasNext: page + 1 < totalPages,
-      hasPrevious: page > 0,
-    },
-  };
+  signal?: AbortSignal,
+): Promise<Page<T>> {
+  return get<Page<T>>(`${url}&page=${page}&size=${size}`, signal);
 }
-
-/** Results belong to the authenticated user and are stored only in the backend. */
-export async function latestSavedSearch<T>(
+/** Poll only metadata. Row requests are bounded and pinned to the search generation. */
+export async function latestSavedSearch(
   type: "downloads" | "calibre",
   signal?: AbortSignal,
-): Promise<SavedSearch<T> | null> {
-  const result = await get<{ search: SavedSearch<T> | null }>(
+): Promise<SavedSearch | null> {
+  const result = await get<{ search: SavedSearch | null }>(
     `/settings/tasks/searches/${type}`,
     signal,
   );

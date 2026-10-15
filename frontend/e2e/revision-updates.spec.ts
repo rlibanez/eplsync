@@ -1,3 +1,4 @@
+import { fulfillSavedSearch } from "./saved-search-response";
 import { test, expect } from "./fixtures";
 import { checkTableControls } from "./table-controls";
 
@@ -5,20 +6,20 @@ test("revision search shows the torrent connection error and can retry", async (
   page,
 }) => {
   await page.route("**/api/settings/downloads/updates", (route) =>
-    route.fulfill({ json: { states: ["DOWNLOADED"] } }),
+    fulfillSavedSearch(route, { json: { states: ["DOWNLOADED"] } }),
   );
   const details =
     "No se puede conectar con el cliente torrent; revisa la URL y que el cliente esté disponible";
   let attempts = 0;
   let persistedSearch: Record<string, unknown> | null = null;
-  await page.route("**/api/settings/tasks/searches/downloads", (route) => {
+  await page.route("**/api/settings/tasks/searches/downloads**", (route) => {
     if (route.request().method() === "GET")
-      return route.fulfill({ json: { search: persistedSearch } });
+      return fulfillSavedSearch(route, { json: { search: persistedSearch } });
 
     attempts++;
     return attempts === 1
-      ? route.fulfill({ status: 502, json: { details } })
-      : route.fulfill({
+      ? fulfillSavedSearch(route, { status: 502, json: { details } })
+      : fulfillSavedSearch(route, {
           json: (persistedSearch = {
             rows: [],
             searchedAt: Date.now(),
@@ -70,16 +71,18 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
   let writes = 0;
   await page.route("**/api/settings/downloads/updates", (route) => {
     if (route.request().method() === "PUT") writes++;
-    return route.fulfill({ json: { states: ["DOWNLOADED", "NOT_FOUND"] } });
+    return fulfillSavedSearch(route, {
+      json: { states: ["DOWNLOADED", "NOT_FOUND"] },
+    });
   });
   let persistedSearch: Record<string, unknown> | null = null;
-  await page.route("**/api/settings/tasks/searches/downloads", (route) => {
+  await page.route("**/api/settings/tasks/searches/downloads**", (route) => {
     if (route.request().method() === "GET")
-      return route.fulfill({ json: { search: persistedSearch } });
+      return fulfillSavedSearch(route, { json: { search: persistedSearch } });
 
     const params = new URL(route.request().url()).searchParams;
     queries.push({ params, states: route.request().postDataJSON().states });
-    return route.fulfill({
+    return fulfillSavedSearch(route, {
       json: (persistedSearch = {
         rows: Array.from({ length: 40 }, (_, index) => {
           const offset = Number(params.get("page") ?? 0) * 20 + index;
@@ -99,7 +102,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     });
   });
   await page.route("**/api/torrent/options", (route) =>
-    route.fulfill({
+    fulfillSavedSearch(route, {
       json: {
         start: true,
         autoManagement: false,
@@ -115,15 +118,15 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     }),
   );
   await page.route("**/api/torrent/client/categories", (route) =>
-    route.fulfill({ json: [] }),
+    fulfillSavedSearch(route, { json: [] }),
   );
   let submission: any;
   await page.route("**/api/torrent/revision-updates/send", (route) => {
     submission = route.request().postDataJSON();
-    return route.fulfill({ json: { jobId: "update-job" } });
+    return fulfillSavedSearch(route, { json: { jobId: "update-job" } });
   });
   await page.route("**/api/torrent/jobs/update-job**", (route) =>
-    route.fulfill({
+    fulfillSavedSearch(route, {
       json: { items: [], jobId: "update-job", status: "COMPLETED" },
     }),
   );
@@ -242,13 +245,13 @@ test("failed synchronization does not show results or change saved settings", as
   page,
 }) => {
   await page.route("**/api/settings/downloads/updates", (route) =>
-    route.fulfill({ json: { states: ["DOWNLOADED"] } }),
+    fulfillSavedSearch(route, { json: { states: ["DOWNLOADED"] } }),
   );
   let persistedSearch: Record<string, unknown> | null = null;
-  await page.route("**/api/settings/tasks/searches/downloads", (route) => {
+  await page.route("**/api/settings/tasks/searches/downloads**", (route) => {
     if (route.request().method() === "GET")
-      return route.fulfill({ json: { search: persistedSearch } });
-    return route.fulfill({
+      return fulfillSavedSearch(route, { json: { search: persistedSearch } });
+    return fulfillSavedSearch(route, {
       status: 503,
       json: {
         code: "TORRENT_CONNECTION_FAILED",
@@ -279,23 +282,25 @@ test("last search, page, filter and ordering survive route changes and covers ma
 }) => {
   let requests = 0;
   await page.route("**/api/settings/downloads/updates", (route) =>
-    route.fulfill({ json: { states: ["DOWNLOADED", "NOT_FOUND"] } }),
+    fulfillSavedSearch(route, {
+      json: { states: ["DOWNLOADED", "NOT_FOUND"] },
+    }),
   );
   await page.route("https://covers.example/123.jpg", (route) =>
-    route.fulfill({
+    fulfillSavedSearch(route, {
       contentType: "image/svg+xml",
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="64"><rect width="44" height="64" fill="navy"/></svg>',
     }),
   );
   let persistedSearch: Record<string, unknown> | null = null;
-  await page.route("**/api/settings/tasks/searches/downloads", (route) => {
+  await page.route("**/api/settings/tasks/searches/downloads**", (route) => {
     if (route.request().method() === "GET")
-      return route.fulfill({ json: { search: persistedSearch } });
+      return fulfillSavedSearch(route, { json: { search: persistedSearch } });
 
     requests++;
     const params = new URL(route.request().url()).searchParams;
     const current = Number(params.get("page") ?? 0);
-    return route.fulfill({
+    return fulfillSavedSearch(route, {
       json: (persistedSearch = {
         rows: Array.from({ length: 40 }, (_, index) => ({
           eplId: 123 + current * 20 + index,
@@ -384,10 +389,10 @@ test("opens the last scheduled catalog update search without synchronizing again
   page,
 }) => {
   await page.route("**/api/settings/downloads/updates", (r) =>
-    r.fulfill({ json: { states: ["DOWNLOADED"] } }),
+    fulfillSavedSearch(r, { json: { states: ["DOWNLOADED"] } }),
   );
-  await page.route("**/api/settings/tasks/searches/downloads", (r) =>
-    r.fulfill({
+  await page.route("**/api/settings/tasks/searches/downloads**", (r) =>
+    fulfillSavedSearch(r, {
       json: {
         search: {
           searchedAt: Date.now(),
