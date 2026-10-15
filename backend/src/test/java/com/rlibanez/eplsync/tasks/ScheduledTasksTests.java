@@ -85,6 +85,25 @@ class ScheduledTasksTests {
         assertThat(tasks.find(task.id()).running()).isFalse();
         verify(calibre,times(1)).sync();
     }
+    @Test @WithMockUser(authorities="CALIBRE_SYNC")
+    void cronAndExplicitExecutionRacingForTheSameTaskOnlyClaimItOnce() throws Exception {
+        var task=due("Race",ScheduledTasks.Operation.CALIBRE_SYNC);
+        var start=new java.util.concurrent.CyclicBarrier(2);
+        var auth=SecurityContextHolder.getContext().getAuthentication();
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var cron=executor.submit(()->{start.await(5,java.util.concurrent.TimeUnit.SECONDS);return tasks.claim(Instant.now()).isPresent();});
+            var manual=executor.submit(()->{
+                var context=SecurityContextHolder.createEmptyContext();context.setAuthentication(auth);SecurityContextHolder.setContext(context);
+                try {
+                    start.await(5,java.util.concurrent.TimeUnit.SECONDS);
+                    try {tasks.claimNow(task.id(),Instant.now());return true;}
+                    catch(com.rlibanez.eplsync.exception.UserInputException ex) {assertThat(ex).hasMessageContaining("ejecutándose");return false;}
+                } finally {SecurityContextHolder.clearContext();}
+            });
+            assertThat(java.util.List.of(cron.get(5,java.util.concurrent.TimeUnit.SECONDS),manual.get(5,java.util.concurrent.TimeUnit.SECONDS))).containsExactlyInAnyOrder(true,false);
+        }
+        assertThat(tasks.find(task.id()).running()).isTrue();
+    }
     @Test void editsActivationAndValidatesCronOwnerAndIntervals() {
         var task=tasks.save(null,input("Library",ScheduledTasks.Operation.CALIBRE_SYNC));
         assertThat(task.nextRun()).isAfter(Instant.now());

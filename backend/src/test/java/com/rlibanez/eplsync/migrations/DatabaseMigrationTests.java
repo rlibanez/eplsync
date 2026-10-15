@@ -86,11 +86,34 @@ class DatabaseMigrationTests {
         var jdbc=jdbc();
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('job','now','now','Owner','target','main','source','PAUSED')");
         jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,cleanup_policy,cleanup_ids) VALUES('item','job',0,'record',0,'book.epub',1,1,'1.1','CLEANUP_PENDING','EPUB','[8]')");
+        // 1.3.1 uses schema 1.3.0. Preserve every original column, not just row counts.
+        jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('owner','alice','alice','alice@example.org','password-hash','ADMIN','ACTIVE','now','now')");
+        jdbc.update("INSERT INTO app_settings VALUES('preserved.connection','{\"url\":\"http://calibre.test\"}')");
+        jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(123,1.2,'Libro conservado','Autor')");
+        jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('book','generation',1,9,123,1.1,'Libro conservado','Autor')");
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('record',123,1.1,'hash','qbittorrent','client','DOWNLOADED','EPLSYNC',0)");
+        jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,type,state) VALUES('download-job',1,1,0,1,'UPDATE','CLEANUP_WAIT')");
+        jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,state) VALUES('download-item','download-job',0,1,'ACCEPTED')");
+        jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,created_at,snapshot) VALUES('download-job','client','REMOVE_TORRENT',0,'{}')");
+        jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state) VALUES('cleanup','download-job','record',123,'hash','BLOCKED')");
+        jdbc.update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,next_run,created_at,updated_at,last_run,last_finished,last_result) VALUES('task','Diaria','CALIBRE_SYNC','0 5 * * *','UTC','owner','alice',1,1000,1,1,100,200,'SUCCEEDED')");
+        jdbc.update("INSERT INTO update_search_results VALUES('owner','calibre',123,'MANUAL','{}','[{\"eplId\":123}]')");
+        jdbc.update("INSERT INTO app_events(created_at,category,action,outcome,origin,operation_id,details,actor_id) VALUES(1,'JOB','SCHEDULED_TASK','FAILED','SCHEDULED','operation','{}','owner')");
+        var before=new java.util.LinkedHashMap<String,java.util.List<java.util.Map<String,Object>>>();
+        for(var table:jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('flyway_schema_history','sqlite_sequence') ORDER BY name",String.class))
+            before.put(table,jdbc.queryForList("SELECT * FROM "+table+" ORDER BY rowid"));
         var upgrade=flyway("classpath:db/migration");assertEquals(1,upgrade.migrate().migrationsExecuted);
         assertEquals("EPUB",jdbc.queryForObject("SELECT requested_cleanup_policy FROM calibre_job_items WHERE id='item'",String.class));
         assertEquals("[8]",jdbc.queryForObject("SELECT requested_cleanup_ids FROM calibre_job_items WHERE id='item'",String.class));
         assertEquals("CLEANUP_PENDING",jdbc.queryForObject("SELECT state FROM calibre_job_items WHERE id='item'",String.class));
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM job_retry_jobs",Integer.class));
+        for(var entry:before.entrySet()) {
+            var columns=jdbc.queryForList("PRAGMA table_info("+entry.getKey()+")").stream().map(row->row.get("name").toString())
+                .filter(column->!java.util.Set.of("requested_cleanup_policy","requested_cleanup_ids","cleanup_cancelled").contains(column)).toList();
+            assertEquals(entry.getValue(),jdbc.queryForList("SELECT "+String.join(",",columns)+" FROM "+entry.getKey()+" ORDER BY rowid"),"Datos alterados en "+entry.getKey());
+        }
+        assertEquals("ok",jdbc.queryForObject("PRAGMA integrity_check",String.class));
+        assertEquals(0,upgrade.migrate().migrationsExecuted);
         assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());upgrade.validate();
     }
     @Test void catalogueOrderingAndRevisionLookupsUseTheirIndexes() {

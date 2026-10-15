@@ -170,6 +170,27 @@ class JobRetriesTests {
         jdbc.update("UPDATE torrent_update_cleanup SET state='REQUESTED' WHERE job_id=?",parent);
         assertThat(retries.history("downloads",parent).terminal()).isFalse();
     }
+    @Test void updateRetryRemainsPendingUntilBothSendAndCleanupFinishEvenAfterRecovery() throws Exception {
+        var parent=torrentJob("CANCELLED","FAILED");
+        jdbc.update("UPDATE torrent_bulk_jobs SET type='UPDATE',previous_versions='REMOVE_TORRENT' WHERE id=?",parent);
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('old',1,1,'oldhash','qbittorrent',?,'DOWNLOADED','EPLSYNC',0)",tracking.instanceId());
+        jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,cleanup_timing,created_at,snapshot,automatic_cleanup) VALUES(?,?,'REMOVE_TORRENT','AFTER_DOWNLOAD',0,'{\"items\":[]}',1)",parent,tracking.instanceId());
+        jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state,created_at,client_instance_id,previous_versions,target_hashes,automatic,immediate,replacement_accepted) VALUES('cleanup',?,'old',1,'oldhash','CANCELLED',0,?,'REMOVE_TORRENT','[\"0000000000000000000000000000000000000001\"]',1,0,0)",parent,tracking.instanceId());
+        var preview=selected("downloads",parent,parent+"-0");
+        assertThat(preview.send()).isEqualTo(1);assertThat(preview.cleanup()).isEqualTo(1);
+        var child=create("downloads",parent,preview);
+        bulk.next();var item=bulk.claim(child.jobId(),bulk.pending(child.jobId(),1).getFirst());
+        assertThat(item).isNotNull();
+        bulk.finish(item.getId(),com.rlibanez.eplsync.torrent.bulk.BulkItem.State.ACCEPTED,null,false,false);
+        assertThat(bulk.view(child.jobId()).status().name()).isEqualTo("CLEANUP_WAIT");
+        bulk.recover();
+        assertThat(bulk.view(child.jobId()).status().name()).isEqualTo("CLEANUP_WAIT");
+        // Persist the confirmation normally supplied by the cleanup worker.
+        jdbc.update("UPDATE torrent_update_cleanup SET state='REMOVED' WHERE job_id=?",child.jobId());
+        bulk.cleanupChanged(child.jobId());
+        assertThat(bulk.view(child.jobId()).status().name()).isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_update_cleanup WHERE id='cleanup'",String.class)).isEqualTo("CANCELLED");
+    }
     @Test void waitingCalibreRetryKeepsItsDownloadDependencyAndFollowsTorrentRetryDescendants() throws Exception {
         var download=torrentJob("CANCELLED","CANCELLED");
         var torrentRetry=create("downloads",download,selected("downloads",download,download+"-0"));
@@ -183,6 +204,41 @@ class JobRetriesTests {
         assertThat(updateFlow.waiting(child.jobId(),item)).isTrue();
         assertThat(transfers.items(child.jobId(),0,20,List.of("position,asc")).items().getFirst().recordId()).isEqualTo("downloaded");
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        transfers.cycle();
+        assertThat(transfers.job(child.jobId()).state()).isEqualTo("COMPLETED");
+        assertThat(transfers.job(child.jobId()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        assertThat(transfers.job(parent).state()).isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_jobs WHERE id=?",String.class,download)).isEqualTo("CANCELLED");
+    }
+    @Test void retryRecoveryKeepsProvenanceAndVerifiesInterruptedCalibreUploadWithoutResending() throws Exception {
+        var parent=calibreJob("COMPLETED","FAILED");
+        var preview=failed("calibre",parent);
+        var child=create("calibre",parent,preview);
+        jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",child.jobId());
+        jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=1,calibre_id=9 WHERE job_id=?",child.jobId());
+        transfers.recoverInterrupted();
+        assertThat(transfers.job(child.jobId()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(child.jobId()).uncertain()).isEqualTo(1);
+        assertThat(create("calibre",parent,preview)).isEqualTo(child);
+        transfers.control(child.jobId(),"resume");transfers.cycle();
+        assertThat(transfers.job(child.jobId()).state()).isEqualTo("COMPLETED");
+        assertThat(retries.history("calibre",child.jobId()).source().rootId()).isEqualTo(parent);
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void retryRecoveryRequeuesInterruptedTorrentSendWithoutLosingItsFrozenCommand() throws Exception {
+        var parent=torrentJob("COMPLETED","FAILED");
+        var preview=failed("downloads",parent);var child=create("downloads",parent,preview);
+        var command=jdbc.queryForObject("SELECT command_json FROM torrent_bulk_items WHERE job_id=?",String.class,child.jobId());
+        jdbc.update("UPDATE torrent_bulk_jobs SET state='RUNNING' WHERE id=?",child.jobId());
+        jdbc.update("UPDATE torrent_bulk_items SET state='IN_FLIGHT' WHERE job_id=?",child.jobId());
+        bulk.recover();
+        assertThat(bulk.view(child.jobId()).status().name()).isEqualTo("QUEUED");
+        assertThat(bulk.view(child.jobId()).pending()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT command_json FROM torrent_bulk_items WHERE job_id=?",String.class,child.jobId())).isEqualTo(command);
+        assertThat(create("downloads",parent,preview)).isEqualTo(child);
+        assertThat(retries.history("downloads",child.jobId()).source().parentId()).isEqualTo(parent);
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE id=?",String.class,parent+"-0")).isEqualTo("FAILED");
     }
     @Test void destructiveRetryCannotMoveToAnotherConnection() throws Exception {
         var parent=calibreJob("CANCELLED","UNCERTAIN");
