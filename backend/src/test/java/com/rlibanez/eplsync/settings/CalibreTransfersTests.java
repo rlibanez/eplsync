@@ -45,6 +45,7 @@ class CalibreTransfersTests {
         when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
         when(files.download(record,0)).thenAnswer(call -> new EpubFiles.Opened("book.epub",bytes.length,new java.io.ByteArrayInputStream(bytes)));
         when(client.findRevision(any(),anyLong(),any())).thenReturn(null);
+        when(client.hasEpub(any(),anyLong())).thenReturn(true);
         when(client.uploadEpub(any(),any(),anyString(),anyString())).thenReturn(9L);
         when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true));
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
@@ -275,5 +276,47 @@ class CalibreTransfersTests {
         when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());
         var job=create();transfers.cycle();transfers.control(job.id(),"cancel");jdbc.update("UPDATE calibre_jobs SET updated_at=?",Instant.now().minus(java.time.Duration.ofDays(100)).toString());
         transfers.retention();assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+    }
+    @Test void metadataOnlyDuplicateDoesNotPreventUploadingTheEpub() {
+        when(client.findRevision(any(),eq(1L),any())).thenReturn(8L);
+        when(client.hasEpub(any(),eq(8L))).thenReturn(false);
+        var job=create();transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        assertThat(transfers.job(job.id()).skipped()).isZero();
+        verify(client).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void uploadWithoutConfirmedEpubStaysUncertainAndCanBeRecoveredWithoutResending() {
+        when(client.hasEpub(any(),eq(9L))).thenReturn(false);
+        var job=create();transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(job.id()).accepted()).isZero();
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        assertThat(catalog.snapshot()).isNull();
+        transfers.control(job.id(),"resume");transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        when(client.hasEpub(any(),eq(9L))).thenReturn(true);
+        transfers.control(job.id(),"resume");transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void uncertainIdentityMatchWithoutEpubIsNeverAcceptedOrResent() {
+        when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());
+        var job=create();transfers.cycle();
+        when(client.findRevision(any(),eq(1L),any())).thenReturn(9L);
+        when(client.hasEpub(any(),eq(9L))).thenReturn(false);
+        transfers.control(job.id(),"resume");transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(job.id()).accepted()).isZero();
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void failureToReadRemoteFormatsLeavesUploadUncertain() {
+        when(client.hasEpub(any(),eq(9L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_GATEWAY,"No se pueden comprobar los formatos"));
+        var job=create();transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(job.id()).accepted()).isZero();
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
     }
 }

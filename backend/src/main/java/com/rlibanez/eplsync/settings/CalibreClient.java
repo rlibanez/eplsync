@@ -116,7 +116,7 @@ public class CalibreClient {
         } catch (ResponseStatusException | UnconfirmedUpload ex) { throw ex; }
         catch (Exception ex) { if(upload) throw new UnconfirmedUpload(); throw failure("No se puede consultar Calibre; revisa la URL, que el servidor de contenido esté activo y la conexión de red"); }
     }
-    /** Search live identifiers, not the potentially stale local snapshot or title duplicates. */
+    /** Search live identifiers and EPUB format, including later matches with the same revision. */
     public Long findRevision(CalibreSettings.Connection c,long eplId,BigDecimal revision) {
         return limited(() -> {
             String path="/ajax/search/"+segment(c.library())+"?num=100&query="+segment("identifiers:=epl:"+eplId);
@@ -133,7 +133,7 @@ public class CalibreClient {
                         if(!book.isObject()) throw failure("Calibre no devolvió los metadatos solicitados");
                         var identifiers=book.path("identifiers");
                         var actual=revision(identifiers.path("revision").asString(""));
-                        if(java.util.Objects.equals(positiveId(identifiers.path("epl").asString("")),eplId) && actual!=null && actual.compareTo(revision)==0) return Long.valueOf(id);
+                        if(java.util.Objects.equals(positiveId(identifiers.path("epl").asString("")),eplId) && actual!=null && actual.compareTo(revision)==0 && epubFormat(book)) return Long.valueOf(id);
                     }
                 }
                 if(offset+ids.size()>=total) return null;
@@ -161,12 +161,12 @@ public class CalibreClient {
         });
     }
     public boolean hasEpub(CalibreSettings.Connection c,long id) {
-        return limited(() -> {
-            var b=get(c,"/ajax/book/"+id+"/"+segment(c.library()));
-            if(!b.path("formats").isArray()) throw failure("Calibre no devolvió los formatos del libro; no se puede verificar el EPUB");
-            for(var f:b.path("formats")) if(f.asString().equalsIgnoreCase("EPUB")) return true;
-            return false;
-        });
+        return limited(() -> epubFormat(get(c,"/ajax/book/"+id+"/"+segment(c.library()))));
+    }
+    private static boolean epubFormat(JsonNode book) {
+        if(!book.path("formats").isArray()) throw failure("Calibre no devolvió los formatos del libro; no se puede verificar el EPUB");
+        for(var format:book.path("formats")) if(format.asString().equalsIgnoreCase("EPUB")) return true;
+        return false;
     }
     /** Delete calls are never retried by the HTTP client. The queue verifies their result separately. */
     public void remove(CalibreSettings.Connection c,long id,boolean entireBook) {

@@ -200,4 +200,17 @@ class CalibreUpdateFlowTests {
         jdbc.update("UPDATE catalog_books SET revision=1.1 WHERE epl_id=1");when(files.list(record)).thenThrow(new RuntimeException("unreadable"));
         assertThatThrownBy(()->submit(List.of(ready("KEEP")),true,true)).hasMessageContaining("no es accesible");assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Long.class)).isZero();
     }
+    @Test void missingUploadedEpubPreventsCleanupUntilVerificationSucceeds() {
+        when(client.hasEpub(any(),eq(9L))).thenReturn(false);
+        var result=submit(List.of(ready("BOOK")),false,false);
+        transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(result.calibreJobId()).uncertain()).isEqualTo(1);
+        transfers.cycle();verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        when(client.hasEpub(any(),eq(9L))).thenReturn(true);
+        transfers.control(result.calibreJobId(),"resume");transfers.cycle();
+        assertThat(transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items().getFirst().state()).isEqualTo("CLEANUP_PENDING");
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
 }

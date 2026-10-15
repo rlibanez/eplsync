@@ -14,6 +14,7 @@ import static org.assertj.core.api.Assertions.*;
 class CalibreTransferProtocolTests {
     @TempDir Path directory;
     HttpServer server;CalibreClient client=new CalibreClient();CalibreSettings.Connection connection;
+    String searchBooks="{\"8\":{\"identifiers\":{\"epl\":\"11\",\"revision\":\"1.1\"},\"formats\":[\"PDF\"]},\"9\":{\"identifiers\":{\"epl\":\"1\",\"revision\":\"1.10\"},\"formats\":[\"EPUB\"]}}";
     String uploadResponse="{\"book_id\":9}";int uploadStatus=200;byte[] sent;String uri;AtomicInteger posts=new AtomicInteger();
     @BeforeEach void start() throws Exception {
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
@@ -21,7 +22,7 @@ class CalibreTransferProtocolTests {
             String path=request.getRequestURI().getPath(),body;
             if(request.getRequestMethod().equals("POST")) {sent=request.getRequestBody().readAllBytes();uri=request.getRequestURI().toString();posts.incrementAndGet();body=uploadResponse;}
             else if(path.contains("/search/")) body="{\"total_num\":2,\"book_ids\":[8,9]}";
-            else if(path.contains("/books/")) body="{\"8\":{\"identifiers\":{\"epl\":\"11\",\"revision\":\"1.1\"}},\"9\":{\"identifiers\":{\"epl\":\"1\",\"revision\":\"1.10\"}}}";
+            else if(path.contains("/books/")) body=searchBooks;
             else body="{\"title\":\"Book\",\"authors\":[\"Author\"],\"identifiers\":{\"epl\":\"1\",\"revision\":\"1.1\"}}";
             request.getResponseHeaders().add("Content-Type","application/json");
             if(uploadStatus==302) request.getResponseHeaders().add("Location","http://127.0.0.1:"+server.getAddress().getPort()+"/redirected");
@@ -104,5 +105,15 @@ class CalibreTransferProtocolTests {
             }
             assertThatThrownBy(() -> CalibreEpubMetadata.read(path)).hasMessageContaining("validar");
         }
+    }
+    @Test void revisionSearchContinuesPastMatchingMetadataWithoutEpub() {
+        searchBooks="{\"8\":{\"identifiers\":{\"epl\":\"1\",\"revision\":\"1.1\"},\"formats\":[\"PDF\"]},\"9\":{\"identifiers\":{\"epl\":\"1\",\"revision\":\"1.1\"},\"formats\":[\"epub\"]}}";
+        assertThat(client.findRevision(connection,1,new BigDecimal("1.1"))).isEqualTo(9);
+        searchBooks=searchBooks.replace("epub","PDF");
+        assertThat(client.findRevision(connection,1,new BigDecimal("1.1"))).isNull();
+    }
+    @Test void revisionSearchCannotConfirmBooksWithMissingFormats() {
+        searchBooks="{\"8\":{\"identifiers\":{\"epl\":\"1\",\"revision\":\"1.1\"}},\"9\":{}}";
+        assertThatThrownBy(() -> client.findRevision(connection,1,new BigDecimal("1.1"))).hasMessageContaining("formatos");
     }
 }
