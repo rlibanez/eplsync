@@ -283,6 +283,9 @@ public class CleanupQueue {
                 if(job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED
                     || job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED) return false;
             }
+            long needed=((Number)em.createNativeQuery("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id JOIN torrent_downloads d ON (d.id=i.record_id OR (d.epl_id=i.epl_id AND d.revision=CAST(i.revision AS REAL))) WHERE d.hash=:hash AND d.client_instance_id=:instance AND i.state IN ('PENDING','SENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','UNCERTAIN','CLEANUP_PENDING') AND (j.state NOT IN ('COMPLETED','CANCELLED') OR i.state='UNCERTAIN') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)")
+                .setParameter("hash",entry.getHash()).setParameter("instance",entry.getClientInstanceId()).getSingleResult()).longValue();
+            if(needed>0) {save(entry,UpdateCleanup.State.WAITING,"EPUB necesario para un trabajo pendiente de Calibre");return false;}
             if(retryAuthorization!=null && !retryAuthorization.torrent(entry.getJobId(),true,entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES)) {
                 save(entry,UpdateCleanup.State.BLOCKED,"El usuario del reintento ya no tiene permisos para eliminar estas revisiones");return false;
             }

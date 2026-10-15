@@ -13,7 +13,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 @org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 public class ScheduledTasks {
-    public enum Operation { TORRENT_SYNC, CALIBRE_SYNC, CATALOG_IMPORT, TORRENT_UPDATE_SEARCH, CALIBRE_UPDATE_SEARCH;
+    public enum Operation { TORRENT_SYNC, CALIBRE_SYNC, CATALOG_IMPORT, TORRENT_UPDATE_SEARCH, CALIBRE_UPDATE_SEARCH, TORRENT_AUTO_UPDATE, CALIBRE_AUTO_UPDATE;
         public String pairedOperation() {
             return switch(this) {
                 case TORRENT_SYNC -> TORRENT_UPDATE_SEARCH.name(); case TORRENT_UPDATE_SEARCH -> TORRENT_SYNC.name();
@@ -23,12 +23,14 @@ public class ScheduledTasks {
         }
         public Set<Permission> permissions() {
             return switch(this) {
+                case TORRENT_AUTO_UPDATE -> Set.of(Permission.TORRENT_SYNC,Permission.TORRENT_SEND,Permission.CATALOG_READ,Permission.TORRENT_JOBS_MANAGE);
+                case CALIBRE_AUTO_UPDATE -> Set.of(Permission.TORRENT_SYNC,Permission.TORRENT_SEND,Permission.TORRENT_JOBS_MANAGE,Permission.CALIBRE_SYNC,Permission.CALIBRE_READ,Permission.CALIBRE_SEND,Permission.CALIBRE_JOBS_MANAGE,Permission.DOWNLOADS_FILES_READ,Permission.CATALOG_READ);
                 case TORRENT_UPDATE_SEARCH -> Set.of(Permission.TORRENT_SYNC,Permission.CATALOG_READ);
                 case CALIBRE_UPDATE_SEARCH -> Set.of(Permission.CALIBRE_SYNC,Permission.CALIBRE_READ,Permission.CATALOG_READ);
                 default -> Set.of(permission());
             };
         }
-        public Permission permission() {return switch(this) {case TORRENT_SYNC -> Permission.TORRENT_SYNC; case CALIBRE_SYNC -> Permission.CALIBRE_SYNC; case CATALOG_IMPORT -> Permission.CATALOG_IMPORT; case TORRENT_UPDATE_SEARCH -> Permission.TORRENT_SYNC; case CALIBRE_UPDATE_SEARCH -> Permission.CALIBRE_SYNC;};}
+        public Permission permission() {return switch(this) {case TORRENT_SYNC,TORRENT_AUTO_UPDATE -> Permission.TORRENT_SYNC; case CALIBRE_SYNC,CALIBRE_AUTO_UPDATE -> Permission.CALIBRE_SYNC; case CATALOG_IMPORT -> Permission.CATALOG_IMPORT; case TORRENT_UPDATE_SEARCH -> Permission.TORRENT_SYNC; case CALIBRE_UPDATE_SEARCH -> Permission.CALIBRE_SYNC;};}
     }
     public record Input(String name,Operation operation,String cron,String ownerId,boolean enabled) {}
     public record Task(String id,String name,Operation operation,String cron,String timezone,String ownerId,String ownerUsername,
@@ -103,7 +105,7 @@ public class ScheduledTasks {
     private Optional<Task> claimDue(Instant now) {
         for(var task:jdbc.query(SELECT+" WHERE t.enabled=1 AND t.running=0 AND t.next_run<=? ORDER BY t.next_run,t.id LIMIT 200",ScheduledTasks::map,now.toEpochMilli())) {
             var following=next(task.cron(),timezone,now);
-            if(jdbc.update("UPDATE scheduled_tasks SET running=1,last_run=?,last_finished=NULL,last_result='RUNNING',last_message=NULL,next_run=? WHERE id=? AND enabled=1 AND running=0 AND next_run<=? AND NOT EXISTS (SELECT 1 FROM scheduled_tasks other WHERE other.running=1 AND other.operation IN (?,?))",now.toEpochMilli(),following.toEpochMilli(),task.id(),now.toEpochMilli(),task.operation().name(),task.operation().pairedOperation())==1) return Optional.of(find(task.id()));
+            if(jdbc.update("UPDATE scheduled_tasks SET running=1,last_run=?,last_finished=NULL,last_result='RUNNING',last_message=NULL,next_run=? WHERE id=? AND enabled=1 AND running=0 AND next_run<=? AND NOT EXISTS (SELECT 1 FROM scheduled_tasks other WHERE other.running=1 AND (other.operation IN (?,?) OR other.operation IN ('TORRENT_AUTO_UPDATE','CALIBRE_AUTO_UPDATE') OR ? IN ('TORRENT_AUTO_UPDATE','CALIBRE_AUTO_UPDATE')))",now.toEpochMilli(),following.toEpochMilli(),task.id(),now.toEpochMilli(),task.operation().name(),task.operation().pairedOperation(),task.operation().name())==1) return Optional.of(find(task.id()));
         }
         return Optional.empty();
     }
@@ -113,7 +115,7 @@ public class ScheduledTasks {
             var task=find(id);
             task.operation().permissions().forEach(Permission::require);
             owner(task.ownerId(),task.operation());
-            if(jdbc.update("UPDATE scheduled_tasks SET running=1,last_run=?,last_finished=NULL,last_result='RUNNING',last_message=NULL WHERE id=? AND running=0 AND NOT EXISTS (SELECT 1 FROM scheduled_tasks other WHERE other.running=1 AND other.operation IN (?,?))",now.toEpochMilli(),id,task.operation().name(),task.operation().pairedOperation())!=1)
+            if(jdbc.update("UPDATE scheduled_tasks SET running=1,last_run=?,last_finished=NULL,last_result='RUNNING',last_message=NULL WHERE id=? AND running=0 AND NOT EXISTS (SELECT 1 FROM scheduled_tasks other WHERE other.running=1 AND (other.operation IN (?,?) OR other.operation IN ('TORRENT_AUTO_UPDATE','CALIBRE_AUTO_UPDATE') OR ? IN ('TORRENT_AUTO_UPDATE','CALIBRE_AUTO_UPDATE')))",now.toEpochMilli(),id,task.operation().name(),task.operation().pairedOperation(),task.operation().name())!=1)
                 throw new UserInputException("La tarea u otra operación incompatible ya está ejecutándose");
             return find(id);
         });

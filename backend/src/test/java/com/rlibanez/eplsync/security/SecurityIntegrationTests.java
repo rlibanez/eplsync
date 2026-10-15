@@ -121,9 +121,18 @@ class SecurityIntegrationTests {
         mvc.perform(put("/api/settings/tasks/internal/calibre-download-check").session(session).with(csrf()).contentType("application/json").content("{\"interval\":\"1m\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.interval").value("60s"));
         mvc.perform(put("/api/settings/tasks/internal/calibre-download-check").session(session).with(csrf()).contentType("application/json").content("{\"enabled\":false}")).andExpect(status().isBadRequest());
         mvc.perform(delete("/api/settings/tasks/internal/calibre-download-check").session(session).with(csrf())).andExpect(status().isMethodNotAllowed());
+        String defaults=mvc.perform(get("/api/settings/tasks/automation-defaults").session(session)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        mvc.perform(post("/api/settings/tasks").session(session).with(csrf()).contentType("application/json").content("{\"name\":\"Automatic downloads\",\"operation\":\"TORRENT_AUTO_UPDATE\",\"cron\":\"0 5 * * *\",\"enabled\":false,\"automation\":"+defaults+"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.operation").value("TORRENT_AUTO_UPDATE"));
+        long beforeInvalid=jdbc.queryForObject("SELECT count(*) FROM scheduled_tasks",Long.class);
+        mvc.perform(post("/api/settings/tasks").session(session).with(csrf()).contentType("application/json").content("{\"name\":\"Invalid automation\",\"operation\":\"TORRENT_AUTO_UPDATE\",\"cron\":\"0 5 * * *\",\"enabled\":false}"))
+            .andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM scheduled_tasks",Long.class)).isEqualTo(beforeInvalid);
         var temp=accounts.create("reader","reader@example.org","USER","admin");accounts.changePassword(accounts.find(temp.user().id()),temp.password(),PASSWORD);
         var reader=login("reader",PASSWORD);
         mvc.perform(get("/api/settings/tasks").session(reader)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/settings/tasks/automation-defaults").session(reader)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/settings/tasks/missing/cycle/close").session(reader).with(csrf())).andExpect(status().isForbidden());
         mvc.perform(post("/api/settings/tasks/missing/run").session(reader).with(csrf())).andExpect(status().isForbidden());
         mvc.perform(get("/api/settings/tasks/cron").param("cron","0 5 * * *").session(reader)).andExpect(status().isForbidden());
         mvc.perform(post("/api/settings/tasks").session(reader).with(csrf()).contentType("application/json").content(json(Map.of("name","Unauthorized","operation","CALIBRE_SYNC","cron","0 0 3 * * *","timezone","UTC","ownerId",initial.user().id(),"enabled",true)))).andExpect(status().isForbidden());

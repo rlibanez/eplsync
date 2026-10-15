@@ -38,6 +38,11 @@ public class BulkStore {
         details.putAll(Map.of("selected", summary.selectedItems(), "processed", summary.processedItems(), "accepted", summary.accepted(),
                 "alreadyExists", summary.alreadyExists(), "failed", summary.failed(), "skipped", summary.skipped()));
         if (job.getMessage() != null) details.put("reason", job.getMessage());
+        boolean automated=com.rlibanez.eplsync.tasks.AutomationContext.active() || ((Number)em.createNativeQuery("SELECT count(*) FROM scheduled_automation_jobs WHERE kind='downloads' AND job_id=:id").setParameter("id",job.getId()).getSingleResult()).longValue()>0;
+        if(automated && origin==com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED) {
+            if(!List.of(com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED,com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL).contains(outcome)) return;
+            events.recordAs(actor,com.rlibanez.eplsync.events.EventJournal.Category.JOB,"DOWNLOAD",com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,origin,job.getId(),details);
+        }
         events.recordAs(actor, com.rlibanez.eplsync.events.EventJournal.Category.JOB, "DOWNLOAD", outcome, origin, job.getId(), details);
     }
 

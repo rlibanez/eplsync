@@ -20,7 +20,9 @@ public class CalibreUpdateFlow {
     public record Previous(long id,String revision) {}
     public record Book(long calibreId,long eplId,String title,double revision,List<Previous> previous,List<CalibreTransfers.Candidate> files,String problem) {}
     public record Choice(long calibreId,double revision,boolean send,List<CalibreTransfers.FileChoice> files,String cleanup,List<Long> previous,boolean confirmBookDelete) {}
-    public record Request(String id,List<Choice> books,boolean download,boolean deferred) {}
+    public record Request(String id,List<Choice> books,boolean download,boolean deferred,com.rlibanez.eplsync.torrent.updates.UpdateRequest downloadOptions) {
+        public Request(String id,List<Choice> books,boolean download,boolean deferred) {this(id,books,download,deferred,null);}
+    }
     public record Result(String downloadJobId,String calibreJobId) {}
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(CalibreUpdateFlow.class);
     private final JdbcTemplate jdbc;
@@ -95,8 +97,10 @@ public class CalibreUpdateFlow {
         }
         return List.copyOf(result);
     }
-    public Result create(Request request) {return transfers.preparing(()->createPrepared(request));}
-    private Result createPrepared(Request request) {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.torrent.updates.UpdatePlanner updatePlanner;
+    public Result create(Request request) {return createAutomated(request,r->{});}
+    public Result createAutomated(Request request,java.util.function.Consumer<Result> committed) {return transfers.preparing(()->createPrepared(request,committed));}
+    private Result createPrepared(Request request,java.util.function.Consumer<Result> committed) {
         require();if(request==null || request.id()==null || !request.id().matches("[A-Za-z0-9-]{1,64}") || request.books()==null || request.books().stream().anyMatch(Objects::isNull)) throw new UserInputException("Selección inválida");
         if(json.writeValueAsString(request).length()>524288) throw new UserInputException("La selección es demasiado grande; selecciona menos revisiones anteriores");
         var previousRequest=existing(request);
@@ -131,12 +135,22 @@ public class CalibreUpdateFlow {
                 if(revisions.size()!=1 || Double.compare(revisions.getFirst(),b.revision())!=0) throw new UserInputException("La revisión del catálogo cambió; vuelve a preparar el envío");
             }
             String downloadId=null;
+            var dependencies=new HashMap<Long,String>();
+            // Reuse the exact requested revision, including accepted jobs still downloading.
+            if(request.downloadOptions()!=null) for(var b:waits) {
+                var active=jdbc.queryForList("SELECT i.job_id FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND i.revision=? AND j.target_fingerprint=? AND j.state<>'CANCELLED' AND i.state IN ('PENDING','IN_FLIGHT','ACCEPTED','ALREADY_EXISTS') AND NOT EXISTS(SELECT 1 FROM torrent_downloads d WHERE d.client_instance_id=? AND d.hash=i.hash AND d.status IN ('ERROR','NOT_FOUND')) ORDER BY j.created_at DESC LIMIT 1",String.class,b.eplId(),b.revision(),tracking.instanceId(),tracking.instanceId());
+                if(!active.isEmpty()) dependencies.put(b.eplId(),active.getFirst());
+            }
+            missing.removeAll(dependencies.keySet());
             if(!missing.isEmpty()) {
                 var filter=new CatalogBookFilter();filter.setSelectedIds(missing.toArray(Long[]::new));
-                downloadId=bulk.create(filter,org.springframework.data.domain.Pageable.unpaged(),false,false,new BulkRequest(null,null,null,null,MultipleHashes.FIRST)).jobId();
+                downloadId=request.downloadOptions()==null
+                    ?bulk.create(filter,org.springframework.data.domain.Pageable.unpaged(),false,false,new BulkRequest(null,null,null,null,MultipleHashes.FIRST)).jobId()
+                    :updatePlanner.create(filter,true,request.downloadOptions(),com.rlibanez.eplsync.torrent.updates.UpdatePlanner.Selection.REQUESTED).jobId();
             }
-            String calibreId=selected.isEmpty() && waits.isEmpty()?null:transfers.enqueueUpdates(connection,selected,waits,cleanup,downloadId);
+            String calibreId=selected.isEmpty() && waits.isEmpty()?null:transfers.enqueueUpdates(connection,selected,waits,cleanup,downloadId,dependencies);
             var result=new Result(downloadId,calibreId);
+            committed.accept(result);
             jdbc.update("INSERT INTO calibre_update_requests(id,owner_id,payload,result,created_at) VALUES(?,?,?,?,?)",request.id(),EventContext.actor().id(),json.writeValueAsString(request),json.writeValueAsString(result),Instant.now().toString());
             return result;
         });
@@ -145,7 +159,7 @@ public class CalibreUpdateFlow {
         var rows=jdbc.queryForList("SELECT owner_id,payload,result FROM calibre_update_requests WHERE id=?",request.id());
         if(rows.isEmpty()) return null;
         var row=rows.getFirst();
-        if(!Objects.equals(row.get("owner_id"),EventContext.actor().id()) || !row.get("payload").equals(json.writeValueAsString(request))) throw new UserInputException("La solicitud ya se utilizó con otra selección");
+        if(!Objects.equals(row.get("owner_id"),EventContext.actor().id()) || !json.readValue((String)row.get("payload"),Request.class).equals(request)) throw new UserInputException("La solicitud ya se utilizó con otra selección");
         return json.readValue((String)row.get("result"),Result.class);
     }
     /** Called by the single sender; only hashes from the linked job and pinned revision are observed. */

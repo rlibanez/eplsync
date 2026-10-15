@@ -117,13 +117,16 @@ public class CalibreTransfers {
         } finally { lifecycle.readLock().unlock(); }
     }
     String enqueueUpdates(CalibreSettings.Connection connection,List<Candidate> selected,List<CalibreUpdateFlow.Book> waits,Map<Long,CalibreUpdateFlow.Choice> cleanup,String downloadId) {
+        return enqueueUpdates(connection,selected,waits,cleanup,downloadId,Map.of());
+    }
+    String enqueueUpdates(CalibreSettings.Connection connection,List<Candidate> selected,List<CalibreUpdateFlow.Book> waits,Map<Long,CalibreUpdateFlow.Choice> cleanup,String downloadId,Map<Long,String> dependencies) {
         if(!connection.equals(settings.connection())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
         if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i WHERE state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class)+selected.size()+waits.size()>10000) throw new UserInputException("Hay demasiados envíos pendientes a Calibre");
         var actor=EventContext.actor();String id=UUID.randomUUID().toString(),now=Instant.now().toString();
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username(),destination(connection),connection.library(),source());
         int position=0;
         for(var f:selected) insertUpdate(id,position++,f,cleanup.get(f.eplId()),null);
-        for(var b:waits) insertUpdate(id,position++,new Candidate(null,0,b.title(),0,b.eplId(),b.revision(),0),cleanup.get(b.eplId()),downloadId);
+        for(var b:waits) insertUpdate(id,position++,new Candidate(null,0,b.title(),0,b.eplId(),b.revision(),0),cleanup.get(b.eplId()),dependencies.getOrDefault(b.eplId(),downloadId));
         event(actor,id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",connection.library(),"selected",position,"waiting",waits.size(),"cleanupBooks",cleanup.values().stream().filter(c -> !c.cleanup().equals("KEEP")).count()));
         return id;
     }
@@ -192,14 +195,25 @@ public class CalibreTransfers {
         });return job(id);
     }
     private void event(EventContext.Actor actor,String id,String action,EventJournal.Outcome outcome,Map<String,?> details) {
-        var level=action.equals("CALIBRE_SEND") && Set.of(EventJournal.Outcome.STARTED,EventJournal.Outcome.SUCCEEDED,EventJournal.Outcome.PARTIAL).contains(outcome) ? log.atInfo() : log.atDebug();
+        var origin=EventContext.origin();
+        boolean automated=com.rlibanez.eplsync.tasks.AutomationContext.active();
+        if(!action.equals("CALIBRE_JOB_CONTROL")) {
+            String job=action.equals("CALIBRE_SEND_FILE")?Objects.toString(details.get("jobId"),id):id;
+            var origins=jdbc.queryForList("SELECT r.context FROM scheduled_automation_runs r JOIN scheduled_automation_jobs j ON j.run_id=r.id WHERE j.kind='calibre' AND j.job_id=?",String.class,job);
+            if(!origins.isEmpty()) {origin=EventContext.Origin.valueOf(origins.getFirst());automated=true;}
+        }
+        var level=origin!=EventContext.Origin.SCHEDULED && action.equals("CALIBRE_SEND") && Set.of(EventJournal.Outcome.STARTED,EventJournal.Outcome.SUCCEEDED,EventJournal.Outcome.PARTIAL).contains(outcome) ? log.atInfo() : log.atDebug();
         level.log("Trabajo de Calibre: operación={}, acción={}, resultado={}, userId={}, usuario={}, detalles={}",id,action,outcome,actor.id(),actor.username(),details);
         if(action.equals("CALIBRE_SEND_FILE")) return;
+        if(automated && origin==EventContext.Origin.SCHEDULED) {
+            if(!Set.of(EventJournal.Outcome.FAILED,EventJournal.Outcome.PARTIAL).contains(outcome)) return;
+            events.recordAs(actor,EventJournal.Category.JOB,action,EventJournal.Outcome.STARTED,origin,id,details);
+        }
         if(action.equals("CALIBRE_JOB_CONTROL")) {
             String operation=UUID.randomUUID().toString();var context=new LinkedHashMap<String,Object>(details);context.put("jobId",id);
             events.recordAs(actor,EventJournal.Category.JOB,action,EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,operation,context);
             events.recordAs(actor,EventJournal.Category.JOB,action,outcome,EventContext.Origin.MANUAL,operation,context);
-        } else events.recordAs(actor,EventJournal.Category.JOB,action,outcome,EventContext.Origin.MANUAL,id,details);
+        } else events.recordAs(actor,EventJournal.Category.JOB,action,outcome,origin,id,details);
     }
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=1000)
     public void schedule() {
@@ -209,7 +223,7 @@ public class CalibreTransfers {
     public void retention() {
         if(!lifecycle.writeLock().tryLock()) return;
         try { jdbc.update("DELETE FROM calibre_update_requests WHERE id IN (SELECT id FROM calibre_update_requests WHERE created_at<? ORDER BY created_at LIMIT 100)",Instant.now().minus(Duration.ofDays(90)).toString());
-            jdbc.update("DELETE FROM calibre_jobs WHERE id IN (SELECT id FROM calibre_jobs WHERE state IN ('COMPLETED','CANCELLED') AND updated_at<? AND NOT EXISTS (SELECT 1 FROM calibre_job_items i WHERE i.job_id=calibre_jobs.id AND i.state IN ('SENDING','UNCERTAIN') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)) AND NOT EXISTS(SELECT 1 FROM job_retry_jobs r JOIN calibre_jobs child ON child.id=r.child_id WHERE r.kind='calibre' AND (r.parent_id=calibre_jobs.id OR r.root_id=calibre_jobs.id)) ORDER BY updated_at LIMIT 100)",Instant.now().minus(Duration.ofDays(90)).toString());
+            jdbc.update("DELETE FROM calibre_jobs WHERE id IN (SELECT id FROM calibre_jobs WHERE state IN ('COMPLETED','CANCELLED') AND NOT EXISTS(SELECT 1 FROM scheduled_automation_jobs a JOIN scheduled_automation_runs r ON r.id=a.run_id WHERE a.kind='calibre' AND a.job_id=calibre_jobs.id AND r.state<>'COMPLETED') AND updated_at<? AND NOT EXISTS (SELECT 1 FROM calibre_job_items i WHERE i.job_id=calibre_jobs.id AND i.state IN ('SENDING','UNCERTAIN') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)) AND NOT EXISTS(SELECT 1 FROM job_retry_jobs r JOIN calibre_jobs child ON child.id=r.child_id WHERE r.kind='calibre' AND (r.parent_id=calibre_jobs.id OR r.root_id=calibre_jobs.id)) ORDER BY updated_at LIMIT 100)",Instant.now().minus(Duration.ofDays(90)).toString());
             try(var abandoned=Files.newDirectoryStream(Path.of(System.getProperty("java.io.tmpdir")),"eplsync-calibre-send-*.epub")) {
                 for(var path:abandoned) if(Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS) && Files.getLastModifiedTime(path,LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(Instant.now().minus(Duration.ofHours(1)))) Files.deleteIfExists(path);
             } catch(java.io.IOException ex) {log.warn("No se pudo revisar la limpieza de EPUB temporales de Calibre");}

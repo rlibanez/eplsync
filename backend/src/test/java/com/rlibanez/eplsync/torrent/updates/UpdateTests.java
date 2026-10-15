@@ -42,6 +42,7 @@ class UpdateTests {
     @TestConfiguration static class Config {
         @Bean TorrentClient stubClient() { var client = mock(TorrentClient.class); when(client.type()).thenReturn("stub"); return client; }
     }
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired CleanupQueue queue;
     @Autowired HistoryActions historyActions;
     @Autowired UpdatePlanner planner;
@@ -115,6 +116,25 @@ class UpdateTests {
         book(1L,1.2,hashes);
         return com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor(owner.id(),owner.username(),"USER"),
             () -> selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),policy,true,null,2,10,"0ms",MultipleHashes.ALL,CleanupTiming.IMMEDIATE)));
+    }
+    @Test void cleanupWaitsWhileCalibreNeedsTheOldEpubAndContinuesAfterCompletion() {
+        var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        var item=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();
+        bulk.finish(item.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        var record=downloads.findAll().stream().filter(d->d.getHash().equals(OLD)).findFirst().orElseThrow();
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('protect-job','2026-10-15T00:00:00Z','2026-10-15T00:00:00Z','Owner','destination','main','source','PAUSED')");
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('protect-item','protect-job',0,?,0,'old.epub',1,1,'1.0','PENDING')",record.getId());
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old.epub"),remote(NEW,DownloadStatus.DOWNLOADED,"/new.epub")));
+        try {
+            var now=Instant.now();queue.runImmediate(100,now);
+            verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+            assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
+            assertThat(only(job.jobId()).getMessage()).contains("Calibre");
+            jdbc.update("UPDATE calibre_job_items SET state='ACCEPTED' WHERE id='protect-item'");
+            jdbc.update("UPDATE calibre_jobs SET state='COMPLETED' WHERE id='protect-job'");
+            queue.runImmediate(100,now.plusSeconds(60));
+            verify(stubClient).deleteTorrent(OLD,true);
+        } finally {jdbc.update("DELETE FROM calibre_jobs WHERE id='protect-job'");}
     }
     @Test void immediateCleanupRequiresEveryAcceptedTargetAndSurvivesDeletionOfItsJob() {
         var job=immediateJob(NEW+","+OTHER,PreviousVersions.REMOVE_TORRENT);

@@ -5,7 +5,8 @@
 
 Consulta el catálogo de ePubLibre y gestiona tus descargas y actualizaciones de
 libros con qBittorrent y Calibre. Programa sincronizaciones, importaciones del
-catálogo y búsquedas de actualizaciones.
+catálogo y búsquedas de actualizaciones. También puedes automatizar la actualización
+de las descargas y de la biblioteca de Calibre, con políticas independientes.
 
 <table>
   <tr>

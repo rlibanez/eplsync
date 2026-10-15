@@ -320,3 +320,150 @@ test("shows task execution data and runs once without changing its schedule", as
     page.getByRole("cell", { name: "En ejecución", exact: true }),
   ).toBeVisible();
 });
+
+for (const operation of ["TORRENT_AUTO_UPDATE", "CALIBRE_AUTO_UPDATE"]) {
+  test(`configures ${operation} with an explicit automation wizard`, async ({
+    page,
+  }) => {
+    const configuration = {
+      updateCatalog: false,
+      limit: 100,
+      title: "",
+      author: "",
+      states: ["DOWNLOADED"],
+      options: {
+        hash: null,
+        start: true,
+        savePath: "",
+        rename: { enabled: false, pattern: "{title}" },
+        qbittorrent: { category: "", tags: [], autoManagement: true },
+      },
+      concurrency: 2,
+      batchSize: 100,
+      interval: "500ms",
+      hashes: "first",
+      torrentCleanup: "keep",
+      calibreCleanup: "KEEP",
+      maxRetries: 1,
+      library: null,
+      torrentTarget: null,
+      calibreTarget: null,
+    };
+    const tasks: Record<string, unknown>[] = [];
+    let submitted: Record<string, any> | null = null;
+    await page.route("**/api/settings/tasks**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/automation-defaults"))
+        return route.fulfill({ json: configuration });
+      if (path.endsWith("/cron"))
+        return route.fulfill({
+          json: {
+            expression: "0 0 5 * * *",
+            timezone: "UTC",
+            executions: ["2026-10-16T05:00:00Z"],
+          },
+        });
+      if (route.request().method() === "GET")
+        return route.fulfill({
+          json: {
+            tasks,
+            internal: [],
+            defaultTimezone: "UTC",
+            automations: submitted
+              ? { task: { configuration: submitted.automation, cycle: null } }
+              : {},
+          },
+        });
+      submitted = route.request().postDataJSON();
+      const task = {
+        ...submitted,
+        id: "task",
+        timezone: "UTC",
+        ownerUsername: "admin",
+        running: false,
+        lastRun: null,
+        lastFinished: null,
+        nextRun: "2026-10-16T05:00:00Z",
+        lastResult: null,
+        lastMessage: null,
+      };
+      tasks.push(task);
+      return route.fulfill({ json: task });
+    });
+    await page.goto("/settings/tasks");
+    await page
+      .getByRole("button", { name: "Crear tarea", exact: true })
+      .click();
+    await page
+      .getByRole("textbox", { name: "Nombre", exact: true })
+      .fill("Mi automatización");
+    await page.getByRole("textbox", { name: "Operación", exact: true }).click();
+    await page
+      .getByRole("option", {
+        name:
+          operation === "TORRENT_AUTO_UPDATE"
+            ? "Actualizar descargas"
+            : "Actualizar biblioteca de Calibre",
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByRole("textbox", { name: "Máximo de libros por ciclo" }),
+    ).toHaveValue("100");
+    await page
+      .getByRole("textbox", { name: "Máximo de libros por ciclo" })
+      .fill("20");
+    await page
+      .getByRole("textbox", { name: "Autor contiene (opcional)" })
+      .fill("Weir");
+    await page.getByRole("button", { name: "Siguiente", exact: true }).click();
+    await page
+      .getByRole("textbox", { name: "Categoría", exact: true })
+      .fill("Automáticos");
+    await page.getByRole("button", { name: "Siguiente", exact: true }).click();
+    if (operation === "CALIBRE_AUTO_UPDATE") {
+      await page
+        .getByRole("textbox", {
+          name: "Revisiones anteriores en Calibre",
+          exact: true,
+        })
+        .click();
+      await page
+        .getByRole("option", { name: "Eliminar el EPUB anterior", exact: true })
+        .click();
+    }
+    await page.getByRole("button", { name: "Siguiente", exact: true }).click();
+    await expect(page.getByText("Hasta 20 libros por ciclo.")).toBeVisible();
+    if (operation === "CALIBRE_AUTO_UPDATE") {
+      await expect(
+        page.getByRole("button", { name: "Guardar", exact: true }),
+      ).toBeDisabled();
+      await page
+        .getByRole("checkbox", {
+          name: "Confirmo la eliminación automática",
+          exact: false,
+        })
+        .check();
+    }
+    await page
+      .getByRole("textbox", { name: "Cron", exact: true })
+      .fill("0 5 * * *");
+    await page.getByRole("button", { name: "Guardar", exact: true }).click();
+    await expect(
+      page.getByRole("cell", { name: "Mi automatización", exact: true }),
+    ).toBeVisible();
+    expect(submitted!.automation.limit).toBe(20);
+    expect(submitted!.automation.author).toBe("Weir");
+    expect(submitted!.automation.options.qbittorrent.category).toBe(
+      "Automáticos",
+    );
+    expect(submitted!.automation.torrentCleanup).toBe("keep");
+    expect(submitted!.operation).toBe(operation);
+    await page
+      .getByRole("button", { name: "Editar tarea", exact: true })
+      .click();
+    await expect(
+      page.getByRole("textbox", { name: "Máximo de libros por ciclo" }),
+    ).toHaveValue("20");
+  });
+}

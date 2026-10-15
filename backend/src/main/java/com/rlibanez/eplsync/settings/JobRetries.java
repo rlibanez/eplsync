@@ -204,7 +204,7 @@ public class JobRetries {
             String root=jdbc.queryForList("SELECT root_id FROM job_retry_jobs WHERE kind=? AND child_id=?",String.class,kind,id).stream().findFirst().orElse(id);
             jdbc.update("INSERT INTO job_retry_jobs VALUES(?,?,?,?,?,?,?)",kind,child,id,root,confirmation.token(),actor.id(),Instant.now().toEpochMilli());
             if(kind.equals("downloads")) cloneDownloads(child,parent,plan,actor);else cloneCalibre(child,parent,plan,actor);
-            events.record(EventJournal.Category.JOB,kind.equals("downloads")?"DOWNLOAD":"CALIBRE_SEND",EventJournal.Outcome.STARTED,EventContext.origin(),child,Map.of("parentJobId",id,"rootJobId",root,"kind",kind,"selected",plan.work().size()));
+            if(!(com.rlibanez.eplsync.tasks.AutomationContext.active() && EventContext.origin()==EventContext.Origin.SCHEDULED)) events.record(EventJournal.Category.JOB,kind.equals("downloads")?"DOWNLOAD":"CALIBRE_SEND",EventJournal.Outcome.STARTED,EventContext.origin(),child,Map.of("parentJobId",id,"rootJobId",root,"kind",kind,"selected",plan.work().size()));
             return new Link(kind,child,id,root);
         });
     }
@@ -219,7 +219,7 @@ public class JobRetries {
     }
     private void cloneDownloads(String child,Map<String,Object> parent,Plan plan,Account actor) {
         var now=java.sql.Timestamp.from(Instant.now());
-        jdbc.update("INSERT INTO torrent_bulk_jobs(id,state,type,previous_versions,client,target_fingerprint,multiple_hashes,batch_size,concurrency,interval_millis,selected_books,created_at,updated_at,event_actor_id,event_actor_username,event_actor_kind,event_origin) VALUES(?,'QUEUED',?,?,?,?,?,?,?,?,?,?,?,?,?,'USER','MANUAL')",child,parent.get("type"),parent.get("previous_versions"),torrent.getClient(),plan.configuration(),parent.get("multiple_hashes"),parent.get("batch_size"),parent.get("concurrency"),parent.get("interval_millis"),plan.work().stream().map(w->w.row().get("epl_id")).distinct().count(),now,now,actor.id(),actor.username());
+        jdbc.update("INSERT INTO torrent_bulk_jobs(id,state,type,previous_versions,client,target_fingerprint,multiple_hashes,batch_size,concurrency,interval_millis,selected_books,created_at,updated_at,event_actor_id,event_actor_username,event_actor_kind,event_origin) VALUES(?,'QUEUED',?,?,?,?,?,?,?,?,?,?,?,?,?,'USER',?)",child,parent.get("type"),parent.get("previous_versions"),torrent.getClient(),plan.configuration(),parent.get("multiple_hashes"),parent.get("batch_size"),parent.get("concurrency"),parent.get("interval_millis"),plan.work().stream().map(w->w.row().get("epl_id")).distinct().count(),now,now,actor.id(),actor.username(),EventContext.origin().name());
         var cleanups=new LinkedHashMap<String,Map<String,Object>>();int position=0;
         for(var work:plan.work()) {
             String item=UUID.randomUUID().toString();var row=work.row();claim(child,plan,work,item);

@@ -115,3 +115,53 @@ qué revisiones se pueden eliminar.
 Un reinicio normal de las bases de datos conserva las tareas y sus intervalos.
 El reinicio completo de usuarios y ajustes los elimina. El reinicio se rechaza si
 hay una tarea programada en ejecución.
+
+## Actualizaciones automáticas
+
+Las operaciones **Actualizar descargas** y **Actualizar biblioteca de Calibre**
+son independientes. La primera comprueba los registros torrent y envía las nuevas
+revisiones al cliente. La segunda comprueba los libros identificados en la biblioteca
+actual de Calibre, reutiliza los EPUB disponibles o las descargas ya pendientes y
+crea un trabajo de Calibre que espera a que estén descargados.
+Las operaciones **Buscar actualizaciones** siguen sirviendo solo para consultar.
+
+Al elegir una automatización, el asistente muestra cuatro pasos:
+
+1. **Alcance**: actualización opcional del catálogo desde su URL, filtros por título
+   y autor, estados torrent y máximo de libros por ciclo (100 inicialmente; de 1 a 1000).
+2. **Descargas**: inicio, gestión automática, carpeta, categoría, etiquetas, renombrado,
+   concurrencia, lote e intervalo. Se utiliza el primer torrent de cada revisión.
+3. **Políticas**: acciones independientes sobre revisiones torrent y Calibre,
+   conservándolas por defecto. Torrent se limpia después de completar la descarga;
+   Calibre, después de verificar el nuevo EPUB. Los EPUB que un trabajo de Calibre
+   todavía necesita no se eliminan.
+4. **Programación**: resumen, biblioteca de destino cuando corresponda, confirmación
+   explícita de las políticas de borrado y cron.
+
+Los valores iniciales se copian de Ajustes, pero las opciones quedan guardadas en
+la tarea. Cambiar posteriormente los valores predeterminados no cambia la tarea.
+Un cambio de conexión o biblioteca exige revisar y guardar de nuevo la automatización.
+Se necesitan los permisos de cada operación, y los permisos de borrado si se eligen
+esas políticas. Los permisos del propietario se comprueban al ejecutar y al enviar
+los trabajos a los clientes.
+
+La columna **Ciclo** enlaza los trabajos creados y distingue **Pendiente**,
+**Requiere atención** y **Terminado**. La última ejecución de la tarea corresponde a
+la planificación; el ciclo no termina hasta completar los envíos y las limpiezas.
+El cron y **Ejecutar ahora** no crean otro ciclo mientras quede uno pendiente.
+Desactivar la tarea impide nuevas ejecuciones; los trabajos ya creados siguen su curso.
+
+En las siguientes ejecuciones se pueden reintentar automáticamente los elementos
+fallidos, con el límite configurado (uno inicialmente; de cero a tres). Los reintentos
+conservan el historial y no confirman cambios de destino o de archivo automáticamente.
+Los envíos inciertos, trabajos pausados y fallos que agoten ese límite requieren
+revisión desde sus trabajos. Los reintentos manuales también se siguen desde el ciclo.
+
+**Cerrar ciclo** permite volver a buscar en la siguiente ejecución, pero exige
+terminar o cancelar primero los trabajos y verificar cualquier envío incierto.
+No cancela ni elimina trabajos. Se conservan los últimos 20 ciclos completados,
+además del ciclo pendiente.
+
+Los ciclos y su configuración persisten en la base de datos. Un reinicio recupera
+los trabajos existentes; no crea automáticamente duplicados. Las ejecuciones mediante
+cron mantienen la política de logs y Eventos de las tareas programadas.

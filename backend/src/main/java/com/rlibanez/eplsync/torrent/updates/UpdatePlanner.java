@@ -48,7 +48,7 @@ public class UpdatePlanner {
         if (com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.BOOK_HISTORY_READ)) return candidates;
         return candidates.stream().map(c -> new Candidate(c.eplId(),c.title(),c.catalogRevision(),List.of(),c.targetHashes(),0)).toList();
     }
-    public enum Selection { NEW,UPDATES,BOTH }
+    public enum Selection { NEW,UPDATES,BOTH,REQUESTED }
 
     private Specification<CatalogBook> eligible(String instance,boolean includeNotFound,Selection selection) {
         return (root,query,cb) -> {
@@ -66,7 +66,7 @@ public class UpdatePlanner {
                     cb.equal(j.get("targetFingerprint"),instance),i.get("state").in(BulkItem.State.PENDING,BulkItem.State.IN_FLIGHT),
                     cb.not(j.get("state").in(BulkJob.State.COMPLETED,BulkJob.State.CANCELLED)));
             var isNew=cb.not(cb.exists(history)); var isUpdate=cb.and(cb.exists(eligible),cb.not(cb.exists(newer)));
-            return cb.and(cb.not(cb.exists(active)),selection==Selection.NEW ? isNew
+            return cb.and(cb.not(cb.exists(active)),selection==Selection.REQUESTED ? cb.conjunction() : selection==Selection.NEW ? isNew
                     : selection==Selection.UPDATES ? isUpdate : cb.or(isNew,isUpdate));
         };
     }
@@ -143,6 +143,7 @@ public class UpdatePlanner {
     }
     @Transactional(timeout=120)
     public BulkStore.View create(CatalogBookFilter filter,boolean includeNotFound,UpdateRequest request,Selection selection) {
+        if(selection==Selection.REQUESTED && (filter.getSelectedIds()==null || filter.getSelectedIds().length==0 || filter.getSelectedIds().length>1000)) throw new com.rlibanez.eplsync.exception.UserInputException("La automatización requiere una selección explícita de hasta 1000 libros");
         var input=request==null ? new UpdateRequest(null,null,null,null,null,null) : request;
         if(input.options()!=null && input.options().hash()!=null) throw new com.rlibanez.eplsync.exception.UserInputException("Las actualizaciones no admiten options.hash");
         if(input.policy()!=PreviousVersions.KEEP) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP);

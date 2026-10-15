@@ -1,3 +1,8 @@
+import { Link } from "react-router-dom";
+import {
+  AutomationFields,
+  type AutomationConfiguration,
+} from "./AutomationFields";
 import cronstrue from "cronstrue";
 import "cronstrue/locales/es";
 import { useDebouncedValue } from "@mantine/hooks";
@@ -13,6 +18,8 @@ import {
   TextInput,
   Alert,
   Tooltip,
+  Stepper,
+  Checkbox,
 } from "@mantine/core";
 import { CalendarClock, Pencil, Plus, Play } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -28,12 +35,15 @@ type Operation =
   | "CALIBRE_SYNC"
   | "CATALOG_IMPORT"
   | "TORRENT_UPDATE_SEARCH"
-  | "CALIBRE_UPDATE_SEARCH";
+  | "CALIBRE_UPDATE_SEARCH"
+  | "TORRENT_AUTO_UPDATE"
+  | "CALIBRE_AUTO_UPDATE";
 interface Input {
   name: string;
   operation: Operation | null;
   cron: string;
   enabled: boolean;
+  automation?: AutomationConfiguration;
 }
 interface Task extends Omit<Input, "operation"> {
   operation: Operation;
@@ -56,6 +66,19 @@ interface View {
   tasks: Task[];
   internal: Period[];
   defaultTimezone: string;
+  automations?: Record<
+    string,
+    {
+      configuration: AutomationConfiguration;
+      cycle: {
+        id: string;
+        state: string;
+        attempts: number;
+        message: string | null;
+        jobs: { kind: string; id: string; state: string }[];
+      } | null;
+    }
+  >;
 }
 async function request<T>(
   path: string,
@@ -103,6 +126,14 @@ export function ScheduledTaskSettings() {
       void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
     },
   });
+  const [closing, setClosing] = useState<string | null>(null);
+  const closeCycle = useMutation({
+    mutationFn: (id: string) => request<void>(`/${id}/cycle/close`, "POST", {}),
+    onSuccess: () => {
+      setClosing(null);
+      void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
+    },
+  });
   if (query.isPending) return <Loading />;
   if (query.isError)
     return (
@@ -124,6 +155,7 @@ export function ScheduledTaskSettings() {
               operation: task.operation,
               cron: task.cron,
               enabled: task.enabled,
+              automation: query.data.automations?.[task.id]?.configuration,
             },
           }
         : {
@@ -167,7 +199,7 @@ export function ScheduledTaskSettings() {
             style={{ minWidth: 1700, width: "100%" }}
           >
             <colgroup>
-              {[180, 170, 120, 180, 150, 180, 180, 100, 150, 80, 250].map(
+              {[180, 170, 120, 180, 150, 180, 180, 100, 150, 220, 80, 250].map(
                 (width, index) => (
                   <col key={index} style={{ width }} />
                 ),
@@ -185,6 +217,7 @@ export function ScheduledTaskSettings() {
                   "last",
                   "duration",
                   "result",
+                  "cycle",
                   "enabled",
                   "actions",
                 ].map((key) => (
@@ -195,7 +228,7 @@ export function ScheduledTaskSettings() {
             <tbody>
               {query.data.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={11}>{t("scheduledTasks.empty")}</td>
+                  <td colSpan={12}>{t("scheduledTasks.empty")}</td>
                 </tr>
               ) : (
                 query.data.tasks.map((task) => (
@@ -227,6 +260,43 @@ export function ScheduledTaskSettings() {
                       )}
                     </td>
                     <td>
+                      {query.data.automations?.[task.id]?.cycle ? (
+                        <Stack gap={4}>
+                          <span className="badge">
+                            {t(
+                              `automation.cycles.${query.data.automations[task.id].cycle!.state}`,
+                            )}
+                          </span>
+                          {query.data.automations[task.id].cycle!.jobs.map(
+                            (job) => (
+                              <Link
+                                key={`${job.kind}-${job.id}`}
+                                to={
+                                  job.kind === "downloads"
+                                    ? `/downloads/jobs/${job.id}`
+                                    : `/calibre/jobs/${job.id}`
+                                }
+                              >
+                                {t(
+                                  job.kind === "downloads"
+                                    ? "automation.downloadJob"
+                                    : "automation.calibreJob",
+                                )}{" "}
+                                · {job.id.slice(0, 8)}
+                              </Link>
+                            ),
+                          )}
+                          {query.data.automations[task.id].cycle!.message && (
+                            <small>
+                              {query.data.automations[task.id].cycle!.message}
+                            </small>
+                          )}
+                        </Stack>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td>
                       <Switch
                         aria-label={t("scheduledTasks.toggle", {
                           name: task.name,
@@ -242,6 +312,22 @@ export function ScheduledTaskSettings() {
                       />
                     </td>
                     <td>
+                      {query.data.automations?.[task.id]?.cycle?.state !==
+                        undefined &&
+                        query.data.automations[task.id].cycle!.state !==
+                          "COMPLETED" && (
+                          <Button
+                            size="xs"
+                            variant="subtle"
+                            disabled={task.running}
+                            onClick={() => {
+                              closeCycle.reset();
+                              setClosing(task.id);
+                            }}
+                          >
+                            {t("automation.close")}
+                          </Button>
+                        )}
                       <Button
                         size="xs"
                         variant="subtle"
@@ -268,6 +354,38 @@ export function ScheduledTaskSettings() {
           </table>
         </div>
       </section>
+      <AppModal
+        opened={closing !== null}
+        onClose={() => {
+          if (!closeCycle.isPending) setClosing(null);
+        }}
+        title={t("automation.close")}
+        icon={CalendarClock}
+      >
+        <p>{t("automation.closeHelp")}</p>
+        {closeCycle.isError && (
+          <Alert color="red" role="alert">
+            {(closeCycle.error as ApiError).details ?? closeCycle.error.message}
+          </Alert>
+        )}
+        <ModalActions>
+          <Button
+            variant="default"
+            disabled={closeCycle.isPending}
+            onClick={() => setClosing(null)}
+          >
+            {t("import.cancel")}
+          </Button>
+          <Button
+            loading={closeCycle.isPending}
+            onClick={() => {
+              if (closing) closeCycle.mutate(closing);
+            }}
+          >
+            {t("automation.close")}
+          </Button>
+        </ModalActions>
+      </AppModal>
       {editing && (
         <TaskEditor
           initial={editing.input}
@@ -350,6 +468,29 @@ function TaskEditor({
 }) {
   const { t, i18n } = useTranslation();
   const [value, setValue] = useState(initial);
+  const [step, setStep] = useState(0);
+  const [confirmedDeletion, setConfirmedDeletion] = useState(false);
+  const automatic =
+    value.operation === "TORRENT_AUTO_UPDATE" ||
+    value.operation === "CALIBRE_AUTO_UPDATE";
+  const defaults = useQuery({
+    queryKey: ["automation-defaults"],
+    queryFn: ({ signal }) =>
+      get<AutomationConfiguration>(
+        "/settings/tasks/automation-defaults",
+        signal,
+      ),
+    enabled: automatic,
+  });
+  useEffect(() => {
+    if (automatic && !value.automation && defaults.data)
+      setValue((previous) => ({ ...previous, automation: defaults.data }));
+  }, [automatic, value.automation, defaults.data]);
+  const destructive =
+    !!value.automation &&
+    (value.automation.torrentCleanup !== "keep" ||
+      (value.operation === "CALIBRE_AUTO_UPDATE" &&
+        value.automation.calibreCleanup !== "KEEP"));
   const [cron] = useDebouncedValue(value.cron.trim(), 350);
   const preview = useQuery({
     queryKey: ["scheduled-cron-preview", cron],
@@ -385,7 +526,21 @@ function TaskEditor({
   const saved = useSettingsSaved();
   const mutation = useMutation({
     mutationFn: () =>
-      request<Task>(id ? `/${id}` : "", id ? "PUT" : "POST", value),
+      request<Task>(
+        id ? `/${id}` : "",
+        id ? "PUT" : "POST",
+        automatic && value.automation && defaults.data
+          ? {
+              ...value,
+              automation: {
+                ...value.automation,
+                library: defaults.data.library,
+                torrentTarget: defaults.data.torrentTarget,
+                calibreTarget: defaults.data.calibreTarget,
+              },
+            }
+          : value,
+      ),
     onSuccess: () => {
       saved();
       void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
@@ -405,136 +560,192 @@ function TaskEditor({
       icon={CalendarClock}
       title={t(id ? "scheduledTasks.edit" : "scheduledTasks.create")}
     >
-      <TextInput
-        label={t("scheduledTasks.name")}
-        required
-        maxLength={120}
-        value={value.name}
-        disabled={mutation.isPending}
-        onChange={(e) => change("name", e.currentTarget.value)}
-      />
-      <Select
-        label={t("scheduledTasks.operation")}
-        required
-        allowDeselect={false}
-        placeholder={t("scheduledTasks.chooseOperation")}
-        value={value.operation}
-        data={(
-          [
-            "TORRENT_SYNC",
-            "CALIBRE_SYNC",
-            "CATALOG_IMPORT",
-            "TORRENT_UPDATE_SEARCH",
-            "CALIBRE_UPDATE_SEARCH",
-          ] as Operation[]
-        )
-          .map((operation) => ({
-            value: operation,
-            label: t(`scheduledTasks.operations.${operation}`),
-          }))
-          .sort((a, b) =>
-            a.label.localeCompare(b.label, i18n.resolvedLanguage ?? "en", {
-              sensitivity: "base",
-            }),
+      {automatic && (
+        <Stepper active={step} size="xs" allowNextStepsSelect={false}>
+          {["scope", "downloads", "policies", "schedule"].map((key) => (
+            <Stepper.Step key={key} label={t(`automation.steps.${key}`)} />
+          ))}
+        </Stepper>
+      )}
+      {(!automatic || step === 0) && (
+        <>
+          <TextInput
+            label={t("scheduledTasks.name")}
+            required
+            maxLength={120}
+            value={value.name}
+            disabled={mutation.isPending}
+            onChange={(e) => change("name", e.currentTarget.value)}
+          />
+          <Select
+            label={t("scheduledTasks.operation")}
+            required
+            allowDeselect={false}
+            placeholder={t("scheduledTasks.chooseOperation")}
+            value={value.operation}
+            data={(
+              [
+                "TORRENT_SYNC",
+                "CALIBRE_SYNC",
+                "CATALOG_IMPORT",
+                "TORRENT_UPDATE_SEARCH",
+                "CALIBRE_UPDATE_SEARCH",
+                "TORRENT_AUTO_UPDATE",
+                "CALIBRE_AUTO_UPDATE",
+              ] as Operation[]
+            )
+              .map((operation) => ({
+                value: operation,
+                label: t(`scheduledTasks.operations.${operation}`),
+              }))
+              .sort((a, b) =>
+                a.label.localeCompare(b.label, i18n.resolvedLanguage ?? "en", {
+                  sensitivity: "base",
+                }),
+              )}
+            onChange={(operation) =>
+              change("operation", operation as Operation | null)
+            }
+            disabled={mutation.isPending}
+          />
+        </>
+      )}
+      {automatic && defaults.isError && (
+        <Failure
+          error={defaults.error}
+          retry={() => {
+            void defaults.refetch();
+          }}
+        />
+      )}
+      {automatic && value.automation && (
+        <AutomationFields
+          value={value.automation}
+          step={step}
+          calibre={value.operation === "CALIBRE_AUTO_UPDATE"}
+          disabled={mutation.isPending}
+          onChange={(next) => {
+            setConfirmedDeletion(false);
+            change("automation", next);
+          }}
+        />
+      )}
+      {automatic && step === 3 && value.operation === "CALIBRE_AUTO_UPDATE" && (
+        <p>
+          {t("automation.library")}:{" "}
+          <strong>{defaults.data?.library || "—"}</strong>
+        </p>
+      )}
+      {(!automatic || step === 3) && (
+        <>
+          <TextInput
+            label={t("scheduledTasks.cron")}
+            rightSectionWidth={68}
+            rightSectionPointerEvents="all"
+            rightSection={
+              <Tooltip
+                disabled={
+                  !current ||
+                  !preview.data ||
+                  preview.isError ||
+                  preview.isFetching
+                }
+                multiline
+                w={360}
+                maw="calc(100vw - 32px)"
+                withArrow
+                events={{ hover: true, focus: true, touch: true }}
+                label={
+                  current && preview.data && !preview.isError ? (
+                    <div>
+                      <p style={{ margin: "0 0 8px" }}>{description}</p>
+                      <strong>
+                        {t("scheduledTasks.nextExecutions", {
+                          timezone: preview.data.timezone,
+                        })}
+                      </strong>
+                      <ol style={{ margin: "8px 0 0", paddingLeft: 20 }}>
+                        {preview.data.executions.map((date) => (
+                          <li key={date}>{formatExecution(date)}</li>
+                        ))}
+                      </ol>
+                    </div>
+                  ) : (
+                    ""
+                  )
+                }
+              >
+                <Button
+                  type="button"
+                  size="compact-xs"
+                  variant="subtle"
+                  aria-label={t("scheduledTasks.cronInfo")}
+                  loading={
+                    !!value.cron.trim() && (!current || preview.isFetching)
+                  }
+                  disabled={!value.cron.trim() || (current && preview.isError)}
+                >
+                  {t("scheduledTasks.info")}
+                </Button>
+              </Tooltip>
+            }
+            required
+            value={value.cron}
+            maxLength={256}
+            onChange={(e) => change("cron", e.currentTarget.value)}
+            disabled={mutation.isPending}
+            error={
+              current && preview.isError
+                ? preview.error instanceof ApiError && preview.error.details
+                  ? preview.error.details
+                  : preview.error.message
+                : undefined
+            }
+            description={
+              <>
+                {t("scheduledTasks.cronHelp")}{" "}
+                <a
+                  style={{
+                    color: "var(--mantine-primary-color-filled)",
+                    textDecoration: "underline",
+                  }}
+                  href="https://crontab.guru/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  crontab.guru
+                </a>
+                {" · "}
+                <a
+                  style={{
+                    color: "var(--mantine-primary-color-filled)",
+                    textDecoration: "underline",
+                  }}
+                  href="https://docs.spring.io/spring-framework/reference/integration/scheduling.html#scheduling-cron-expression"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t("scheduledTasks.secondsFormat")}
+                </a>
+              </>
+            }
+          />
+          <Switch
+            label={t("scheduledTasks.enabled")}
+            checked={value.enabled}
+            onChange={(e) => change("enabled", e.currentTarget.checked)}
+            disabled={mutation.isPending}
+          />
+          {automatic && destructive && (
+            <Checkbox
+              label={t("automation.confirmDeletion")}
+              checked={confirmedDeletion}
+              onChange={(e) => setConfirmedDeletion(e.currentTarget.checked)}
+              disabled={mutation.isPending}
+            />
           )}
-        onChange={(operation) =>
-          change("operation", operation as Operation | null)
-        }
-        disabled={mutation.isPending}
-      />
-      <TextInput
-        label={t("scheduledTasks.cron")}
-        rightSectionWidth={68}
-        rightSectionPointerEvents="all"
-        rightSection={
-          <Tooltip
-            disabled={
-              !current || !preview.data || preview.isError || preview.isFetching
-            }
-            multiline
-            w={360}
-            maw="calc(100vw - 32px)"
-            withArrow
-            events={{ hover: true, focus: true, touch: true }}
-            label={
-              current && preview.data && !preview.isError ? (
-                <div>
-                  <p style={{ margin: "0 0 8px" }}>{description}</p>
-                  <strong>
-                    {t("scheduledTasks.nextExecutions", {
-                      timezone: preview.data.timezone,
-                    })}
-                  </strong>
-                  <ol style={{ margin: "8px 0 0", paddingLeft: 20 }}>
-                    {preview.data.executions.map((date) => (
-                      <li key={date}>{formatExecution(date)}</li>
-                    ))}
-                  </ol>
-                </div>
-              ) : (
-                ""
-              )
-            }
-          >
-            <Button
-              type="button"
-              size="compact-xs"
-              variant="subtle"
-              aria-label={t("scheduledTasks.cronInfo")}
-              loading={!!value.cron.trim() && (!current || preview.isFetching)}
-              disabled={!value.cron.trim() || (current && preview.isError)}
-            >
-              {t("scheduledTasks.info")}
-            </Button>
-          </Tooltip>
-        }
-        required
-        value={value.cron}
-        maxLength={256}
-        onChange={(e) => change("cron", e.currentTarget.value)}
-        disabled={mutation.isPending}
-        error={
-          current && preview.isError
-            ? preview.error instanceof ApiError && preview.error.details
-              ? preview.error.details
-              : preview.error.message
-            : undefined
-        }
-        description={
-          <>
-            {t("scheduledTasks.cronHelp")}{" "}
-            <a
-              style={{
-                color: "var(--mantine-primary-color-filled)",
-                textDecoration: "underline",
-              }}
-              href="https://crontab.guru/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              crontab.guru
-            </a>
-            {" · "}
-            <a
-              style={{
-                color: "var(--mantine-primary-color-filled)",
-                textDecoration: "underline",
-              }}
-              href="https://docs.spring.io/spring-framework/reference/integration/scheduling.html#scheduling-cron-expression"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t("scheduledTasks.secondsFormat")}
-            </a>
-          </>
-        }
-      />
-      <Switch
-        label={t("scheduledTasks.enabled")}
-        checked={value.enabled}
-        onChange={(e) => change("enabled", e.currentTarget.checked)}
-        disabled={mutation.isPending}
-      />
+        </>
+      )}
       {mutation.isError && (
         <Alert color="red" role="alert">
           {mutation.error instanceof ApiError && mutation.error.details
@@ -550,20 +761,49 @@ function TaskEditor({
         >
           {t("import.cancel")}
         </Button>
-        <Button
-          loading={mutation.isPending}
-          disabled={
-            !value.name.trim() ||
-            !value.operation ||
-            !current ||
-            !preview.data ||
-            preview.isError ||
-            preview.isFetching
-          }
-          onClick={() => mutation.mutate()}
-        >
-          {t("auth.save")}
-        </Button>
+        {automatic && step > 0 && (
+          <Button
+            variant="default"
+            disabled={mutation.isPending}
+            onClick={() => setStep(step - 1)}
+          >
+            {t("automation.back")}
+          </Button>
+        )}
+        {automatic && step < 3 ? (
+          <Button
+            disabled={
+              !value.name.trim() ||
+              !value.automation ||
+              !value.automation.states.length ||
+              value.automation.limit < 1 ||
+              value.automation.limit > 1000
+            }
+            onClick={() => setStep(step + 1)}
+          >
+            {t("automation.next")}
+          </Button>
+        ) : (
+          <Button
+            loading={mutation.isPending}
+            disabled={
+              (automatic &&
+                (!value.automation ||
+                  defaults.isPending ||
+                  defaults.isError ||
+                  (destructive && !confirmedDeletion))) ||
+              !value.name.trim() ||
+              !value.operation ||
+              !current ||
+              !preview.data ||
+              preview.isError ||
+              preview.isFetching
+            }
+            onClick={() => mutation.mutate()}
+          >
+            {t("auth.save")}
+          </Button>
+        )}
       </ModalActions>
     </AppModal>
   );

@@ -17,6 +17,7 @@ import com.rlibanez.eplsync.exception.UserInputException;
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="eplsync.tasks.worker-enabled",matchIfMissing=true)
 public class TaskScheduler {
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(TaskScheduler.class);
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.settings.AutomaticUpdates automations;
     private final ScheduledTasks tasks;
     private final CalibreCatalogService calibre;
     private final UpdateCleanupService torrent;
@@ -69,6 +70,7 @@ public class TaskScheduler {
                     authorities.add(new SimpleGrantedAuthority("ROLE_"+owner.role()));
                     context.setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,authorities));
                     // Permissions are fresh for every run. Existing services also prevent concurrent manual operations.
+                    if(task.operation()==ScheduledTasks.Operation.TORRENT_AUTO_UPDATE || task.operation()==ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE) return automations.execute(task);
                     if(task.operation()==ScheduledTasks.Operation.TORRENT_UPDATE_SEARCH) return searches.downloads(owner.id());
                     if(task.operation()==ScheduledTasks.Operation.CALIBRE_UPDATE_SEARCH) return searches.calibre(owner.id());
                     if(task.operation()==ScheduledTasks.Operation.CALIBRE_SYNC) {

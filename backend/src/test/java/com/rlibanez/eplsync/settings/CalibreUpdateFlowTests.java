@@ -74,6 +74,13 @@ class CalibreUpdateFlowTests {
         jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,state) VALUES('download-job',100,1,500,1,'RUNNING')");
         jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,epl_id,revision,hash,state) VALUES('download-item','download-job',0,0,2,1.1,?,?)","B".repeat(40),state);
     }
+    @Test void idempotentRequestsFromBeforeAutomationOptionsWereAddedRemainValid() {
+        var request=new CalibreUpdateFlow.Request(UUID.randomUUID().toString(),List.of(ready("KEEP")),true,true);
+        var result=submit(request);
+        jdbc.update("UPDATE calibre_update_requests SET payload=json_remove(payload,'$.downloadOptions') WHERE id=?",request.id());
+        assertThat(submit(request)).isEqualTo(result);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Long.class)).isEqualTo(1);
+    }
     @Test void configuredIntervalControlsBothClientProbeAndWaitingItem() {
         var result=submit(List.of(missing()),true,true);downloadItem("PENDING");
         long before=Instant.now().toEpochMilli();
