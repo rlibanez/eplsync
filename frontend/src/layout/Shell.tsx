@@ -1,5 +1,4 @@
 import { SetupEntry } from "../features/settings/setupState";
-import { ListTodo } from "lucide-react";
 import { ApplicationUpdateNotice } from "../features/settings/applicationUpdates";
 import { useAuth } from "../features/auth/Auth";
 import { RouteAccess } from "../features/auth/RouteAccess";
@@ -202,7 +201,7 @@ function ShellContent() {
                   title={t("nav.jobs")}
                   onClick={() => setOpen(false)}
                 >
-                  <ListTodo size={19} />
+                  <ListChecks size={19} />
                   <span className="nav-text">{t("nav.jobs")}</span>
                 </NavLink>
               )}
