@@ -174,7 +174,7 @@ class ScheduledTasksTests {
         assertThatThrownBy(()->ScheduledTasks.next("0 0 0 31 2 *","UTC",Instant.now())).hasMessageContaining("Cron");
     }
     @Test void claimsPreventOverlapButAllowDifferentOperationsAndDisablingDoesNotCancelRunningWork() {
-        var first=due("One",ScheduledTasks.Operation.CALIBRE_SYNC);due("Two",ScheduledTasks.Operation.CALIBRE_SYNC);
+        due("One",ScheduledTasks.Operation.CALIBRE_SYNC);due("Two",ScheduledTasks.Operation.CALIBRE_SYNC);
         due("Torrent",ScheduledTasks.Operation.TORRENT_SYNC);
         var a=tasks.claim(Instant.now()).orElseThrow();var b=tasks.claim(Instant.now()).orElseThrow();
         assertThat(a.operation()).isNotEqualTo(b.operation());assertThat(tasks.claim(Instant.now())).isEmpty();
