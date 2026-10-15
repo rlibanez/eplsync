@@ -32,6 +32,10 @@
         <eplsync.build.commit>unknown</eplsync.build.commit>
 		<sqlite.version>3.53.4.0</sqlite.version>
 		<opencsv.version>5.12.0</opencsv.version>
+		<!-- Security fixes pending inclusion in Spring Boot's managed versions. -->
+		<bouncycastle.version>1.85</bouncycastle.version>
+		<jackson-bom.version>3.1.7</jackson-bom.version>
+		<tomcat.version>11.0.26</tomcat.version>
 	</properties>
 	<dependencies>
         <dependency>
@@ -45,7 +49,7 @@
 		<dependency>
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcprov-jdk18on</artifactId>
-			<version>1.84</version>
+			<version>${bouncycastle.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.security</groupId>
