@@ -151,9 +151,7 @@ class UpdateTests {
         assertThat(queue.runImmediate(100,Instant.now())).isEqualTo(1);
         verify(stubClient).deleteTorrent(OLD,false);
         assertThat(cleanup.findByJobIdOrderByEplIdAsc(job.jobId()).getFirst().getState()).isEqualTo(UpdateCleanup.State.REMOVED);
-        var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
-        assertThat(event.actor().username()).isEqualTo("cleanupowner");
-        assertThat(event.details()).containsEntry("deleteFiles",false);
+
     }
     @Test void failedReplacementNeverTriggersImmediateRemoval() {
         var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT);
@@ -237,8 +235,7 @@ class UpdateTests {
         verify(stubClient).deleteTorrent(OLD,false);
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
         assertThat(only(job.jobId()).getMessage()).isEqualTo("Torrent eliminado; sin datos descargados que borrar");
-        var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
-        assertThat(event.details()).containsEntry("deleteFiles",false).containsEntry("confirmed",true);
+
     }
     @Test void unresolvedTargetWaitsAndIsDeletedOnlyAfterItsPathBecomesVerifiable() {
         var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
@@ -305,10 +302,7 @@ class UpdateTests {
         assertThat(report.cleanup().getFirst().state()).isEqualTo(UpdateCleanup.State.REMOVED);
         assertThat(report.cleanup().getFirst().hash()).isEqualTo(OLD);
         assertThat(downloads.findById(report.cleanup().getFirst().downloadId()).orElseThrow().getStatus()).isEqualTo(DownloadStatus.NOT_FOUND);
-        var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
-        assertThat(event.outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
-        assertThat(event.actor().username()).isEqualTo("user");
-        assertThat(event.details()).containsEntry("confirmed",true).containsEntry("deleteFiles",false);
+
         verify(stubClient,times(2)).listTorrents(); // initial snapshot + deletion confirmation
         verify(stubClient).deleteTorrent(OLD,false);
         var observed=downloads.findById(target.getId()).orElseThrow();
@@ -325,8 +319,10 @@ class UpdateTests {
         assertThat(report.cleanup().getFirst().state()).isEqualTo(UpdateCleanup.State.REQUESTED);
         var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
         assertThat(event.outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL);
-        assertThat(event.details()).containsEntry("confirmed",false).containsEntry("requested",true);
+        assertThat(event.details()).containsEntry("unconfirmed",1).containsEntry("total",1);
+        long cursor=journal.cursor();
         cleaner.synchronize(false,false);
+        assertThat(journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,100).items().stream().filter(e -> e.id()>cursor)).isEmpty();
         verify(stubClient,times(1)).deleteTorrent(OLD,false);
     }
 
@@ -338,7 +334,7 @@ class UpdateTests {
         assertThat(report.cleanup().getFirst().state()).isEqualTo(UpdateCleanup.State.REQUESTED);
         var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
         assertThat(event.outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL);
-        assertThat(event.details()).containsEntry("confirmed",false).containsEntry("deleteFiles",true);
+        assertThat(event.details()).containsEntry("unconfirmed",1);
         assertThat(event.details().toString()).doesNotContain("private technical detail");
     }
 
@@ -355,10 +351,69 @@ class UpdateTests {
         assertThat(only(cleanup.findAll().getFirst().getJobId()).getState()).isEqualTo(UpdateCleanup.State.BLOCKED);
         verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
         var entry=cleanup.findAll().getFirst();
-        entry.setMessage("Motivo anterior");
+        entry.setEventSignature("BLOCKED:Motivo anterior");
         cleanup.saveAndFlush(entry);
         cleaner.synchronize(false,false);
         assertThat(journal.search(filter,0,100).items().stream().filter(event -> event.id()>before).toList()).hasSize(4);
+    }
+
+    @Test void cleanupProblemsAreGroupedByJobAndSurviveEventRetention() {
+        var job=create(PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        var original=only(job.jobId());queue.hydrate(List.of(original));original=only(job.jobId());
+        var second=new UpdateCleanup();
+        org.springframework.beans.BeanUtils.copyProperties(original,second,"id","downloadId","hash");
+        second.setDownloadId(history(1,1.05,OTHER,DownloadStatus.DOWNLOADED).getId());
+        second.setHash(OTHER);cleanup.saveAndFlush(second);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/shared"),
+            remote(OTHER,DownloadStatus.DOWNLOADED,"/shared"),remote(NEW,DownloadStatus.DOWNLOADED,"/shared")));
+        long before=journal.cursor();
+        cleaner.synchronize(false,false);
+        var filter=new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null);
+        var emitted=journal.search(filter,0,100).items().stream().filter(event -> event.id()>before).toList();
+        assertThat(emitted).hasSize(2);
+        assertThat(emitted).extracting(event -> event.operationId()).containsOnly(emitted.getFirst().operationId());
+        assertThat(emitted.getFirst().details()).containsEntry("jobId",job.jobId()).containsEntry("blocked",2).containsEntry("total",2);
+        assertThat(cleanup.findByJobIdOrderByEplIdAsc(job.jobId())).allSatisfy(entry -> {
+            assertThat(entry.getState()).isEqualTo(UpdateCleanup.State.BLOCKED);
+            assertThat(entry.getMessage()).contains("compartidos");
+            assertThat(entry.getEventSignature()).isNotNull();
+        });
+        jdbc.update("DELETE FROM app_events");
+        cleaner.synchronize(false,false);
+        assertThat(journal.search(filter,0,100).items()).isEmpty();
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+
+    @Test void mixedCleanupReportsOnePartialResultWithAllIndividualDetails() {
+        var job=create(PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        var original=only(job.jobId());queue.hydrate(List.of(original));original=only(job.jobId());
+        var second=new UpdateCleanup();
+        org.springframework.beans.BeanUtils.copyProperties(original,second,"id","downloadId","hash");
+        second.setDownloadId(history(1,1.05,OTHER,DownloadStatus.DOWNLOADED).getId());
+        second.setHash(OTHER);cleanup.saveAndFlush(second);
+        var blocked=remote(OLD,DownloadStatus.DOWNLOADED,"/shared");
+        var replacement=remote(NEW,DownloadStatus.DOWNLOADED,"/shared");
+        when(stubClient.listTorrents()).thenReturn(List.of(blocked,replacement,remote(OTHER,DownloadStatus.DOWNLOADED,"/other")))
+            .thenReturn(List.of(blocked,replacement));
+        long before=journal.cursor();cleaner.synchronize(false,false);
+        var filter=new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null);
+        var emitted=journal.search(filter,0,100).items().stream().filter(event -> event.id()>before).toList();
+        assertThat(emitted).hasSize(2);
+        assertThat(emitted.getFirst().outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL);
+        assertThat(emitted.getFirst().details()).containsEntry("jobId",job.jobId()).containsEntry("removed",1).containsEntry("blocked",1);
+        assertThat(cleanup.findByJobIdOrderByEplIdAsc(job.jobId())).extracting((UpdateCleanup entry) -> java.util.Objects.requireNonNull(entry).getState())
+            .containsExactlyInAnyOrder(UpdateCleanup.State.REMOVED,UpdateCleanup.State.BLOCKED);
+        verify(stubClient).deleteTorrent(OTHER,true);verify(stubClient,never()).deleteTorrent(eq(OLD),anyBoolean());
+    }
+
+    @Test void successfulCleanupDoesNotEmitEvents() {
+        create(PreviousVersions.REMOVE_TORRENT);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old"),remote(NEW,DownloadStatus.DOWNLOADED,"/new")))
+            .thenReturn(List.of(remote(NEW,DownloadStatus.DOWNLOADED,"/new")));
+        long before=journal.cursor();cleaner.synchronize(false,false);
+        var filter=new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null);
+        assertThat(journal.search(filter,0,100).items().stream().filter(event -> event.id()>before)).isEmpty();
+        assertThat(cleanup.findAll()).allSatisfy(entry -> assertThat(entry.getState()).isEqualTo(UpdateCleanup.State.REMOVED));
     }
 
     @Test void manualCleanupAuditsBlockedFilesWithExecutingUser() {
@@ -371,7 +426,7 @@ class UpdateTests {
         var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
         assertThat(event.actor().username()).isEqualTo("executor");
         assertThat(event.outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
-        assertThat(event.details()).containsEntry("requested",false).containsEntry("deleteFiles",true);
+        assertThat(event.details()).containsEntry("blocked",1);
     }
 
     @Test void manualCleanupAuditsFailedDeleteWithoutLeakingException() {
@@ -382,7 +437,7 @@ class UpdateTests {
         assertThat(report.cleanup().getFirst().state()).isEqualTo(UpdateCleanup.State.REQUESTED);
         var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
         assertThat(event.outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL);
-        assertThat(event.details()).containsEntry("confirmed",false);
+        assertThat(event.details()).containsEntry("unconfirmed",1);
         assertThat(event.details().toString()).doesNotContain("secret credential");
     }
 
@@ -675,9 +730,7 @@ class UpdateTests {
             else queue.runAutomatic(100);
             verify(stubClient).deleteTorrent(OLD,true);
             assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
-            var event=journal.search(new com.rlibanez.eplsync.events.EventJournal.Filter(null,null,null,null,null,"CLEANUP",null),0,20).items().getFirst();
-            assertThat(event.actor().id()).isEqualTo(owner.id());
-            assertThat(event.actor().username()).isEqualTo("cleanupowner");
+
         } finally {org.springframework.security.core.context.SecurityContextHolder.setContext(context);}
     }
     @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_SEND","CATALOG_READ","TORRENT_SYNC"})

@@ -34,11 +34,6 @@ public class CleanupQueue {
     private final JsonMapper mapper = JsonMapper.builder().build();
     public record Result(String id, String downloadId, Long eplId, String hash, PreviousVersions policy, UpdateCleanup.State state, String message) {}
     private static final String NO_DATA = "Sin datos descargados que borrar";
-    private record Attempt(UpdateCleanup entry, EventContext.Actor actor, EventContext.Origin origin, String operationId, boolean deleteFiles) {}
-    private Map<String,Object> auditDetails(UpdateCleanup entry) {
-        return Map.of("eplId",entry.getEplId(),"cleanupId",entry.getId(),"hash",entry.getHash(),
-            "policy",entry.getPreviousVersions().name(),"deleteFiles",entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES);
-    }
 
     public CleanupQueue(UpdateCleanupRepository entries, UpdatePlanRepository plans, DownloadRepository downloads,
             DownloadTrackingService tracking, TorrentClientService client, CatalogBookRepository books,
@@ -142,9 +137,6 @@ public class CleanupQueue {
         }
         tracking.observeSelected(byHash,observedHashes);
         var dispatched=new HashSet<String>();
-        var attempts=new ArrayList<Attempt>();
-        var previousBlocks=new HashMap<String,String>();
-        for (var entry:selected) if(entry.getState()==UpdateCleanup.State.BLOCKED) previousBlocks.put(entry.getId(),entry.getMessage());
         for (var entry:selected) {
             if(!CleanupBudget.available()) break;
             // Reload: a duplicate hash earlier in this batch may already have resolved this request.
@@ -200,13 +192,6 @@ public class CleanupQueue {
                 if(!claim(entry,"Eliminación solicitada; pendiente de confirmar ausencia" + (noData ? ". " + NO_DATA : ""))) continue;
                 if (!dispatched.add(old.hash())) continue;
                 try {
-                    var actor=automatic ? new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()) : EventContext.actor();
-                    var attempt=new Attempt(entry,actor,EventContext.origin(),UUID.randomUUID().toString(),files);
-                    var startDetails=new HashMap<String,Object>(auditDetails(entry));
-                    startDetails.put("deleteFiles",files);
-                    events.recordAs(actor,EventJournal.Category.TORRENT,"CLEANUP",
-                        EventJournal.Outcome.STARTED,attempt.origin(),attempt.operationId(),startDetails);
-                    attempts.add(attempt);
                     adapter.deleteTorrent(old.hash(),files);
                 }
                 catch (RuntimeException ex) {
@@ -231,32 +216,55 @@ public class CleanupQueue {
                 log.warn("Confirmación de borrado pendiente: tipo={}",ex.getClass().getSimpleName());
             }
         }
-        for (var entry:entries.findAllById(selected.stream().map((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getId()).toList())) {
-            if(entry.getState()==UpdateCleanup.State.BLOCKED && !Objects.equals(previousBlocks.get(entry.getId()),entry.getMessage())) {
-                var actor=automatic ? new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()) : EventContext.actor();
-                var details=new HashMap<String,Object>(auditDetails(entry));
-                details.put("requested",false); details.put("confirmed",false); details.put("reason",entry.getMessage());
-                var operationId=UUID.randomUUID().toString();
-                events.recordAs(actor,EventJournal.Category.TORRENT,"CLEANUP",
-                    EventJournal.Outcome.STARTED,EventContext.origin(),operationId,auditDetails(entry));
-                events.recordAs(actor,EventJournal.Category.TORRENT,"CLEANUP",
-                    EventJournal.Outcome.FAILED,EventContext.origin(),operationId,details);
-            }
-        }
-        for (var attempt:attempts) {
-            var entry=entries.findById(attempt.entry().getId()).orElseThrow();
-            boolean confirmed=entry.getState()==UpdateCleanup.State.REMOVED;
-            var details=new HashMap<String,Object>(auditDetails(entry));
-            details.put("deleteFiles",attempt.deleteFiles());
-            details.put("requested",true);
-            details.put("confirmed",confirmed);
-            details.put("reason",entry.getMessage());
-            events.recordAs(attempt.actor(),EventJournal.Category.TORRENT,"CLEANUP",
-                confirmed ? EventJournal.Outcome.SUCCEEDED : EventJournal.Outcome.PARTIAL,
-                attempt.origin(),attempt.operationId(),details);
-        }
+        reportProblems(selected,automatic);
         return entries.findAllById(selected.stream().map((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getId()).toList()).stream()
             .map(e -> new Result(e.getId(),e.getDownloadId(),e.getEplId(),e.getHash(),e.getPreviousVersions(),e.getState(),e.getMessage())).toList();
+    }
+    /** Persist notification markers with the journal, so polling and restarts cannot repeat a block. */
+    private void reportProblems(List<UpdateCleanup> selected,boolean automatic) {
+        synchronized(bulk) {tx.executeWithoutResult(status -> {
+            var changed=new LinkedHashMap<String,UpdateCleanup>();
+            for(var candidate:selected) {
+                var entry=entries.findById(candidate.getId()).orElseThrow();em.refresh(entry);
+                String signature=switch(entry.getState()) {
+                    case BLOCKED -> "BLOCKED:"+entry.getMessage();
+                    case REQUESTED -> "REQUESTED";
+                    default -> null;
+                };
+                if(Objects.equals(signature,entry.getEventSignature())) continue;
+                entry.setEventSignature(signature);entries.saveAndFlush(entry);
+                if(signature!=null) changed.put(entry.getJobId()==null?entry.getId():entry.getJobId(),entry);
+            }
+            for(var entry:changed.values()) {
+                var counts=entry.getJobId()==null ? Collections.singletonList(new Object[]{entry.getState(),1L}) :
+                    em.createQuery("select c.state,count(c) from UpdateCleanup c where c.jobId=:job group by c.state",Object[].class)
+                        .setParameter("job",entry.getJobId()).getResultList();
+                var details=new LinkedHashMap<String,Object>();
+                if(entry.getJobId()!=null) details.put("jobId",entry.getJobId());
+                long removed=0,requested=0,total=0;
+                for(var count:counts) {
+                    var state=(UpdateCleanup.State)count[0];long number=((Number)count[1]).longValue();total+=number;
+                    details.put(switch(state) {
+                        case REMOVED -> "removed";
+                        case REQUESTED -> "unconfirmed";
+                        case BLOCKED -> "blocked";
+                        case WAITING -> "waiting";
+                        case KEPT -> "kept";
+                        case CANCELLED -> "cancelled";
+                    },number);
+                    if(state==UpdateCleanup.State.REMOVED) removed=number;
+                    if(state==UpdateCleanup.State.REQUESTED) requested=number;
+                }
+                details.put("total",total);
+                var actor=automatic ? new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()) : EventContext.actor();
+                var operationId=UUID.randomUUID().toString();
+                events.recordAs(actor,EventJournal.Category.TORRENT,"CLEANUP",EventJournal.Outcome.STARTED,EventContext.origin(),operationId,
+                    entry.getJobId()==null?Map.of():Map.of("jobId",entry.getJobId()));
+                events.recordAs(actor,EventJournal.Category.TORRENT,"CLEANUP",
+                    removed>0 || requested>0 ? EventJournal.Outcome.PARTIAL : EventJournal.Outcome.FAILED,
+                    EventContext.origin(),operationId,details);
+            }
+        });}
     }
     private List<String> targets(UpdateCleanup entry) {
         if (entry.getTargetHashes()==null) throw new IllegalStateException("Faltan dependencias de limpieza");
@@ -309,6 +317,7 @@ public class CleanupQueue {
         if (entry.getState()==UpdateCleanup.State.REQUESTED && state!=UpdateCleanup.State.REMOVED) state=UpdateCleanup.State.REQUESTED;
         if (entry.getState()==UpdateCleanup.State.REQUESTED && entry.getMessage()!=null && entry.getMessage().contains(NO_DATA))
             message=state==UpdateCleanup.State.REMOVED ? "Torrent eliminado; " + NO_DATA.toLowerCase(java.util.Locale.ROOT) : message.contains(NO_DATA) ? message : message + ". " + NO_DATA;
+        if(state!=UpdateCleanup.State.BLOCKED && state!=UpdateCleanup.State.REQUESTED) entry.setEventSignature(null);
         entry.setState(state); entry.setMessage(message); entry.setUpdatedAt(Instant.now()); entries.saveAndFlush(entry);
         bulk.cleanupChanged(entry.getJobId());
     }

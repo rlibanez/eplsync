@@ -19,6 +19,8 @@ public class UpdateCleanup {
     @Column(nullable = false) private String hash;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private State state;
     private String message;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Column(columnDefinition = "TEXT") private String eventSignature;
     private Instant updatedAt;
     private Instant createdAt;
     private Instant lastCheckedAt;

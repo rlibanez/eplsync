@@ -310,10 +310,14 @@ function EventsView({ operationId }: { operationId?: string }) {
               "COVERS",
               "TORRENT",
               ...(auth.user?.role === "ADMIN" ? ["SECURITY"] : []),
-            ].map((value) => ({
-              value,
-              label: t("events.categories." + value),
-            }))}
+            ]
+              .map((value) => ({
+                value,
+                label: t("events.categories." + value),
+              }))
+              .sort((a, b) =>
+                a.label.localeCompare(b.label, i18n.resolvedLanguage),
+              )}
             onChange={(value) => {
               setCategory(value);
               setPage(0);
@@ -334,7 +338,10 @@ function EventsView({ operationId }: { operationId?: string }) {
                 ([value]) =>
                   auth.user?.role === "ADMIN" || !value.startsWith("USER_"),
               )
-              .map(([value, label]) => ({ value, label }))}
+              .map(([value, label]) => ({ value, label }))
+              .sort((a, b) =>
+                a.label.localeCompare(b.label, i18n.resolvedLanguage),
+              )}
             onChange={(value) => {
               setAction(value);
               setPage(0);
@@ -353,13 +360,17 @@ function EventsView({ operationId }: { operationId?: string }) {
               "PAUSED",
               "RETRY_WAIT",
               "CANCELLED",
-            ].map((value) => ({
-              value,
-              label:
-                value === "STARTED"
-                  ? t("events.running")
-                  : t("events.outcomes." + value),
-            }))}
+            ]
+              .map((value) => ({
+                value,
+                label:
+                  value === "STARTED"
+                    ? t("events.running")
+                    : t("events.outcomes." + value),
+              }))
+              .sort((a, b) =>
+                a.label.localeCompare(b.label, i18n.resolvedLanguage),
+              )}
             onChange={(value) => {
               setOutcome(value);
               setPage(0);
@@ -369,10 +380,14 @@ function EventsView({ operationId }: { operationId?: string }) {
             label={t("events.origin")}
             clearable
             value={origin}
-            data={["MANUAL", "SCHEDULED", "SYSTEM"].map((value) => ({
-              value,
-              label: t("events.origins." + value),
-            }))}
+            data={["MANUAL", "SCHEDULED", "SYSTEM"]
+              .map((value) => ({
+                value,
+                label: t("events.origins." + value),
+              }))
+              .sort((a, b) =>
+                a.label.localeCompare(b.label, i18n.resolvedLanguage),
+              )}
             onChange={(value) => {
               setOrigin(value);
               setPage(0);

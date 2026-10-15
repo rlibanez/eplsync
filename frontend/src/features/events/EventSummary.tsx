@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { copyDetails } from "./copyDetails";
 import { useState } from "react";
 import { Button } from "@mantine/core";
@@ -77,7 +78,19 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
                 {visibleDetails(event).map(([key, value]) => (
                   <div key={key}>
                     <dt>{t("events.fields." + key, { defaultValue: key })}</dt>
-                    <dd>{valueLabel(key, value)}</dd>
+                    <dd>
+                      {key === "jobId" &&
+                      event.action === "CLEANUP" &&
+                      !String(value).startsWith("manual:") ? (
+                        <Link
+                          to={`/downloads/jobs/${encodeURIComponent(String(value))}`}
+                        >
+                          {String(value)}
+                        </Link>
+                      ) : (
+                        valueLabel(key, value)
+                      )}
+                    </dd>
                   </div>
                 ))}
               </dl>

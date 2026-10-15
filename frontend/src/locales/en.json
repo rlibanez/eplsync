@@ -1064,6 +1064,13 @@
       "CALIBRE_JOB_CONTROL": "Control Calibre job"
     },
     "fields": {
+      "removed": "Confirmed removals",
+      "jobId": "Job",
+      "unconfirmed": "Unconfirmed removals",
+      "blocked": "Blocked cleanups",
+      "waiting": "Pending cleanups",
+      "kept": "Retained revisions",
+      "cancelled": "Cancelled cleanups",
       "taskId": "Task ID",
       "taskName": "Name",
       "taskOperation": "Operation",

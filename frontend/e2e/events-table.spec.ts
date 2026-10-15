@@ -14,7 +14,10 @@ test.beforeEach(async ({ page }) => {
     action: entry.id === 3 ? "SYNC" : "UPDATE",
     createdAt: "2026-10-01T10:00:00Z",
     operationId: "long-operation-".repeat(20) + entry.id,
-    details: { message: "Un resumen muy largo ".repeat(100), ...(entry.id === 3 ? { dryRun: false } : {}) },
+    details: {
+      message: "Un resumen muy largo ".repeat(100),
+      ...(entry.id === 3 ? { dryRun: false } : {}),
+    },
   }));
   await page.route("**/api/events/operations?**", (r) =>
     r.fulfill({ json: operationResponse(entries, r.request().url()) }),
@@ -139,10 +142,33 @@ test("event table supports criteria and configurable columns", async ({
   );
 });
 
-test("torrent synchronization summary omits the simulation field", async ({ page }) => {
-  const row = page.locator(".events-table tbody tr").filter({ hasText: "Sincronización torrent" });
+test("torrent synchronization summary omits the simulation field", async ({
+  page,
+}) => {
+  const row = page
+    .locator(".events-table tbody tr")
+    .filter({ hasText: "Sincronización torrent" });
   await row.locator("summary").click();
   await expect(row.locator(".event-timeline")).toBeVisible();
-  await expect(row.locator(".event-details dt")).not.toContainText(["Simulación"]);
-  await expect(row.locator(".event-details")).toContainText("Un resumen muy largo");
+  await expect(row.locator(".event-details dt")).not.toContainText([
+    "Simulación",
+  ]);
+  await expect(row.locator(".event-details")).toContainText(
+    "Un resumen muy largo",
+  );
+});
+
+test("event filter values are alphabetized by their displayed labels", async ({
+  page,
+}) => {
+  for (const name of ["Categoría", "Evento", "Resultado", "Origen"]) {
+    await page.getByRole("textbox", { name, exact: true }).click();
+    const options = page.getByRole("option");
+    await expect(options.first()).toBeVisible();
+    const labels = await options.allTextContents();
+    expect(labels).toEqual(
+      [...labels].sort((a, b) => a.localeCompare(b, "es")),
+    );
+    await page.keyboard.press("Escape");
+  }
 });

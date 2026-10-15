@@ -1064,6 +1064,13 @@
       "CALIBRE_JOB_CONTROL": "Controlar trabajo de Calibre"
     },
     "fields": {
+      "removed": "Eliminaciones confirmadas",
+      "jobId": "Trabajo",
+      "unconfirmed": "Eliminaciones sin confirmar",
+      "blocked": "Limpiezas bloqueadas",
+      "waiting": "Limpiezas pendientes",
+      "kept": "Revisiones conservadas",
+      "cancelled": "Limpiezas canceladas",
       "taskId": "ID de tarea",
       "taskName": "Nombre",
       "taskOperation": "Operación",
