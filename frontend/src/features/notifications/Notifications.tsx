@@ -88,9 +88,15 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const cache = useQueryClient();
   const accountId = useAuth().user?.id;
   const display = useEventDisplayPreferences();
-  const floating = display.data?.floating ?? false;
+  const previousAccount = useRef(accountId);
   const preferencesRef = useRef(display.data);
-  preferencesRef.current = display.data;
+  // Cache invalidation must not discard known preferences for the same session.
+  if (previousAccount.current !== accountId) {
+    previousAccount.current = accountId;
+    preferencesRef.current = undefined;
+  }
+  if (display.data) preferencesRef.current = display.data;
+  const floating = preferencesRef.current?.floating ?? false;
   const [toasts, setToasts] = useState<Notice[]>([]);
   const seen = useRef(new Set<string>());
   useEffect(() => {

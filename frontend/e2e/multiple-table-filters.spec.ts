@@ -41,6 +41,7 @@ for (const item of cases) {
     item.path + " " + item.label + " supports compact multiple filters",
     async ({ page }) => {
       const queries: URLSearchParams[] = [];
+      let searches = 0;
       await page.route("**/api/settings/calibre/snapshot", (r) =>
         r.fulfill({ json: { snapshot: null } }),
       );
@@ -64,6 +65,26 @@ for (const item of cases) {
           },
         });
       });
+      if (item.path === "/downloads/updates") {
+        await page.route(
+          "**/api/settings/tasks/searches/downloads",
+          (route) => {
+            if (route.request().method() === "POST") searches++;
+            return route.fulfill({
+              json:
+                route.request().method() === "GET"
+                  ? { search: null }
+                  : {
+                      rows: [],
+                      searchedAt: Date.now(),
+                      states: route.request().postDataJSON().states,
+                      origin: "MANUAL",
+                      criteria: {},
+                    },
+            });
+          },
+        );
+      }
       await page.goto(item.path);
       if (item.path === "/downloads/updates") {
         await page
@@ -94,9 +115,10 @@ for (const item of cases) {
             .filter({ has: input })
             .locator(".mantine-Pill-root"),
         ).toHaveCount(2);
-        expect(queries).toHaveLength(1);
+        expect(searches).toBe(1);
       }
-      expect(queries.at(-1)?.get("page")).toBe("0");
+      if (item.path !== "/downloads/updates")
+        expect(queries.at(-1)?.get("page")).toBe("0");
       await input.press("Escape");
       const root = page
         .locator(".mantine-MultiSelect-root")
@@ -115,7 +137,7 @@ for (const item of cases) {
         await expect(root.locator(".mantine-Pill-label")).toHaveText(
           item.choices[1],
         );
-        expect(queries).toHaveLength(1);
+        expect(searches).toBe(1);
       }
     },
   );

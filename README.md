@@ -4,7 +4,9 @@
 <h1 align="center">EPL Sync</h1>
 
 Consulta el catálogo de ePubLibre y gestiona tus descargas y actualizaciones de
-libros con qBittorrent y Calibre.
+libros con qBittorrent y Calibre. Programa sincronizaciones, importaciones del
+catálogo y búsquedas de actualizaciones desde
+[Ajustes → Tareas programadas](docs/tareas-programadas.md).
 
 <table>
   <tr>
@@ -114,7 +116,7 @@ cd eplsync
 ### 3. Descarga Docker Compose
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.2.1/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.3.0/docker-compose.yml -o docker-compose.yml
 ```
 
 ### 4. Configura `.env`
@@ -122,7 +124,7 @@ curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.2.1/docker-comp
 Después, descarga la plantilla de configuración:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.2.1/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.3.0/.env.example -o .env
 chmod 600 .env
 ```
 
@@ -130,7 +132,7 @@ Edita `.env`. Para empezar, revisa estas variables:
 
 | Variable | Descripción | Valor predeterminado |
 | --- | --- | --- |
-| `EPLSYNC_VERSION` | Versión de la imagen. | `1.2.1` |
+| `EPLSYNC_VERSION` | Versión de la imagen. | `1.3.0` |
 | `PUID` | ID del usuario que puede escribir en las carpetas. En Linux, consulta su valor con `id -u`. | `1000` |
 | `PGID` | ID del grupo que puede escribir en las carpetas. En Linux, consulta su valor con `id -g`. | `1000` |
 | `HOST_PORT` | Puerto publicado. | `8088` |
@@ -179,8 +181,8 @@ instrucciones para su ejecución en Windows/Linux.
 ### 1. Descarga y descomprime el paquete
 
 Instala [Java 25](https://adoptium.net/temurin/releases/?version=25) y descarga
-`EPL-Sync-1.2.1.zip` desde los archivos de la
-[Release 1.2.1](https://github.com/rlibanez/eplsync/releases/tag/v1.2.1).
+`EPL-Sync-1.3.0.zip` desde los archivos de la
+[Release 1.3.0](https://github.com/rlibanez/eplsync/releases/tag/v1.3.0).
 El mismo paquete sirve para Windows y Linux.
 
 Descomprímelo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
@@ -189,7 +191,7 @@ Descomprímelo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
 
 ```text
 EPL-Sync/
-├── eplsync-1.2.1.jar
+├── eplsync-1.3.0.jar
 ├── application.yaml
 ├── data/
 └── logs/
@@ -222,7 +224,7 @@ Conserva la configuración y no compartas sus claves.
 Abre una terminal en la carpeta del JAR y ejecuta, tanto en Windows como en Linux:
 
 ```sh
-java --enable-native-access=ALL-UNNAMED -jar eplsync-1.2.1.jar --spring.config.additional-location=file:./application.yaml
+java --enable-native-access=ALL-UNNAMED -jar eplsync-1.3.0.jar --spring.config.additional-location=file:./application.yaml
 ```
 
 El comando carga el archivo externo de configuración. En esta modalidad no se

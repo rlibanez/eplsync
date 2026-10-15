@@ -2057,3 +2057,17 @@ summary {
   max-width: 100%;
   cursor: help;
 }
+
+.revision-update-state-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, max(180px, calc((100% - 64px) / 5))), 1fr));
+  gap: 10px 16px;
+  width: 100%;
+}
+.revision-update-state-grid > * {
+  min-width: 0;
+}
+
+.settings-section .revision-update-state-grid > .mantine-Checkbox-root {
+  margin: 0;
+}

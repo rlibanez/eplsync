@@ -6,29 +6,27 @@ test("download updates retain the last manual result across reload without anoth
   await page.route("**/api/settings/downloads/updates", (r) =>
     r.fulfill({ json: { states: ["DOWNLOADED"] } }),
   );
-  await page.route("**/api/torrent/revision-updates/search?**", (r) => {
+  let saved: Record<string, unknown> | null = null;
+  await page.route("**/api/settings/tasks/searches/downloads", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: { search: saved } });
     searches++;
-    return r.fulfill({
-      json: {
-        items: [
-          {
-            eplId: 123,
-            title: "Resultado guardado",
-            registeredRevision: 1,
-            availableRevision: 2,
-            status: "DOWNLOADED",
-          },
-        ],
-        meta: {
-          page: 0,
-          size: 1000,
-          totalItems: 1,
-          totalPages: 1,
-          hasNext: false,
-          hasPrevious: false,
+    saved = {
+      rows: [
+        {
+          eplId: 123,
+          title: "Resultado guardado",
+          registeredRevision: 1,
+          availableRevision: 2,
+          status: "DOWNLOADED",
         },
-      },
-    });
+      ],
+      searchedAt: Date.now(),
+      states: route.request().postDataJSON().states,
+      origin: "MANUAL",
+      criteria: { synchronize: true },
+    };
+    return route.fulfill({ json: saved });
   });
   await page.goto("/downloads/updates");
   await expect(page.locator("tbody")).toContainText(

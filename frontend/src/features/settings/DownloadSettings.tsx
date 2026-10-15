@@ -64,7 +64,7 @@ function UpdateSettingsForm({ initial }: { initial: Preferences }) {
           disabled={save.isPending || !canEdit}
         >
           <legend>{t("updateSettings.states")}</legend>
-          <div className="settings-fields-grid">
+          <div className="revision-update-state-grid">
             {states.map((value) => (
               <Checkbox
                 key={value}

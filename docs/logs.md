@@ -2,6 +2,18 @@
 
 [Guías](README.md) · [Inicio](../README.md)
 
+## Eventos y notificaciones
+
+En **Ajustes → Eventos → Notificaciones** puedes activar o desactivar los avisos
+flotantes y el contador de eventos sin leer de forma independiente. Los filtros
+de inicio, final y resultado, y la duración de los avisos (de 1 a 60 segundos),
+se guardan en tu cuenta y se aplican también en otros navegadores.
+
+Desactivar los avisos no impide registrar eventos ni oculta los errores dentro
+de las vistas. Las tareas programadas registran en Eventos solo los fallos
+y resultados parciales; su inicio y final correcto se escriben en el log
+con nivel DEBUG.
+
 ## Consultar los logs
 
 Desde la carpeta de la instalación:

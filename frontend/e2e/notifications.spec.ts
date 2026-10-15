@@ -280,7 +280,7 @@ test("start and finish share one unread operation and a later finish becomes unr
 test("notifications default to five seconds and fit the bottom right corner on desktop and mobile", async ({
   page,
 }) => {
-  await page.goto("/settings/general");
+  await page.goto("/settings/events");
   await expect(
     page.getByRole("textbox", { name: "Tiempo en pantalla (segundos)" }),
   ).toHaveValue("5 s");

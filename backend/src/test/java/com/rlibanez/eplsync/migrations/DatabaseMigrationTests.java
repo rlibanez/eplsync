@@ -41,7 +41,7 @@ class DatabaseMigrationTests {
         assertEquals("preserved", jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='sample'", String.class));
         assertThrows(FlywayException.class, migration::clean);
     }
-    @Test void upgradesRelease101To120WithoutLosingExistingData() {
+    @Test void upgradesRelease101To130WithoutLosingExistingData() {
         var source=new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()));
         Flyway.configure().dataSource(source).locations("classpath:migrations/released-1.0.1").load().migrate();
         // Fixture copied verbatim from tag v1.0.1; that release used schema 1.0.0.
@@ -61,7 +61,7 @@ class DatabaseMigrationTests {
         upgrade.validate();
         assertEquals(0,upgrade.migrate().migrationsExecuted);
     }
-    @Test void upgrades110To120PreservingCalibreLibraryAndSettings() {
+    @Test void upgrades110To130PreservingCalibreLibraryAndSettings() {
         var source=new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()));
         Flyway.configure().dataSource(source).locations("classpath:db/migration").target("1.1.0").load().migrate();
         var jdbc=jdbc();
@@ -191,7 +191,7 @@ class DatabaseMigrationTests {
         assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE update_search_results SET criteria_json='[]'"));
         assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE update_search_results SET origin='unknown'"));
     }
-    @Test void upgrades120WithCalibreJobsAndCreatesEmptyTaskManager() {
+    @Test void upgradesRelease121SchemaTo130WithCalibreJobsAndCreatesEmptyTaskManager() {
         Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url())))
             .locations("classpath:db/migration").target("1.2.0").load().migrate();
         jdbc().update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('owner','alice','alice','a@b.c','hash','ADMIN','ACTIVE','now','now')");
@@ -201,6 +201,8 @@ class DatabaseMigrationTests {
         assertEquals("PAUSED",jdbc().queryForObject("SELECT state FROM calibre_jobs WHERE id='job'",String.class));
         assertEquals("60s",jdbc().queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='tasks.internal.calibre-download-check'",String.class));
         assertEquals(0,jdbc().queryForObject("SELECT count(*) FROM scheduled_tasks",Integer.class));
+        assertNull(jdbc().queryForObject("SELECT notification_preferences FROM users WHERE id='owner'",String.class));
+        assertEquals(0,jdbc().queryForObject("SELECT count(*) FROM update_search_results",Integer.class));
         jdbc().update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,next_run,created_at,updated_at) VALUES('task','Nightly','CALIBRE_SYNC','0 0 3 * * *','UTC','owner','alice',1,1,1,1)");
         jdbc().update("DELETE FROM users WHERE id='owner'");
         assertNull(jdbc().queryForObject("SELECT owner_id FROM scheduled_tasks WHERE id='task'",String.class));
