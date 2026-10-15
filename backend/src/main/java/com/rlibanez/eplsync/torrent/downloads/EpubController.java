@@ -12,6 +12,8 @@ import java.io.IOException;
 public class EpubController {
     private final EpubFiles files;
     private final EpubBatches batches;
+    // Shared by individual EPUB and ZIP responses. Reject immediately rather than occupying waiting HTTP threads.
+    private final java.util.concurrent.Semaphore transfers=new java.util.concurrent.Semaphore(10);
     public EpubController(EpubFiles files,EpubBatches batches) { this.files=files; this.batches=batches; }
     public record Selection(java.util.List<String> ids) {}
     @PostMapping("/epub-batches")
@@ -20,6 +22,11 @@ public class EpubController {
     }
     @GetMapping("/epub-batches/{token}")
     public void batch(@PathVariable String token,jakarta.servlet.http.HttpSession session,HttpServletResponse response) throws IOException {
+        acquire(response);
+        try { streamBatch(token,session,response); }
+        finally { transfers.release(); }
+    }
+    private void streamBatch(String token,jakarta.servlet.http.HttpSession session,HttpServletResponse response) throws IOException {
         var plan=batches.take(session.getId(),token);
         files.validate(plan);
         response.setHeader("Cache-Control","no-store");
@@ -58,6 +65,7 @@ public class EpubController {
     }
     @GetMapping("/{id}/epubs/{index}")
     public void download(@PathVariable String id,@PathVariable int index,HttpServletResponse response) throws IOException {
+        acquire(response);
         try(var opened=files.download(id,index)) {
             response.setContentType("application/epub+zip");
             response.setHeader("Content-Disposition",ContentDisposition.attachment().filename(opened.name(),java.nio.charset.StandardCharsets.UTF_8).build().toString());
@@ -65,6 +73,14 @@ public class EpubController {
             response.setHeader("X-Content-Type-Options","nosniff");
             response.setContentLengthLong(opened.size());
             opened.stream().transferTo(response.getOutputStream());
+        } finally { transfers.release(); }
+    }
+    private void acquire(HttpServletResponse response) {
+        if(!transfers.tryAcquire()) {
+            response.setHeader("Retry-After","5");
+            response.setHeader("Cache-Control","no-store");
+            throw new com.rlibanez.eplsync.exception.TorrentOperationException(HttpStatus.TOO_MANY_REQUESTS,
+                    "Hay diez descargas de EPUB torrent en curso; inténtalo de nuevo en unos segundos");
         }
     }
 }
