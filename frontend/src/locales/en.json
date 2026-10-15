@@ -53,6 +53,8 @@
     "calibreJob": "Calibre job"
   },
   "scheduledTasks": {
+    "delete": "Delete…",
+    "deleteConfirm": "Delete task “{{name}}”? Its configuration and cycles will be removed. Generated jobs and Events will be retained.",
     "duration": "Duration",
     "runNow": "Run now",
     "title": "Scheduled tasks",

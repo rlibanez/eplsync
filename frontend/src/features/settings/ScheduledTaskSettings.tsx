@@ -21,7 +21,7 @@ import {
   Stepper,
   Checkbox,
 } from "@mantine/core";
-import { CalendarClock, Pencil, Plus, Play } from "lucide-react";
+import { CalendarClock, Pencil, Plus, Play, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { get, ApiError, NetworkError } from "../../api/catalog";
 import { secureFetch } from "../auth/transport";
@@ -123,6 +123,14 @@ export function ScheduledTaskSettings() {
   const run = useMutation({
     mutationFn: (id: string) => request<Task>(`/${id}/run`, "POST", {}),
     onSuccess: () => {
+      void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
+    },
+  });
+  const [deleting, setDeleting] = useState<Task | null>(null);
+  const remove = useMutation({
+    mutationFn: (id: string) => request<void>(`/${id}`, "DELETE", undefined),
+    onSuccess: () => {
+      setDeleting(null);
       void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
     },
   });
@@ -346,6 +354,24 @@ export function ScheduledTaskSettings() {
                       >
                         {t("scheduledTasks.edit")}
                       </Button>
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        color="red"
+                        leftSection={<Trash2 size={14} />}
+                        disabled={
+                          task.running ||
+                          (!!query.data.automations?.[task.id]?.cycle &&
+                            query.data.automations[task.id].cycle!.state !==
+                              "COMPLETED")
+                        }
+                        onClick={() => {
+                          remove.reset();
+                          setDeleting(task);
+                        }}
+                      >
+                        {t("scheduledTasks.delete")}
+                      </Button>
                     </td>
                   </tr>
                 ))
@@ -386,8 +412,42 @@ export function ScheduledTaskSettings() {
           </Button>
         </ModalActions>
       </AppModal>
+      <AppModal
+        opened={deleting !== null}
+        onClose={() => {
+          if (!remove.isPending) setDeleting(null);
+        }}
+        title={t("scheduledTasks.delete")}
+        icon={Trash2}
+      >
+        <p>{t("scheduledTasks.deleteConfirm", { name: deleting?.name })}</p>
+        {remove.isError && (
+          <Alert color="red" role="alert">
+            {(remove.error as ApiError).details ?? remove.error.message}
+          </Alert>
+        )}
+        <ModalActions>
+          <Button
+            variant="default"
+            disabled={remove.isPending}
+            onClick={() => setDeleting(null)}
+          >
+            {t("import.cancel")}
+          </Button>
+          <Button
+            color="red"
+            loading={remove.isPending}
+            onClick={() => {
+              if (deleting) remove.mutate(deleting.id);
+            }}
+          >
+            {t("scheduledTasks.delete")}
+          </Button>
+        </ModalActions>
+      </AppModal>
       {editing && (
         <TaskEditor
+          tasks={query.data.tasks}
           initial={editing.input}
           id={editing.id}
           onClose={() => setEditing(null)}
@@ -458,10 +518,12 @@ function PeriodEditor({ period }: { period: Period }) {
   );
 }
 function TaskEditor({
+  tasks,
   id,
   initial,
   onClose,
 }: {
+  tasks: Task[];
   id?: string;
   initial: Input;
   onClose: () => void;
@@ -597,6 +659,12 @@ function TaskEditor({
               .map((operation) => ({
                 value: operation,
                 label: t(`scheduledTasks.operations.${operation}`),
+                disabled:
+                  (operation === "TORRENT_AUTO_UPDATE" ||
+                    operation === "CALIBRE_AUTO_UPDATE") &&
+                  tasks.some(
+                    (task) => task.id !== id && task.operation === operation,
+                  ),
               }))
               .sort((a, b) =>
                 a.label.localeCompare(b.label, i18n.resolvedLanguage ?? "en", {

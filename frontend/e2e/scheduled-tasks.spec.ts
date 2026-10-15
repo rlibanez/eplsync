@@ -469,3 +469,118 @@ for (const operation of ["TORRENT_AUTO_UPDATE", "CALIBRE_AUTO_UPDATE"]) {
     ).toHaveValue("20");
   });
 }
+
+test("confirms task deletion and protects pending tasks and duplicate automations", async ({
+  page,
+}) => {
+  let tasks = [
+    {
+      id: "delete",
+      name: "Eliminar esta tarea",
+      operation: "TORRENT_SYNC",
+      running: false,
+    },
+    {
+      id: "running",
+      name: "Tarea ejecutándose",
+      operation: "CALIBRE_SYNC",
+      running: true,
+    },
+    {
+      id: "pending",
+      name: "Automatización pendiente",
+      operation: "TORRENT_AUTO_UPDATE",
+      running: false,
+    },
+    {
+      id: "disabled",
+      name: "Automatización desactivada",
+      operation: "CALIBRE_AUTO_UPDATE",
+      running: false,
+    },
+  ].map((task) => ({
+    ...task,
+    cron: "0 5 * * *",
+    timezone: "UTC",
+    ownerUsername: "admin",
+    enabled: false,
+    nextRun: null,
+    lastRun: null,
+    lastFinished: null,
+    lastResult: null,
+    lastMessage: null,
+  }));
+  let deletions = 0;
+  await page.route("**/api/settings/tasks**", async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith("/cron")) {
+      return route.fulfill({
+        json: {
+          expression: "0 0 5 * * *",
+          timezone: "UTC",
+          executions: ["2026-10-16T05:00:00Z"],
+        },
+      });
+    }
+    if (route.request().method() === "DELETE") {
+      expect(new URL(route.request().url()).pathname).toBe(
+        "/api/settings/tasks/delete",
+      );
+      deletions++;
+      tasks = tasks.filter((task) => task.id !== "delete");
+      return route.fulfill({ status: 204 });
+    }
+    return route.fulfill({
+      json: {
+        tasks,
+        internal: [],
+        defaultTimezone: "UTC",
+        automations: {
+          pending: {
+            cycle: { id: "cycle", state: "WAITING", jobs: [], message: null },
+          },
+        },
+      },
+    });
+  });
+  await page.goto("/settings/tasks");
+  for (const name of ["Tarea ejecutándose", "Automatización pendiente"]) {
+    await expect(
+      page
+        .getByRole("row")
+        .filter({ hasText: name })
+        .getByRole("button", { name: "Eliminar…", exact: true }),
+    ).toBeDisabled();
+  }
+  const remove = () =>
+    page
+      .getByRole("row")
+      .filter({ hasText: "Eliminar esta tarea" })
+      .getByRole("button", { name: "Eliminar…", exact: true })
+      .click();
+  await remove();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText(
+    "Los trabajos y los Eventos generados se conservarán",
+  );
+  expect(deletions).toBe(0);
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect(deletions).toBe(0);
+  await remove();
+  await dialog.getByRole("button", { name: "Eliminar…", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByRole("row").filter({ hasText: "Eliminar esta tarea" }),
+  ).toHaveCount(0);
+  expect(deletions).toBe(1);
+  await page.getByRole("button", { name: "Crear tarea", exact: true }).click();
+  await dialog.getByRole("textbox", { name: "Operación", exact: true }).click();
+  for (const name of [
+    "Actualizar descargas",
+    "Actualizar biblioteca de Calibre",
+  ]) {
+    await expect(
+      page.getByRole("option", { name, exact: true }),
+    ).toHaveAttribute("data-combobox-disabled", "true");
+  }
+});

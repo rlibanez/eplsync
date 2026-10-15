@@ -165,3 +165,18 @@ además del ciclo pendiente.
 Los ciclos y su configuración persisten en la base de datos. Un reinicio recupera
 los trabajos existentes; no crea automáticamente duplicados. Las ejecuciones mediante
 cron mantienen la política de logs y Eventos de las tareas programadas.
+
+## Eliminar tareas y límites de automatización
+
+Cualquier administrador puede gestionar las tareas de la instalación, aunque no
+sea su propietario. Editarlas no cambia el propietario ni los permisos utilizados
+para ejecutarlas.
+
+**Eliminar…** requiere confirmación y solo está disponible si la tarea no está
+ejecutándose ni conserva un ciclo pendiente. Si lo hay, completa o cancela sus
+trabajos y cierra el ciclo antes de eliminar la tarea. Se borran su configuración
+y sus registros de ciclos; los trabajos y los Eventos generados se conservan.
+
+Solo se permite una tarea **Actualizar descargas** y una **Actualizar biblioteca
+de Calibre** por instalación, incluidas las desactivadas. Puedes editar o eliminar
+la existente. Las sincronizaciones, importaciones y búsquedas admiten varias tareas.

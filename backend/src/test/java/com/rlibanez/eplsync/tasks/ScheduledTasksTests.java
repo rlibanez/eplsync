@@ -39,6 +39,70 @@ class ScheduledTasksTests {
     ScheduledTasks.Task due(String name,ScheduledTasks.Operation operation) {
         var task=tasks.save(null,input(name,operation));jdbc.update("UPDATE scheduled_tasks SET next_run=0 WHERE id=?",task.id());return task;
     }
+    @Test void automaticTaskTypesAreUniqueEvenWhenDisabledAndWhenEditing() {
+        for(var operation:List.of(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE)) {
+            var first=tasks.save(null,input("First",operation));tasks.enable(first.id(),false);
+            assertThatThrownBy(()->tasks.save(null,input("Duplicate",operation))).hasMessageContaining("Ya existe una tarea");
+            var ordinary=tasks.save(null,input("Ordinary",ScheduledTasks.Operation.TORRENT_SYNC));
+            assertThatThrownBy(()->tasks.save(ordinary.id(),input("Duplicate edit",operation))).hasMessageContaining("Ya existe una tarea");
+            assertThat(tasks.find(ordinary.id()).operation()).isEqualTo(ScheduledTasks.Operation.TORRENT_SYNC);
+            tasks.save(first.id(),input("Renamed",operation));tasks.delete(first.id());
+            assertThat(tasks.save(null,input("Replacement",operation)).operation()).isEqualTo(operation);
+        }
+        tasks.save(null,input("Another sync",ScheduledTasks.Operation.TORRENT_SYNC));
+    }
+    @Test void concurrentAutomaticTaskCreationOnlyAllowsOne() throws Exception {
+        var start=new java.util.concurrent.CyclicBarrier(2);
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var results=new ArrayList<java.util.concurrent.Future<Boolean>>();
+            for(int i=0;i<2;i++) results.add(executor.submit(()->{
+                start.await(5,java.util.concurrent.TimeUnit.SECONDS);
+                try {tasks.save(null,input("Automatic",ScheduledTasks.Operation.TORRENT_AUTO_UPDATE));return true;}
+                catch(com.rlibanez.eplsync.exception.UserInputException ex) {assertThat(ex).hasMessageContaining("Ya existe una tarea");return false;}
+            }));
+            assertThat(List.of(results.get(0).get(5,java.util.concurrent.TimeUnit.SECONDS),results.get(1).get(5,java.util.concurrent.TimeUnit.SECONDS))).containsExactlyInAnyOrder(true,false);
+        }
+    }
+    @Test void deletionRejectsRunningTasksAndPendingCyclesButKeepsJobsAndEvents() {
+        var task=due("Delete",ScheduledTasks.Operation.TORRENT_AUTO_UPDATE);
+        tasks.claim(Instant.now()).orElseThrow();
+        assertThatThrownBy(()->tasks.delete(task.id())).hasMessageContaining("ejecutándose");
+        tasks.finish(task.id(),"SUCCEEDED",null);
+        jdbc.update("INSERT INTO scheduled_automation_settings VALUES(?,'{}')",task.id());
+        jdbc.update("INSERT INTO scheduled_automation_runs(id,task_id,owner_id,state,created_at,configuration,context) VALUES('cycle',?,?,'WAITING',0,'{}','SCHEDULED')",task.id(),owner.id());
+        for(String state:List.of("WAITING","ATTENTION")) {
+            jdbc.update("UPDATE scheduled_automation_runs SET state=? WHERE id='cycle'",state);
+            assertThatThrownBy(()->tasks.delete(task.id())).hasMessageContaining("ciclo pendiente");
+        }
+        jdbc.update("UPDATE scheduled_automation_runs SET state='COMPLETED' WHERE id='cycle'");
+        jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,state) VALUES('preserved-job',1,1,0,1,'COMPLETED')");
+        jdbc.update("INSERT INTO scheduled_automation_jobs VALUES('cycle','downloads','preserved-job')");
+        journal.record(EventJournal.Category.JOB,"SCHEDULED_TASK",EventJournal.Outcome.PARTIAL,com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,"preserved-event",Map.of("taskId",task.id()));
+        long events=jdbc.queryForObject("SELECT count(*) FROM app_events",Long.class);
+        tasks.delete(task.id());
+        assertThat(tasks.list()).isEmpty();
+        for(String table:List.of("scheduled_automation_settings","scheduled_automation_runs","scheduled_automation_jobs"))
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table,Long.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs WHERE id='preserved-job'",Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events",Long.class)).isEqualTo(events);
+        assertThatThrownBy(()->tasks.delete(task.id())).hasMessageContaining("ya no existe");
+    }
+    @Autowired org.springframework.web.context.WebApplicationContext webContext;
+    @Test void administratorCanDeleteAnotherOwnersTask() throws Exception {
+        var other=accounts.create("otheradmin","otheradmin@example.org","ADMIN",owner.id());
+        accounts.changePassword(accounts.find(other.user().id()),other.password(),"password123");
+        var task=tasks.save(null,new ScheduledTasks.Input("Other owner",ScheduledTasks.Operation.CALIBRE_SYNC,"0 5 * * *",other.user().id(),true));
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/settings/tasks/"+task.id()).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNoContent());
+    }
+    @Test @WithMockUser(authorities="SETTINGS_MANAGE") void nonAdministratorCannotDeleteTasks() throws Exception {
+        var task=tasks.save(null,input("Protected",ScheduledTasks.Operation.CALIBRE_SYNC));
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/settings/tasks/"+task.id()).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        assertThat(tasks.find(task.id()).name()).isEqualTo("Protected");
+    }
     @Test @WithMockUser(authorities={"CALIBRE_SYNC","CALIBRE_READ","CATALOG_READ"})
     void explicitExecutionPreservesScheduleAndSharesClaimsWithCron() {
         var task=due("Library",ScheduledTasks.Operation.CALIBRE_SYNC);

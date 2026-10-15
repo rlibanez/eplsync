@@ -53,6 +53,8 @@
     "calibreJob": "Trabajo de Calibre"
   },
   "scheduledTasks": {
+    "delete": "Eliminar…",
+    "deleteConfirm": "¿Eliminar la tarea «{{name}}»? Se eliminarán su configuración y sus ciclos. Los trabajos y los Eventos generados se conservarán.",
     "duration": "Duración",
     "runNow": "Ejecutar ahora",
     "title": "Tareas programadas",

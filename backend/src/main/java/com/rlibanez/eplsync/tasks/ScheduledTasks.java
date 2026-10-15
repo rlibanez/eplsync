@@ -79,12 +79,23 @@ public class ScheduledTasks {
         var owner=owner(id==null?input.ownerId():find(id).ownerId(),input.operation());var now=Instant.now();var next=next(input.cron(),timezone,now);
         return Objects.requireNonNull(tx.execute(s -> {
             String target=id==null?UUID.randomUUID().toString():id;
+            if((input.operation()==Operation.TORRENT_AUTO_UPDATE || input.operation()==Operation.CALIBRE_AUTO_UPDATE)
+                && jdbc.queryForObject("SELECT count(*) FROM scheduled_tasks WHERE operation=? AND id<>?",Long.class,input.operation().name(),target)>0)
+                throw new UserInputException("Ya existe una tarea de este tipo de actualización automática, aunque esté desactivada; edita o elimina la existente");
             if(id==null) {
                 if(jdbc.queryForObject("SELECT count(*) FROM scheduled_tasks",Long.class)>=200) throw new UserInputException("Se permiten hasta 200 tareas programadas");
                 jdbc.update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,next_run,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",target,input.name().strip(),input.operation().name(),input.cron().strip(),timezone,owner.id(),owner.username(),input.enabled(),input.enabled()?next.toEpochMilli():null,now.toEpochMilli(),now.toEpochMilli());
             } else if(jdbc.update("UPDATE scheduled_tasks SET name=?,operation=?,cron=?,timezone=?,owner_id=?,owner_username=?,enabled=?,next_run=?,updated_at=? WHERE id=? AND running=0",input.name().strip(),input.operation().name(),input.cron().strip(),timezone,owner.id(),owner.username(),input.enabled(),input.enabled()?next.toEpochMilli():null,now.toEpochMilli(),id)!=1) throw new UserInputException("La tarea está ejecutándose o ya no existe; espera antes de editarla");
             return find(target);
         }));
+    }
+    public void delete(String id) {
+        tx.executeWithoutResult(status -> {
+            find(id);
+            // One atomic condition shares the scheduler's claim boundary. Cascades remove only task metadata.
+            if(jdbc.update("DELETE FROM scheduled_tasks WHERE id=? AND running=0 AND NOT EXISTS (SELECT 1 FROM scheduled_automation_runs r WHERE r.task_id=scheduled_tasks.id AND r.state IN ('WAITING','ATTENTION'))",id)!=1)
+                throw new UserInputException("La tarea está ejecutándose o tiene un ciclo pendiente; completa o cancela sus trabajos y cierra el ciclo antes de eliminarla");
+        });
     }
     public Task enable(String id,boolean enabled) {
         var value=find(id);if(enabled) owner(value.ownerId(),value.operation());

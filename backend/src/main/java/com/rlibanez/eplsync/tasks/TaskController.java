@@ -73,6 +73,8 @@ public class TaskController {
         if(worker==null) throw new com.rlibanez.eplsync.exception.UserInputException("El programador no está disponible");
         return worker.runNow(id);
     }
+    @DeleteMapping("/{id}") @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable String id) {tasks.delete(id);}
     @PostMapping("/{id}/enabled") public ScheduledTasks.Task enable(@PathVariable String id,@RequestBody Enabled input) {return tasks.enable(id,input.enabled());}
     @PostMapping("/internal/{id}/restore") public InternalTaskSettings.Period restore(@PathVariable String id) {return internal.restore(id);}
     @PutMapping("/internal/{id}") public InternalTaskSettings.Period period(@PathVariable String id,@RequestBody Interval input) {return internal.save(id,input.interval());}
