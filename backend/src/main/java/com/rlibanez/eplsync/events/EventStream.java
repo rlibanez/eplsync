@@ -16,17 +16,36 @@ public class EventStream {
     private final EventJournal journal;
     private final java.util.Set<SseEmitter> connections = ConcurrentHashMap.newKeySet();
     private final Semaphore slots = new Semaphore(32);
+    private final Map<String,Integer> users = new java.util.HashMap<>();
+    static final int MAX_PER_USER=4;
     private final ExecutorService writers = Executors.newVirtualThreadPerTaskExecutor();
     public EventStream(EventJournal journal) { this.journal = journal; }
     public SseEmitter connect(Long after) {
         if (after != null && after < 0) throw new com.rlibanez.eplsync.exception.UserInputException("Last-Event-ID debe ser positivo");
-        if (!slots.tryAcquire()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Demasiadas conexiones de eventos");
         var authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
         var session = attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet ? servlet.getRequest().getSession(false) : null;
         var account = authentication != null && authentication.getPrincipal() instanceof com.rlibanez.eplsync.security.Account a ? a : null;
+        if(account==null) throw new org.springframework.security.access.AccessDeniedException("Se requiere una sesión");
+        acquire(account.id());
+        var released=new AtomicBoolean();
+        Runnable release=()->{ if(released.compareAndSet(false,true)) release(account.id()); };
+        try { return start(after,account,session,release); }
+        catch(RuntimeException | Error ex) {release.run();throw ex;}
+    }
+    private synchronized void acquire(String user) {
+        int count=users.getOrDefault(user,0);
+        if(count>=MAX_PER_USER) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"Se ha alcanzado el límite de 4 conexiones de eventos para esta cuenta");
+        if(!slots.tryAcquire()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"Demasiadas conexiones de eventos");
+        users.put(user,count+1);
+    }
+    private synchronized void release(String user) {
+        int count=users.getOrDefault(user,0);
+        if(count<=1) users.remove(user);else users.put(user,count-1);
+        slots.release();
+    }
+    private SseEmitter start(Long after,com.rlibanez.eplsync.security.Account account,jakarta.servlet.http.HttpSession session,Runnable release) {
         var emitter = new SseEmitter(30 * 60 * 1000L);
-        connections.add(emitter);
         var signals = new ArrayBlockingQueue<Boolean>(1);
         var closed = new AtomicBoolean();
         emitter.onCompletion(() -> { closed.set(true); signals.offer(true); });
@@ -35,6 +54,7 @@ public class EventStream {
         // Subscribe before taking the snapshot, so events cannot slip between replay and live delivery.
         long initialResetVersion = journal.resetVersion();
         var listener = journal.listen(() -> signals.offer(true));
+        connections.add(emitter);
         try { writers.submit(() -> {
             try (listener) {
                 long resetVersion = initialResetVersion;
@@ -67,10 +87,11 @@ public class EventStream {
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt(); emitter.complete();
             } catch (Exception ex) { emitter.completeWithError(ex); }
-            finally { connections.remove(emitter); slots.release(); }
+            finally { connections.remove(emitter); release.run(); }
         }); } catch (RejectedExecutionException ex) {
             try { listener.close(); } catch (Exception ignored) { }
-            connections.remove(emitter); slots.release(); emitter.complete();
+            connections.remove(emitter); release.run(); emitter.complete();
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"El canal de eventos se está cerrando");
         }
         return emitter;
     }

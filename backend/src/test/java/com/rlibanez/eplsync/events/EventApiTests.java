@@ -156,6 +156,25 @@ class EventApiTests {
         assertThat(request("/operations?snapshot=-1", null).statusCode()).isEqualTo(400);
         assertThat(request("/operations?origin=INVALID", null).statusCode()).isEqualTo(400);
     }
+    @Test @Timeout(15) void accountQuotaRejectsTheFifthHttpStreamAndLogoutClosesAllFour() throws Exception {
+        var readers=new ArrayList<BufferedReader>();
+        try {
+            for(int i=0;i<4;i++) {
+                var response=http.send(authenticatedRequest(uri("/stream")).build(),HttpResponse.BodyHandlers.ofInputStream());
+                assertThat(response.statusCode()).isEqualTo(200);
+                var reader=new BufferedReader(new InputStreamReader(response.body()));readers.add(reader);
+                assertThat(frame(reader,"ready")).contains("event:ready");
+            }
+            var rejected=http.send(authenticatedRequest(uri("/stream")).build(),HttpResponse.BodyHandlers.ofString());
+            assertThat(rejected.statusCode()).isEqualTo(429);
+            assertThat(json.readTree(rejected.body()).path("details").asString()).contains("4 conexiones","esta cuenta");
+            var logout=http.send(authenticatedRequest(URI.create("http://127.0.0.1:"+port+"/api/auth/logout"))
+                .POST(HttpRequest.BodyPublishers.noBody()).build(),HttpResponse.BodyHandlers.ofString());
+            assertThat(logout.statusCode()).isEqualTo(200);
+            record(); // Wake the idle writers so they immediately observe the invalidated session.
+            for(var reader:readers) while(reader.readLine()!=null) { /* Drain through EOF. */ }
+        } finally { for(var reader:readers) reader.close(); }
+    }
     @Test @Timeout(15) void sseDeliversCommittedEventsAndReplaysFromLastEventId() throws Exception {
         var old = record();
         var response = http.send(authenticatedRequest(uri("/stream")).build(), HttpResponse.BodyHandlers.ofInputStream());
