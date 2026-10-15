@@ -29,10 +29,11 @@ class CalibreDownloadFilesTests {
 
     public static class Crash {
         public static void main(String[] args) throws Exception {
-            var files=new CalibreDownloadFiles(Path.of(args[0]));
-            Files.writeString(files.create(false),"private epub");
-            Files.writeString(files.create(true),"private zip");
-            Runtime.getRuntime().halt(0);
+            try(var files=new CalibreDownloadFiles(Path.of(args[0]))) {
+                Files.writeString(files.create(false),"private epub");
+                Files.writeString(files.create(true),"private zip");
+                Runtime.getRuntime().halt(0);
+            }
         }
     }
 

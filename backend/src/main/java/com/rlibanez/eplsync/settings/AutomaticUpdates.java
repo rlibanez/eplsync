@@ -208,7 +208,7 @@ public class AutomaticUpdates {
                 for(var b:flow.prepare(selected)) {
                     var links=jdbc.queryForList("SELECT links FROM catalog_books WHERE epl_id=?",String.class,b.eplId());
                     if(b.problem()!=null || b.files().size()>1 || b.files().isEmpty() && (links.isEmpty() || magnets.hashes(links.getFirst()).isEmpty())) {errors++;continue;}
-                    choices.add(new CalibreUpdateFlow.Choice(b.calibreId(),b.revision(),true,b.files().stream().map(f->new CalibreTransfers.FileChoice(f.recordId(),f.index())).toList(),c.calibreCleanup(),b.previous().stream().map(CalibreUpdateFlow.Previous::id).toList(),c.calibreCleanup().equals("BOOK")));
+                    choices.add(new CalibreUpdateFlow.Choice(b.calibreId(),b.revision(),true,b.files().stream().map(f->new CalibreTransfers.FileChoice(f.recordId(),f.index())).toList(),c.calibreCleanup(),b.previous().stream().map((CalibreUpdateFlow.Previous revision) -> Objects.requireNonNull(revision).id()).toList(),c.calibreCleanup().equals("BOOK")));
                 }
                 if(!choices.isEmpty()) flow.createAutomated(new CalibreUpdateFlow.Request(run,choices,true,true,request),result->{
                     link(run,"downloads",result.downloadJobId());link(run,"calibre",result.calibreJobId());

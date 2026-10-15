@@ -50,7 +50,7 @@ class AutomaticUpdatesTests {
         jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('book','generation',1,1,1,1.0,'Book','Author')");
     }
     AutomaticUpdates.Configuration config(Map<String,Object> changes) {
-        var fields=new LinkedHashMap<String,Object>(json.convertValue(automations.defaults(),Map.class));fields.putAll(changes);return json.convertValue(fields,AutomaticUpdates.Configuration.class);
+        Map<String,Object> fields=json.convertValue(automations.defaults(),json.getTypeFactory().constructMapType(LinkedHashMap.class,String.class,Object.class));fields.putAll(changes);return json.convertValue(fields,AutomaticUpdates.Configuration.class);
     }
     ScheduledTasks.Task task(ScheduledTasks.Operation op,Map<String,Object> changes) {
         var task=tasks.save(null,new ScheduledTasks.Input("Automation",op,"0 5 * * *",owner.id(),true));automations.save(task,config(changes));return task;

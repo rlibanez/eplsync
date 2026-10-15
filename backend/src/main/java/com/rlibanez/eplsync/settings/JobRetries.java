@@ -12,7 +12,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import com.rlibanez.eplsync.security.*;
-import com.rlibanez.eplsync.settings.*;
 import com.rlibanez.eplsync.events.*;
 import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.torrent.downloads.*;

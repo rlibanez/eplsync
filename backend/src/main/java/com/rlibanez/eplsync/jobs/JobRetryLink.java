@@ -10,8 +10,9 @@ import jakarta.persistence.*;
 public class JobRetryLink {
     @Id private String kind;
     @Id private String childId;
-    private String parentId;
-    private String rootId;
+    // Read by Hibernate through the retention queries, rather than Java accessors.
+    @SuppressWarnings("unused") private String parentId;
+    @SuppressWarnings("unused") private String rootId;
     public static class Key implements java.io.Serializable {
         private static final long serialVersionUID=1L;
         public String kind;

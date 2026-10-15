@@ -275,7 +275,7 @@ class JobRetriesTests {
         assertThat(retention.purgeOne(cutoff).jobs()).isEqualTo(1);
     }
     @Test void retentionKeepsCalibreParentsAndDatabaseResetClearsTheRetryInventory() throws Exception {
-        var parent=calibreJob("COMPLETED","FAILED");var child=create("calibre",parent,failed("calibre",parent));
+        var parent=calibreJob("COMPLETED","FAILED");create("calibre",parent,failed("calibre",parent));
         jdbc.update("UPDATE calibre_jobs SET updated_at='2020-01-01T00:00:00Z' WHERE id=?",parent);
         transfers.retention();assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs WHERE id=?",Long.class,parent)).isEqualTo(1);
         reset.reset();

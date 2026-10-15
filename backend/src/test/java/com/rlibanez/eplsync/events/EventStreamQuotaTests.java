@@ -39,7 +39,7 @@ class EventStreamQuotaTests {
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));return session;
     }
     int slots() {return ((Semaphore)org.springframework.test.util.ReflectionTestUtils.getField(stream,"slots")).availablePermits();}
-    void wake() {signals.forEach(Runnable::run);}
+    void wake() {signals.forEach((Runnable signal) -> Objects.requireNonNull(signal).run());}
     void awaitSlots(int expected) {await().atMost(Duration.ofSeconds(5)).untilAsserted(()->assertThat(slots()).isEqualTo(expected));}
     void signal(SseEmitter emitter,String callback) {
         var invocation=mockingDetails(emitter).getInvocations().stream().filter(i->i.getMethod().getName().equals(callback)).findFirst().orElseThrow();
@@ -70,7 +70,7 @@ class EventStreamQuotaTests {
             signal(construction.constructed().get(0),"onCompletion");awaitSlots(29);
             signal(construction.constructed().get(1),"onTimeout");awaitSlots(30);
             signal(construction.constructed().get(2),"onError");awaitSlots(31);
-            session.invalidate();wake();awaitSlots(32);
+            Objects.requireNonNull(session).invalidate();wake();awaitSlots(32);
             account("one");for(int i=0;i<4;i++) stream.connect(null);assertThat(slots()).isEqualTo(28);
         }
     }

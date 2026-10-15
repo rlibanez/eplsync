@@ -29,9 +29,8 @@ public class BulkRetentionStore {
     }
 
     private Result deleteExpired(Instant cutoff) {
-        var protectedJobs=em.createNativeQuery("SELECT DISTINCT download_job_id FROM calibre_job_items WHERE download_job_id IS NOT NULL AND state IN ('WAITING_DOWNLOAD','BLOCKED_DOWNLOAD')",String.class).getResultList();
-        protectedJobs=new java.util.ArrayList<>(protectedJobs);
-        protectedJobs.addAll(em.createNativeQuery("SELECT j.job_id FROM scheduled_automation_jobs j JOIN scheduled_automation_runs r ON r.id=j.run_id WHERE j.kind='downloads' AND r.state<>'COMPLETED'",String.class).getResultList());
+        var protectedJobs=new java.util.ArrayList<>(em.unwrap(org.hibernate.Session.class).createNativeQuery("SELECT DISTINCT download_job_id FROM calibre_job_items WHERE download_job_id IS NOT NULL AND state IN ('WAITING_DOWNLOAD','BLOCKED_DOWNLOAD')",String.class).getResultList());
+        protectedJobs.addAll(em.unwrap(org.hibernate.Session.class).createNativeQuery("SELECT j.job_id FROM scheduled_automation_jobs j JOIN scheduled_automation_runs r ON r.id=j.run_id WHERE j.kind='downloads' AND r.state<>'COMPLETED'",String.class).getResultList());
         var query = em.createQuery("select j.id from BulkJob j where j.state in :finished "
                 + "and j.updatedAt < :cutoff and not exists "
                 + "(select i.id from BulkItem i where i.jobId=j.id and i.state in :unfinished) "
