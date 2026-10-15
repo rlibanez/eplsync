@@ -138,4 +138,26 @@ class CalibreEpubDownloadsTests {
         try { assertThatThrownBy(() -> failed.prepare("owner",List.of(3L))).hasMessageContaining("EPUB no disponible");assertThat(paths).hasSize(1);assertThat(Files.exists(paths.getFirst())).isFalse(); }
         finally { failed.close(); }
     }
+    @Test void shutdownKeepsTheLockUntilAnActivePreparationHasFinished() throws Exception {
+        var entered=new java.util.concurrent.CountDownLatch(1);
+        var release=new java.util.concurrent.CountDownLatch(1);
+        var path=new java.util.concurrent.atomic.AtomicReference<Path>();
+        var client=mock(CalibreClient.class);
+        doAnswer(call -> {
+            Path target=call.getArgument(2);path.set(target);Files.write(target,epub);entered.countDown();
+            assertThat(release.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();return null;
+        }).when(client).downloadEpub(any(),anyLong(),any(),anyLong());
+        var closing=new CalibreEpubDownloads(settings,client,jdbc);
+        var preparing=java.util.concurrent.CompletableFuture.runAsync(()->closing.prepare("owner",List.of(3L)));
+        try {
+            assertThat(entered.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            closing.close();
+            try(var cleaner=new CalibreDownloadFiles(path.get().getParent().getParent())) {
+                cleaner.cleanAbandoned();assertThat(path.get()).exists();
+            }
+        } finally { release.countDown();closing.close(); }
+        assertThatThrownBy(()->preparing.get(10,java.util.concurrent.TimeUnit.SECONDS))
+                .hasCauseInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThat(path.get()).doesNotExist();
+    }
 }

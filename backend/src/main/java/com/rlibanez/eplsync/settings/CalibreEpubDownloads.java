@@ -20,6 +20,9 @@ public class CalibreEpubDownloads {
     private final CalibreClient client;
     private final JdbcTemplate jdbc;
     private final java.time.Clock clock;
+    private final CalibreDownloadFiles temporary=new CalibreDownloadFiles(Path.of(System.getProperty("java.io.tmpdir"),"eplsync-calibre-downloads"));
+    private int active;
+    private boolean closed;
     // Held through preparation, pending delivery and streaming: at most 2 GiB temporary storage including ZIP creation.
     private final Semaphore slots=new Semaphore(2);
     private final Map<String,Pending> pending=new HashMap<>();
@@ -33,7 +36,13 @@ public class CalibreEpubDownloads {
     CalibreEpubDownloads(CalibreSettings settings,CalibreClient client,JdbcTemplate jdbc,java.time.Clock clock) {
         this.settings=settings;this.client=client;this.jdbc=jdbc;this.clock=clock;
     }
+    @jakarta.annotation.PostConstruct void cleanAbandoned() { temporary.cleanAbandoned(); }
     public Ready prepare(String session,List<Long> ids) {
+        begin();
+        try { return prepareFiles(session,ids); }
+        finally { end(); }
+    }
+    private Ready prepareFiles(String session,List<Long> ids) {
         if(ids==null || ids.isEmpty() || ids.size()>1000 || ids.stream().anyMatch(id -> id==null || id<=0))
             throw new UserInputException("Selecciona entre 1 y 1000 libros de Calibre");
         expire();
@@ -54,7 +63,7 @@ public class CalibreEpubDownloads {
             for(long id:selected) {
                 if(System.nanoTime()>deadline || Thread.currentThread().isInterrupted())
                     throw error(HttpStatus.CONFLICT,"La preparación de Calibre ha tardado demasiado; selecciona menos libros");
-                var file=Files.createTempFile("eplsync-calibre-", ".epub");sources.add(file);
+                var file=temporary.create(false);sources.add(file);
                 client.downloadEpub(connection,id,file,Math.min(MAX_FILE,MAX_TOTAL-total));
                 total+=Files.size(file);
                 if(total>MAX_TOTAL) throw error(HttpStatus.CONFLICT,"La selección supera el límite de 512 MiB; selecciona menos libros");
@@ -62,7 +71,7 @@ public class CalibreEpubDownloads {
             boolean archive=selected.size()>1;
             String name;
             if(archive) {
-                output=Files.createTempFile("eplsync-calibre-", ".zip");
+                output=temporary.create(true);
                 try(var zip=new ZipOutputStream(Files.newOutputStream(output),java.nio.charset.StandardCharsets.UTF_8)) {
                     zip.setLevel(java.util.zip.Deflater.NO_COMPRESSION);
                     for(int i=0;i<selected.size();i++) {
@@ -75,7 +84,10 @@ public class CalibreEpubDownloads {
             if(!destination(connection).equals(destination(settings.connection())))
                 throw error(HttpStatus.CONFLICT,"La configuración de Calibre ha cambiado; vuelve a iniciar la descarga");
             String token=UUID.randomUUID().toString();
-            synchronized(this) { pending.put(token,new Pending(session,destination(connection),output,name,clock.instant().plusSeconds(120))); }
+            synchronized(this) {
+                if(closed) throw error(HttpStatus.SERVICE_UNAVAILABLE,"Las descargas de Calibre se están cerrando");
+                pending.put(token,new Pending(session,destination(connection),output,name,clock.instant().plusSeconds(120)));
+            }
             retained=true;
             return new Ready("/api/calibre/epub-downloads/"+token,selected.size(),archive);
         } catch(IOException ex) { throw error(HttpStatus.SERVICE_UNAVAILABLE,"No se puede preparar la descarga de Calibre; revisa el espacio y los permisos del almacenamiento temporal"); }
@@ -85,6 +97,11 @@ public class CalibreEpubDownloads {
         }
     }
     public void download(String session,String token,jakarta.servlet.http.HttpServletResponse response) throws IOException {
+        begin();
+        try { stream(session,token,response); }
+        finally { end(); }
+    }
+    private void stream(String session,String token,jakarta.servlet.http.HttpServletResponse response) throws IOException {
         Pending batch;
         synchronized(this) {
             expire();batch=pending.get(token);
@@ -106,7 +123,15 @@ public class CalibreEpubDownloads {
         var iterator=pending.values().iterator();
         while(iterator.hasNext()) { var batch=iterator.next();if(!batch.expires().isAfter(clock.instant())) { delete(batch.file());iterator.remove();slots.release(); } }
     }
-    @jakarta.annotation.PreDestroy public synchronized void close() { pending.values().forEach(p->delete(p.file()));pending.clear(); }
+    private synchronized void begin() {
+        if(closed) throw error(HttpStatus.SERVICE_UNAVAILABLE,"Las descargas de Calibre se están cerrando");
+        active++;
+    }
+    private synchronized void end() { if(--active==0 && closed) temporary.close(); }
+    @jakarta.annotation.PreDestroy public synchronized void close() {
+        closed=true;pending.values().forEach(p->delete(p.file()));pending.clear();
+        if(active==0) temporary.close();
+    }
     private static String destination(CalibreSettings.Connection c) {
         try {
             var json=tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsBytes(List.of(c.url(),c.username(),c.password(),c.library()));
