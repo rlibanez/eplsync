@@ -48,10 +48,10 @@ public class UpdateController {
             @RequestParam(defaultValue = "false") boolean retryUnconfirmed,
             @RequestParam org.springframework.util.MultiValueMap<String, String> params) {
         validate(params, "retryUnconfirmed");
-        synchronized (bulk) {
+        return CleanupBudget.run(() -> {
             log.info("Solicitud de limpieza global: retryUnconfirmed={}", retryUnconfirmed);
             return cleanup.cleanAll(retryUnconfirmed);
-        }
+        });
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_CLEANUP')")
@@ -60,10 +60,10 @@ public class UpdateController {
             @RequestParam(defaultValue = "false") boolean retryUnconfirmed,
             @RequestParam org.springframework.util.MultiValueMap<String, String> params) {
         validate(params, "retryUnconfirmed");
-        synchronized (bulk) {
+        return CleanupBudget.run(() -> {
             log.info("Solicitud de limpieza: jobId={}", jobId);
             return cleanup.clean(jobId, retryUnconfirmed);
-        }
+        });
     }
     private void validate(org.springframework.util.MultiValueMap<String, String> params, String... allowed) {
         var names = java.util.Set.of(allowed);

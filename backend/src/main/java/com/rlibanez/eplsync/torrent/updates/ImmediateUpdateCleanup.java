@@ -14,11 +14,10 @@ public class ImmediateUpdateCleanup {
     public record SubmissionAccepted() {}
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(ImmediateUpdateCleanup.class);
     private final CleanupQueue queue;
-    private final BulkStore bulk;
     private final ExecutorService executor=Executors.newSingleThreadExecutor(Thread.ofVirtual().name("immediate-update-cleanup").factory());
     private final AtomicBoolean pending=new AtomicBoolean(),running=new AtomicBoolean();
     private volatile boolean closed;
-    public ImmediateUpdateCleanup(CleanupQueue queue,BulkStore bulk) {this.queue=queue;this.bulk=bulk;}
+    public ImmediateUpdateCleanup(CleanupQueue queue,BulkStore bulk) {this.queue=queue;}
     @org.springframework.transaction.event.TransactionalEventListener(phase=org.springframework.transaction.event.TransactionPhase.AFTER_COMMIT)
     public void accepted(SubmissionAccepted event) {wake();}
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
@@ -36,11 +35,11 @@ public class ImmediateUpdateCleanup {
             while(!closed && pending.getAndSet(false)) {
                 var cycle=Instant.ofEpochMilli(System.currentTimeMillis());
                 try {
-                    com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.MANUAL,() -> {
+                    CleanupBudget.run(() -> com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.MANUAL,() -> {
                         int checked;
-                        do {synchronized(bulk) {checked=queue.runImmediate(100,cycle);}} while(!closed && checked==100);
+                        do {checked=queue.runImmediate(100,cycle);} while(!closed && CleanupBudget.available() && checked==100);
                         return null;
-                    });
+                    }));
                 } catch(RuntimeException ex) {log.warn("Limpieza inmediata pendiente: tipo={}",ex.getClass().getSimpleName());}
             }
         } finally {running.set(false);if(!closed && pending.get()) wake();}

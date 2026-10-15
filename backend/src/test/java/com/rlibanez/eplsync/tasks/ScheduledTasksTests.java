@@ -143,11 +143,13 @@ class ScheduledTasksTests {
         var queue=mock(com.rlibanez.eplsync.torrent.updates.CleanupQueue.class);
         var bulk=mock(com.rlibanez.eplsync.torrent.bulk.BulkStore.class);
         var timer=new com.rlibanez.eplsync.torrent.updates.AutomaticUpdateCleanup(queue,bulk);
-        org.springframework.test.util.ReflectionTestUtils.setField(timer,"internalSettings",internal);
-        org.springframework.test.util.ReflectionTestUtils.setField(timer,"lastCycle",System.nanoTime()-Duration.ofSeconds(40).toNanos());
-        internal.save(InternalTaskSettings.CLEANUP,"1m");timer.schedule();verify(queue,never()).runAutomatic(anyInt());
-        internal.save(InternalTaskSettings.CLEANUP,"30s");timer.schedule();verify(queue).runAutomatic(100);
-        timer.schedule();verify(queue,times(1)).runAutomatic(100);
+        try {
+            org.springframework.test.util.ReflectionTestUtils.setField(timer,"internalSettings",internal);
+            org.springframework.test.util.ReflectionTestUtils.setField(timer,"lastCycle",System.nanoTime()-Duration.ofSeconds(40).toNanos());
+            internal.save(InternalTaskSettings.CLEANUP,"1m");timer.schedule();verify(queue,never()).runAutomatic(anyInt());
+            internal.save(InternalTaskSettings.CLEANUP,"30s");timer.schedule();verify(queue,timeout(2000)).runAutomatic(100);
+            timer.schedule();verify(queue,times(1)).runAutomatic(100);
+        } finally {timer.close();}
     }
     @Test void scheduledTorrentRunDoesNotRequestDownloadDetails() {
         var result=mock(com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.SyncResult.class);

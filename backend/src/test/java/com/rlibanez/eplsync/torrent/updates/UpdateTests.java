@@ -1173,4 +1173,58 @@ class UpdateTests {
             future.get(5, TimeUnit.SECONDS);
         }
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"pause","cancel"})
+    void slowCleanupDoesNotBlockJobControlOrDeleteAfterControl(String command) throws Exception {
+        var job=create(PreviousVersions.REMOVE_TORRENT);
+        var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
+        when(stubClient.listTorrents()).thenAnswer(call -> {
+            entered.countDown();
+            if(!release.await(5,TimeUnit.SECONDS)) throw new IllegalStateException("Test did not release network");
+            return List.of(remote(OLD,DownloadStatus.DOWNLOADED,null),remote(NEW,DownloadStatus.DOWNLOADED,null));
+        });
+        var authentication=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            var cleaning=executor.submit(() -> {
+                var context=org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+                context.setAuthentication(authentication);
+                org.springframework.security.core.context.SecurityContextHolder.setContext(context);
+                try {return cleaner.clean(job.jobId());}
+                finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
+            });
+            try {
+                assertThat(entered.await(2,TimeUnit.SECONDS)).isTrue();
+                executor.submit(() -> {synchronized(bulk) {bulk.view(job.jobId());bulk.control(job.jobId(),command);}}).get(2,TimeUnit.SECONDS);
+                release.countDown();cleaning.get(3,TimeUnit.SECONDS);
+                verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+                assertThat(jobs.findById(job.jobId()).orElseThrow().getState()).isEqualTo(command.equals("pause")?BulkJob.State.PAUSED:BulkJob.State.CANCELLED);
+                if(command.equals("cancel")) assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.CANCELLED);
+            } finally {release.countDown();}
+        }
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"pause","cancel"})
+    void controlDuringDeleteKeepsUncertainRequestAndStopsFollowingDeletes(String command) throws Exception {
+        history(1,0.9,OTHER,DownloadStatus.DOWNLOADED);
+        var job=create(PreviousVersions.REMOVE_TORRENT);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,null),remote(OTHER,DownloadStatus.DOWNLOADED,null),remote(NEW,DownloadStatus.DOWNLOADED,null)));
+        var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
+        doAnswer(call -> {entered.countDown();if(!release.await(5,TimeUnit.SECONDS)) throw new IllegalStateException("Test did not release delete");return null;}).when(stubClient).deleteTorrent(anyString(),eq(false));
+        var authentication=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            var cleaning=executor.submit(() -> {
+                var context=org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();context.setAuthentication(authentication);
+                org.springframework.security.core.context.SecurityContextHolder.setContext(context);
+                try {return cleaner.clean(job.jobId());}finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
+            });
+            try {
+                assertThat(entered.await(2,TimeUnit.SECONDS)).isTrue();
+                executor.submit(() -> {synchronized(bulk) {bulk.control(job.jobId(),command);}}).get(2,TimeUnit.SECONDS);
+                release.countDown();cleaning.get(3,TimeUnit.SECONDS);
+                verify(stubClient,times(1)).deleteTorrent(anyString(),anyBoolean());
+                assertThat(cleanup.findByJobIdOrderByEplIdAsc(job.jobId())).filteredOn(e -> e.getState()==UpdateCleanup.State.REQUESTED).hasSize(1);
+                assertThat(jobs.findById(job.jobId()).orElseThrow().getState()).isEqualTo(command.equals("pause")?BulkJob.State.PAUSED:BulkJob.State.CANCELLED);
+            } finally {release.countDown();}
+        }
+    }
 }

@@ -145,6 +145,7 @@ public class CleanupQueue {
         var previousBlocks=new HashMap<String,String>();
         for (var entry:selected) if(entry.getState()==UpdateCleanup.State.BLOCKED) previousBlocks.put(entry.getId(),entry.getMessage());
         for (var entry:selected) {
+            if(!CleanupBudget.available()) break;
             // Reload: a duplicate hash earlier in this batch may already have resolved this request.
             var fresh=entries.findById(entry.getId()).orElseThrow();
             entry.setState(fresh.getState());
@@ -195,7 +196,7 @@ public class CleanupQueue {
                         save(entry,UpdateCleanup.State.BLOCKED,"Archivos o carpetas compartidos con otro torrent; no se borran archivos");continue;
                     }
                 }
-                save(entry,UpdateCleanup.State.REQUESTED,"Eliminación solicitada; pendiente de confirmar ausencia" + (noData ? ". " + NO_DATA : ""));
+                if(!claim(entry,"Eliminación solicitada; pendiente de confirmar ausencia" + (noData ? ". " + NO_DATA : ""))) continue;
                 if (!dispatched.add(old.hash())) continue;
                 try {
                     var actor=automatic ? new EventContext.Actor(entry.getActorId(),entry.getActorUsername(),entry.getActorKind()) : EventContext.actor();
@@ -216,7 +217,7 @@ public class CleanupQueue {
                 if (entry.getState()!=UpdateCleanup.State.REQUESTED) save(entry,UpdateCleanup.State.BLOCKED,"No se pudo completar la comprobación de seguridad");
             }
         }
-        if (!dispatched.isEmpty()) {
+        if (!dispatched.isEmpty() && CleanupBudget.available()) {
             try {
                 var after=TorrentRemovalSafety.index(adapter.listTorrents());
                 for (var hash:dispatched) {
@@ -260,8 +261,43 @@ public class CleanupQueue {
         if (entry.getTargetHashes()==null) throw new IllegalStateException("Faltan dependencias de limpieza");
         return Arrays.asList(mapper.readValue(entry.getTargetHashes(),String[].class));
     }
-    private void touch(UpdateCleanup entry) { entry.setLastCheckedAt(Instant.now()); entries.saveAndFlush(entry); }
+    private void touch(UpdateCleanup entry) {
+        synchronized(bulk) {tx.executeWithoutResult(status -> {
+            var fresh=entries.findById(entry.getId()).orElseThrow();
+            em.refresh(fresh);
+            fresh.setLastCheckedAt(Instant.now());entries.saveAndFlush(fresh);
+            entry.setState(fresh.getState());entry.setMessage(fresh.getMessage());
+            entry.setReplacementAccepted(fresh.getReplacementAccepted());
+        });}
+    }
+    /** Commit the dispatch before releasing the monitor. Pause/cancel never waits for HTTP. */
+    private boolean claim(UpdateCleanup entry,String message) {
+        synchronized(bulk) {return Boolean.TRUE.equals(tx.execute(status -> {
+            if(!CleanupBudget.available()) return false;
+            var fresh=entries.findById(entry.getId()).orElseThrow();em.refresh(fresh);
+            if(!PENDING.contains(fresh.getState())) return false;
+            var job=entry.getJobId()==null?null:em.find(com.rlibanez.eplsync.torrent.bulk.BulkJob.class,entry.getJobId());
+            if(job!=null) {
+                em.refresh(job);
+                if(job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED
+                    || job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED) return false;
+            }
+            save(entry,UpdateCleanup.State.REQUESTED,message);return true;
+        }));}
+    }
     private void save(UpdateCleanup entry,UpdateCleanup.State state,String message) {
+        synchronized(bulk) {
+            var next=state;var detail=message;
+            tx.executeWithoutResult(status -> {
+                var fresh=entries.findById(entry.getId()).orElseThrow();em.refresh(fresh);
+                entry.setState(fresh.getState());entry.setMessage(fresh.getMessage());
+                if(!PENDING.contains(fresh.getState())) return;
+                saveCurrent(fresh,next,detail);
+                entry.setState(fresh.getState());entry.setMessage(fresh.getMessage());
+            });
+        }
+    }
+    private void saveCurrent(UpdateCleanup entry,UpdateCleanup.State state,String message) {
         // Never forget an uncertain write until absence is confirmed.
         if (entry.getState()==UpdateCleanup.State.REQUESTED && state!=UpdateCleanup.State.REMOVED) state=UpdateCleanup.State.REQUESTED;
         if (entry.getState()==UpdateCleanup.State.REQUESTED && entry.getMessage()!=null && entry.getMessage().contains(NO_DATA))
@@ -270,12 +306,12 @@ public class CleanupQueue {
         bulk.cleanupChanged(entry.getJobId());
     }
     public void resolve(Set<String> aliases) {
-        tx.executeWithoutResult(status -> {
+        synchronized(bulk) {tx.executeWithoutResult(status -> {
             for (var entry:entries.findByClientInstanceIdAndHashInAndStateIn(tracking.instanceId(),aliases,PENDING))
                 save(entry,UpdateCleanup.State.REMOVED,"Ausencia confirmada en el cliente; historial conservado");
             for (var row:downloads.findByClientInstanceIdAndHashIn(tracking.instanceId(),aliases)) {
                 row.setStatus(DownloadStatus.NOT_FOUND); row.setLastCheckedAt(Instant.now()); row.setLastError(null); downloads.save(row);
             }
-        });
+        });}
     }
 }
