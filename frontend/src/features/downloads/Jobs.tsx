@@ -1,3 +1,5 @@
+import { useJobRetry } from "../jobs/useJobRetry";
+import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { PageTitle } from "../../components/PageTitle";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { dateBounds } from "../events/eventTypes";
@@ -10,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  Checkbox,
   Button,
   Select,
   MultiSelect,
@@ -343,6 +346,8 @@ export function JobDetail() {
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState("position,asc");
   const [cancel, setCancel] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  useEffect(() => setSelected([]), [id, filter, sort]);
   const job = useQuery({
     queryKey: ["job", id],
     queryFn: ({ signal }) =>
@@ -369,6 +374,9 @@ export function JobDetail() {
       ? false
       : 3000,
   });
+  const retry = useJobRetry("downloads", id, job.data?.status, selected, () =>
+    setSelected([]),
+  );
   const control = useMutation({
     meta: {
       backendEvents: true,
@@ -400,6 +408,7 @@ export function JobDetail() {
       setPage(0);
     },
     {
+      selection: retry.selectable,
       defaults: "position,asc",
       extraSort: [
         { field: "position", label: "tableControls.position", width: 100 },
@@ -417,6 +426,7 @@ export function JobDetail() {
         description={t("downloads.jobNote")}
       />
       <p className="hash-text">{id}</p>
+      {retry.content}
 
       {job.isPending ? (
         <Loading />
@@ -628,9 +638,12 @@ export function JobDetail() {
         />
       </div>
       <section className="panel">
-        <div className="table-toolbar">
-          <div className="catalog-table-controls">{columns.controls}</div>
-        </div>
+        <SelectionToolbar
+          count={selected.length}
+          onClear={() => setSelected([])}
+          controls={columns.controls}
+          actions={retry.action}
+        />
         {items.isPending ? (
           <Loading />
         ) : items.isError ? (
@@ -647,10 +660,62 @@ export function JobDetail() {
                 style={{ width: columns.width }}
               >
                 {columns.colgroup}
-                <thead>{columns.headings}</thead>
+                <thead>
+                  {columns.selectionHeadings(
+                    retry.selectable && (
+                      <th>
+                        <Checkbox
+                          aria-label={t("selection.page")}
+                          checked={
+                            !!items.data?.items.length &&
+                            items.data.items.every((row) =>
+                              selected.includes(row.id),
+                            )
+                          }
+                          onChange={(e) => {
+                            const checked = e.currentTarget.checked;
+                            setSelected((old) =>
+                              checked
+                                ? [
+                                    ...new Set([
+                                      ...old,
+                                      ...(items.data?.items ?? []).map(
+                                        (row) => row.id,
+                                      ),
+                                    ]),
+                                  ]
+                                : old.filter(
+                                    (id) =>
+                                      !items.data?.items.some(
+                                        (row) => row.id === id,
+                                      ),
+                                  ),
+                            );
+                          }}
+                        />
+                      </th>
+                    ),
+                  )}
+                </thead>
                 <tbody>
                   {items.data.items.map((item) => (
                     <tr key={item.id}>
+                      {retry.selectable && (
+                        <td>
+                          <Checkbox
+                            aria-label={`EPL ${item.eplId}`}
+                            checked={selected.includes(item.id)}
+                            onChange={(e) => {
+                              const checked = e.currentTarget.checked;
+                              setSelected((old) =>
+                                checked
+                                  ? [...old, item.id]
+                                  : old.filter((id) => id !== item.id),
+                              );
+                            }}
+                          />
+                        </td>
+                      )}
                       {columns.cells([
                         <td>
                           <Link to={`/catalog/${item.eplId}`}>

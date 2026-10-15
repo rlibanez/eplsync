@@ -30,6 +30,7 @@ public class CleanupQueue {
     @org.springframework.beans.factory.annotation.Autowired private EventJournal events;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.torrent.bulk.BulkStore bulk;
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.jobs.RetryAuthorization retryAuthorization;
     private final JsonMapper mapper = JsonMapper.builder().build();
     public record Result(String id, String downloadId, Long eplId, String hash, PreviousVersions policy, UpdateCleanup.State state, String message) {}
     private static final String NO_DATA = "Sin datos descargados que borrar";
@@ -281,6 +282,9 @@ public class CleanupQueue {
                 em.refresh(job);
                 if(job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED
                     || job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED) return false;
+            }
+            if(retryAuthorization!=null && !retryAuthorization.torrent(entry.getJobId(),true,entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES)) {
+                save(entry,UpdateCleanup.State.BLOCKED,"El usuario del reintento ya no tiene permisos para eliminar estas revisiones");return false;
             }
             save(entry,UpdateCleanup.State.REQUESTED,message);return true;
         }));}

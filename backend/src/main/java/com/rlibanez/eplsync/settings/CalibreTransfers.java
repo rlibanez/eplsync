@@ -104,7 +104,7 @@ public class CalibreTransfers {
             var actor=EventContext.actor();String id=UUID.randomUUID().toString(),now=Instant.now().toString();
             tx.executeWithoutResult(s -> {
                 if(!connection.equals(settings.connection()) || !source.equals(source())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
-                if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items WHERE state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED')",Long.class)+selected.size()>10000)
+                if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i WHERE state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class)+selected.size()>10000)
                     throw new UserInputException("Hay demasiados envíos pendientes a Calibre; espera a que finalicen");
                 jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username()==null ? "Sistema" : actor.username(),destination(connection),request.library(),source);
                 for(int position=0;position<selected.size();position++) {
@@ -118,7 +118,7 @@ public class CalibreTransfers {
     }
     String enqueueUpdates(CalibreSettings.Connection connection,List<Candidate> selected,List<CalibreUpdateFlow.Book> waits,Map<Long,CalibreUpdateFlow.Choice> cleanup,String downloadId) {
         if(!connection.equals(settings.connection())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
-        if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items WHERE state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED')",Long.class)+selected.size()+waits.size()>10000) throw new UserInputException("Hay demasiados envíos pendientes a Calibre");
+        if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i WHERE state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class)+selected.size()+waits.size()>10000) throw new UserInputException("Hay demasiados envíos pendientes a Calibre");
         var actor=EventContext.actor();String id=UUID.randomUUID().toString(),now=Instant.now().toString();
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username(),destination(connection),connection.library(),source());
         int position=0;
@@ -180,7 +180,10 @@ public class CalibreTransfers {
             String next=command.equals("pause") ? "PAUSED" : command.equals("resume") ? "QUEUED" : "CANCELLED";
             jdbc.update("UPDATE calibre_jobs SET state=?,message=NULL,next_check=0,next_probe=0,updated_at=? WHERE id=?",next,Instant.now().toString(),id);
             if(command.equals("resume")) jdbc.update("UPDATE calibre_job_items SET state='WAITING_DOWNLOAD',next_check=0,wait_until=? WHERE job_id=? AND state='BLOCKED_DOWNLOAD'",Instant.now().plus(Duration.ofDays(30)).toEpochMilli(),id);
+            if(command.equals("resume") && jdbc.queryForObject("SELECT count(*) FROM job_retry_items r JOIN calibre_job_items i ON i.id=r.source_item_id WHERE r.kind='calibre' AND r.parent_id=? AND i.state='UNCERTAIN'",Long.class,id)>0)
+                throw new UserInputException("Hay envíos inciertos transferidos a un reintento; continúa desde ese trabajo");
             if(command.equals("cancel")) {
+                jdbc.update("UPDATE calibre_job_items SET requested_cleanup_policy=coalesce(requested_cleanup_policy,cleanup_policy),requested_cleanup_ids=coalesce(requested_cleanup_ids,cleanup_ids),cleanup_cancelled=CASE WHEN state='CLEANUP_PENDING' THEN true ELSE cleanup_cancelled END WHERE job_id=? AND state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED')",id);
                 jdbc.update("UPDATE calibre_job_items SET cleanup_policy='KEEP',cleanup_ids='[]' WHERE job_id=? AND state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED')",id);
                 jdbc.update("UPDATE calibre_job_items SET state=completion_state,message=coalesce(message || '. ','') || 'Limpieza de revisiones anteriores cancelada' WHERE job_id=? AND state='CLEANUP_PENDING'",id);
                 jdbc.update("UPDATE calibre_job_items SET state='CANCELLED' WHERE job_id=? AND state IN ('PENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD')",id);
@@ -206,7 +209,7 @@ public class CalibreTransfers {
     public void retention() {
         if(!lifecycle.writeLock().tryLock()) return;
         try { jdbc.update("DELETE FROM calibre_update_requests WHERE id IN (SELECT id FROM calibre_update_requests WHERE created_at<? ORDER BY created_at LIMIT 100)",Instant.now().minus(Duration.ofDays(90)).toString());
-            jdbc.update("DELETE FROM calibre_jobs WHERE id IN (SELECT id FROM calibre_jobs WHERE state IN ('COMPLETED','CANCELLED') AND updated_at<? AND NOT EXISTS (SELECT 1 FROM calibre_job_items i WHERE i.job_id=calibre_jobs.id AND i.state IN ('SENDING','UNCERTAIN')) ORDER BY updated_at LIMIT 100)",Instant.now().minus(Duration.ofDays(90)).toString());
+            jdbc.update("DELETE FROM calibre_jobs WHERE id IN (SELECT id FROM calibre_jobs WHERE state IN ('COMPLETED','CANCELLED') AND updated_at<? AND NOT EXISTS (SELECT 1 FROM calibre_job_items i WHERE i.job_id=calibre_jobs.id AND i.state IN ('SENDING','UNCERTAIN') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)) AND NOT EXISTS(SELECT 1 FROM job_retry_jobs r JOIN calibre_jobs child ON child.id=r.child_id WHERE r.kind='calibre' AND (r.parent_id=calibre_jobs.id OR r.root_id=calibre_jobs.id)) ORDER BY updated_at LIMIT 100)",Instant.now().minus(Duration.ofDays(90)).toString());
             try(var abandoned=Files.newDirectoryStream(Path.of(System.getProperty("java.io.tmpdir")),"eplsync-calibre-send-*.epub")) {
                 for(var path:abandoned) if(Files.isRegularFile(path,LinkOption.NOFOLLOW_LINKS) && Files.getLastModifiedTime(path,LinkOption.NOFOLLOW_LINKS).toInstant().isBefore(Instant.now().minus(Duration.ofHours(1)))) Files.deleteIfExists(path);
             } catch(java.io.IOException ex) {log.warn("No se pudo revisar la limpieza de EPUB temporales de Calibre");}
@@ -311,7 +314,7 @@ public class CalibreTransfers {
             remoteId=identity.eplId()!=null && identity.revision()!=null ? client.findRevision(connection,identity.eplId(),identity.revision()) : null;
             if(remoteId!=null && client.hasEpub(connection,remoteId)) {publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"SKIPPED",remoteId,"Esta revisión ya está en Calibre");return;}
             remoteId=null;
-            if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE j.destination=? AND j.library=? AND i.epl_id=? AND i.revision=? AND i.state IN ('SENDING','UNCERTAIN') AND i.id<>?",Long.class,config.get("destination"),connection.library(),item.eplId(),item.revision(),item.id())>0) {pause(job,actor,"Existe un envío de esta revisión pendiente de confirmación");return;}
+            if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE j.destination=? AND j.library=? AND i.epl_id=? AND i.revision=? AND i.state IN ('SENDING','UNCERTAIN') AND i.id<>? AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class,config.get("destination"),connection.library(),item.eplId(),item.revision(),item.id())>0) {pause(job,actor,"Existe un envío de esta revisión pendiente de confirmación");return;}
             var current=settings.connection();var owner=accounts.find(actor.id());
             if(!destination(current).equals(config.get("destination")) || !source().equals(config.get("source")) || owner==null || !owner.status().equals("ACTIVE") || owner.temporaryExpiresAt()!=null && !owner.temporaryExpiresAt().isAfter(Instant.now()) || owner.mustChangePassword() || !owner.permissions().containsAll(Set.of(Permission.CALIBRE_SEND,Permission.DOWNLOADS_FILES_READ))) {pause(job,actor,"La configuración o los permisos cambiaron antes del envío");return;}
             connection=new CalibreSettings.Connection(current.url(),current.username(),current.password(),connection.library());
@@ -341,7 +344,7 @@ public class CalibreTransfers {
         if(!client.hasEpub(connection,book.calibreId())) throw new UserInputException("Calibre no confirma el formato EPUB del libro; el envío queda pendiente de verificación");
         catalog.observe(connection,book);
     }
-    static final String SIZE_WARNING="El tamaño del EPUB no coincide con el registrado por el cliente torrent. El archivo podría haber sido modificado.";
+    public static final String SIZE_WARNING="El tamaño del EPUB no coincide con el registrado por el cliente torrent. El archivo podría haber sido modificado.";
     private void finish(String job,EventContext.Actor actor,Item item,String state,Long calibreId,String message) {
         tx.executeWithoutResult(s -> {
             String previous=jdbc.queryForObject("SELECT message FROM calibre_job_items WHERE id=?",String.class,item.id());

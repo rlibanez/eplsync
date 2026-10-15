@@ -152,7 +152,7 @@ public class CalibreUpdateFlow {
     void refreshDownloads(String job) {
         long now=Instant.now().toEpochMilli();
         if(jdbc.queryForObject("SELECT next_probe FROM calibre_jobs WHERE id=?",Long.class,job)>now) return;
-        var hashes=new HashSet<>(jdbc.queryForList("SELECT DISTINCT b.hash FROM torrent_bulk_items b JOIN calibre_job_items i ON i.download_job_id=b.job_id AND i.epl_id=b.epl_id AND CAST(i.revision AS REAL)=b.revision WHERE i.job_id=? AND i.state='WAITING_DOWNLOAD' AND b.state IN ('ACCEPTED','ALREADY_EXISTS')",String.class,job));
+        var hashes=new HashSet<>(jdbc.queryForList("WITH RECURSIVE retry_jobs(original,id) AS (SELECT DISTINCT download_job_id,download_job_id FROM calibre_job_items WHERE job_id=? AND download_job_id IS NOT NULL UNION SELECT r.original,j.child_id FROM retry_jobs r JOIN job_retry_jobs j ON j.parent_id=r.id AND j.kind='downloads') SELECT DISTINCT b.hash FROM torrent_bulk_items b JOIN retry_jobs r ON r.id=b.job_id JOIN calibre_job_items i ON i.download_job_id=r.original AND i.epl_id=b.epl_id AND CAST(i.revision AS REAL)=b.revision WHERE i.job_id=? AND i.state='WAITING_DOWNLOAD' AND b.state IN ('ACCEPTED','ALREADY_EXISTS')",String.class,job,job));
         if(!hashes.isEmpty()) torrent.exclusiveClient(adapter -> {
             var remote=new HashMap<String,RemoteTorrent>();for(var t:adapter.listTorrents(hashes)) for(String alias:t.aliases()) remote.put(alias,t);
             tracking.observeSelected(remote,hashes);return null;
@@ -163,7 +163,7 @@ public class CalibreUpdateFlow {
         var row=jdbc.queryForMap("SELECT i.download_job_id,i.wait_until FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.id=?",item.id());
         if(((Number)row.get("wait_until")).longValue()<Instant.now().toEpochMilli()) throw new UserInputException("La espera superó 30 días; revisa la descarga y reanuda");
         String downloadId=(String)row.get("download_job_id");
-        var hashRows=jdbc.queryForList("SELECT hash,state FROM torrent_bulk_items WHERE job_id=? AND epl_id=? AND revision=?",downloadId,item.eplId(),Double.valueOf(item.revision()));
+        var hashRows=jdbc.queryForList("WITH RECURSIVE retry_jobs(id) AS (SELECT ? UNION SELECT j.child_id FROM job_retry_jobs j JOIN retry_jobs r ON r.id=j.parent_id WHERE j.kind='downloads') SELECT hash,state FROM torrent_bulk_items WHERE job_id IN (SELECT id FROM retry_jobs) AND epl_id=? AND revision=?",downloadId,item.eplId(),Double.valueOf(item.revision()));
         if(hashRows.isEmpty() || hashRows.stream().allMatch(r -> Set.of("FAILED","CANCELLED","SKIPPED").contains(r.get("state")))) throw new UserInputException("El envío al cliente torrent falló, se canceló o ya no existe");
         Set<String> hashes=new HashSet<>();for(var r:hashRows) if(Set.of("ACCEPTED","ALREADY_EXISTS").contains(r.get("state"))) hashes.add((String)r.get("hash"));
         for(var d:downloads.findByEplIdIn(List.of(item.eplId()))) {

@@ -1,7 +1,10 @@
+import { useJobRetry } from "../jobs/useJobRetry";
+import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { PageTitle } from "../../components/PageTitle";
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Checkbox,
   Button,
   Group,
   Progress,
@@ -359,12 +362,17 @@ export function CalibreJobDetail() {
     [sort, setSort] = useState("position,asc");
   const [itemState, setItemState] = useState<string | null>(null);
   const choice = usePageSizeChoice(size);
+  const [selected, setSelected] = useState<string[]>([]);
+  useEffect(() => setSelected([]), [id, itemState, sort]);
   const job = useQuery({
     queryKey: ["calibre-job", id],
     queryFn: ({ signal }) => get<Job>(`/calibre/transfers/${id}`, signal),
     retry: false,
     refetchInterval: (query) => (query.state.status === "error" ? false : 3000),
   });
+  const retry = useJobRetry("calibre", id, job.data?.state, selected, () =>
+    setSelected([]),
+  );
   const result = useQuery({
     queryKey: ["calibre-job-items", id, page, size, sort, itemState],
     queryFn: ({ signal }) =>
@@ -406,6 +414,7 @@ export function CalibreJobDetail() {
       setPage(0);
     },
     {
+      selection: retry.selectable,
       defaults: "position,asc",
       extraSort: [
         { field: "position", label: "calibreSend.position", width: 100 },
@@ -426,6 +435,7 @@ export function CalibreJobDetail() {
         description={t("calibreSend.jobsHelp")}
       />
       <p className="hash-text">{id}</p>
+      {retry.content}
 
       <section className="panel settings-section job-report-panel">
         {can("CALIBRE_JOBS_MANAGE") &&
@@ -527,10 +537,12 @@ export function CalibreJobDetail() {
         />
       </div>
       <section className="panel">
-        <div className="table-toolbar">
-          <span>{t("calibreSend.files")}</span>
-          <div className="catalog-table-controls">{columns.controls}</div>
-        </div>
+        <SelectionToolbar
+          count={selected.length}
+          onClear={() => setSelected([])}
+          controls={columns.controls}
+          actions={retry.action}
+        />
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
@@ -543,10 +555,62 @@ export function CalibreJobDetail() {
                 style={{ width: columns.width }}
               >
                 {columns.colgroup}
-                <thead>{columns.headings}</thead>
+                <thead>
+                  {columns.selectionHeadings(
+                    retry.selectable && (
+                      <th>
+                        <Checkbox
+                          aria-label={t("selection.page")}
+                          checked={
+                            !!result.data?.items.length &&
+                            result.data.items.every((row) =>
+                              selected.includes(row.id),
+                            )
+                          }
+                          onChange={(e) => {
+                            const checked = e.currentTarget.checked;
+                            setSelected((old) =>
+                              checked
+                                ? [
+                                    ...new Set([
+                                      ...old,
+                                      ...(result.data?.items ?? []).map(
+                                        (row) => row.id,
+                                      ),
+                                    ]),
+                                  ]
+                                : old.filter(
+                                    (id) =>
+                                      !result.data?.items.some(
+                                        (row) => row.id === id,
+                                      ),
+                                  ),
+                            );
+                          }}
+                        />
+                      </th>
+                    ),
+                  )}
+                </thead>
                 <tbody>
                   {result.data.items.map((item) => (
                     <tr key={item.id}>
+                      {retry.selectable && (
+                        <td>
+                          <Checkbox
+                            aria-label={`EPL ${item.eplId}`}
+                            checked={selected.includes(item.id)}
+                            onChange={(e) => {
+                              const checked = e.currentTarget.checked;
+                              setSelected((old) =>
+                                checked
+                                  ? [...old, item.id]
+                                  : old.filter((id) => id !== item.id),
+                              );
+                            }}
+                          />
+                        </td>
+                      )}
                       {columns.cells([
                         <td>
                           {can("CATALOG_READ") ? (

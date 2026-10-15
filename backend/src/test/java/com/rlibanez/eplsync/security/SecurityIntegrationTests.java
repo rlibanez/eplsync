@@ -80,6 +80,19 @@ class SecurityIntegrationTests {
         mvc.perform(get("/api/settings/setup").session(reader)).andExpect(status().isForbidden());
         mvc.perform(post("/api/settings/setup").session(reader).with(csrf()).contentType("application/json").content(progress)).andExpect(status().isForbidden());
     }
+    @Test void retryEndpointsRequireTheirJobManagementPermission() throws Exception {
+        var adminSession=admin();
+        mvc.perform(get("/api/job-retries/downloads/missing").session(adminSession)).andExpect(status().isNotFound());
+        var temp=accounts.create("retryreader","retryreader@example.org","USER",initial.user().id());
+        accounts.changePassword(accounts.find(temp.user().id()),temp.password(),PASSWORD);
+        var reader=login("retryreader",PASSWORD);
+        for(String kind:List.of("downloads","calibre")) {
+            String path="/api/job-retries/"+kind+"/missing";
+            mvc.perform(get(path).session(reader)).andExpect(status().isForbidden());
+            mvc.perform(post(path+"/preview").session(reader).with(csrf()).contentType("application/json").content("{\"failedOnly\":true}")).andExpect(status().isForbidden());
+            mvc.perform(post(path).session(reader).with(csrf()).contentType("application/json").content("{\"token\":\"00000000-0000-0000-0000-000000000000\",\"confirmChanges\":false}")).andExpect(status().isForbidden());
+        }
+    }
     @Test void scheduledSearchResultsBelongToTheAuthenticatedUser() throws Exception {
         var adminSession=admin();
         jdbc.update("INSERT INTO update_search_results VALUES(?,?,?,?,?,?)",initial.user().id(),"downloads",123,"MANUAL",json(Map.of("states",List.of("DOWNLOADED"),"context",com.rlibanez.eplsync.tasks.UpdateSearchContext.current(jdbc,"downloads"))),json(List.of(Map.of("eplId",1,"title","Primero"),Map.of("eplId",2,"title","Segundo"))));

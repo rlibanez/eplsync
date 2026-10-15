@@ -1603,5 +1603,22 @@
   },
   "pageTitle": {
     "catalogDate": "Catalog date"
+  },
+  "jobRetry": {
+    "title": "Retry items",
+    "failed": "Retry failed ({{count}})",
+    "selected": "Retry selected ({{count}})",
+    "parent": "Retry of",
+    "root": "Original job:",
+    "children": "Retries:",
+    "help": "A new job will retain the original revision and options. Existing remote results will be checked before sending; pending cleanup will not repeat an upload.",
+    "send": "Transfers to retry",
+    "verify": "Transfers to verify without automatically resending",
+    "waiting": "EPUB downloads to wait for",
+    "cleanup": "Cleanup operations to retry",
+    "excluded": "Excluded items ({{count}})",
+    "confirmChanges": "I have reviewed and accept these changes for the new job",
+    "empty": "There are no recoverable items to retry.",
+    "create": "Create retry"
   }
 }

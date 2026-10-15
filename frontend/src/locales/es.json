@@ -1603,5 +1603,22 @@
   },
   "pageTitle": {
     "catalogDate": "Fecha del catálogo"
+  },
+  "jobRetry": {
+    "title": "Reintentar elementos",
+    "failed": "Reintentar fallidos ({{count}})",
+    "selected": "Reintentar seleccionados ({{count}})",
+    "parent": "Reintento de",
+    "root": "Trabajo inicial:",
+    "children": "Reintentos:",
+    "help": "Se creará un trabajo nuevo con la revisión y las opciones originales. Antes de enviar se comprobará lo que ya llegó al destino; una limpieza pendiente no repetirá el envío.",
+    "send": "Envíos por reintentar",
+    "verify": "Envíos por verificar, sin repetirlos automáticamente",
+    "waiting": "EPUB pendientes de descarga",
+    "cleanup": "Limpiezas por reintentar",
+    "excluded": "Elementos excluidos ({{count}})",
+    "confirmChanges": "He revisado y acepto estos cambios para el nuevo trabajo",
+    "empty": "No hay elementos recuperables para reintentar.",
+    "create": "Crear reintento"
   }
 }

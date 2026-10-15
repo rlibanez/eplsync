@@ -34,6 +34,7 @@ public class BulkRetentionStore {
                 + "and j.updatedAt < :cutoff and not exists "
                 + "(select i.id from BulkItem i where i.jobId=j.id and i.state in :unfinished) "
                 + "and not exists (select c.id from UpdateCleanup c where c.jobId=j.id and c.state in :pending) "
+                + "and not exists (select r.childId from JobRetryLink r, BulkJob child where r.kind='downloads' and child.id=r.childId and (r.parentId=j.id or r.rootId=j.id)) "
                 + (protectedJobs.isEmpty()?"":"and j.id not in :protected ") + "order by j.updatedAt,j.id", String.class)
                 .setParameter("finished", List.of(BulkJob.State.COMPLETED, BulkJob.State.CANCELLED))
                 .setParameter("cutoff", cutoff)

@@ -44,6 +44,7 @@ public class BulkStore {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkStore.class);
 
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.context.ApplicationEventPublisher publisher;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.jobs.RetryAuthorization retryAuthorization;
     private final BulkJobRepository jobs;
     private final BulkItemRepository items;
     private final TorrentDownloadService downloads;
@@ -485,7 +486,8 @@ public class BulkStore {
         var job = job(id);
         if (job.getState() != BulkJob.State.RUNNING) return false;
         String reason = !properties.isEnabled() ? "La integración torrent se ha desactivado"
-                : !job.getTargetFingerprint().equals(fingerprint()) ? "El destino configurado ha cambiado" : null;
+                : !job.getTargetFingerprint().equals(fingerprint()) ? "El destino configurado ha cambiado"
+                : retryAuthorization!=null && !retryAuthorization.torrent(id,false,false) ? "El usuario del reintento ya no está autorizado para enviar torrents" : null;
         if (reason == null) return true;
         // If everything is already in flight, let its normal completion finalize the job.
         if (count(id, BulkItem.State.PENDING) == 0) return true;

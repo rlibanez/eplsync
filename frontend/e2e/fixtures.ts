@@ -58,6 +58,19 @@ export const test = base.extend<{ eventTransport: void }>({
       await context.route("**/api/settings/tasks/searches/*", (route) =>
         route.fulfill({ json: { search: null } }),
       );
+      await context.route("**/api/job-retries/*/*", (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({
+              json: {
+                source: null,
+                retries: [],
+                terminal: false,
+                failed: 0,
+                reason: null,
+              },
+            })
+          : route.fallback(),
+      );
       await context.route("**/api/settings/setup", (route) =>
         route.fulfill({
           json: {

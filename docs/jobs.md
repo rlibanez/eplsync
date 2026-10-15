@@ -49,3 +49,30 @@ o limpiezas pendientes. Puede configurarse mediante las
 
 Eliminar trabajos por retención no borra el historial de descargas, los eventos,
 los torrents ni sus archivos.
+
+## Reintentar elementos
+
+En las fichas de **Trabajos de descargas** y **Trabajos de Calibre** puedes usar
+**Reintentar fallidos** o marcar filas y pulsar **Reintentar seleccionados**.
+El trabajo debe estar terminado o cancelado y sin operaciones en curso. Para
+continuar un trabajo pausado, utiliza **Reanudar**.
+
+El diálogo resume los envíos, verificaciones, esperas y limpiezas recuperables.
+Los elementos sin nada pendiente o con problemas se excluyen y se indica el
+motivo. Los cambios de conexión o archivo requieren confirmación; los borrados
+y los envíos inciertos requieren restaurar su conexión original.
+
+El nuevo trabajo conserva la revisión y las opciones originales y enlaza con su
+padre y con el trabajo inicial. El original mantiene sus resultados y muestra
+los reintentos creados. Repetir una petición no crea dos trabajos; para volver a
+intentar un elemento ya transferido a otro trabajo, continúa desde ese reintento.
+
+Antes de enviar se comprueba si el torrent o la revisión con EPUB ya existen.
+Un envío incierto de Calibre solo se verifica: si no puede confirmarse, queda
+pausado y no se vuelve a enviar automáticamente. Una limpieza pendiente no
+repite el envío del libro. Los trabajos de Calibre que esperan descargas también
+reconocen los reintentos del trabajo torrent, siempre para la revisión original.
+
+Los reintentos comprueban de nuevo los permisos de envío y borrado. Cancelar una
+limpieza iniciada antes de esta funcionalidad puede haber descartado sus opciones;
+en ese caso, vuelve a seleccionar explícitamente las revisiones que quieras borrar.
