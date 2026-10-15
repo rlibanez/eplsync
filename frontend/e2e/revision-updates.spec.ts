@@ -33,7 +33,22 @@ test("revision search shows the torrent connection error and can retry", async (
     "Compara las revisiones registradas de tus descargas con el Catálogo. Busca actualizaciones para sincronizar con el cliente torrent y consultar las nuevas revisiones disponibles.",
     { exact: true },
   );
-  await expect(subtitle).toBeVisible();
+  await expect(subtitle).not.toBeVisible();
+  await page
+    .getByRole("heading", {
+      name: "Actualizaciones",
+      exact: true,
+    })
+    .focus();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "Compara las revisiones registradas",
+  );
+  await page
+    .getByRole("heading", {
+      name: "Actualizaciones",
+      exact: true,
+    })
+    .press("Escape");
   await page
     .getByRole("button", { name: "Buscar actualizaciones", exact: true })
     .click();
@@ -44,7 +59,7 @@ test("revision search shows the torrent connection error and can retry", async (
   await dialog.getByRole("button", { name: "Reintentar" }).click();
   await expect(dialog).not.toBeVisible();
   expect(attempts).toBe(2);
-  await expect(subtitle).toBeVisible();
+  await expect(subtitle).not.toBeVisible();
   await expect(page.getByText(/Última búsqueda:/)).toBeVisible();
 });
 

@@ -1,3 +1,4 @@
+import { PageTitle } from "../../components/PageTitle";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { dateBounds } from "../events/eventTypes";
 import { sortQuery } from "./TableControls";
@@ -124,7 +125,10 @@ export function Jobs() {
   return (
     <>
       <div className="page-heading">
-        <h1>{t("nav.downloadJobs")}</h1>
+        <PageTitle
+          title={t("nav.downloadJobs")}
+          description={t("downloads.jobNote")}
+        />
         <Button
           variant="filled"
           loading={refresh === "pending"}
@@ -138,7 +142,6 @@ export function Jobs() {
         </Button>
       </div>
 
-      <p className="muted">{t("downloads.jobNote")}</p>
       <div className="filters jobs-filters">
         <Select
           label={t("downloads.type")}
@@ -409,9 +412,12 @@ export function JobDetail() {
       <Link className="back-link" to="/downloads/jobs">
         ← {t("nav.downloadJobs")}
       </Link>
-      <h1>{t("downloads.jobHeading")}</h1>
+      <PageTitle
+        title={t("downloads.jobHeading")}
+        description={t("downloads.jobNote")}
+      />
       <p className="hash-text">{id}</p>
-      <p className="muted">{t("downloads.jobNote")}</p>
+
       {job.isPending ? (
         <Loading />
       ) : job.isError ? (

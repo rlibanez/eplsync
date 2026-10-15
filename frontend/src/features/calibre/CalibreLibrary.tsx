@@ -1,3 +1,4 @@
+import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { latestSavedSearch, searchPage } from "../downloads/SavedUpdateSearch";
 import { CalibreUpdateSend } from "./CalibreUpdateSend";
@@ -188,9 +189,16 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
   return (
     <>
       <div className="page-heading">
-        <h1>
-          {t(updates ? "calibre.updatesHeading" : "calibre.libraryHeading")}
-        </h1>
+        <PageTitle
+          title={t(
+            updates ? "calibre.updatesHeading" : "calibre.libraryHeading",
+          )}
+          description={t(
+            updates
+              ? "calibre.updatesDescription"
+              : "calibre.libraryDescription",
+          )}
+        />
         {auth.can("CALIBRE_SYNC") && (
           <div className="action-row">
             {!updates && (
@@ -208,11 +216,6 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
           </div>
         )}
       </div>
-      <p className="muted">
-        {t(
-          updates ? "calibre.updatesDescription" : "calibre.libraryDescription",
-        )}
-      </p>
       {snapshot.data?.complete === false && <p>{t("calibreSend.partial")}</p>}
       {updates ? (
         previousSearch.data && (

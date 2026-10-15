@@ -1,3 +1,4 @@
+import type { Metadata } from "../maintenance/CatalogMetadata";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import {
   PageSizeSelect,
@@ -47,7 +48,24 @@ import { get, catalogParams, type BookPage } from "../../api/catalog";
 import { Loading, Failure } from "../../components/Feedback";
 export function Catalog() {
   const auth = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const metadata = useQuery({
+    queryKey: ["catalog-metadata"],
+    queryFn: ({ signal }) =>
+      get<{ metadata: Metadata | null }>("/catalog/import/metadata", signal),
+  });
+  const catalogDate = metadata.data?.metadata?.sourceModifiedAt;
+  // CSV timestamps are local wall times; UTC formatting preserves those clock values.
+  const formattedCatalogDate =
+    catalogDate && Number.isFinite(Date.parse(catalogDate))
+      ? new Intl.DateTimeFormat(i18n.resolvedLanguage ?? "es", {
+          dateStyle: "medium",
+          timeStyle: "short",
+          timeZone: "UTC",
+        }).format(
+          new Date(catalogDate.endsWith("Z") ? catalogDate : catalogDate + "Z"),
+        )
+      : null;
   const columns = useCatalogColumns();
   const navigate = useNavigate();
   const importer = useImport();
@@ -145,6 +163,11 @@ export function Catalog() {
           </Button>
         )}
       </div>
+      {formattedCatalogDate && (
+        <p className="muted">
+          {t("pageTitle.catalogDate")}: {formattedCatalogDate}
+        </p>
+      )}
       <CatalogFilters
         initiallyOpen={filtersOpen.current}
         onToggle={(open) => {

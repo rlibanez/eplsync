@@ -2050,3 +2050,10 @@ summary {
 @media (max-width: 700px) {
   .book-section-heading { padding-inline: 15px; }
 }
+
+
+.page-title {
+  width: fit-content;
+  max-width: 100%;
+  cursor: help;
+}

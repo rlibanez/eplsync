@@ -1,3 +1,4 @@
+import { PageTitle } from "../../components/PageTitle";
 import { SelectAllRows } from "../../components/SelectAllRows";
 import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
 import { DownloadActions } from "./DownloadActions";
@@ -180,7 +181,10 @@ function DownloadHistory() {
     <CalibreSendProvider>
       <>
         <div className="page-heading">
-          <h1>{t("downloads.stateTitle")}</h1>
+          <PageTitle
+            title={t("downloads.stateTitle")}
+            description={t("downloads.localNote")}
+          />
           {auth.can("TORRENT_SYNC") && (
             <div className="action-row">
               {auth.can("CATALOG_READ") && (
@@ -203,7 +207,7 @@ function DownloadHistory() {
             </div>
           )}
         </div>
-        <p className="muted">{t("downloads.localNote")}</p>
+
         {syncState.data?.syncedAt && (
           <p className="muted">
             {t("downloads.lastSync")}: {date(syncState.data.syncedAt)}

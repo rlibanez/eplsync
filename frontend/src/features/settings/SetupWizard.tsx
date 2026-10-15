@@ -1,3 +1,4 @@
+import { PageTitle } from "../../components/PageTitle";
 import { useMediaQuery } from "@mantine/hooks";
 import { Button, Group, Stepper, Alert } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -93,8 +94,11 @@ export function SetupWizard() {
   }
   return (
     <>
-      <h1>{t("setup.title")}</h1>
-      <p className="muted">{t("setup.description")}</p>
+      <PageTitle
+        title={t("setup.title")}
+        description={t("setup.description")}
+      />
+
       <Stepper
         active={step}
         mb="lg"

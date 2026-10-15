@@ -1600,5 +1600,8 @@
     "missingSummary_other": "{{count}} actualizaciones aún no están descargadas",
     "pendingDownloads": "Descargas pendientes",
     "previousSection": "Versiones anteriores"
+  },
+  "pageTitle": {
+    "catalogDate": "Fecha del catálogo"
   }
 }

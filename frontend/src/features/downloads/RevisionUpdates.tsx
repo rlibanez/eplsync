@@ -1,3 +1,4 @@
+import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { latestSavedSearch, searchPage } from "./SavedUpdateSearch";
 import { SelectAllRows } from "../../components/SelectAllRows";
@@ -186,7 +187,10 @@ export function RevisionUpdates() {
   return (
     <>
       <div className="page-heading">
-        <h1>{t("nav.updates")}</h1>
+        <PageTitle
+          title={t("nav.updates")}
+          description={t("revisionUpdates.subtitle")}
+        />
         <Button
           disabled={
             !auth.can("TORRENT_SYNC") ||
@@ -203,7 +207,7 @@ export function RevisionUpdates() {
           {t("revisionUpdates.search")}
         </Button>
       </div>
-      <p className="muted">{t("revisionUpdates.subtitle")}</p>
+
       {!auth.can("TORRENT_SYNC") && (
         <p className="muted">{t("revisionUpdates.syncPermission")}</p>
       )}

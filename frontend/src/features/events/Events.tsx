@@ -1,3 +1,4 @@
+import { PageTitle } from "../../components/PageTitle";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { Paging } from "../downloads/shared";
 import { eventActorLabel } from "./eventTypes";
@@ -257,7 +258,10 @@ function EventsView({ operationId }: { operationId?: string }) {
   return (
     <>
       <div className="page-heading">
-        <h1>{t("events.title")}</h1>
+        <PageTitle
+          title={t("events.title")}
+          description={t("events.description")}
+        />
         {pending && (
           <Button
             leftSection={<RefreshCw size={16} />}
@@ -269,7 +273,7 @@ function EventsView({ operationId }: { operationId?: string }) {
           </Button>
         )}
       </div>
-      <p className="muted">{t("events.description")}</p>
+
       {operationId ? (
         <Button component={Link} to="/events" variant="subtle" mb="md">
           {t("events.showAll")}

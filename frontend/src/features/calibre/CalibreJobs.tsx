@@ -1,3 +1,4 @@
+import { PageTitle } from "../../components/PageTitle";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -195,7 +196,10 @@ export function CalibreJobs() {
   return (
     <section>
       <div className="page-heading">
-        <h1>{t("calibreSend.jobs")}</h1>
+        <PageTitle
+          title={t("calibreSend.jobs")}
+          description={t("calibreSend.jobsHelp")}
+        />
         <Button
           variant="filled"
           loading={result.isFetching}
@@ -204,7 +208,7 @@ export function CalibreJobs() {
           {t(result.isFetching ? "downloads.refreshing" : "downloads.refresh")}
         </Button>
       </div>
-      <p className="muted">{t("calibreSend.jobsHelp")}</p>
+
       <div className="filters jobs-filters">
         <Select
           label={t("downloads.status")}
@@ -417,9 +421,12 @@ export function CalibreJobDetail() {
       <Link className="back-link" to="/calibre/jobs">
         ← {t("calibreSend.back")}
       </Link>
-      <h1>{t("calibreSend.job")}</h1>
+      <PageTitle
+        title={t("calibreSend.job")}
+        description={t("calibreSend.jobsHelp")}
+      />
       <p className="hash-text">{id}</p>
-      <p className="muted">{t("calibreSend.jobsHelp")}</p>
+
       <section className="panel settings-section job-report-panel">
         {can("CALIBRE_JOBS_MANAGE") &&
           (!["COMPLETED", "CANCELLED"].includes(value.state) ||
