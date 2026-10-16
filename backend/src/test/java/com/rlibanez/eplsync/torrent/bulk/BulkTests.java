@@ -699,7 +699,7 @@ class BulkTests {
         });
         var notices=new CopyOnWriteArrayList<com.rlibanez.eplsync.events.EventJournal.Entry>();
         var job=create(new BulkRequest(null,2,1,"0ms"));
-        try(var subscription=events.listenNotices(notices::add)) {
+        try(var _=events.listenNotices(notices::add)) {
         start();worker.tick();
         try {
             assertThat(entered.await(2,TimeUnit.SECONDS)).isTrue();

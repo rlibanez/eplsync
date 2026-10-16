@@ -37,18 +37,18 @@ class EventJournalTests {
                 var actor=new EventContext.Actor("owner","Owner","USER");
                 Map<String,Object> context=task?Map.of("taskId","task","taskName","Synchronize"):Map.of();
                 long cursor=journal.cursor();
-                try(var subscription=journal.listenNotices(notices::add)) {
+                try(var _=journal.listenNotices(notices::add)) {
                     EventContext.withActor(actor,()->EventContext.withOrigin(origin,()->journal.runFailuresOnly(Category.TORRENT,"SYNC",context,()->{
                         // A search or task may delegate to a synchronization: do not announce it twice.
                         return journal.runFailuresOnly(Category.TORRENT,"SYNC",Map.of(),()->Map.<String,Object>of("checked",3),result->result);
                     },result->result)));
                     assertThat(journal.after(cursor,20)).isEmpty();
-                    assertThat(notices).extracting(Entry::outcome).containsExactly(Outcome.STARTED,Outcome.SUCCEEDED);
+                    assertThat(notices).extracting(entry -> Objects.requireNonNull(entry).outcome()).containsExactly(Outcome.STARTED,Outcome.SUCCEEDED);
                     assertThat(notices).allSatisfy(entry->{assertThat(entry.id()).isZero();assertThat(entry.actor()).isEqualTo(actor);assertThat(entry.origin()).isEqualTo(origin);assertThat(entry.action()).isEqualTo("SYNC");});
                     assertThat(notices.getFirst().operationId()).isEqualTo(notices.getLast().operationId());
                     notices.clear();
                     assertThatThrownBy(()->EventContext.withActor(actor,()->EventContext.withOrigin(origin,()->journal.runFailuresOnly(Category.TORRENT,"SYNC",context,()->{throw new com.rlibanez.eplsync.exception.UserInputException("Sin conexión");},result->Map.of())))).hasMessage("Sin conexión");
-                    assertThat(notices).extracting(Entry::outcome).containsExactly(Outcome.STARTED);
+                    assertThat(notices).extracting(entry -> Objects.requireNonNull(entry).outcome()).containsExactly(Outcome.STARTED);
                     assertThat(journal.after(cursor,20)).singleElement().satisfies(entry->{assertThat(entry.outcome()).isEqualTo(Outcome.FAILED);assertThat(entry.action()).isEqualTo("SYNC");assertThat(entry.origin()).isEqualTo(origin);});
                 }
             }
@@ -56,14 +56,14 @@ class EventJournalTests {
     }
     @Test void transientResultsAreOnlyPublishedAfterCommit() throws Exception {
         var notices=new java.util.ArrayList<Entry>();
-        try(var subscription=journal.listenNotices(notices::add)) {
+        try(var _=journal.listenNotices(notices::add)) {
             new TransactionTemplate(manager).executeWithoutResult(tx->{
                 journal.live(EventContext.actor(),Category.TORRENT,"SYNC",Outcome.SUCCEEDED,EventContext.origin(),"rollback",Map.of());
                 assertThat(notices).isEmpty();tx.setRollbackOnly();
             });
             assertThat(notices).isEmpty();
             new TransactionTemplate(manager).executeWithoutResult(tx->journal.live(EventContext.actor(),Category.TORRENT,"SYNC",Outcome.SUCCEEDED,EventContext.origin(),"commit",Map.of()));
-            assertThat(notices).extracting(Entry::operationId).containsExactly("commit");
+            assertThat(notices).extracting(entry -> Objects.requireNonNull(entry).operationId()).containsExactly("commit");
         }
     }
     @Test void catalogueStepsOfScheduledTasksRemainAuditedWithoutDuplicateTaskFailures() {

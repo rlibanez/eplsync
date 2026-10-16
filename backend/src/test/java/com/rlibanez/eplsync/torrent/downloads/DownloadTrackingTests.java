@@ -69,7 +69,7 @@ class DownloadTrackingTests {
         var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
         try {
             com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,()->tracking.sync(List::of,false,false));
-            assertThat(capture.list).extracting(ch.qos.logback.classic.spi.ILoggingEvent::getLevel).containsExactly(ch.qos.logback.classic.Level.DEBUG,ch.qos.logback.classic.Level.INFO);
+            assertThat(capture.list).extracting(entry -> java.util.Objects.requireNonNull(entry).getLevel()).containsExactly(ch.qos.logback.classic.Level.DEBUG,ch.qos.logback.classic.Level.INFO);
             assertThat(capture.list.getLast().getFormattedMessage()).contains("finalizada", "records=", "outcomes=");
             assertThat(capture.list).allMatch(e -> e.getFormattedMessage().contains("programada"));
             capture.list.clear();

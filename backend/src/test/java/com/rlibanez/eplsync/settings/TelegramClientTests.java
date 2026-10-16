@@ -27,11 +27,11 @@ class TelegramClientTests {
                     public void onComplete() {subscriber.onComplete();}
                 });
                 var payload=tools.jackson.databind.json.JsonMapper.builder().build().readTree(subscriber.getBody().toCompletableFuture().join());
-                assertThat(payload.path("text").asText()).isEqualTo(message);
+                assertThat(payload.path("text").asString()).isEqualTo(message);
                 assertThat(payload.has("parse_mode")).isFalse();
                 if(message.startsWith("⚠️ ")) {
                     var entity=payload.path("entities").get(0);
-                    assertThat(entity.path("type").asText()).isEqualTo("bold");
+                    assertThat(entity.path("type").asString()).isEqualTo("bold");
                     assertThat(entity.path("offset").asInt()).isEqualTo(3);
                     assertThat(entity.path("length").asInt()).isEqualTo(message.indexOf('\n')-3);
                 } else assertThat(payload.has("entities")).isFalse();

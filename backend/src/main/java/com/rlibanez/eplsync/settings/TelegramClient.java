@@ -49,7 +49,7 @@ public class TelegramClient {
     private static Failure rejected(int status,int code,tools.jackson.databind.JsonNode data) {
         if(status==401 || status==404 || code==401 || code==404) return Failure.INVALID_TOKEN;
         if(status==429 || code==429) return Failure.RATE_LIMIT;
-        String description=data.path("description").asText("").toLowerCase(java.util.Locale.ROOT);
+        String description=data.path("description").asString("").toLowerCase(java.util.Locale.ROOT);
         if(description.contains("send messages to bots")) return Failure.BOT_AS_RECIPIENT;
         if(status==403 || code==403) return Failure.BOT_BLOCKED;
         if(data.path("parameters").has("migrate_to_chat_id")) return Failure.CHAT_MOVED;

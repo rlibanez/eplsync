@@ -74,11 +74,14 @@ public class TelegramNotifications {
     public void test(String user,TestInput input) {
         if(!testing.tryAcquire()) throw new UserInputException("Hay otras pruebas de Telegram en curso; inténtalo de nuevo");
         try {
-            var rows=rows(user);if(input==null && (rows.isEmpty() || rows.getFirst().get("token").toString().isEmpty() || rows.getFirst().get("chat_id").toString().isEmpty())) throw new UserInputException("Guarda primero el token y el ID del chat");
-            var r=rows.isEmpty()?null:rows.getFirst();
-            String chat=input==null?(String)r.get("chat_id"):Objects.requireNonNullElse(input.chatId(),"").strip();
+            var rows=rows(user);
+            Map<String,Object> saved=rows.isEmpty()?Map.of():Objects.requireNonNull(rows.getFirst());
+            String savedToken=Objects.toString(saved.get("token"),"");
+            String savedChat=Objects.toString(saved.get("chat_id"),"");
+            if(input==null && (savedToken.isEmpty() || savedChat.isEmpty())) throw new UserInputException("Guarda primero el token y el ID del chat");
+            String chat=input==null?savedChat:Objects.requireNonNullElse(input.chatId(),"").strip();
             String plain=input==null?"":Objects.requireNonNullElse(input.token(),"").strip();
-            if(plain.isEmpty() && (input==null || !input.clearToken()) && r!=null && !r.get("token").toString().isEmpty()) plain=token(user,r);
+            if(plain.isEmpty() && (input==null || !input.clearToken()) && !savedToken.isEmpty()) plain=token(user,saved);
             if(!plain.matches("[0-9]{5,20}:[A-Za-z0-9_-]{20,200}")) throw new UserInputException("Token de Telegram inválido");
             if(!chat.matches("-?[1-9][0-9]{0,19}")) throw new UserInputException("El ID del chat de Telegram debe ser numérico");
             var result=client.send(plain,chat,"EPL Sync · Telegram OK");

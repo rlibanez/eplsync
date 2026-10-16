@@ -54,7 +54,7 @@ class EventStreamQuotaTests {
             java.util.function.Consumer<EventJournal.Entry> subscriber=call.getArgument(0);subscribers.add(subscriber);
             return (AutoCloseable)()->subscribers.remove(subscriber);
         });
-        try(var construction=mockConstruction(SseEmitter.class)) {
+        try(var _=mockConstruction(SseEmitter.class)) {
             account("one");var first=stream.connect(null);
             account("two");var second=stream.connect(null);
             var event=new EventJournal.Entry(0,java.time.Instant.now(),EventJournal.Category.JOB,"SCHEDULED_TASK",EventJournal.Outcome.STARTED,EventContext.Origin.SCHEDULED,"run",Map.of("taskName","Nocturna"),new EventContext.Actor("one","one","USER"));

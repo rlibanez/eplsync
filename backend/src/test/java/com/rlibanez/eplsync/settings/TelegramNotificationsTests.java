@@ -108,7 +108,7 @@ class TelegramNotificationsTests {
         var scheduler=new com.rlibanez.eplsync.tasks.TaskScheduler(tasks,calibre,mock(com.rlibanez.eplsync.torrent.updates.UpdateCleanupService.class),journal,mock(com.rlibanez.eplsync.service.CatalogImportService.class),mock(com.rlibanez.eplsync.tasks.UpdateSearches.class));
         var starts=new java.util.concurrent.CopyOnWriteArrayList<EventJournal.Entry>();
         long before=journal.cursor();
-        try(var subscription=journal.listenNotices(starts::add)) {
+        try(var _=journal.listenNotices(starts::add)) {
             scheduler.start();
             jdbc.update("UPDATE scheduled_tasks SET enabled=1,next_run=0 WHERE id='default-task'");
             scheduler.tick();
@@ -124,8 +124,8 @@ class TelegramNotificationsTests {
             });
             assertThat(jdbc.queryForObject("SELECT count(*) FROM telegram_deliveries WHERE message LIKE '%Origen: ejecución manual%'",Long.class)).isEqualTo(1);
             assertThat(starts).hasSize(4);
-            assertThat(starts).extracting(EventJournal.Entry::outcome).containsExactly(EventJournal.Outcome.STARTED,EventJournal.Outcome.SUCCEEDED,EventJournal.Outcome.STARTED,EventJournal.Outcome.SUCCEEDED);
-            assertThat(starts).extracting(EventJournal.Entry::origin).containsExactly(EventContext.Origin.SCHEDULED,EventContext.Origin.SCHEDULED,EventContext.Origin.MANUAL,EventContext.Origin.MANUAL);
+            assertThat(starts).extracting(entry -> Objects.requireNonNull(entry).outcome()).containsExactly(EventJournal.Outcome.STARTED,EventJournal.Outcome.SUCCEEDED,EventJournal.Outcome.STARTED,EventJournal.Outcome.SUCCEEDED);
+            assertThat(starts).extracting(entry -> Objects.requireNonNull(entry).origin()).containsExactly(EventContext.Origin.SCHEDULED,EventContext.Origin.SCHEDULED,EventContext.Origin.MANUAL,EventContext.Origin.MANUAL);
             assertThat(starts).allSatisfy(entry->{assertThat(entry.id()).isZero();assertThat(entry.details()).containsEntry("taskName","Actualizar libros");});
             assertThat(journal.cursor()).isEqualTo(before);
             telegram.deliver();telegram.deliver();verify(client,times(2)).send(eq(TOKEN),eq("123456"),anyString());
