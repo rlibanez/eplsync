@@ -72,3 +72,23 @@ usuarios y configuraciones; esa opción vuelve a abrir el asistente de primer
 administrador. Es una operación distinta de actualizar el catálogo.
 
 El filtro **Estado** de Torrent permite seleccionar varios estados (cualquiera de ellos), vacío por defecto. Seleccionarlo implica presencia; elegir «Ausentes» lo limpia y desactiva. Se consulta el estado registrado de las revisiones del cliente actual: basta con que alguna tenga un estado seleccionado. El criterio de revisión sigue comparando la mayor revisión presente con el catálogo.
+
+### Enviar la selección a Calibre
+
+La barra de selección permite **Enviar a Calibre** mediante el mismo asistente de
+Estado de las descargas. Requiere permisos de lectura del catálogo, lectura de
+archivos y envío a Calibre. Admite hasta 1000 libros; al seleccionar todos conserva
+los filtros aplicados y los libros excluidos, sin limitarse a la página visible.
+
+Se utiliza el EPUB de la revisión del catálogo, registrado como descargado en el
+cliente torrent actual. El asistente permite elegir archivos y biblioteca. Para
+los EPUB no disponibles se puede activar expresamente su descarga y envío posterior
+(requiere también permisos de envío y sincronización de Torrent). Se reutilizan
+los trabajos de descarga pendientes de esa misma revisión cuando existen. Los
+trabajos de Calibre conservan las comprobaciones de identidad y de EPUB ya existente;
+esta acción no borra revisiones antiguas. Si cambia el catálogo antes de confirmar,
+es necesario volver a preparar la selección.
+
+Si un EPUB pendiente termina de descargarse mientras el asistente sigue abierto,
+al confirmar se utiliza el archivo disponible sin repetir la descarga. Los archivos
+que se hayan desmarcado permanecen excluidos.

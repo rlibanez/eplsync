@@ -42,6 +42,11 @@ export function WorkNavigation({
   const params = new URLSearchParams(context?.query ?? "sort=createdAt,desc");
   params.delete("page");
   params.delete("size");
+  for (const key of new Set(params.keys())) {
+    const values = params.getAll(key).filter(value => value.trim());
+    params.delete(key);
+    values.forEach(value => params.append(key, value));
+  }
   const query = params.toString();
   const neighbors = useQuery({
     queryKey: ["work-neighbors", user?.id, source, id, query],

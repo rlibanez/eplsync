@@ -98,6 +98,7 @@ for (const source of ["downloads", "calibre"] as const) {
       expect(url.searchParams.get("username")).toBe("Own");
       expect(url.searchParams.get("sort")).toBe("createdAt,desc");
       expect(url.searchParams.has("page")).toBe(false);
+      expect([...url.searchParams.values()].every(value => value.trim().length > 0)).toBe(true);
       return r.fulfill({
         json: url.pathname.includes("/first/")
           ? {

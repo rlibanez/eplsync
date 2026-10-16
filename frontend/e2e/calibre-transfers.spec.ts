@@ -25,6 +25,7 @@ async function records(page: Page) {
   );
 }
 async function jobRoutes(page: Page) {
+  await page.route("https://example.org/custom-cover.jpg",r=>r.fulfill({contentType:"image/svg+xml",body:'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="30"><rect width="20" height="30" fill="green"/></svg>'}));
   let state = "QUEUED";
   const job = () => ({
     id: "job",
@@ -50,9 +51,12 @@ async function jobRoutes(page: Page) {
         items: [
           {
             id: "item",
+            position: 24,
             recordId: "1",
             index: 0,
             name: "Libro.epub",
+            coverUrl: "https://example.org/custom-cover.jpg",
+            coverAvailable: true,
             size: 200,
             expectedSize: 250,
             eplId: 1,
@@ -301,4 +305,26 @@ test("Calibre jobs filter by clicking state and user", async ({ page }) => {
   await expect(page.getByLabel("Usuario", { exact: true })).toHaveValue(
     "Roberto",
   );
+});
+
+test("job rows use the catalog cover URL instead of assuming the default EPUBLibre path", async ({page}) => {
+  await jobRoutes(page);
+  await page.goto("/calibre/jobs/job");
+  const image=page.locator('tbody img[src="https://example.org/custom-cover.jpg"]');
+  await expect(image).toBeVisible();
+  await expect(image).toHaveJSProperty("naturalWidth",20);
+});
+
+test("send order is optional, hidden by default even with saved columns, and persists when enabled", async ({page}) => {
+  await page.addInitScript(() => { if (!localStorage.getItem("eplsync.calibre.job.items.columns.settings.v1")) localStorage.setItem("eplsync.calibre.job.items.columns.settings.v1",JSON.stringify({order:["eplId","name","revision","state","calibreId","message"],hidden:[],widths:{}})); });
+  await jobRoutes(page);
+  await page.goto("/calibre/jobs/job");
+  await expect(page.locator('th[data-table-column="position"]')).toHaveCount(0);
+  await page.getByRole("button",{name:"Columnas",exact:true}).click();
+  const toggle=page.getByRole("checkbox",{name:"Orden de envío",exact:true});
+  await expect(toggle).not.toBeChecked();await toggle.check();await page.keyboard.press("Escape");
+  await expect(page.locator('th[data-table-column="position"]')).toBeVisible();
+  await expect(page.getByRole("cell",{name:"25",exact:true})).toHaveText("25");
+  await page.reload();
+  await expect(page.locator('th[data-table-column="position"]')).toBeVisible();
 });

@@ -1623,6 +1623,9 @@
     "selectRecord": "Seleccionar EPL ID {{id}} (r{{revision}})"
   },
   "calibreSend": {
+    "catalogLimit": "Selecciona como máximo 1000 libros para enviar a Calibre",
+    "missing": "{{count}} libros no tienen el EPUB de la revisión del catálogo disponible.",
+    "downloadMissing": "Descargar los EPUB no disponibles y enviarlos a Calibre cuando terminen",
     "title": "Enviar a Calibre",
     "help": "Elige la biblioteca y los EPUB que quieres enviar. Los archivos originales se conservan.",
     "files": "Archivos EPUB",

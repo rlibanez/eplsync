@@ -46,7 +46,10 @@ type Job = {
 };
 type Item = {
   id: string;
+  position: number;
   recordId: string | null;
+  coverUrl?: string | null;
+  coverAvailable?: boolean | null;
   downloadJobId?: string | null;
   index: number;
   name: string;
@@ -462,6 +465,7 @@ export function CalibreJobDetail() {
   const columns = useDownloadColumns(
     "eplsync.calibre.job.items.columns",
     [
+      { field: "position", label: "calibreSend.position", width: 140 },
       { field: "eplId", label: "filters.eplId", width: 100 },
       { field: "name", label: "calibreSend.file", width: 420 },
       { field: "revision", label: "downloads.revision", width: 100 },
@@ -481,9 +485,7 @@ export function CalibreJobDetail() {
     {
       selection: retry.selectable,
       defaults: "position,asc",
-      extraSort: [
-        { field: "position", label: "calibreSend.position", width: 100 },
-      ],
+      hidden: ["position"],
     },
   );
   if (job.isPending) return <Loading />;
@@ -675,6 +677,7 @@ export function CalibreJobDetail() {
                         </td>
                       )}
                       {columns.cells([
+                        <td>{number(item.position + 1)}</td>,
                         <td>
                           {can("CATALOG_READ") ? (
                             <Link to={`/catalog/${item.eplId}`}>
@@ -690,8 +693,8 @@ export function CalibreJobDetail() {
                               book={{
                                 eplId: item.eplId,
                                 title: item.name,
-                                coverUrl: null,
-                                coverAvailable: null,
+                                coverUrl: item.coverUrl ?? null,
+                                coverAvailable: item.coverAvailable ?? null,
                               }}
                             />
                             <span>

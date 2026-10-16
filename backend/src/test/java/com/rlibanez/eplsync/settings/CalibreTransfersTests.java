@@ -50,6 +50,141 @@ class CalibreTransfersTests {
         when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true));
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
+    @Autowired CatalogCalibreTransfers catalogTransfers;
+    @Autowired com.rlibanez.eplsync.repository.CatalogBookRepository catalogBooks;
+    @Autowired com.rlibanez.eplsync.config.TorrentProperties torrentProperties;
+    void seedCatalog() {
+        catalogBooks.deleteAllInBatch();
+        for(long id=1;id<=3;id++) catalogBooks.save(com.rlibanez.eplsync.model.CatalogBook.builder().eplId(id).title("Book "+id).author("Author").revision(1.1).links(String.format("%040X",id)).build());
+        catalogBooks.flush();
+    }
+    CatalogCalibreTransfers.Prepared catalogSelection(Long... ids) {
+        var filter=new com.rlibanez.eplsync.filter.CatalogBookFilter();filter.setSelectedIds(ids);
+        return catalogTransfers.prepare(new CatalogCalibreTransfers.Selection(filter));
+    }
+    CatalogCalibreTransfers.Request catalogRequest(CatalogCalibreTransfers.Prepared prepared,boolean download) {
+        return new CatalogCalibreTransfers.Request(UUID.randomUUID().toString(),"other",prepared.books(),prepared.files().stream().map(f->new CalibreTransfers.FileChoice(f.recordId(),f.index())).toList(),download,prepared.missing().stream().map(CatalogCalibreTransfers.Book::eplId).toList());
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SYNC"})
+    void catalogPrepareUsesFiltersAndExclusionsAndPinsOnlyTheCatalogRevision() {
+        seedCatalog();var excluded=new com.rlibanez.eplsync.filter.CatalogBookFilter();excluded.setAuthor("Author");excluded.setExcludedIds(new Long[]{1L});
+        assertThat(catalogTransfers.prepare(new CatalogCalibreTransfers.Selection(excluded)).books()).extracting(CatalogCalibreTransfers.Book::eplId).containsExactly(2L,3L);
+        var filter=new com.rlibanez.eplsync.filter.CatalogBookFilter();filter.setTorrentPresence("PRESENT");filter.setTorrentRevision("UPDATED");filter.setTorrentStatus(new DownloadStatus[]{DownloadStatus.DOWNLOADED,DownloadStatus.QUEUED});filter.setExcludedIds(new Long[]{2L});
+        var prepared=catalogTransfers.prepare(new CatalogCalibreTransfers.Selection(filter));
+        assertThat(prepared.books()).extracting(CatalogCalibreTransfers.Book::eplId).containsExactly(1L);
+        assertThat(prepared.files()).extracting(CalibreTransfers.Candidate::recordId).containsExactly(record);
+        jdbc.update("UPDATE catalog_books SET revision=2 WHERE epl_id=1");
+        assertThat(catalogSelection(1L).missing()).extracting(CatalogCalibreTransfers.Book::eplId).containsExactly(1L);
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ"})
+    void catalogSendReusesTransferWorkerLibrarySelectionAndIdempotency() {
+        seedCatalog();var request=catalogRequest(catalogSelection(1L),false);
+        var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+        var job=EventContext.withActor(actor,()->catalogTransfers.create(request));
+        assertThat(job.library()).isEqualTo("other");
+        assertThat(EventContext.withActor(actor,()->catalogTransfers.create(request)).id()).isEqualTo(job.id());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Integer.class)).isEqualTo(1);
+        transfers.cycle();assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client).uploadEpub(argThat(c->c.library().equals("other")),any(),anyString(),anyString());
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ"})
+    void catalogRejectsStaleRevisionAndFilesOutsideSelection() {
+        seedCatalog();var prepared=catalogSelection(1L);var request=catalogRequest(prepared,false);
+        jdbc.update("UPDATE catalog_books SET revision=2 WHERE epl_id=1");
+        assertThatThrownBy(()->catalogTransfers.create(request)).hasMessageContaining("catálogo cambió");
+        var other=catalogSelection(2L);
+        assertThatThrownBy(()->catalogTransfers.create(new CatalogCalibreTransfers.Request(UUID.randomUUID().toString(),"main",other.books(),List.of(new CalibreTransfers.FileChoice(record,0)),false,List.of()))).hasMessageContaining("EPUB seleccionado cambió");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Integer.class)).isZero();
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ"})
+    void catalogMissingFilesRequireExplicitOptInAndTorrentPermissions() {
+        seedCatalog();var prepared=catalogSelection(2L);
+        assertThatThrownBy(()->catalogTransfers.create(catalogRequest(prepared,false))).hasMessageContaining("activa la descarga");
+        assertThatThrownBy(()->catalogTransfers.create(catalogRequest(prepared,true))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SEND","TORRENT_SYNC"})
+    void catalogMissingFilesCreateLinkedJobsAndReusePendingDownload() {
+        seedCatalog();torrentProperties.effective().setEnabled(true);
+        try {
+            var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+            var prepared=catalogSelection(2L);
+            var first=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(prepared,true)));
+            var dependency=transfers.items(first.id(),0,20,List.of("position,asc")).items().getFirst();
+            assertThat(dependency.state()).isEqualTo("WAITING_DOWNLOAD");assertThat(dependency.downloadJobId()).isNotBlank();
+            var second=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(prepared,true)));
+            assertThat(transfers.items(second.id(),0,20,List.of("position,asc")).items().getFirst().downloadJobId()).isEqualTo(dependency.downloadJobId());
+        } finally {torrentProperties.effective().setEnabled(false);}
+    }
+    String completedCatalogDownload(long id,String hash) throws Exception {
+        var row=new DownloadRecord();row.setEplId(id);row.setRevision(1.1);row.setHash(hash);row.setClient("qbittorrent");row.setClientInstanceId(tracking.instanceId());row.setStatus(DownloadStatus.DOWNLOADED);row.setOrigin(DownloadRecord.Origin.EPLSYNC);row.setCreatedAt(Instant.now());
+        String recordId=downloads.save(row).getId();byte[] content=epub(id,"1.1");
+        when(files.list(recordId)).thenReturn(List.of(new EpubFiles.Item(0,"ready.epub",content.length)));
+        when(files.download(recordId,0)).thenAnswer(call->new EpubFiles.Opened("ready.epub",content.length,new java.io.ByteArrayInputStream(content)));
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book "+id,List.of("Author"),id,new BigDecimal("1.1"),true));
+        return recordId;
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ"})
+    void catalogUsesDownloadCompletedWhileAssistantWasOpenWithoutSelectingUncheckedFiles() throws Exception {
+        seedCatalog();var prepared=catalogSelection(1L,2L);
+        var request=new CatalogCalibreTransfers.Request(UUID.randomUUID().toString(),"main",prepared.books(),List.of(),true,List.of(2L));
+        String ready=completedCatalogDownload(2,"B".repeat(40));
+        var job=EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->catalogTransfers.create(request));
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items()).singleElement().satisfies(item->{
+            assertThat(item.eplId()).isEqualTo(2L);assertThat(item.recordId()).isEqualTo(ready);assertThat(item.downloadJobId()).isNull();assertThat(item.state()).isEqualTo("PENDING");
+        });
+        transfers.cycle();assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SEND","TORRENT_SYNC"})
+    void catalogDeferredDownloadsFinishAndSecondJobSkipsVerifiedEpub() throws Exception {
+        seedCatalog();torrentProperties.effective().setEnabled(true);
+        try {
+            var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+            var firstRequest=catalogRequest(catalogSelection(2L),true);
+            var first=EventContext.withActor(actor,()->catalogTransfers.create(firstRequest));
+            var second=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(catalogSelection(2L),true)));
+            jdbc.update("UPDATE calibre_jobs SET next_probe=?",Long.MAX_VALUE); // isolate remote transport; the durable dependency is real
+            jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED' WHERE epl_id=2");
+            String hash=jdbc.queryForObject("SELECT hash FROM torrent_bulk_items WHERE epl_id=2 LIMIT 1",String.class);
+            completedCatalogDownload(2,hash);
+            when(client.findRevision(any(),eq(2L),any())).thenReturn(null,9L);
+            for(int n=0;n<8;n++) transfers.cycle();
+            assertThat(transfers.job(first.id()).accepted()).isEqualTo(1);
+            assertThat(transfers.job(second.id()).skipped()).isEqualTo(1);
+            assertThat(transfers.job(first.id()).state()).isEqualTo("COMPLETED");assertThat(transfers.job(second.id()).state()).isEqualTo("COMPLETED");
+            verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+            assertThat(EventContext.withActor(actor,()->catalogTransfers.create(firstRequest)).id()).isEqualTo(first.id());
+        } finally {torrentProperties.effective().setEnabled(false);}
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SEND","TORRENT_SYNC"})
+    void catalogFailedDownloadPausesWithoutUploadingOrUsingAnotherRevision() throws Exception {
+        seedCatalog();torrentProperties.effective().setEnabled(true);
+        try {
+            var job=EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->catalogTransfers.create(catalogRequest(catalogSelection(2L),true)));
+            jdbc.update("UPDATE calibre_jobs SET next_probe=?",Long.MAX_VALUE);
+            jdbc.update("UPDATE torrent_bulk_items SET state='FAILED' WHERE epl_id=2");
+            completedCatalogDownload(2,"C".repeat(40)); // unrelated hash must not fulfill the pinned dependency
+            transfers.cycle();
+            assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+            assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().state()).isEqualTo("BLOCKED_DOWNLOAD");
+            verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        } finally {torrentProperties.effective().setEnabled(false);}
+    }
+    @Test @WithMockUser(authorities={"CALIBRE_SEND","DOWNLOADS_FILES_READ"})
+    void catalogEndpointRequiresCatalogPermission() throws Exception {
+        mvc.perform(post("/api/calibre/transfers/catalog/prepare").with(csrf()).contentType("application/json").content("{\"filters\":{\"selectedIds\":[1]}}"))
+            .andExpect(status().isForbidden());
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ"})
+    void jobItemsUseCurrentCatalogCoverWithoutChangingTransferSnapshot() {
+        seedCatalog();jdbc.update("UPDATE catalog_books SET cover_url=?,cover_available=true WHERE epl_id=1","https://example.org/custom-cover.jpg");
+        var job=create();var item=transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst();
+        assertThat(item.position()).isZero();
+        assertThat(item.coverUrl()).isEqualTo("https://example.org/custom-cover.jpg");assertThat(item.coverAvailable()).isTrue();assertThat(item.name()).isEqualTo("book.epub");
+        jdbc.update("UPDATE catalog_books SET cover_url=? WHERE epl_id=1","https://example.org/replaced-cover.jpg");
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().coverUrl()).isEqualTo("https://example.org/replaced-cover.jpg");
+        catalogBooks.deleteAllInBatch();
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().coverUrl()).isNull();
+    }
     @Test void jobsFilterByUsernameAndState() {
         String now=Instant.now().toString();
         for(String name:List.of("Roberto","Otra cuenta")) jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,?)",UUID.randomUUID().toString(),now,now,owner.id(),name,"destination","main","source",name.equals("Roberto") ? "COMPLETED" : "QUEUED");

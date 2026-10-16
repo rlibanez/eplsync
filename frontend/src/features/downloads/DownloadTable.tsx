@@ -54,7 +54,8 @@ export function useDownloadColumns(
         fields.forEach((field) => {
           if (!order.includes(field)) order.push(field);
         });
-        const hidden = fields.filter((field) => saved.hidden.includes(field));
+        const hidden = fields.filter((field) => saved.hidden.includes(field) ||
+          (!saved.order.includes(field) && options.hidden?.includes(field)));
         const widths: Record<string, number> = {};
         fields.forEach((field) => {
           const value = saved.widths?.[field];

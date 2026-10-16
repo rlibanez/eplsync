@@ -11,6 +11,13 @@ public class CalibreTransferController {
     private final CalibreTransfers transfers;
     @org.springframework.beans.factory.annotation.Autowired private WorkListings listings;
     public CalibreTransferController(CalibreTransfers transfers) {this.transfers=transfers;}
+    @org.springframework.beans.factory.annotation.Autowired private CatalogCalibreTransfers catalogTransfers;
+    @PostMapping("/catalog/prepare")
+    @PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('CALIBRE_SEND') and hasAuthority('DOWNLOADS_FILES_READ')")
+    public CatalogCalibreTransfers.Prepared prepareCatalog(@RequestBody CatalogCalibreTransfers.Selection selection) {return catalogTransfers.prepare(selection);}
+    @PostMapping("/catalog")
+    @PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('CALIBRE_SEND') and hasAuthority('DOWNLOADS_FILES_READ')")
+    public CalibreTransfers.Job createCatalog(@RequestBody CatalogCalibreTransfers.Request request) {return catalogTransfers.create(request);}
     public record Selection(List<String> ids) {}
     @PostMapping("/prepare")
     @PreAuthorize("hasAuthority('CALIBRE_SEND') and hasAuthority('DOWNLOADS_FILES_READ')")

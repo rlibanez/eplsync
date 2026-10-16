@@ -26,10 +26,15 @@ public class CalibreTransfers {
     public record Request(String library,List<FileChoice> files) {}
     public record Job(String id,String createdAt,String updatedAt,String username,String library,String state,String message,
         long total,long pending,long accepted,long skipped,long failed,long uncertain) {}
-    public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId) {}
+    public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position) {
+        public Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId) {
+            this(id,recordId,index,name,size,eplId,revision,state,calibreId,message,identityComplete,downloadJobId,null,null,0);
+        }
+    }
     public record Meta(int page,int size,long totalItems,long totalPages,boolean hasPrevious,boolean hasNext) {}
     public record Page<T>(List<T> items,Meta meta) {}
     @org.springframework.beans.factory.annotation.Autowired @org.springframework.context.annotation.Lazy private CalibreUpdateFlow updates;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.repository.CatalogBookRepository catalogBooks;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
     private final CalibreSettings settings;
@@ -120,14 +125,17 @@ public class CalibreTransfers {
         return enqueueUpdates(connection,selected,waits,cleanup,downloadId,Map.of());
     }
     String enqueueUpdates(CalibreSettings.Connection connection,List<Candidate> selected,List<CalibreUpdateFlow.Book> waits,Map<Long,CalibreUpdateFlow.Choice> cleanup,String downloadId,Map<Long,String> dependencies) {
+        return enqueueCatalog(connection,connection.library(),selected,waits,cleanup,downloadId,dependencies);
+    }
+    String enqueueCatalog(CalibreSettings.Connection connection,String library,List<Candidate> selected,List<CalibreUpdateFlow.Book> waits,Map<Long,CalibreUpdateFlow.Choice> cleanup,String downloadId,Map<Long,String> dependencies) {
         if(!connection.equals(settings.connection())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
         if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i WHERE state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class)+selected.size()+waits.size()>10000) throw new UserInputException("Hay demasiados envíos pendientes a Calibre");
         var actor=EventContext.actor();String id=UUID.randomUUID().toString(),now=Instant.now().toString();
-        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username(),destination(connection),connection.library(),source());
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username(),destination(connection),library,source());
         int position=0;
         for(var f:selected) insertUpdate(id,position++,f,cleanup.get(f.eplId()),null);
         for(var b:waits) insertUpdate(id,position++,new Candidate(null,0,b.title(),0,b.eplId(),b.revision(),0),cleanup.get(b.eplId()),dependencies.getOrDefault(b.eplId(),downloadId));
-        event(actor,id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",connection.library(),"selected",position,"waiting",waits.size(),"cleanupBooks",cleanup.values().stream().filter(c -> !c.cleanup().equals("KEEP")).count()));
+        event(actor,id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",library,"selected",position,"waiting",waits.size(),"cleanupBooks",cleanup.values().stream().filter(c -> !c.cleanup().equals("KEEP")).count()));
         return id;
     }
     private void insertUpdate(String job,int position,Candidate f,CalibreUpdateFlow.Choice cleanup,String downloadId) {
@@ -136,7 +144,7 @@ public class CalibreTransfers {
     }
     private static final String SUMMARY="SELECT j.*,count(i.id) AS total,sum(CASE WHEN i.state IN ('PENDING','SENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','CLEANUP_PENDING') THEN 1 ELSE 0 END) AS pending,sum(CASE WHEN i.state='ACCEPTED' THEN 1 ELSE 0 END) AS accepted,sum(CASE WHEN i.state='SKIPPED' THEN 1 ELSE 0 END) AS skipped,sum(CASE WHEN i.state='FAILED' THEN 1 ELSE 0 END) AS failed,sum(CASE WHEN i.state='UNCERTAIN' THEN 1 ELSE 0 END) AS uncertain FROM calibre_jobs j LEFT JOIN calibre_job_items i ON i.job_id=j.id";
     private static Job mapJob(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Job(r.getString("id"),r.getString("created_at"),r.getString("updated_at"),r.getString("owner_username"),r.getString("library"),r.getString("state"),r.getString("message"),r.getLong("total"),r.getLong("pending"),r.getLong("accepted"),r.getLong("skipped"),r.getLong("failed"),r.getLong("uncertain")); }
-    private static Item mapItem(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Item(r.getString("id"),r.getString("record_id"),r.getInt("file_index"),r.getString("name"),r.getLong("size"),r.getLong("epl_id"),r.getString("revision"),r.getString("state"),r.getObject("calibre_id")==null ? null : r.getLong("calibre_id"),r.getString("message"),r.getBoolean("identity_complete"),r.getString("download_job_id")); }
+    private static Item mapItem(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Item(r.getString("id"),r.getString("record_id"),r.getInt("file_index"),r.getString("name"),r.getLong("size"),r.getLong("epl_id"),r.getString("revision"),r.getString("state"),r.getObject("calibre_id")==null ? null : r.getLong("calibre_id"),r.getString("message"),r.getBoolean("identity_complete"),r.getString("download_job_id"),null,null,r.getLong("position")); }
     public Job job(String id) {
         var result=jdbc.query(SUMMARY+" WHERE j.id=? GROUP BY j.id",CalibreTransfers::mapJob,id);
         if(result.isEmpty()) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"Trabajo de Calibre no encontrado");return result.getFirst();
@@ -173,7 +181,16 @@ public class CalibreTransfers {
         if(!state.isEmpty()) {where+=" AND state=?";args.add(state);}
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items"+where,Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
-        return new Page<>(jdbc.query("SELECT * FROM calibre_job_items"+where+" ORDER BY "+order(sort,Map.of("position","position","eplId","epl_id","revision","CAST(revision AS REAL)","name","name COLLATE EPL_TEXT","state","state","calibreId","calibre_id","message","message COLLATE EPL_TEXT"))+",position LIMIT ? OFFSET ?",CalibreTransfers::mapItem,args.toArray()),meta(page,size,total));
+        var rows=jdbc.query("SELECT * FROM calibre_job_items"+where+" ORDER BY "+order(sort,Map.of("position","position","eplId","epl_id","revision","CAST(revision AS REAL)","name","name COLLATE EPL_TEXT","state","state","calibreId","calibre_id","message","message COLLATE EPL_TEXT"))+",position LIMIT ? OFFSET ?",CalibreTransfers::mapItem,args.toArray());
+        if(Permission.has(Permission.CATALOG_READ) && !rows.isEmpty()) {
+            var covers=new HashMap<Long,com.rlibanez.eplsync.model.CatalogBook>();
+            catalogBooks.findAllById(rows.stream().map(Item::eplId).distinct().toList()).forEach(book->covers.put(book.getEplId(),book));
+            rows=rows.stream().map(item->{
+                var book=covers.get(item.eplId());
+                return book==null?item:new Item(item.id(),item.recordId(),item.index(),item.name(),item.size(),item.eplId(),item.revision(),item.state(),item.calibreId(),item.message(),item.identityComplete(),item.downloadJobId(),book.getCoverUrl(),book.getCoverAvailable(),item.position());
+            }).toList();
+        }
+        return new Page<>(rows,meta(page,size,total));
     }
     public Job control(String id,String command) {
         Permission.require(Permission.CALIBRE_JOBS_MANAGE);

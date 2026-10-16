@@ -1,4 +1,5 @@
 import type { Metadata } from "../maintenance/CatalogMetadata";
+import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import {
   PageSizeSelect,
@@ -148,7 +149,7 @@ export function Catalog() {
     else changeSort(ordering.map((old, i) => (i === index ? value : old)));
   }
   return (
-    <>
+    <CalibreSendProvider>
       <div className="page-heading">
         <div>
           <h1>{t("nav.catalog")} </h1>
@@ -278,6 +279,7 @@ export function Catalog() {
               >
                 {t("selection.export")}
               </Button>
+              <SendToCalibre filters={selection.filters} count={count} />
               {auth.can("TORRENT_SEND") && (
                 <Button
                   leftSection={<Send size={16} />}
@@ -599,6 +601,6 @@ export function Catalog() {
           onClose={() => setAction(null)}
         />
       )}
-    </>
+    </CalibreSendProvider>
   );
 }
