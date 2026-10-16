@@ -189,6 +189,8 @@ public class CleanupQueue {
                     });}
                     continue;
                 }
+                // KEEP can proceed without a remote torrent; client deletions require one.
+                if (old==null) { resolve(Set.of(entry.getHash())); continue; }
                 if (protectedTargets.contains(old.hash()) || targetHashes.stream().anyMatch(old.aliases()::contains)) {
                     save(entry,UpdateCleanup.State.BLOCKED,"Torrent necesario para una revisión de sustitución pendiente"); continue;
                 }

@@ -71,6 +71,8 @@ export function SendSelection({
   const initialized = useRef(false);
   function restoreDefaults(d: SendDefaults) {
     setPreviousVersions("keep");
+    setDeleteHistory(false);
+    setCleanupTiming("afterDownload");
     setStart(String(d.start));
     setAuto(String(d.autoManagement));
     setPath(d.savePath ?? "");

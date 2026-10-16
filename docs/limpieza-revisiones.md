@@ -26,7 +26,7 @@ Por defecto, solo se elimina una revisión si existe otra estrictamente superior
 
 La opción **Permitir la limpieza aunque la revisión superior no esté descargada** está desmarcada por defecto. Al marcarla se acepta que puede desaparecer la única copia descargada: sigue siendo obligatorio que exista el torrent de una revisión superior del mismo libro en el cliente. La opción queda guardada en el trabajo y se muestra en la confirmación y en su detalle. No se aplica a Calibre.
 
-Si un trabajo de actualización espera exactamente el mismo borrado, con la misma política y revisión de sustitución, la limpieza manual puede adelantarlo. La ausencia confirmada del torrent antiguo resuelve también la solicitud automática y permite finalizar la fase de limpieza del trabajo original sin repetir el borrado. Otros borrados pendientes, políticas incompatibles y operaciones sin confirmar siguen bloqueando la limpieza.
+Si un trabajo de actualización espera exactamente el mismo borrado, con la misma política, la misma elección de conservar o borrar el registro de EPL Sync y la misma revisión de sustitución, la limpieza manual puede adelantarlo. La ausencia confirmada del torrent antiguo resuelve también la solicitud automática y permite finalizar la fase de limpieza del trabajo original sin repetir el borrado. Otros borrados pendientes, políticas incompatibles y operaciones sin confirmar siguen bloqueando la limpieza.
 
 La eliminación de archivos mantiene las comprobaciones de rutas compartidas, rutas no verificables y torrents compartidos con otros libros. Un torrent sin metadatos y sin datos puede retirarse sin solicitar el borrado de archivos inexistentes.
 

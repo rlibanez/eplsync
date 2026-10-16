@@ -219,6 +219,23 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
   });
   await expect(deleteHistory).not.toBeChecked();
   await deleteHistory.check();
+  await wizard
+    .getByRole("textbox", { name: "Momento del borrado", exact: true })
+    .click();
+  await page
+    .getByRole("option", { name: "Inmediatamente", exact: true })
+    .click();
+  await wizard
+    .getByRole("button", {
+      name: "Restablecer valores predeterminados",
+      exact: true,
+    })
+    .click();
+  await expect(deleteHistory).not.toBeChecked();
+  await expect(
+    wizard.getByRole("textbox", { name: "Acción", exact: true }),
+  ).toHaveValue("Conservar torrents y archivos");
+  await deleteHistory.check();
   await wizard.getByRole("textbox", { name: "Acción", exact: true }).click();
   await page
     .getByRole("option", { name: "Eliminar torrents y archivos", exact: true })

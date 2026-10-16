@@ -120,6 +120,24 @@ class RevisionCleanupTests {
         assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_jobs WHERE id='auto'",String.class)).isEqualTo("COMPLETED");
         cleanupQueue.runAutomatic(20);verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
     }
+    @Test void verificationCoordinatesHistoryDeletionWithAutomaticRequest() {
+        pendingReplacement();var automatic=automaticCleanup();automatic.setDeleteHistory(true);cleanups.saveAndFlush(automatic);
+        var job=start(cleanup.preview(new RevisionCleanup.PreviewInput("downloads","FILES",List.of(),true,true)));
+        doThrow(new IllegalStateException("timeout")).when(adapter).deleteTorrent("A".repeat(40),true);
+        cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);assertThat(downloads.findById(old)).isPresent();
+        remote.removeIf(row->row.hash().equals("A".repeat(40)));
+        cleanup.control(job.id(),"verify");cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);assertThat(cleanup.get(job.id()).uncertain()).isZero();
+        assertThat(downloads.findById(old)).isEmpty();assertThat(downloads.findById(newer)).isPresent();
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void incompatibleHistoryChoicesCannotSilentlyFulfilAutomaticDeletion(boolean manualHistory) {
+        pendingReplacement();var automatic=automaticCleanup();automatic.setDeleteHistory(!manualHistory);cleanups.saveAndFlush(automatic);
+        var job=cleanup.preview(new RevisionCleanup.PreviewInput("downloads","FILES",List.of(),true,manualHistory));assertThat(job.ready()).isZero();assertThat(job.excluded()).isEqualTo(1);
+        assertThat(downloads.findById(old)).isPresent();verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
     @Test void automaticDeletionWinningAfterPreviewIsNotRepeatedByManualJob() {
         var automatic=automaticCleanup();var job=start(forced("FILES"));
         cleanupQueue.runAutomatic(20);
@@ -138,6 +156,7 @@ class RevisionCleanupTests {
         remote.removeIf(row->row.hash().equals("A".repeat(40)));
         cleanupQueue.runAutomatic(20);cleanup.control(job.id(),"verify");cleanup.cycle();
         assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(downloads.findById(old)).isPresent();assertThat(downloads.findById(newer)).isPresent();
         verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
     }
     @Test void concurrentManualAndAutomaticCleanupUseSameClientLockAndDeleteOnlyOnce() throws Exception {

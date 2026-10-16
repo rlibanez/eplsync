@@ -194,7 +194,7 @@ public class RevisionCleanup {
                 if(Thread.currentThread().isInterrupted() || System.nanoTime()>deadline) throw new UserInputException("La previsualización ha tardado demasiado; selecciona menos registros");
                 List<String> formats=List.of();String problem=null;
                 try {
-                    noPending(item,id,input.allowUndownloaded(),action);
+                    noPending(item,id,input.allowUndownloaded(),action,false,input.deleteHistory() || action.equals("RECORD"));
                     if(source.equals("downloads")) checkDownload(item,action,remote,accessible,input.allowUndownloaded());
                     else {checkCalibre(item,Objects.requireNonNull(connection),false);formats=client.formats(connection,Long.parseLong(item.oldId()));}
                 } catch(RuntimeException ex) {problem=reason(ex);}
@@ -271,13 +271,13 @@ public class RevisionCleanup {
             }
         });return get(id);
     }
-    private void noPending(Item item,String job,boolean force,String action) {noPending(item,job,force,action,false);}
-    private void noPending(Item item,String job,boolean force,String action,boolean explicitRetry) {
+    private void noPending(Item item,String job,boolean force,String action,boolean explicitRetry,boolean deleteHistory) {
         long active=jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.state NOT IN ('COMPLETED','CANCELLED') AND (?=0 OR j.state<>'CLEANUP_WAIT')",Long.class,item.eplId(),force);
         active+=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND (j.state IN ('QUEUED','RUNNING','PAUSED') OR i.state IN ('SENDING','UNCERTAIN','CLEANUP_PENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD'))",Long.class,item.eplId());
         for(var pending:jdbc.queryForList("SELECT * FROM torrent_update_cleanup WHERE epl_id=? AND state IN ('WAITING','BLOCKED','REQUESTED') AND coalesce(job_id,'')<>?",item.eplId(),"revision:"+job)) {
-            // Only an identical, not-yet-dispatched automatic deletion can be fulfilled early.
-            boolean compatible=force && !action.equals("RECORD") && (!pending.get("state").equals("REQUESTED") || explicitRetry)
+            // Only an identical automatic deletion, including its local-record choice, can be fulfilled early.
+            boolean pendingHistory=Boolean.TRUE.equals(pending.get("delete_history")) || pending.get("delete_history") instanceof Number history && history.intValue()!=0;
+            boolean compatible=pendingHistory==deleteHistory && force && !action.equals("RECORD") && (!pending.get("state").equals("REQUESTED") || explicitRetry)
                 && pending.get("automatic") instanceof Number automatic && automatic.intValue()==1
                 && Objects.equals(pending.get("client_instance_id"),tracking.instanceId())
                 && Objects.equals(pending.get("hash"),item.oldHash())
@@ -370,7 +370,7 @@ public class RevisionCleanup {
             var owner=authorize((String)stored.get("owner_id"),job.source(),job.action());
             var security=SecurityContextHolder.createEmptyContext();var authorities=new ArrayList<SimpleGrantedAuthority>();owner.permissions().forEach(p->authorities.add(new SimpleGrantedAuthority(p.name())));authorities.add(new SimpleGrantedAuthority("ROLE_"+owner.role()));security.setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,authorities));SecurityContextHolder.setContext(security);
             EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(EventContext.Origin.MANUAL,()->transfers.exclusive(()->{
-                Runnable guard=()->{authorize(owner.id(),job.source(),job.action());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión o biblioteca cambió; prepara una nueva limpieza");noPending(item,id,job.allowUndownloaded(),job.action(),!verify && item.dispatched());};
+                Runnable guard=()->{authorize(owner.id(),job.source(),job.action());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión o biblioteca cambió; prepara una nueva limpieza");noPending(item,id,job.allowUndownloaded(),job.action(),!verify && item.dispatched(),job.deleteHistory());};
                 guard.run();
                 if(!verify) requireCurrentAction(job.source(),job.action());
                 if(jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',message=NULL WHERE id=? AND state=?",item.id(),item.state())!=1) return null;
@@ -394,7 +394,7 @@ public class RevisionCleanup {
         if(verify) {
             torrent.exclusiveClient(adapter->{guard.run();var remote=adapter.listTorrents();checkDownload(item,job.action(),remote,new HashMap<>(),job.allowUndownloaded());
                 if(TorrentRemovalSafety.index(remote).containsKey(item.oldHash())) throw new UserInputException("El torrent sigue presente; no se ha repetido el borrado");
-                if(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) {history.refreshRevision(new HistoryActions.Selection(item.eplId(),List.of(item.oldId()),null,null));if(job.deleteHistory()) history.deleteRevisionHistory(item.eplId(),item.oldId());}
+                if(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) {history.refreshRevision(new HistoryActions.Selection(item.eplId(),List.of(item.oldId()),null,null));if(job.deleteHistory() && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) history.deleteRevisionHistory(item.eplId(),item.oldId());}
                 return null;});update(item.id(),"SUCCEEDED",job.deleteHistory()?"Ausencia del torrent confirmada; registro eliminado":"Ausencia del torrent confirmada; registro conservado");return;
         }
         if(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())==0) {update(item.id(),"SKIPPED","El registro ya no existe; no se ha enviado ningún borrado");return;}
