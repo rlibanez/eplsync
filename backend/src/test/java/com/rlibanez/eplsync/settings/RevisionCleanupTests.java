@@ -175,6 +175,67 @@ class RevisionCleanupTests {
         pendingReplacement();var job=start(forced("FILES"));jdbc.update("UPDATE torrent_downloads SET hash=? WHERE id=?","C".repeat(40),newer);
         cleanup.cycle();assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
     }
+    RevisionCleanup.Job failedDeletion() {
+        var job=start(forced("FILES"));
+        doThrow(new IllegalStateException("connection lost")).when(adapter).deleteTorrent("A".repeat(40),true);
+        cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);return job;
+    }
+    void restoreDeletion() {doAnswer(call->{remote.removeIf(row->row.hash().equals("A".repeat(40)));return null;}).when(adapter).deleteTorrent("A".repeat(40),true);}
+    RevisionCleanup.RetryInput retryInput(String request) {return new RevisionCleanup.RetryInput(request,true,true);}
+    @Test void explicitRetryReusesRemovalRequestAndNeverDeletesRetainedRevision() {
+        var job=failedDeletion();var requests=jdbc.queryForList("SELECT id FROM torrent_update_cleanup WHERE job_id=?",String.class,"revision:"+job.id());
+        restoreDeletion();cleanup.retryUnconfirmed(job.id(),retryInput("request-one"));cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);assertThat(cleanup.get(job.id()).uncertain()).isZero();
+        assertThat(jdbc.queryForList("SELECT id FROM torrent_update_cleanup WHERE job_id=?",String.class,"revision:"+job.id())).containsExactlyElementsOf(requests);
+        verify(adapter,times(2)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());assertThat(downloads.findById(newer)).isPresent();
+        cleanup.retryUnconfirmed(job.id(),retryInput("request-one"));cleanup.cycle();verify(adapter,times(2)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void lostRetryResponseCannotAutomaticallyRepeatAnUncertainDeletion() {
+        var job=failedDeletion();cleanup.retryUnconfirmed(job.id(),retryInput("request-one"));cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);
+        cleanup.retryUnconfirmed(job.id(),retryInput("request-one"));cleanup.cycle();verify(adapter,times(2)).deleteTorrent("A".repeat(40),true);
+        restoreDeletion();cleanup.retryUnconfirmed(job.id(),retryInput("request-two"));cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(adapter,times(3)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void retryRequiresExplicitAndDestructiveConfirmation() {
+        var job=failedDeletion();
+        assertThatThrownBy(()->cleanup.retryUnconfirmed(job.id(),new RevisionCleanup.RetryInput("request-one",false,true))).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        assertThatThrownBy(()->cleanup.retryUnconfirmed(job.id(),new RevisionCleanup.RetryInput("request-one",true,false))).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);verify(adapter,times(1)).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void retryCannotBypassOwnershipOrChangedConnection() {
+        var job=failedDeletion();
+        var other=new Account("other","Other","other@example.com","ADMIN","ACTIVE",false,null,0,owner.permissions(),Instant.now());login(other);
+        assertThatThrownBy(()->cleanup.retryUnconfirmed(job.id(),retryInput("request-one"))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        login(owner);jdbc.update("UPDATE revision_cleanup_jobs SET context='changed' WHERE id=?",job.id());
+        assertThatThrownBy(()->cleanup.retryUnconfirmed(job.id(),retryInput("request-one"))).hasMessageContaining("conexión cambió");
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void retryDoesNotEnableCalibreOrRecordDeletion() {
+        var record=preview("downloads","RECORD");var calibre=preview("calibre","BOOK");
+        assertThatThrownBy(()->cleanup.retryUnconfirmed(record.id(),retryInput("request-one"))).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        assertThatThrownBy(()->cleanup.retryUnconfirmed(calibre.id(),retryInput("request-two"))).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void retryOnlyChecksAbsenceWhenTorrentWasAlreadyRemoved() {
+        var job=failedDeletion();remote.removeIf(row->row.hash().equals("A".repeat(40)));
+        cleanup.retryUnconfirmed(job.id(),retryInput("request-one"));cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
+    }
+    @Test void retryRevalidatesRetainedRevisionAndSharedPaths() {
+        var job=failedDeletion();restoreDeletion();cleanup.retryUnconfirmed(job.id(),retryInput("request-one"));
+        remote.set(0,remote("A","/downloads/new.epub"));cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        remote.clear();remote.add(remote("A","/downloads/old.epub"));cleanup.retryUnconfirmed(job.id(),retryInput("request-two"));cleanup.cycle();
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);assertThat(downloads.findById(newer)).isPresent();
+    }
+    @Test void explicitRetryResolvesAutomaticRequestAlsoMarkedUnconfirmed() {
+        pendingReplacement();var automatic=automaticCleanup();var job=failedDeletion();cleanupQueue.runAutomatic(20);
+        assertThat(cleanups.findById(automatic.getId()).orElseThrow().getState()).isEqualTo(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REQUESTED);
+        restoreDeletion();cleanup.retryUnconfirmed(job.id(),retryInput("request-one"));cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(cleanups.findById(automatic.getId()).orElseThrow().getState()).isEqualTo(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REMOVED);
+        verify(adapter,times(2)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
+    }
     @Test void forcedCleanupDoesNotOverrideUnconfirmedOrIncompatibleDeletion() {
         pendingReplacement();var automatic=automaticCleanup();
         assertThat(forced("TORRENT").excluded()).isEqualTo(1);
@@ -251,6 +312,52 @@ class RevisionCleanupTests {
         assertThat(listings.list("downloads",0,20,List.of(),"DOWNLOAD","",null,null,"selectedBooks,desc").items().getFirst()).containsEntry("jobId","normal");
         assertThat(listings.list("downloads",0,20,List.of(),"CLEANUP","other",null,null,"createdAt,desc").items()).isEmpty();
         assertThat(listings.list("downloads",0,20,List.of(),"CLEANUP","",Instant.now().plusSeconds(10),null,"createdAt,desc").items()).isEmpty();
+    }
+    void normalJob(String id,String type,long created) {
+        jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,type,state,created_at,event_actor_username) VALUES(?,1,1,0,1,?,'COMPLETED',?,'Owner')",id,type,created);
+    }
+    @Test void navigationUsesSameFilteredOrderAcrossNormalAndCleanupJobs() {
+        var job=start(preview("downloads","RECORD"));normalJob("older","DOWNLOAD",job.createdAt()-1000);normalJob("newer","UPDATE",job.createdAt()+1000);
+        var neighbors=listings.neighbors("downloads",job.id(),List.of(),"","",null,null,"createdAt,asc");
+        assertThat(neighbors.previous()).isEqualTo(new WorkListings.Neighbor("older",false,0));assertThat(neighbors.next()).isEqualTo(new WorkListings.Neighbor("newer",false,2));
+        assertThat(listings.neighbors("downloads","older",List.of(),"","",null,null,"createdAt,asc").next()).isEqualTo(new WorkListings.Neighbor(job.id(),true,1));
+        assertThat(listings.neighbors("downloads","older",List.of(),"","",null,null,"createdAt,asc").previous()).isNull();
+        assertThat(listings.neighbors("downloads","newer",List.of(),"","",null,null,"createdAt,asc").next()).isNull();
+        var reversed=listings.neighbors("downloads",job.id(),List.of(),"","",null,null,"createdAt,desc");assertThat(reversed.previous().id()).isEqualTo("newer");assertThat(reversed.next().id()).isEqualTo("older");
+        var onlyCleanup=listings.neighbors("downloads",job.id(),List.of("QUEUED"),"CLEANUP","own",null,null,"createdAt,desc");assertThat(onlyCleanup.previous()).isNull();assertThat(onlyCleanup.next()).isNull();
+        assertThat(listings.neighbors("downloads",job.id(),List.of(),"UPDATE","",null,null,"createdAt,desc")).isEqualTo(new WorkListings.Neighbors(null,null));
+        assertThat(listings.neighbors("downloads",job.id(),List.of(),"","",Instant.ofEpochMilli(job.createdAt()+1),null,"createdAt,desc")).isEqualTo(new WorkListings.Neighbors(null,null));
+    }
+    @Test void navigationKeepsStableTiesAndDoesNotExposeJobsOutsidePermissions() {
+        var job=start(preview("downloads","RECORD"));normalJob("normal-a","DOWNLOAD",job.createdAt());normalJob("normal-b","UPDATE",job.createdAt());
+        var list=listings.list("downloads",0,20,List.of(),"","",null,null,"createdAt,desc").items();
+        for(int n=0;n<list.size();n++) {
+            String current=(String)list.get(n).get("jobId");var adjacent=listings.neighbors("downloads",current,List.of(),"","",null,null,"createdAt,desc");
+            if(n==0) assertThat(adjacent.previous()).isNull();else assertThat(adjacent.previous().id()).isEqualTo(list.get(n-1).get("jobId"));
+            if(n+1==list.size()) assertThat(adjacent.next()).isNull();else assertThat(adjacent.next().id()).isEqualTo(list.get(n+1).get("jobId"));
+        }
+        var restricted=new Account(owner.id(),owner.username(),owner.email(),"USER","ACTIVE",false,null,0,Set.of(Permission.TORRENT_SYNC,Permission.DOWNLOADS_DELETE),Instant.now());login(restricted);
+        assertThat(listings.neighbors("downloads",job.id(),List.of(),"","",null,null,"createdAt,desc")).isEqualTo(new WorkListings.Neighbors(null,null));
+        assertThat(listings.neighbors("downloads","normal-a",List.of(),"","",null,null,"createdAt,desc")).isEqualTo(new WorkListings.Neighbors(null,null));
+    }
+    @Test void navigationEndpointEnforcesPermissionsAndValidatesOrdering() throws Exception {
+        var job=start(preview("downloads","RECORD"));normalJob("older","DOWNLOAD",job.createdAt()-1000);
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var auth=SecurityContextHolder.getContext().getAuthentication();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/settings/work/downloads/"+job.id()+"/neighbors?sort=createdAt,asc").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth)))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.previous.id").value("older"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/settings/work/downloads/"+job.id()+"/neighbors?sort=secret,asc").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth)))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        var restricted=new UsernamePasswordAuthenticationToken(owner,null,List.of(new SimpleGrantedAuthority("CATALOG_READ")));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/settings/work/downloads/"+job.id()+"/neighbors").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(restricted)))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+    }
+    @Test void calibreNavigationIncludesItsCleanupButNotDownloadJobs() {
+        var job=start(preview("calibre","BOOK"));
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('calibre-old',?,'now','Owner','target','main','source','COMPLETED')",Instant.ofEpochMilli(job.createdAt()-1000).toString());
+        normalJob("torrent-job","UPDATE",job.createdAt()-500);
+        assertThat(listings.neighbors("calibre",job.id(),List.of(),"","",null,null,"createdAt,asc").previous()).isEqualTo(new WorkListings.Neighbor("calibre-old",false,0));
+        assertThat(listings.neighbors("calibre","calibre-old",List.of(),"","",null,null,"createdAt,asc").next()).isEqualTo(new WorkListings.Neighbor(job.id(),true,1));
     }
     @Test void calibreListingCombinesTransfersAndCleanupBeforePagination() {
         var cleanupJob=start(preview("calibre","BOOK"));

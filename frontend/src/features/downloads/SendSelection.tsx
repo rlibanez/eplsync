@@ -271,6 +271,17 @@ export function SendSelection({
                 <>
                   <Select
                     label={t("send.cleanupTiming")}
+                    description={t(
+                      cleanupTiming === "immediate"
+                        ? "send.cleanupImmediateHelp"
+                        : "send.cleanupAfterCompletion",
+                    )}
+                    inputWrapperOrder={[
+                      "label",
+                      "input",
+                      "description",
+                      "error",
+                    ]}
                     value={cleanupTiming}
                     allowDeselect={false}
                     data={[
@@ -284,13 +295,6 @@ export function SendSelection({
                       setCleanupTiming(value ?? "afterDownload")
                     }
                   />
-                  <p className="muted">
-                    {t(
-                      cleanupTiming === "immediate"
-                        ? "send.cleanupImmediateHelp"
-                        : "send.cleanupAfterCompletion",
-                    )}
-                  </p>
                 </>
               )}
               {previousVersions === "removeTorrentAndFiles" && (

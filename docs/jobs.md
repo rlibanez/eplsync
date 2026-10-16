@@ -80,3 +80,5 @@ en ese caso, vuelve a seleccionar explícitamente las revisiones que quieras bor
 ## Limpieza manual de revisiones antiguas
 
 Consulta [Limpiar revisiones antiguas](limpieza-revisiones.md) para preparar una limpieza con previsualización, selección y seguimiento por trabajo.
+
+Las fichas de trabajos de Descargas y Calibre incluyen los enlaces **Anterior** y **Siguiente**, también para trabajos de limpieza. Siguen los filtros y el orden de la lista de origen y funcionan al cruzar páginas. Al volver a la lista se recupera la página del trabajo consultado y sus filtros. Al abrir una ficha directamente se utiliza el orden por fecha de creación descendente.

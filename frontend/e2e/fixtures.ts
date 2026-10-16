@@ -40,6 +40,9 @@ export const test = base.extend<{ eventTransport: void }>({
           });
         },
       );
+      await context.route("**/api/settings/work/*/*/neighbors?**", (route) =>
+        route.fulfill({ json: { previous: null, next: null } }),
+      );
       await context.route("**/api/settings/tasks/searches/*/rows?**", (route) =>
         route.fulfill({
           json: {

@@ -182,7 +182,9 @@ for (const source of ["downloads", "calibre"] as const) {
     ).toBeVisible();
   });
 }
-test("unconfirmed work offers verification only", async ({ page }) => {
+test("verification of unconfirmed work never resends deletion", async ({
+  page,
+}) => {
   await page.route("**/api/revision-cleanups/cleanup-job", (r) =>
     r.fulfill({
       json: { ...job, state: "COMPLETED", result: "FAILED", uncertain: 1 },
@@ -198,8 +200,8 @@ test("unconfirmed work offers verification only", async ({ page }) => {
   });
   await page.goto("/cleanup/jobs/cleanup-job");
   await expect(
-    page.getByText("Comprobar solo consulta", { exact: false }),
-  ).toBeVisible();
+    page.getByText("Información sobre la limpieza", { exact: true }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Crear trabajo de limpieza" }),
   ).toHaveCount(0);
@@ -284,3 +286,133 @@ for (const source of ["downloads", "calibre"] as const) {
     await expect(page).toHaveURL(new RegExp(`/${source}/jobs$`));
   });
 }
+
+test("unconfirmed torrent deletion retries directly and keeps its token after a lost response", async ({
+  page,
+}) => {
+  let current = {
+    ...job,
+    action: "FILES",
+    state: "COMPLETED",
+    result: "PARTIAL",
+    uncertain: 1,
+  };
+  await page.route("**/api/revision-cleanups/cleanup-job", (r) =>
+    r.fulfill({ json: current }),
+  );
+  await page.route("**/api/revision-cleanups/cleanup-job/items?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          { ...ready, state: current.uncertain ? "UNCERTAIN" : "SUCCEEDED" },
+        ],
+        meta,
+      },
+    }),
+  );
+  const requests: Record<string, unknown>[] = [];
+  await page.route("**/api/revision-cleanups/cleanup-job/retry", (r) => {
+    requests.push(r.request().postDataJSON());
+    if (requests.length === 1)
+      return r.fulfill({ status: 500, json: { details: "Respuesta perdida" } });
+    current = {
+      ...current,
+      state: "COMPLETED",
+      result: "SUCCEEDED",
+      uncertain: 0,
+    };
+    return r.fulfill({ json: current });
+  });
+  await page.goto("/downloads/jobs/cleanup/cleanup-job");
+  await expect(page.locator(".cleanup-job-status")).toHaveAttribute(
+    "data-color",
+    "orange",
+  );
+  await page.locator(".report-collapse > summary").click();
+  await expect(page.locator(".cleanup-job-counts > div")).toHaveCount(6);
+  await page
+    .getByRole("button", {
+      name: "Reintentar borrados sin confirmar",
+      exact: true,
+    })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByText("Respuesta perdida", { exact: true }),
+  ).toBeVisible();
+  expect(requests).toHaveLength(1);
+  await page
+    .getByRole("button", {
+      name: "Reintentar borrados sin confirmar",
+      exact: true,
+    })
+    .click();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests).toHaveLength(2);
+  expect(requests[0]).toEqual(requests[1]);
+  expect(requests[0]).toMatchObject({
+    confirm: true,
+    confirmDestructive: true,
+  });
+  expect(requests[0].requestId).toMatch(/^[A-Za-z0-9-]{8,64}$/);
+});
+
+test("cleanup job summary keeps partial status, metrics and help readable on desktop and mobile", async ({
+  page,
+}) => {
+  await page.route("**/api/revision-cleanups/cleanup-job", (r) =>
+    r.fulfill({
+      json: {
+        ...job,
+        action: "FILES",
+        state: "COMPLETED",
+        result: "PARTIAL",
+        allowUndownloaded: true,
+        selected: 38,
+        succeeded: 28,
+        failed: 9,
+        uncertain: 1,
+      },
+    }),
+  );
+  await page.route("**/api/revision-cleanups/cleanup-job/items?**", (r) =>
+    r.fulfill({ json: { items: [{ ...ready, state: "UNCERTAIN" }], meta } }),
+  );
+  await page.goto("/downloads/jobs/cleanup/cleanup-job");
+  const status = page.locator(".cleanup-job-status");
+  await expect(status).toContainText("Completado con incidencias");
+  await expect(status).toHaveAttribute("data-color", "orange");
+  await page.locator(".report-collapse > summary").click();
+  await expect(
+    page.getByRole("region", { name: "Resumen de la limpieza" }),
+  ).toBeVisible();
+  await expect(page.locator(".cleanup-job-counts")).toContainText(
+    "Sin confirmar",
+  );
+  await expect(
+    page.getByText("Información sobre la limpieza", { exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({ path: "/tmp/eplsync-cleanup-job-desktop.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(status).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "/tmp/eplsync-cleanup-job-mobile.png",
+    animations: "disabled",
+  });
+  await expect(
+    page.getByText("Información sobre la limpieza", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Puedes quedarte sin una copia descargada", {
+      exact: false,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("Comprobar solo consulta", { exact: false }),
+  ).toHaveCount(0);
+});

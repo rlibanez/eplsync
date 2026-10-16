@@ -149,6 +149,7 @@
     "finish": "Finalizar e ir al inicio"
   },
   "jobReport": {
+    "navigation": "Navegación entre trabajos",
     "work": "Trabajo",
     "submission": "Envío",
     "cleanup": "Limpieza",
@@ -1726,7 +1727,6 @@
     "selectedScope": "Solo registros seleccionados ({{count}})",
     "allScope": "Todos los registros",
     "allowUndownloaded": "Permitir la limpieza aunque la revisión superior no esté descargada",
-    "pendingWarning": "Puedes quedarte sin una copia descargada si la nueva revisión no llega a completarse. Se conserva su torrent y se mantienen las protecciones de identidad, archivos compartidos y trabajos incompatibles.",
     "previewSummary": "{{ready}} revisiones disponibles para limpiar · {{excluded}} excluidas por protección.",
     "selectAll": "Seleccionar disponibles",
     "clear": "Quitar selección ({{count}})",
@@ -1753,12 +1753,22 @@
     "created": "Creación",
     "state": "Estado",
     "noJobs": "No hay trabajos de limpieza.",
+    "summary": "Resumen de la limpieza",
+    "downloadRequirement": "Revisión superior",
+    "metrics": {
+      "selected": "Seleccionadas",
+      "removed": "Eliminadas",
+      "pending": "Pendientes",
+      "blocked": "Bloqueadas",
+      "failed": "Fallidas",
+      "uncertain": "Sin confirmar"
+    },
     "jobTitle": "Trabajo de limpieza de revisiones",
     "progress": "Seleccionadas: {{selected}} · Eliminadas: {{succeeded}} · Pendientes: {{pending}} · Bloqueadas: {{blocked}} · Fallidas: {{failed}} · Sin confirmar: {{uncertain}}",
     "cancel": "Cancelar pendientes",
     "continue": "Continuar",
+    "retry": "Reintentar borrados sin confirmar",
     "verify": "Comprobar borrados sin confirmar",
-    "uncertainHelp": "Comprobar solo consulta si el borrado se completó; no repite la orden. Si el elemento sigue presente, comprueba el cliente antes de preparar otra limpieza.",
     "error": "No se pudo completar la operación.",
     "actions": {
       "RECORD": "Borrar solo el registro de EPL Sync; conservar torrent y archivos",

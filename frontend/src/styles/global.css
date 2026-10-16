@@ -2115,3 +2115,6 @@ summary {
 .revision-cleanup-table td { overflow-wrap: anywhere; max-width: 240px; }
 .revision-cleanup-table small { color: var(--muted); }
 .revision-cleanup-table td p { margin: 6px 0 0; }
+
+.cleanup-job-status { margin-left: 16px; height: auto; min-height: 24px; padding-block: 4px; max-width: 100%; vertical-align: middle; }
+.cleanup-job-status span { white-space: normal; text-align: center; }

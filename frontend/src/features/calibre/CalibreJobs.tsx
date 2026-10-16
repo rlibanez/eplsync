@@ -1,3 +1,4 @@
+import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
 import { useJobRetry } from "../jobs/useJobRetry";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { PageTitle } from "../../components/PageTitle";
@@ -150,14 +151,15 @@ function Controls({ job }: { job: Job }) {
 export function CalibreJobs() {
   const { t } = useTranslation();
   const { date, number } = useLocale();
-  const [page, setPage] = useState(0),
-    [size, setSize] = useState(20),
-    [state, setState] = useState<string | null>(null),
-    [type, setType] = useState<string | null>(null),
-    [username, setUsername] = useState(""),
-    [from, setFrom] = useState(""),
-    [to, setTo] = useState(""),
-    [sort, setSort] = useState("createdAt,desc");
+  const saved = useWorkContext("calibre")?.view;
+  const [page, setPage] = useState(saved?.page ?? 0),
+    [size, setSize] = useState(saved?.size ?? 20),
+    [state, setState] = useState<string | null>(saved?.filter ?? null),
+    [type, setType] = useState<string | null>(saved?.type ?? null),
+    [username, setUsername] = useState(saved?.username ?? ""),
+    [from, setFrom] = useState(saved?.from ?? ""),
+    [to, setTo] = useState(saved?.to ?? ""),
+    [sort, setSort] = useState(saved?.sort ?? "createdAt,desc");
   const bounds = dateBounds(from, to);
   const dates = new URLSearchParams();
   if (bounds.from) dates.set("from", bounds.from);
@@ -323,6 +325,22 @@ export function CalibreJobs() {
                         <td>
                           <Link
                             className="book-title"
+                            state={{
+                              workList: {
+                                source: "calibre",
+                                query: `state=${state ?? ""}&type=${type ?? ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
+                                view: {
+                                  page,
+                                  size,
+                                  filter: state ?? "",
+                                  type: type ?? "",
+                                  username,
+                                  from,
+                                  to,
+                                  sort,
+                                },
+                              },
+                            }}
                             to={
                               job.type === "CLEANUP"
                                 ? `/calibre/jobs/cleanup/${job.id}`
@@ -474,9 +492,7 @@ export function CalibreJobDetail() {
   const value = job.data;
   return (
     <section>
-      <Link className="back-link" to="/calibre/jobs">
-        ← {t("calibreSend.back")}
-      </Link>
+      <WorkNavigation source="calibre" id={id} />
       <PageTitle
         title={t("calibreSend.job")}
         description={t("calibreSend.jobsHelp")}

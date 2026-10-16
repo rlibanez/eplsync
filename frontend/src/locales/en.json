@@ -149,6 +149,7 @@
     "finish": "Finish and go home"
   },
   "jobReport": {
+    "navigation": "Job navigation",
     "work": "Job",
     "submission": "Submission",
     "cleanup": "Cleanup",
@@ -1726,7 +1727,6 @@
     "selectedScope": "Selected records only ({{count}})",
     "allScope": "All records",
     "allowUndownloaded": "Allow cleanup even if the higher revision has not been downloaded",
-    "pendingWarning": "You may be left without a downloaded copy if the new revision never completes. Its torrent is retained, and identity, shared-file and incompatible-job protections remain in place.",
     "previewSummary": "{{ready}} revisions available · {{excluded}} excluded for safety.",
     "selectAll": "Select available",
     "clear": "Clear selection ({{count}})",
@@ -1753,12 +1753,22 @@
     "created": "Created",
     "state": "Status",
     "noJobs": "No cleanup jobs.",
+    "summary": "Cleanup summary",
+    "downloadRequirement": "Higher revision",
+    "metrics": {
+      "selected": "Selected",
+      "removed": "Removed",
+      "pending": "Pending",
+      "blocked": "Blocked",
+      "failed": "Failed",
+      "uncertain": "Unconfirmed"
+    },
     "jobTitle": "Revision cleanup job",
     "progress": "Selected: {{selected}} · Removed: {{succeeded}} · Pending: {{pending}} · Blocked: {{blocked}} · Failed: {{failed}} · Unconfirmed: {{uncertain}}",
     "cancel": "Cancel pending",
     "continue": "Continue",
+    "retry": "Retry unconfirmed deletions",
     "verify": "Check unconfirmed deletions",
-    "uncertainHelp": "Checking only verifies whether deletion completed; it never repeats the request. If the item remains, check the client before preparing another cleanup.",
     "error": "The operation could not be completed.",
     "actions": {
       "RECORD": "Delete EPL Sync record only; keep torrent and files",

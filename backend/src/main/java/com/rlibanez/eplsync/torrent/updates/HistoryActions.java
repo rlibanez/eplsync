@@ -128,6 +128,10 @@ public class HistoryActions {
         if(jobId==null || !jobId.matches("[a-f0-9-]{36}")) throw new UserInputException("Trabajo de limpieza inválido");
         return remove(selection,false,"revision:"+jobId,guard,false);
     }
+    public Result removeRevision(Selection selection,String jobId,boolean explicitRetry,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard) {
+        if(jobId==null || !jobId.matches("[a-f0-9-]{36}")) throw new UserInputException("Trabajo de limpieza inválido");
+        return remove(selection,explicitRetry,"revision:"+jobId,guard,false);
+    }
     private Result remove(Selection selection,boolean retryUnconfirmed,String provenance,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard,boolean audited) {
         Permission.require(Permission.TORRENT_CLEANUP);
         requireSelection(selection);
@@ -147,6 +151,16 @@ public class HistoryActions {
                 var requests=tx.execute(status -> {
                 var pending=new ArrayList<UpdateCleanup>();
                 for (var row:rows) {
+                    if(retryUnconfirmed && provenance!=null) {
+                        var existing=entries.findByJobIdOrderByEplIdAsc(provenance).stream().filter(e->e.getDownloadId().equals(row.getId())).findFirst();
+                        if(existing.isPresent()) {
+                            var entry=existing.orElseThrow();
+                            if(!entry.getClientInstanceId().equals(row.getClientInstanceId()) || !entry.getHash().equals(row.getHash())
+                                || entry.getPreviousVersions()!=(files?PreviousVersions.REMOVE_TORRENT_AND_FILES:PreviousVersions.REMOVE_TORRENT)) throw new UserInputException("La identidad o política del borrado cambió");
+                            if(!CleanupQueue.PENDING.contains(entry.getState()) && TorrentRemovalSafety.index(remote).containsKey(row.getHash())) throw new UserInputException("La solicitud anterior ya se resolvió; prepara una nueva limpieza");
+                            pending.add(entry);continue;
+                        }
+                    }
                     var entry=new UpdateCleanup();
                     // A provenance token also works with SQLite installations retaining the old NOT NULL job_id constraint.
                     entry.setJobId(provenance==null?"manual:"+entry.getId():provenance); entry.setDownloadId(row.getId()); entry.setEplId(row.getEplId());entry.setHash(row.getHash());

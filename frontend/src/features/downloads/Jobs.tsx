@@ -1,3 +1,4 @@
+import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
 import { useJobRetry } from "../jobs/useJobRetry";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { PageTitle } from "../../components/PageTitle";
@@ -36,15 +37,16 @@ export function Jobs() {
   const { notify } = useNotifications();
   const { t } = useTranslation();
   const { date, status, number } = useLocale();
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(20);
+  const saved = useWorkContext("downloads")?.view;
+  const [page, setPage] = useState(saved?.page ?? 0);
+  const [size, setSize] = useState(saved?.size ?? 20);
   const pageSizeChoice = usePageSizeChoice(size);
-  const [filter, setFilter] = useState("");
-  const [type, setType] = useState("");
-  const [username, setUsername] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [sort, setSort] = useState("createdAt,desc");
+  const [filter, setFilter] = useState(saved?.filter ?? "");
+  const [type, setType] = useState(saved?.type ?? "");
+  const [username, setUsername] = useState(saved?.username ?? "");
+  const [from, setFrom] = useState(saved?.from ?? "");
+  const [to, setTo] = useState(saved?.to ?? "");
+  const [sort, setSort] = useState(saved?.sort ?? "createdAt,desc");
   const [refresh, setRefresh] = useState<
     "idle" | "pending" | "success" | "error"
   >("idle");
@@ -250,6 +252,22 @@ export function Jobs() {
                         <td>
                           <Link
                             className="book-title"
+                            state={{
+                              workList: {
+                                source: "downloads",
+                                query: `${params}&${sortQuery(sort)}`,
+                                view: {
+                                  page,
+                                  size,
+                                  filter,
+                                  type,
+                                  username,
+                                  from,
+                                  to,
+                                  sort,
+                                },
+                              },
+                            }}
                             to={
                               job.type === "CLEANUP"
                                 ? `/downloads/jobs/cleanup/${job.jobId}`
@@ -430,9 +448,7 @@ export function JobDetail() {
   const data = job.data;
   return (
     <>
-      <Link className="back-link" to="/downloads/jobs">
-        ← {t("nav.downloadJobs")}
-      </Link>
+      <WorkNavigation source="downloads" id={id} />
       <PageTitle
         title={t("downloads.jobHeading")}
         description={t("downloads.jobNote")}

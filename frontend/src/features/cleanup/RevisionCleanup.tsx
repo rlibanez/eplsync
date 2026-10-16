@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { WorkNavigation } from "../jobs/WorkNavigation";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -6,6 +7,7 @@ import {
   Button,
   Checkbox,
   Group,
+  Progress,
   Select,
   Stepper,
 } from "@mantine/core";
@@ -502,6 +504,10 @@ export function CleanupJob() {
   const { t } = useTranslation();
   const cache = useQueryClient();
   const [page, setPage] = useState(0);
+  const retryRequest = useRef("");
+  useEffect(() => {
+    retryRequest.current = "";
+  }, [id]);
   const job = useQuery({
     queryKey: ["revision-cleanup", id],
     queryFn: () => get<Job>(`/revision-cleanups/${id}`),
@@ -519,8 +525,18 @@ export function CleanupJob() {
   }, [job.data?.state, job.data?.result, id, cache]);
   const command = useMutation({
     mutationFn: (value: string) =>
-      post<Job>(`/revision-cleanups/${id}/${value}`),
+      post<Job>(
+        `/revision-cleanups/${id}/${value}`,
+        value === "retry"
+          ? {
+              requestId: retryRequest.current,
+              confirm: true,
+              confirmDestructive: true,
+            }
+          : undefined,
+      ),
     onSuccess: () => {
+      retryRequest.current = "";
       void job.refetch();
       void rows.refetch();
       [
@@ -537,80 +553,157 @@ export function CleanupJob() {
   if (job.isError)
     return <Failure error={job.error} retry={() => void job.refetch()} />;
   const data = job.data;
+  const statusColor =
+    data.result === "FAILED"
+      ? "red"
+      : data.result === "PARTIAL" ||
+          data.uncertain > 0 ||
+          data.blocked > 0 ||
+          data.failed > 0
+        ? "orange"
+        : data.state === "CANCELLED"
+          ? "gray"
+          : active(data)
+            ? "blue"
+            : "teal";
+  const metrics = [
+    ["selected", data.selected],
+    ["removed", data.succeeded],
+    ["pending", data.pending],
+    ["blocked", data.blocked],
+    ["failed", data.failed],
+    ["uncertain", data.uncertain],
+  ] as const;
   return (
     <>
-      <Link
-        to={data.source === "calibre" ? "/calibre/jobs" : "/downloads/jobs"}
-      >
-        {t(data.source === "calibre" ? "calibreSend.jobs" : "nav.downloadJobs")}
-      </Link>
+      <WorkNavigation source={data.source} id={id} />
       <PageTitle
         title={t("revisionCleanup.jobTitle")}
         description={t("revisionCleanup.protection")}
       />
-      <p className="muted">{id}</p>
-      <p>
-        {t(`revisionCleanup.actions.${data.action}`)}
-        {data.library && ` · ${data.library}`}
-      </p>
-      <p>
-        <Badge>
-          {t(`revisionCleanup.states.${data.state}`)}
-          {data.result && ` · ${t(`events.outcomes.${data.result}`)}`}
-        </Badge>
-      </p>
-      {data.allowUndownloaded && (
-        <Alert>
-          {t("revisionCleanup.allowUndownloaded")}.{" "}
-          {t("revisionCleanup.pendingWarning")}
-        </Alert>
-      )}
-      {data.message && <Alert>{data.message}</Alert>}
-      <p>
-        {t("revisionCleanup.progress", {
-          selected: data.selected,
-          succeeded: data.succeeded,
-          pending: data.pending,
-          blocked: data.blocked,
-          failed: data.failed,
-          uncertain: data.uncertain,
-        })}
-      </p>
-      <Group mb="md">
-        {["QUEUED", "RUNNING", "PAUSED"].includes(data.state) && (
-          <Button
-            variant="default"
-            disabled={command.isPending}
-            onClick={() => command.mutate("cancel")}
-          >
-            {t("revisionCleanup.cancel")}
-          </Button>
-        )}
-        {(actions.includes(data.action) ||
-          (data.action === "EPUB" && actions.includes("BOOK"))) && (
-          <>
-            {data.state === "PAUSED" && actions.includes(data.action) && (
+      <p className="hash-text">{id}</p>
+      <section className="panel settings-section job-report-panel">
+        <div className="job-controls-heading">
+          <div className="action-row">
+            {["QUEUED", "RUNNING", "PAUSED"].includes(data.state) && (
               <Button
+                variant="default"
                 disabled={command.isPending}
-                onClick={() => command.mutate("continue")}
+                onClick={() => command.mutate("cancel")}
               >
-                {t("revisionCleanup.continue")}
+                {t("revisionCleanup.cancel")}
               </Button>
             )}
-            {data.uncertain > 0 && data.pending === 0 && !active(data) && (
-              <Button
-                disabled={command.isPending}
-                onClick={() => command.mutate("verify")}
-              >
-                {t("revisionCleanup.verify")}
-              </Button>
+            {(actions.includes(data.action) ||
+              (data.action === "EPUB" && actions.includes("BOOK"))) && (
+              <>
+                {data.state === "PAUSED" && actions.includes(data.action) && (
+                  <Button
+                    disabled={command.isPending}
+                    onClick={() => command.mutate("continue")}
+                  >
+                    {t("revisionCleanup.continue")}
+                  </Button>
+                )}
+                {data.source === "downloads" &&
+                  data.action !== "RECORD" &&
+                  actions.includes(data.action) &&
+                  data.uncertain > 0 &&
+                  data.pending === 0 &&
+                  !active(data) && (
+                    <Button
+                      variant="default"
+                      disabled={command.isPending}
+                      onClick={() => {
+                        if (!retryRequest.current)
+                          retryRequest.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                        command.mutate("retry");
+                      }}
+                    >
+                      {t("revisionCleanup.retry")}
+                    </Button>
+                  )}
+                {data.uncertain > 0 && data.pending === 0 && !active(data) && (
+                  <Button
+                    disabled={command.isPending}
+                    onClick={() => command.mutate("verify")}
+                  >
+                    {t("revisionCleanup.verify")}
+                  </Button>
+                )}
+              </>
             )}
-          </>
-        )}
-      </Group>
-      {data.uncertain > 0 && (
-        <Alert mb="md">{t("revisionCleanup.uncertainHelp")}</Alert>
-      )}
+          </div>
+        </div>
+        <details className="report-collapse">
+          <summary>
+            <span>
+              {t(
+                data.source === "downloads"
+                  ? "downloads.report"
+                  : "calibreSend.report",
+              )}
+            </span>
+            <Badge
+              color={statusColor}
+              variant="light"
+              data-color={statusColor}
+              className="cleanup-job-status"
+            >
+              {t(`revisionCleanup.states.${data.state}`)}
+              {data.result && ` · ${t(`events.outcomes.${data.result}`)}`}
+            </Badge>
+          </summary>
+          <div className="report-collapse-body">
+            <Progress
+              aria-label={t("revisionCleanup.progressColumn")}
+              value={
+                data.selected
+                  ? (100 * (data.selected - data.pending)) / data.selected
+                  : 0
+              }
+            />
+            <div className="job-report-groups">
+              <section className="job-report-group">
+                <h3>{t("jobReport.work")}</h3>
+                <dl className="import-summary">
+                  <div>
+                    <dt>{t("revisionCleanup.action")}</dt>
+                    <dd>{t(`revisionCleanup.actions.${data.action}`)}</dd>
+                  </div>
+                  {data.library && (
+                    <div>
+                      <dt>{t("calibre.library")}</dt>
+                      <dd>{data.library}</dd>
+                    </div>
+                  )}
+                  {data.allowUndownloaded && (
+                    <div>
+                      <dt>{t("revisionCleanup.downloadRequirement")}</dt>
+                      <dd>{t("revisionCleanup.allowUndownloaded")}</dd>
+                    </div>
+                  )}
+                </dl>
+              </section>
+              <section
+                className="job-report-group"
+                aria-label={t("revisionCleanup.summary")}
+              >
+                <h3>{t("jobReport.cleanup")}</h3>
+                <dl className="import-summary cleanup-job-counts">
+                  {metrics.map(([name, value]) => (
+                    <div key={name}>
+                      <dt>{t(`revisionCleanup.metrics.${name}`)}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            </div>
+            {data.message && <Alert color={statusColor}>{data.message}</Alert>}
+          </div>
+        </details>
+      </section>
       <ErrorMessage error={command.error} />
       {rows.isError ? (
         <Failure error={rows.error} retry={() => void rows.refetch()} />
