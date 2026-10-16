@@ -13,6 +13,7 @@ import com.rlibanez.eplsync.exception.UserInputException;
 @Service
 public class UpdateSearches {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(UpdateSearches.class);
     private final JdbcTemplate jdbc;
     private final RevisionUpdates updates;
     private final UpdatePreferences preferences;
@@ -44,6 +45,17 @@ public class UpdateSearches {
         if(changed==0 && !matches(type,search.criteria()))
             throw new UserInputException("La conexión cambió durante la búsqueda; vuelve a buscar actualizaciones");
     }
+    private void logCompleted(String type,String userId,Search search,long started) {
+        var actor=com.rlibanez.eplsync.events.EventContext.actor();
+        String origin=com.rlibanez.eplsync.events.EventContext.operationOriginLabel();
+        Runnable summary=()->log.info("Búsqueda de actualizaciones finalizada: tipo={}, origen={}, userId={}, usuario={}, actualizaciones={}, duraciónMs={}",
+            type,origin,userId,actor.username(),search.rows().size(),(System.nanoTime()-started)/1_000_000);
+        if(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()
+            && org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive())
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                new org.springframework.transaction.support.TransactionSynchronization() { @Override public void afterCommit() {summary.run();} });
+        else summary.run();
+    }
     public Map<String,Object> downloads(String userId) {
         return Map.of("updates",searchDownloads(userId,preferences.get()).rows().size());
     }
@@ -52,6 +64,7 @@ public class UpdateSearches {
         return events.runFailuresOnly(com.rlibanez.eplsync.events.EventJournal.Category.JOB,"TORRENT_UPDATE_SEARCH",Map.of(),()->performDownloads(userId,input),result->Map.of("updates",result.rows().size()));
     }
     private Search performDownloads(String userId,UpdatePreferences.Preferences input) {
+        long started=System.nanoTime();
         RevisionUpdates.validate(input,0,1000,"eplId,asc");
         String context=serverSettings.updateSearchContext();
         torrent.synchronize(false,false);
@@ -64,6 +77,7 @@ public class UpdateSearches {
         }
         var search=new Search(List.copyOf(rows),Instant.now().toEpochMilli(),input.states(),com.rlibanez.eplsync.events.EventContext.origin(),Map.of("states",input.states(),"synchronize",true,"context",context));
         save("downloads",userId,search);
+        logCompleted("CATALOGO",userId,search,started);
         return search;
     }
     public Map<String,Object> calibre(String userId) {
@@ -75,6 +89,7 @@ public class UpdateSearches {
         return events.runFailuresOnly(com.rlibanez.eplsync.events.EventJournal.Category.JOB,"CALIBRE_UPDATE_SEARCH",Map.of(),()->performCalibre(userId),result->Map.of("updates",result.search().rows().size(),"total",result.snapshot().total(),"identified",result.snapshot().identified()));
     }
     private CalibreSearch performCalibre(String userId) {
+        long started=System.nanoTime();
         String context=calibreSettings.updateSearchContext();
         boolean checkFiles=Permission.has(Permission.DOWNLOADS_FILES_READ);
         String downloadContext=checkFiles?serverSettings.updateSearchContext():null;
@@ -97,6 +112,7 @@ public class UpdateSearches {
         if(checkFiles) criteria.put("downloadContext",downloadContext);
         var search=new Search(List.copyOf(rows),Instant.now().toEpochMilli(),List.of(),com.rlibanez.eplsync.events.EventContext.origin(),Map.copyOf(criteria));
         save("calibre",userId,search);
+        logCompleted("CALIBRE",userId,search,started);
         return new CalibreSearch(snapshot,search);
     }
 }

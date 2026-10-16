@@ -24,6 +24,7 @@ class UpdateSearchesTests {
     @Autowired ServerSettings settings;
     @Autowired CalibreSettings calibreSettings;
     @Autowired JdbcTemplate jdbc;
+    @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
     @MockitoBean RevisionUpdates updates;
     @MockitoBean UpdateCleanupService torrent;
     @MockitoBean CalibreCatalogService calibre;
@@ -37,6 +38,45 @@ class UpdateSearchesTests {
         preferences.save(new UpdatePreferences.Preferences(List.of(DownloadStatus.DOWNLOADED)));
         when(updates.search(any(),eq(0),eq(1000),eq("eplId,asc"))).thenReturn(new PageResponse<>(List.of(),new PageResponse.PageMeta(0,1000,0,0,true,true,false,false)));
         when(calibre.sync()).thenReturn(new CalibreCatalogService.Snapshot("main",Instant.now(),4,3));
+    }
+    @Test void completedSearchesLogOnceAtInfoForAllOriginsIncludingEmptyResults() {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(UpdateSearches.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
+            for(var origin:List.of(com.rlibanez.eplsync.events.EventContext.Origin.MANUAL,com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED)) {
+                for(int count:List.of(0,1)) {
+                    jdbc.update("DELETE FROM calibre_books");jdbc.update("DELETE FROM catalog_books");
+                    if(count==1) {
+                        jdbc.update("INSERT INTO catalog_books(epl_id,title,author,revision) VALUES(1,'Libro','Autor',2)");
+                        jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('one','g',true,1,1,1,'Libro','Autor')");
+                        when(files.availability(List.of(1L))).thenReturn(List.of(new CalibreUpdateFlow.Availability(1,"READY")));
+                    }
+                    var rows=count==0?List.<RevisionUpdates.Row>of():List.of(new RevisionUpdates.Row(1L,"Libro",1.0,2.0,DownloadStatus.DOWNLOADED,null,false));
+                    when(updates.search(any(),eq(0),eq(1000),eq("eplId,asc"))).thenReturn(new PageResponse<>(rows,new PageResponse.PageMeta(0,1000,count,1,true,true,false,false)));
+                    for(String type:List.of("downloads","calibre")) {
+                        capture.list.clear();
+                        com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor("owner","searchowner","USER"),()->
+                            com.rlibanez.eplsync.events.EventContext.withOrigin(origin,()->type.equals("downloads")?searches.downloads("owner"):searches.calibre("owner")));
+                        assertThat(searches.latest(type,"owner")).isNotNull();
+                        assertThat(capture.list).singleElement().satisfies(e->{
+                            assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.INFO);
+                            assertThat(e.getFormattedMessage()).contains("tipo="+(type.equals("downloads")?"CATALOGO":"CALIBRE"),"origen="+(origin==com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED?"programada":"manual"),"userId=owner","usuario=searchowner","actualizaciones="+count,"duraciónMs=");
+                        });
+                    }
+                }
+            }
+            capture.list.clear();
+            transactions.executeWithoutResult(tx->{
+                searches.downloads("owner");searches.calibre("owner");
+                assertThat(capture.list).isEmpty();tx.setRollbackOnly();
+            });
+            assertThat(capture.list).isEmpty();
+            jdbc.execute("CREATE TRIGGER fail_search_log BEFORE INSERT ON update_search_results BEGIN SELECT RAISE(ABORT,'test save failure'); END");
+            assertThatThrownBy(()->searches.downloads("owner")).isInstanceOf(RuntimeException.class);
+            assertThatThrownBy(()->searches.calibre("owner")).isInstanceOf(RuntimeException.class);
+            assertThat(capture.list).isEmpty();
+        } finally {jdbc.execute("DROP TRIGGER IF EXISTS fail_search_log");logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
     }
     @Test void torrentSearchUsesSavedStatesAndPersistsOnlyACompletePerUserResult() {
         var input=preferences.get();
