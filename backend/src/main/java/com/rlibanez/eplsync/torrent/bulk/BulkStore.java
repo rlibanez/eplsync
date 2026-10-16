@@ -26,6 +26,7 @@ import java.util.*;
 
 @Service
 public class BulkStore {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.specification.CatalogLibraryFilters libraryFilters;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     private void event(BulkJob job, com.rlibanez.eplsync.events.EventJournal.Outcome outcome) {
         if (events == null) return;
@@ -112,6 +113,7 @@ public class BulkStore {
         if (sort.getOrderFor("eplId") == null) sort = sort.and(Sort.by("eplId"));
         validateSort(sort);
         var spec = CatalogBookSpecifications.fromFilter(filter);
+        if(filter!=null && filter.hasLibraryFilters()) spec=spec.and(libraryFilters.fromFilter(filter));
         long offset = paginated ? pageable.getOffset() : 0;
         long remaining = paginated ? pageable.getPageSize() : Long.MAX_VALUE;
         var countCriteria = em.getCriteriaBuilder();

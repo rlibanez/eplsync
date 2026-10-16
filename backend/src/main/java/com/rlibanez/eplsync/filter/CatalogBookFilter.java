@@ -97,6 +97,25 @@ public class CatalogBookFilter {
     private Long[] selectedIds;
     private Long[] excludedIds;
 
+    // Local synchronized libraries; blank values deliberately do not filter.
+    private String torrentPresence;
+    private String torrentRevision;
+    @com.fasterxml.jackson.annotation.JsonFormat(with = com.fasterxml.jackson.annotation.JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+    private com.rlibanez.eplsync.torrent.downloads.DownloadStatus[] torrentStatus;
+    private String calibrePresence;
+    private String calibreRevision;
+
+    public boolean hasLibraryFilters() {
+        return torrentStatus!=null || torrentPresence!=null || torrentRevision!=null || calibrePresence!=null || calibreRevision!=null;
+    }
+
+    private static String choice(String value,Set<String> allowed,String field) {
+        if(value==null || value.isBlank()) return null;
+        value=value.trim();
+        if(!allowed.contains(value)) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro inválido: "+field);
+        return value;
+    }
+
     // --- Fechas ---
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate publicationDate;
@@ -116,6 +135,25 @@ public class CatalogBookFilter {
 
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
+        torrentPresence=choice(torrentPresence,Set.of("PRESENT","ABSENT"),"torrentPresence");
+        calibrePresence=choice(calibrePresence,Set.of("PRESENT","ABSENT"),"calibrePresence");
+        torrentRevision=choice(torrentRevision,Set.of("UPDATED","OUTDATED"),"torrentRevision");
+        calibreRevision=choice(calibreRevision,Set.of("UPDATED","OUTDATED"),"calibreRevision");
+        torrentStatus=compact(torrentStatus);
+        if(torrentStatus!=null) {
+            if(java.util.Arrays.stream(torrentStatus).anyMatch(s -> s==null || s==com.rlibanez.eplsync.torrent.downloads.DownloadStatus.NOT_FOUND))
+                throw new com.rlibanez.eplsync.exception.UserInputException("Estado de torrent inválido");
+            if("ABSENT".equals(torrentPresence)) throw new com.rlibanez.eplsync.exception.UserInputException("No se puede filtrar el estado de torrents ausentes");
+            torrentPresence="PRESENT";
+        }
+        if(torrentRevision!=null) {
+            if("ABSENT".equals(torrentPresence)) throw new com.rlibanez.eplsync.exception.UserInputException("No se puede filtrar la revisión de torrents ausentes");
+            torrentPresence="PRESENT";
+        }
+        if(calibreRevision!=null) {
+            if("ABSENT".equals(calibrePresence)) throw new com.rlibanez.eplsync.exception.UserInputException("No se puede filtrar la revisión de libros ausentes de Calibre");
+            calibrePresence="PRESENT";
+        }
         for (Long[] ids : new Long[][]{selectedIds, excludedIds}) {
             if (ids != null && ids.length > com.rlibanez.eplsync.config.QueryLimits.MAX_SELECTION_IDS)
                 throw new com.rlibanez.eplsync.exception.UserInputException("Máximo de 10000 identificadores por selección");

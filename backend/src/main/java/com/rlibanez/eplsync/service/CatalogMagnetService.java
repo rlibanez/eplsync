@@ -14,6 +14,7 @@ import java.util.Optional;
 @Service
 @Transactional(readOnly = true)
 public class CatalogMagnetService {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.specification.CatalogLibraryFilters libraryFilters;
     private final CatalogBookRepository repository;
     private final MagnetLinkBuilder builder;
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
@@ -33,6 +34,7 @@ public class CatalogMagnetService {
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
         Sort ordering = CatalogOrdering.normalize(sort);
         var spec = CatalogBookSpecifications.fromFilter(filter);
+        if(filter!=null && filter.hasLibraryFilters()) spec=spec.and(libraryFilters.fromFilter(filter));
         var cb = em.getCriteriaBuilder();
         var query = cb.createTupleQuery();
         var root = query.from(com.rlibanez.eplsync.model.CatalogBook.class);

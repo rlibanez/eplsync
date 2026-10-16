@@ -19,6 +19,7 @@ import java.util.*;
 
 @Service
 public class UpdatePlanner {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.specification.CatalogLibraryFilters libraryFilters;
     private final DownloadRepository downloads;
     private final CatalogBookRepository books;
     private final DownloadTrackingService tracking;
@@ -79,7 +80,9 @@ public class UpdatePlanner {
             java.util.function.Consumer<Candidate> consume) {
         String instance=tracking.instanceId(); long after=0;
         long deadline=System.nanoTime()+java.time.Duration.ofMinutes(2).toNanos();
-        var base=CatalogBookSpecifications.fromFilter(filter).and(eligible(instance,includeNotFound,selection));
+        var catalog=CatalogBookSpecifications.fromFilter(filter);
+        if(filter!=null && filter.hasLibraryFilters()) catalog=catalog.and(libraryFilters.fromFilter(filter));
+        var base=catalog.and(eligible(instance,includeNotFound,selection));
         while (true) {
             budget(deadline); long cursor=after;
             var spec=base.and((root,q,cb) -> cb.greaterThan(root.get("eplId"),cursor));

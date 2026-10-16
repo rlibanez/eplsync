@@ -13,6 +13,7 @@ import java.util.Optional;
 
 @Service
 public class CatalogBookService {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.specification.CatalogLibraryFilters libraryFilters;
 
     private final CatalogBookRepository repository;
 
@@ -35,6 +36,7 @@ public class CatalogBookService {
     public Page<CatalogBook> search(CatalogBookFilter filter, Pageable pageable) {
         com.rlibanez.eplsync.config.QueryLimits.page(pageable.getPageNumber(), pageable.getPageSize());
         var spec = CatalogBookSpecifications.fromFilter(filter);
+        if(filter!=null && filter.hasLibraryFilters()) spec=spec.and(libraryFilters.fromFilter(filter));
         return repository.findAll(com.rlibanez.eplsync.ordering.TextOrdering.sorted(spec, CatalogOrdering.normalize(pageable.getSort())), org.springframework.data.domain.PageRequest.of(
                 pageable.getPageNumber(), pageable.getPageSize()));
     }

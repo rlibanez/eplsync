@@ -889,7 +889,18 @@
     "equal": "Igualar fechas",
     "clearApplied": "Limpiar filtros",
     "invalidValue": "Introduce un valor válido.",
-    "removeValue": "Quitar {{value}}"
+    "removeValue": "Quitar {{value}}",
+    "libraries": {
+      "torrent": "Torrent",
+      "calibre": "Calibre"
+    },
+    "libraryPresence": "Presencia",
+    "libraryPresent": "Presentes",
+    "libraryAbsent": "Ausentes",
+    "libraryUpdated": "Actualizada",
+    "libraryOutdated": "Anterior",
+    "clearLibraryPresence": "Quitar filtro de presencia de {{library}}",
+    "clearLibraryRevision": "Quitar filtro de revisión de {{library}}"
   },
   "columns": {
     "title": "Columnas",

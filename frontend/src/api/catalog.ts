@@ -156,8 +156,14 @@ export function catalogParams(
     ["publicationYear", 11],
     ["eplId", 19],
     ["revision", 24],
+    ["torrentPresence", 16],
+    ["torrentStatus", 24],
+    ["torrentRevision", 16],
+    ["calibrePresence", 16],
+    ["calibreRevision", 16],
   ] as const) {
     const multiple = [
+      "torrentStatus",
       "title",
       "author",
       "genres",

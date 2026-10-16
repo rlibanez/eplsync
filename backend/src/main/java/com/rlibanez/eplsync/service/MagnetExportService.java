@@ -23,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 /** Builds a bounded disk snapshot using short catalog transactions, before sending any bytes. */
 @Service
 public class MagnetExportService {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.specification.CatalogLibraryFilters libraryFilters;
     static final int BATCH_SIZE = 250;
     static final long MAX_BYTES = 128L * 1024 * 1024;
     static final long MAX_INDEX_BYTES = 128L * 1024 * 1024;
@@ -56,7 +57,8 @@ public class MagnetExportService {
     }
     public Prepared prepare(CatalogBookFilter filter, Sort requested) {
         // Reject invalid input before occupying the installation's only export slot.
-        var spec = CatalogBookSpecifications.fromFilter(filter);
+        var base = CatalogBookSpecifications.fromFilter(filter);
+        var spec = filter!=null && filter.hasLibraryFilters()?base.and(libraryFilters.fromFilter(filter)):base;
         Sort sort = CatalogOrdering.normalize(requested);
         if (!active.tryAcquire()) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                 "Ya hay una exportación en curso. Espera a que termine e inténtalo de nuevo.");

@@ -162,7 +162,7 @@ test("multiple text values commit with Enter, Tab and Search and survive reload"
   await author.fill("Asimov");
   await author.press("Enter");
   await author.fill("García Márquez, Gabriel");
-  const revision = page.getByLabel("Revisión", { exact: true });
+  const revision = page.locator(".catalog-filter-grid").first().getByLabel("Revisión", { exact: true });
   await revision.fill("1,4");
   await revision.press("Tab");
   await page.getByRole("button", { name: "Buscar", exact: true }).click();

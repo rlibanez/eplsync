@@ -1,9 +1,14 @@
 import { X } from "lucide-react";
 import { Fragment, useState } from "react";
-import { Button, TextInput, MultiSelect } from "@mantine/core";
+import { Button, TextInput, MultiSelect, Select } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { FilterTokens, normalizeFilterValue, normalizeFilterValues } from "./FilterTokens";
+import {
+  FilterTokens,
+  normalizeFilterValue,
+  normalizeFilterValues,
+} from "./FilterTokens";
 import { languages } from "../../api/catalog";
+import { useAuth } from "../auth/Auth";
 import { useLocale } from "../../locales/useLocale";
 
 export const multiKeys = [
@@ -16,6 +21,7 @@ export const multiKeys = [
   "language",
   "status",
   "publicationStatus",
+  "torrentStatus",
 ];
 export const filterKeys = [
   "title",
@@ -37,12 +43,25 @@ export const filterKeys = [
   "publicationDateTo",
   "addedFrom",
   "addedTo",
+  "torrentStatus",
+  "torrentPresence",
+  "torrentRevision",
+  "calibrePresence",
+  "calibreRevision",
 ];
 export function localDay(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 export function filterRequest(params: URLSearchParams) {
   const result = new URLSearchParams(params);
+  for (const library of ["torrent", "calibre"]) {
+    if (result.get(`${library}Presence`) === "ABSENT")
+      result.delete(`${library}Revision`);
+    else if (result.get(`${library}Revision`))
+      result.set(`${library}Presence`, "PRESENT");
+  }
+  if (result.get("torrentPresence") === "ABSENT") result.delete("torrentStatus");
+  else if (result.getAll("torrentStatus").some(Boolean)) result.set("torrentPresence", "PRESENT");
   const revisions = result.getAll("revision");
   result.delete("revision");
   revisions.forEach((value) =>
@@ -79,8 +98,9 @@ export function CatalogFilters({
 }) {
   const { t } = useTranslation();
   const { language, status } = useLocale();
-  const [values, setValues] = useState(() =>
-    Object.fromEntries(
+  const auth = useAuth();
+  const [values, setValues] = useState(() => {
+    const initial = Object.fromEntries(
       filterKeys.map((k) => [
         k,
         params.get(k) ||
@@ -91,15 +111,22 @@ export function CatalogFilters({
               : null) ||
           "",
       ]),
-    ),
-  );
+    );
+    for (const library of ["torrent", "calibre"]) {
+      if (initial[`${library}Presence`] === "ABSENT")
+        initial[`${library}Revision`] = "";
+      else if (initial[`${library}Revision`] || (library === "torrent" && params.getAll("torrentStatus").some(Boolean)))
+        initial[`${library}Presence`] = "PRESENT";
+    }
+    return initial;
+  });
   const [multi, setMulti] = useState<Record<string, string[]>>(() =>
     Object.fromEntries(
       multiKeys.map((key) => [
         key,
         [
           ...new Set(
-            params.getAll(key).map((v) => normalizeFilterValue(key, v) ?? v),
+            (key === "torrentStatus" && params.get("torrentPresence") === "ABSENT" ? [] : params.getAll(key)).map((v) => normalizeFilterValue(key, v) ?? v),
           ),
         ],
       ]),
@@ -127,7 +154,17 @@ export function CatalogFilters({
     return (
       <FilterTokens
         key={key}
-        suggestionKind={key === "title" ? "titles" : key === "author" ? "authors" : key === "collection" ? "collections" : key === "genres" ? "genres" : undefined}
+        suggestionKind={
+          key === "title"
+            ? "titles"
+            : key === "author"
+              ? "authors"
+              : key === "collection"
+                ? "collections"
+                : key === "genres"
+                  ? "genres"
+                  : undefined
+        }
         allowList={key === "eplId"}
         label={t(key === "revision" ? "catalog.revision" : `filters.${key}`)}
         values={multi[key]}
@@ -284,101 +321,190 @@ export function CatalogFilters({
           {tokenField("revision")}
         </div>
         <div className="catalog-filter-grid catalog-range-grid">
-        {ranges.map(([from, to, label]) => (
-          <fieldset className="catalog-date-range catalog-compact-range" key={from}>
-            <legend>{t(`filters.${label}`)}</legend>
-            {[from, to].map((key, index) => (
-              <Fragment key={key}>
-                {index === 1 && (
-                  <Button
-                    type="button"
-                    className="date-equal"
-                    variant={equal[from] ? "filled" : "default"}
-                    aria-label={t(
-                      label === "pages"
-                        ? "filters.equalPages"
-                        : "filters.equal",
-                    )}
-                    title={t(
-                      label === "pages"
-                        ? "filters.equalPages"
-                        : "filters.equal",
-                    )}
-                    aria-pressed={Boolean(equal[from])}
-                    onClick={() => {
-                      const checked = !equal[from];
-                      setEqual((v) => ({ ...v, [from]: checked }));
-                      if (checked)
-                        setValues((v) => ({
-                          ...v,
-                          [from]: v[from] || v[to],
-                          [to]: v[from] || v[to],
-                        }));
-                    }}
-                  >
-                    =
-                  </Button>
-                )}
-                {label === "pages" ? (
-                  <TextInput
-                    type="number"
-                    label={t(index ? "filters.maximum" : "filters.minimum")}
-                    value={values[key]}
-                    step={1}
-                    min={
-                      !equal[from] && index && values[from]
-                        ? Number(values[from])
-                        : 0
-                    }
-                    max={
-                      !equal[from] && !index && values[to]
-                        ? Number(values[to])
-                        : 2147483647
-                    }
-                    onChange={(e) =>
-                      setRange(from, to, key, e.currentTarget.value)
-                    }
-                  />
-                ) : label === "years" ? (
-                  <TextInput
-                    type="number"
-                    label={t(index ? "filters.to" : "filters.from")}
-                    value={values[key]}
-                    step={1}
-                    min={!equal[from] && index && values[from] ? Number(values[from]) : -2147483648}
-                    max={!equal[from] && !index && values[to] ? Number(values[to]) : 3000}
-                    onChange={(e) => setRange(from, to, key, e.currentTarget.value)}
-                  />
-                ) : (
-                  <TextInput
-                    type="date"
-                    label={t(index ? "filters.to" : "filters.from")}
-                    value={values[key]}
-                    onChange={(e) =>
-                      setRange(from, to, key, e.currentTarget.value)
-                    }
-                    min={
-                      !equal[from] && index
-                        ? values[from] || undefined
-                        : undefined
-                    }
-                    max={!equal[from] && !index ? values[to] || today : today}
-                  />
-                )}
-              </Fragment>
-            ))}
-            <Button
-              variant="subtle"
-              size="compact-sm"
-              aria-label={t("filters.clearRange")}
-              title={t("filters.clearRange")}
-              disabled={!values[from] && !values[to]}
-              onClick={() => clearRange(from, to)}
+          {ranges.map(([from, to, label]) => (
+            <fieldset
+              className="catalog-date-range catalog-compact-range"
+              key={from}
             >
-              <X size={16} aria-hidden="true" />
-            </Button>
-          </fieldset>
-        ))}
+              <legend>{t(`filters.${label}`)}</legend>
+              {[from, to].map((key, index) => (
+                <Fragment key={key}>
+                  {index === 1 && (
+                    <Button
+                      type="button"
+                      className="date-equal"
+                      variant={equal[from] ? "filled" : "default"}
+                      aria-label={t(
+                        label === "pages"
+                          ? "filters.equalPages"
+                          : "filters.equal",
+                      )}
+                      title={t(
+                        label === "pages"
+                          ? "filters.equalPages"
+                          : "filters.equal",
+                      )}
+                      aria-pressed={Boolean(equal[from])}
+                      onClick={() => {
+                        const checked = !equal[from];
+                        setEqual((v) => ({ ...v, [from]: checked }));
+                        if (checked)
+                          setValues((v) => ({
+                            ...v,
+                            [from]: v[from] || v[to],
+                            [to]: v[from] || v[to],
+                          }));
+                      }}
+                    >
+                      =
+                    </Button>
+                  )}
+                  {label === "pages" ? (
+                    <TextInput
+                      type="number"
+                      label={t(index ? "filters.maximum" : "filters.minimum")}
+                      value={values[key]}
+                      step={1}
+                      min={
+                        !equal[from] && index && values[from]
+                          ? Number(values[from])
+                          : 0
+                      }
+                      max={
+                        !equal[from] && !index && values[to]
+                          ? Number(values[to])
+                          : 2147483647
+                      }
+                      onChange={(e) =>
+                        setRange(from, to, key, e.currentTarget.value)
+                      }
+                    />
+                  ) : label === "years" ? (
+                    <TextInput
+                      type="number"
+                      label={t(index ? "filters.to" : "filters.from")}
+                      value={values[key]}
+                      step={1}
+                      min={
+                        !equal[from] && index && values[from]
+                          ? Number(values[from])
+                          : -2147483648
+                      }
+                      max={
+                        !equal[from] && !index && values[to]
+                          ? Number(values[to])
+                          : 3000
+                      }
+                      onChange={(e) =>
+                        setRange(from, to, key, e.currentTarget.value)
+                      }
+                    />
+                  ) : (
+                    <TextInput
+                      type="date"
+                      label={t(index ? "filters.to" : "filters.from")}
+                      value={values[key]}
+                      onChange={(e) =>
+                        setRange(from, to, key, e.currentTarget.value)
+                      }
+                      min={
+                        !equal[from] && index
+                          ? values[from] || undefined
+                          : undefined
+                      }
+                      max={!equal[from] && !index ? values[to] || today : today}
+                    />
+                  )}
+                </Fragment>
+              ))}
+              <Button
+                variant="subtle"
+                size="compact-sm"
+                aria-label={t("filters.clearRange")}
+                title={t("filters.clearRange")}
+                disabled={!values[from] && !values[to]}
+                onClick={() => clearRange(from, to)}
+              >
+                <X size={16} aria-hidden="true" />
+              </Button>
+            </fieldset>
+          ))}
+        </div>
+        <div className="catalog-library-filters">
+          {(["torrent", "calibre"] as const)
+            .filter((library) =>
+              library === "torrent"
+                ? auth.can("BOOK_HISTORY_READ") || auth.can("TORRENT_SYNC")
+                : auth.can("CALIBRE_READ"),
+            )
+            .map((library) => (
+              <fieldset className="catalog-library-filter" key={library}>
+                <legend>{t(`filters.libraries.${library}`)}</legend>
+                <Select
+                  label={t("filters.libraryPresence")}
+                  value={values[`${library}Presence`] || null}
+                  clearable
+                  clearButtonProps={{
+                    "aria-hidden": false,
+                    tabIndex: 0,
+                    "aria-label": t("filters.clearLibraryPresence", {
+                      library: t(`filters.libraries.${library}`),
+                    }),
+                  }}
+                  data={[
+                    { value: "PRESENT", label: t("filters.libraryPresent") },
+                    { value: "ABSENT", label: t("filters.libraryAbsent") },
+                  ]}
+                  onChange={(value) => {
+                    if (library === "torrent" && (!value || value === "ABSENT")) setMultiValue("torrentStatus", []);
+                    setValues((previous) => ({
+                      ...previous,
+                      [`${library}Presence`]: value || "",
+                      [`${library}Revision`]:
+                        !value || value === "ABSENT"
+                          ? ""
+                          : previous[`${library}Revision`],
+                    }));
+                  }}
+                />
+                <Select
+                  label={t("catalog.revision")}
+                  value={values[`${library}Revision`] || null}
+                  clearable
+                  disabled={values[`${library}Presence`] === "ABSENT"}
+                  clearButtonProps={{
+                    "aria-hidden": false,
+                    tabIndex: 0,
+                    "aria-label": t("filters.clearLibraryRevision", {
+                      library: t(`filters.libraries.${library}`),
+                    }),
+                  }}
+                  data={[
+                    { value: "UPDATED", label: t("filters.libraryUpdated") },
+                    { value: "OUTDATED", label: t("filters.libraryOutdated") },
+                  ]}
+                  onChange={(value) =>
+                    setValues((previous) => ({
+                      ...previous,
+                      [`${library}Revision`]: value || "",
+                      ...(value ? { [`${library}Presence`]: "PRESENT" } : {}),
+                    }))
+                  }
+                />
+                {library === "torrent" && <MultiSelect
+                  searchable
+                  label={t("filters.status")}
+                  value={multi.torrentStatus}
+                  clearable
+                  disabled={values.torrentPresence === "ABSENT"}
+                  data={["SUBMITTED", "ALREADY_EXISTS", "UNKNOWN", "QUEUED", "DOWNLOADING", "PAUSED", "CHECKING", "DOWNLOADED", "ERROR"].map(value => ({value, label: status(value)}))}
+                  onChange={selected => {
+                    setMultiValue("torrentStatus", selected);
+                    if (selected.length) set("torrentPresence", "PRESENT");
+                  }}
+                />}
+              </fieldset>
+            ))}
         </div>
         <div className="action-row">
           <Button type="submit">{t("catalog.search")}</Button>
