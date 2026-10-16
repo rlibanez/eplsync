@@ -631,8 +631,8 @@ export function JobDetail() {
                                       "send.deleteHistory",
                                       t(
                                         data.deleteHistory
-                                          ? "common.yes"
-                                          : "common.no",
+                                          ? "downloads.yes"
+                                          : "downloads.no",
                                       ),
                                     ],
                                   ]

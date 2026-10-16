@@ -715,7 +715,7 @@ export function CleanupJob() {
                     <div>
                       <dt>{t("send.deleteHistory")}</dt>
                       <dd>
-                        {t(data.deleteHistory ? "common.yes" : "common.no")}
+                        {t(data.deleteHistory ? "downloads.yes" : "downloads.no")}
                       </dd>
                     </div>
                   )}

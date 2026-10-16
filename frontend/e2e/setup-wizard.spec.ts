@@ -213,7 +213,19 @@ test("wizard suppresses floating notices without replaying them after closing", 
   page,
 }) => {
   await installation(page, "completed");
-  await page.goto("/settings/general");
+  await page.route("**/api/settings/events", (route) =>
+    route.fulfill({ json: { section: "events", fields: [] } }),
+  );
+  // Load preferences before injecting a live event; rendering General does not
+  // guarantee that this independent request has finished.
+  await page.goto("/settings/notifications");
+  await expect(
+    page.getByRole("checkbox", {
+      name: "Mostrar notificaciones flotantes",
+      exact: true,
+    }),
+  ).toBeChecked();
+  await page.getByRole("link", { name: "General", exact: true }).click();
   const toast = page.locator(".notification-toasts");
   const event = (id: number) => ({
     id,
