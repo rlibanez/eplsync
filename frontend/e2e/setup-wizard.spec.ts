@@ -1,4 +1,4 @@
-import { test, expect } from "./fixtures";
+import { test, expect, emitEvent } from "./fixtures";
 
 async function installation(
   page: import("@playwright/test").Page,
@@ -207,4 +207,39 @@ test("wizard fits a narrow screen", async ({ page }) => {
     path: "/tmp/eplsync-setup-mobile.png",
     fullPage: true,
   });
+});
+
+test("wizard suppresses floating notices without replaying them after closing", async ({
+  page,
+}) => {
+  await installation(page, "completed");
+  await page.goto("/settings/general");
+  const toast = page.locator(".notification-toasts");
+  const event = (id: number) => ({
+    id,
+    createdAt: new Date().toISOString(),
+    category: "CATALOG",
+    action: "UPDATE",
+    outcome: "SUCCEEDED",
+    origin: "MANUAL",
+    operationId: `setup-notice-${id}`,
+    details: { created: 1 },
+  });
+  await expect(
+    page.getByRole("button", { name: "Abrir asistente de configuración" }),
+  ).toBeVisible();
+  await emitEvent(page, event(100));
+  await expect(toast.getByRole("status")).toHaveCount(1);
+  await page
+    .getByRole("button", { name: "Abrir asistente de configuración" })
+    .click();
+  await expect(page).toHaveURL(/\/settings\/setup$/);
+  await expect(toast.getByRole("status")).toHaveCount(0);
+  await emitEvent(page, event(101));
+  await expect(toast.getByRole("status")).toHaveCount(0);
+  await page.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(toast.getByRole("status")).toHaveCount(0);
+  await emitEvent(page, event(102));
+  await expect(toast.getByRole("status")).toHaveCount(1);
 });

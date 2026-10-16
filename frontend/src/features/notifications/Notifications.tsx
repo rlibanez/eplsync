@@ -12,7 +12,7 @@ import {
 } from "react";
 import { Notification, Portal, Text } from "@mantine/core";
 import { Check, CircleAlert, Info } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useMatch } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -96,7 +96,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     preferencesRef.current = undefined;
   }
   if (display.data) preferencesRef.current = display.data;
-  const floating = preferencesRef.current?.floating ?? false;
+  const inSetup = useMatch("/settings/setup") !== null;
+  const suppressed = useRef(inSetup);
+  suppressed.current = inSetup;
+  const floating = (preferencesRef.current?.floating ?? false) && !inSetup;
   const [toasts, setToasts] = useState<Notice[]>([]);
   const seen = useRef(new Set<string>());
   useEffect(() => {
@@ -117,6 +120,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     seen.current.add(id);
     if (seen.current.size > 1000)
       seen.current.delete(seen.current.values().next().value!);
+    // Consume notices during setup without queuing them for after the wizard.
+    if (suppressed.current) return;
     if (!allowsNotification(preferences, input.tone, input.phase)) return;
     const notice = { ...input, id, durationMs: preferences.seconds * 1000 };
     setToasts((current) => [...current, notice].slice(-3));
