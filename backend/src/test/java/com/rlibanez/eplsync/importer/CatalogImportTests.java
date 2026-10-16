@@ -53,7 +53,7 @@ class CatalogImportTests {
 
     @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
 
-    @Test void scheduledImportProgressUsesDebugAndManualProgressRemainsInfo() throws Exception {
+    @Test void importProgressUsesDebugForManualAndScheduledRuns() throws Exception {
         var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CatalogBookCsvImporter.class);
         var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
         var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
@@ -64,7 +64,11 @@ class CatalogImportTests {
             assertThat(capture.list).anyMatch(e -> e.getFormattedMessage().contains("Progreso importación") && e.getLevel()==ch.qos.logback.classic.Level.DEBUG);
             assertThat(capture.list).noneMatch(e -> e.getLevel()==ch.qos.logback.classic.Level.INFO);
             capture.list.clear();importer.importFile(file,false);
-            assertThat(capture.list).anyMatch(e -> e.getFormattedMessage().contains("Progreso importación") && e.getLevel()==ch.qos.logback.classic.Level.INFO);
+            assertThat(capture.list).anyMatch(e -> e.getFormattedMessage().contains("Progreso importación") && e.getLevel()==ch.qos.logback.classic.Level.DEBUG);
+            assertThat(capture.list).noneMatch(e -> e.getLevel()==ch.qos.logback.classic.Level.INFO);
+            capture.list.clear();logger.setLevel(ch.qos.logback.classic.Level.INFO);
+            importer.importFile(file,false);
+            assertThat(capture.list).noneMatch(e -> e.getFormattedMessage().contains("Progreso importación"));
         } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
     }
     @Test void expiryBeforeCommitRollsBackReplacementAndUpdate() throws Exception {

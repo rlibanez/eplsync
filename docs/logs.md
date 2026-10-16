@@ -35,8 +35,9 @@ inicia desde una vista, con **Ejecutar ahora** o por horario:
 | Vinculación de un torrent y eliminación del ZIP de catálogo caducado | INFO una vez al aplicar el cambio |
 | Retención de trabajos | INFO si elimina trabajos; WARN con los contadores si queda incompleta |
 
-El progreso de las importaciones programadas y el inicio de su sincronización
-Torrent pueden usar DEBUG. El resumen genérico de una tarea correcta también se
+El progreso de las importaciones se registra siempre en DEBUG, tanto en ejecuciones
+manuales como programadas. El inicio de la sincronización Torrent programada
+también usa DEBUG. El resumen genérico de una tarea correcta también se
 mantiene en DEBUG para acompañar el resumen INFO de su operación sin duplicarlo
 en el nivel habitual. Los fallos de tareas conservan su diagnóstico WARN.
 
