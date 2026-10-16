@@ -40,11 +40,15 @@ export function useUnreadEvents(enabled = true) {
   const result = useQuery({
     queryKey: ["event-unread", accountId, read, individual],
     enabled: enabled && auth.can("EVENTS_MANAGE"),
-    queryFn: () =>
-      post<{ count: number; cursor: number }>("/events/unread", {
-        afterId: read,
-        readIds: readItems(individual),
-      }),
+    queryFn: ({ signal }) =>
+      post<{ count: number; cursor: number }>(
+        "/events/unread",
+        {
+          afterId: read,
+          readIds: readItems(individual),
+        },
+        signal,
+      ),
   });
   useEffect(() => {
     // A replaced/restored database can have a lower sequence than this browser.

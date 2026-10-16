@@ -470,3 +470,39 @@ for (const enabled of [true, false]) {
     ).toHaveCount(enabled ? 3 : 0);
   });
 }
+
+test("an event arriving during the initial unread request cannot leave the badge at zero", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let initialRequested = false;
+  const entries: (typeof historical)[] = [];
+  await page.route("**/api/events/unread**", async (route) => {
+    const after = Number(route.request().postDataJSON()?.afterId ?? 0);
+    const response = {
+      count: entries.filter((event) => event.id > after).length,
+      cursor: entries.at(-1)?.id ?? 0,
+    };
+    if (!entries.length) {
+      initialRequested = true;
+      await pending;
+    }
+    await route.fulfill({ json: response }).catch(() => {});
+  });
+  await page.goto("/settings/general");
+  await expect.poll(() => initialRequested).toBe(true);
+  const event = { ...historical, id: 4, operationId: "during-unread-load" };
+  entries.push(event);
+  // Wait for delivery as well as mount: the stream may connect after the first request.
+  await expect
+    .poll(async () => {
+      await emitEvent(page, event);
+      return page.locator(".notification-toasts").getByRole("status").count();
+    })
+    .toBe(1);
+  release();
+  await expect(page.locator(".event-unread-count")).toHaveText("1");
+});

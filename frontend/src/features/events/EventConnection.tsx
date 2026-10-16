@@ -1,4 +1,5 @@
 import { useAuth } from "../auth/Auth";
+import { refreshUnreadEvents } from "./refreshUnreadEvents";
 import { subscribeEventStream } from "./sharedEventStream";
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -30,7 +31,7 @@ export function EventConnection() {
     };
     const refresh = () => {
       void cache.invalidateQueries({ queryKey: ["events"] });
-      void cache.invalidateQueries({ queryKey: ["event-unread"] });
+      void refreshUnreadEvents(cache);
     };
     channel.addEventListener("ready", (message) => {
       const data = JSON.parse((message as MessageEvent).data);
