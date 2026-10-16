@@ -20,6 +20,32 @@ La política depende de la operación, tanto desde su vista como desde una tarea
 
 El resto de operaciones mantiene su registro habitual. Telegram conserva su configuración independiente y solo avisa de tareas con las notificaciones habilitadas.
 
+## Resúmenes de operaciones y mantenimiento
+
+El nivel del resumen final depende del resultado y de la operación, no de si se
+inicia desde una vista, con **Ejecutar ahora** o por horario:
+
+| Operación | Resumen final correcto |
+| --- | --- |
+| Importación del catálogo | INFO, después de confirmar la transacción |
+| Sincronización de Torrent y Calibre | INFO |
+| Búsqueda de actualizaciones del catálogo y de Calibre | INFO, después de guardar los resultados |
+| Envíos a Torrent y Calibre | INFO por trabajo; los elementos conservan su detalle propio |
+| Comprobación de portadas y de versiones de EPL Sync | INFO |
+| Vinculación de un torrent y eliminación del ZIP de catálogo caducado | INFO una vez al aplicar el cambio |
+| Retención de trabajos | INFO si elimina trabajos; WARN con los contadores si queda incompleta |
+
+El progreso de las importaciones programadas y el inicio de su sincronización
+Torrent pueden usar DEBUG. El resumen genérico de una tarea correcta también se
+mantiene en DEBUG para acompañar el resumen INFO de su operación sin duplicarlo
+en el nivel habitual. Los fallos de tareas conservan su diagnóstico WARN.
+
+Los ciclos sin actividad de limpieza, retención, temporales y colas no generan
+un resumen INFO en cada comprobación. Los errores de mantenimiento conservan
+WARN o ERROR según su gravedad. Una entrega fallida de Telegram emite un solo
+WARN final; el diagnóstico técnico se escribe en DEBUG y el siguiente ciclo no
+repite la entrega terminal.
+
 ## Consultar los logs
 
 Desde la carpeta de la instalación:

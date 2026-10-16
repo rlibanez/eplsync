@@ -183,7 +183,7 @@ public class TelegramNotifications {
                 sent=response.success();retry=response.retryable();delay=response.retryAfter();
                 if(!sent) log.debug("Entrega de Telegram fallida: id={}, motivo={}, httpStatus={}, errorCode={}",id,response.failure(),response.httpStatus(),response.errorCode());
             }
-        } catch(RuntimeException ex) {log.warn("No se pudo enviar una notificación de Telegram: tipo={}",ex.getClass().getSimpleName());}
+        } catch(RuntimeException ex) {log.debug("Detalle de entrega de Telegram fallida: id={}, tipo={}",id,ex.getClass().getSimpleName());}
         int attempts=((Number)delivery.get("attempts")).intValue()+1;
         jdbc.update("UPDATE telegram_deliveries SET state=?,next_attempt=? WHERE id=? AND state='SENDING'",sent?"SENT":retry && attempts<3?"PENDING":"FAILED",Instant.now().toEpochMilli()+delay*1000L,id);
         if(!sent && (!retry || attempts>=3)) log.warn("Notificación de Telegram no entregada: id={}",id);

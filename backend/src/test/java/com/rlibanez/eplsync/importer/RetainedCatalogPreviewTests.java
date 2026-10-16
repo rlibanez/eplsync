@@ -146,6 +146,23 @@ class RetainedCatalogPreviewTests {
         verify(downloader, times(1)).download(anyString(),anyString(),anyString());
         assertThat(books.count()).isZero(); assertThat(metadata.count()).isZero();
     }
+    @Test void archiveExpiryLogsOnceAtInfoForEitherOriginAndQuietTicksStaySilent() {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CatalogImportStore.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
+            for(var origin:java.util.List.of(com.rlibanez.eplsync.events.EventContext.Origin.MANUAL,com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED)) {
+                service.previewCatalog(null,0,50);
+                var a=store.archive();
+                var expired=new CatalogImportStore.Archive(a.id(),a.name(),a.sourceUrl(),a.storedAt(),Instant.EPOCH,a.size(),a.sha256(),a.csvName(),a.csvModifiedAt());
+                org.springframework.test.util.ReflectionTestUtils.setField(store,"state",new CatalogImportStore.State(expired,null));
+                capture.list.clear();
+                com.rlibanez.eplsync.events.EventContext.withOrigin(origin,()->{store.prune();store.prune();return null;});
+                assertThat(capture.list).singleElement().satisfies(e->{assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.INFO);assertThat(e.getFormattedMessage()).isEqualTo("ZIP de importación eliminado por caducidad");});
+                assertThat(store.archive()).isNull();assertThat(Files.exists(cache.resolve("catalog.zip"))).isFalse();
+            }
+        } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
+    }
     @Test void newDownloadReplacesPreviousZipAndExpiryRemovesEverything() throws Exception {
         var first = service.previewCatalog(null,0,50).summary().preview().token();
         var oldArchive = store.archive().id();

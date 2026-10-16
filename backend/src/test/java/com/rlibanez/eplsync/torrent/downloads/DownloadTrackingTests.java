@@ -169,6 +169,21 @@ class DownloadTrackingTests {
         verify(stubClient, never()).addTorrent(any());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=com.rlibanez.eplsync.events.EventContext.Origin.class,names={"MANUAL","SCHEDULED"})
+    void linkResultLogsOnceAtInfoForEitherOrigin(com.rlibanez.eplsync.events.EventContext.Origin origin) {
+        book(1.8,HASH);
+        when(stubClient.listTorrents()).thenReturn(List.of(new RemoteTorrent(OTHER,DownloadStatus.DOWNLOADING,null)));
+        var request=new DownloadTrackingService.LinkRequest(tracking.instanceId(),OTHER,32L,1.7);
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(DownloadTrackingService.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
+            com.rlibanez.eplsync.events.EventContext.withOrigin(origin,()->service.linkDownload(request));
+            com.rlibanez.eplsync.events.EventContext.withOrigin(origin,()->service.linkDownload(request));
+            assertThat(capture.list).singleElement().satisfies(e->{assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.INFO);assertThat(e.getFormattedMessage()).startsWith("Torrent vinculado:");});
+        } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
+    }
     @Test void manualLinkRejectsStaleMissingAndInvalidInputs() {
         book(1.8, HASH);
         var request = new DownloadTrackingService.LinkRequest(tracking.instanceId(), OTHER, 32L, 1.7);

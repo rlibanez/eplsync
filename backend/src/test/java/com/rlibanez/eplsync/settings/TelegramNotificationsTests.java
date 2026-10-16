@@ -204,6 +204,22 @@ class TelegramNotificationsTests {
         assertThat(queued()).isZero();notify("owner-job",EventJournal.Outcome.FAILED);
         jdbc.update("DELETE FROM users WHERE id=?",owner.id());assertThat(queued()).isZero();
     }
+    @Test void failedDeliveryHasOneWarningAndDoesNotRepeatOnTheNextTick() {
+        save();notify("transport-failure",EventJournal.Outcome.FAILED);
+        when(client.send(anyString(),anyString(),anyString())).thenThrow(new IllegalStateException("private transport details"));
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(TelegramNotifications.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
+            telegram.deliver();telegram.deliver();
+            assertThat(capture.list).filteredOn(e->e.getLevel()==ch.qos.logback.classic.Level.WARN).singleElement()
+                .satisfies(e->assertThat(e.getFormattedMessage()).startsWith("Notificación de Telegram no entregada:"));
+            assertThat(capture.list).filteredOn(e->e.getLevel()==ch.qos.logback.classic.Level.DEBUG).hasSize(1);
+            assertThat(capture.list).allSatisfy(e->assertThat(e.getFormattedMessage()).doesNotContain(TOKEN,"private transport details"));
+            assertThat(jdbc.queryForObject("SELECT state FROM telegram_deliveries",String.class)).isEqualTo("FAILED");
+            verify(client,times(1)).send(anyString(),anyString(),anyString());
+        } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
+    }
     @Test void retriesKnownProviderFailuresAtMostThreeTimesAndNeverReplaysUncertainSends() {
         save();notify("retry",EventJournal.Outcome.FAILED);
         when(client.send(anyString(),anyString(),anyString())).thenReturn(new TelegramClient.Result(false,true,1));

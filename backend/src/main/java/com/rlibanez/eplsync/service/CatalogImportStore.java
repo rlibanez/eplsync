@@ -147,7 +147,7 @@ public class CatalogImportStore {
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 60000)
     public synchronized void prune() {
         if (state != null && !state.archive().expiresAt().isAfter(Instant.now())) {
-            clear(); com.rlibanez.eplsync.events.EventContext.routineLog(log).log("ZIP de importación eliminado por caducidad");
+            clear(); log.info("ZIP de importación eliminado por caducidad");
         }
     }
     private void remove(Path file) {

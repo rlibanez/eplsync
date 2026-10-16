@@ -47,7 +47,7 @@ class CatalogMetadataTests {
         assertThat(entries).hasSize(2);
         assertThat(entries).allSatisfy(entry -> {
             assertThat(entry.action()).isEqualTo("PREVIEW");
-            assertThat(entry.details().get("dryRun")).isEqualTo(true);
+            assertThat(entry.details()).doesNotContainKey("dryRun");
         });
         assertThat(entries.getFirst().outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED);
         assertThat(entries.getLast().outcome()).isEqualTo(com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);

@@ -35,6 +35,22 @@ class BulkRetentionTests {
         cleanup.deleteAll(); plans.deleteAll(); items.deleteAll(); jobs.deleteAll(); downloads.deleteAll();
     }
 
+    @Test void retentionHasOneSummaryForSuccessOrPartialFailureAndNoIdleSummary() {
+        var store=org.mockito.Mockito.mock(BulkRetentionStore.class);
+        var timer=new BulkRetention(store,new com.rlibanez.eplsync.maintenance.MaintenanceGate());
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(BulkRetention.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
+            org.mockito.Mockito.when(store.purgeOne(org.mockito.ArgumentMatchers.any())).thenReturn(new BulkRetentionStore.Result(1,2,3),new BulkRetentionStore.Result(0,0,0));
+            timer.tick();
+            assertThat(capture.list).singleElement().satisfies(e->{assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.INFO);assertThat(e.getFormattedMessage()).contains("trabajos=1", "elementos=2", "limpiezasFinalizadas=3");});
+            capture.list.clear();timer.tick();assertThat(capture.list).isEmpty();
+            org.mockito.Mockito.when(store.purgeOne(org.mockito.ArgumentMatchers.any())).thenReturn(new BulkRetentionStore.Result(1,2,3)).thenThrow(new IllegalStateException("failure"));
+            timer.tick();
+            assertThat(capture.list).singleElement().satisfies(e->{assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.WARN);assertThat(e.getFormattedMessage()).contains("incompleta", "trabajos=1", "elementos=2", "limpiezasFinalizadas=3");});
+        } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
+    }
     private BulkJob job(BulkJob.State state, Instant updated) {
         var job=new BulkJob();job.setId(UUID.randomUUID().toString());job.setState(state);
         job.setCreatedAt(now.minus(Duration.ofDays(200)));job.setUpdatedAt(updated);

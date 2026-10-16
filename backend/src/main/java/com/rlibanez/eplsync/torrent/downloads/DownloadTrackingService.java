@@ -215,7 +215,12 @@ public class DownloadTrackingService {
                     row.setDiscoveredAt(now);
                     observe(row, torrent, now);
                     entityManager.persist(row);
-                    com.rlibanez.eplsync.events.EventContext.routineLog(log).log("Torrent vinculado: eplId={}, revision={}, hash={}", row.getEplId(), row.getRevision(), row.getHash());
+                    org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                        new org.springframework.transaction.support.TransactionSynchronization() {
+                            @Override public void afterCommit() {
+                                log.info("Torrent vinculado: eplId={}, revision={}, hash={}", row.getEplId(), row.getRevision(), row.getHash());
+                            }
+                        });
                     return row;
                 });
             }

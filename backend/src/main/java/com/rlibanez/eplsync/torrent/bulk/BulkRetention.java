@@ -33,6 +33,7 @@ public class BulkRetention {
         var cutoff = Instant.now().minus(Duration.ofDays(days));
         long deadline = System.nanoTime()+Duration.ofSeconds(10).toNanos();
         long jobs=0, items=0, cleanup=0;
+        boolean failed=false;
         try {
             for (int batch=0; batch<20 && System.nanoTime()<deadline; batch++) {
                 if (Thread.currentThread().isInterrupted() || !maintenance.enter(false)) break;
@@ -43,9 +44,10 @@ public class BulkRetention {
                 if (result.jobs()==0) break;
             }
         } catch (RuntimeException ex) {
-            log.warn("No se pudo completar la retención de trabajos; se reintentará en el siguiente ciclo",ex);
+            failed=true;
+            log.warn("Retención de trabajos incompleta: trabajos={}, elementos={}, limpiezasFinalizadas={}; se reintentará en el siguiente ciclo",jobs,items,cleanup,ex);
         } finally {
-            if (jobs>0) log.info("Retención de trabajos: trabajos={}, elementos={}, limpiezasFinalizadas={}",jobs,items,cleanup);
+            if (jobs>0 && !failed) log.info("Retención de trabajos: trabajos={}, elementos={}, limpiezasFinalizadas={}",jobs,items,cleanup);
         }
     }
 }
