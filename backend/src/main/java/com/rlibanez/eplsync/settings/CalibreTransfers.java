@@ -201,7 +201,9 @@ public class CalibreTransfers {
             var origins=jdbc.queryForList("SELECT r.context FROM scheduled_automation_runs r JOIN scheduled_automation_jobs j ON j.run_id=r.id WHERE j.kind='calibre' AND j.job_id=?",String.class,job);
             if(!origins.isEmpty()) {origin=EventContext.Origin.valueOf(origins.getFirst());}
         }
-        var level=origin!=EventContext.Origin.SCHEDULED && action.equals("CALIBRE_SEND") && Set.of(EventJournal.Outcome.STARTED,EventJournal.Outcome.SUCCEEDED,EventJournal.Outcome.PARTIAL).contains(outcome) ? log.atInfo() : log.atDebug();
+        boolean finalSummary=action.equals("CALIBRE_SEND") && Set.of(EventJournal.Outcome.SUCCEEDED,EventJournal.Outcome.PARTIAL).contains(outcome);
+        boolean manualStart=origin!=EventContext.Origin.SCHEDULED && action.equals("CALIBRE_SEND") && outcome==EventJournal.Outcome.STARTED;
+        var level=finalSummary || manualStart ? log.atInfo() : log.atDebug();
         level.log("Trabajo de Calibre: operación={}, acción={}, resultado={}, userId={}, usuario={}, detalles={}",id,action,outcome,actor.id(),actor.username(),details);
         if(action.equals("CALIBRE_SEND_FILE")) return;
         if(!action.equals("CALIBRE_JOB_CONTROL") && !Set.of(EventJournal.Outcome.FAILED,EventJournal.Outcome.PARTIAL).contains(outcome)) {

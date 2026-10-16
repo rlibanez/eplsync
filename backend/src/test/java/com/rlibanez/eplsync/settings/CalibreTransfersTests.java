@@ -132,7 +132,12 @@ class CalibreTransfersTests {
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value=EventContext.Origin.class,names={"MANUAL","SCHEDULED"})
     void taskCalibreJobsOnlyRecordProblemsForEitherOrigin(EventContext.Origin origin) {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CalibreTransfers.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
         for(boolean fail:List.of(false,true)) {
+            capture.list.clear();
             String task=UUID.randomUUID().toString(),run=UUID.randomUUID().toString();
             jdbc.update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,created_at,updated_at) VALUES(?,'Calibre','CALIBRE_AUTO_UPDATE','0 5 * * *','UTC',?,'Owner',0,0,0)",task,owner.id());
             var job=EventContext.withOrigin(origin,()->com.rlibanez.eplsync.tasks.AutomationContext.run(this::create));
@@ -146,7 +151,12 @@ class CalibreTransfersTests {
                 assertThat(events).extracting(e->e.get("outcome")).containsExactly("STARTED","PARTIAL");
                 assertThat(events).allSatisfy(event->assertThat(event.get("origin")).isEqualTo(origin.name()));
             } else assertThat(events).isEmpty();
+            assertThat(capture.list).filteredOn(e->e.getFormattedMessage().contains("acción=CALIBRE_SEND,") && e.getFormattedMessage().contains("resultado="+(fail?"PARTIAL":"SUCCEEDED")))
+                .singleElement().satisfies(e->assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.INFO));
+            assertThat(capture.list).filteredOn(e->e.getFormattedMessage().contains("acción=CALIBRE_SEND_FILE,"))
+                .isNotEmpty().allSatisfy(e->assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.DEBUG));
         }
+        } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
     }
     @Test void sendsAndPublishesVerifiedBookWithoutSuccessfulHistoryEvent() {
         var job=create();transfers.cycle();
