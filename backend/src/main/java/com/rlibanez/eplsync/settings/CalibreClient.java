@@ -168,6 +168,18 @@ public class CalibreClient {
         for(var format:book.path("formats")) if(format.asString().equalsIgnoreCase("EPUB")) return true;
         return false;
     }
+    public List<String> formats(CalibreSettings.Connection c,long id) {
+        return limited(() -> {
+            var values=get(c,"/ajax/book/"+id+"/"+segment(c.library())).path("formats");
+            if(!values.isArray() || values.size()>32) throw failure("Calibre no devolvió los formatos; no se puede preparar el borrado");
+            var formats=new ArrayList<String>();
+            for(var value:values) {
+                if(!value.isString() || value.asString().length()>32) throw failure("Formato de Calibre inválido");
+                formats.add(value.asString().toUpperCase(java.util.Locale.ROOT));
+            }
+            return List.copyOf(formats);
+        });
+    }
     /** Delete calls are never retried by the HTTP client. The queue verifies their result separately. */
     public void remove(CalibreSettings.Connection c,long id,boolean entireBook) {
         limited(() -> {

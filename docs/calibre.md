@@ -303,3 +303,7 @@ vista no consulta al servidor ni recalcula la comparación. La primera vez se
 muestra la tabla vacía. **Buscar actualizaciones** renueva el resultado; si
 falla, se conserva la búsqueda anterior. Borrar los datos del sitio elimina
 estas búsquedas guardadas; no se comparten entre dispositivos.
+
+## Limpieza manual de revisiones antiguas
+
+Consulta [Limpiar revisiones antiguas](limpieza-revisiones.md) para preparar una limpieza con previsualización, selección y seguimiento por trabajo.

@@ -26,6 +26,7 @@ public class DatabaseResetService {
     @org.springframework.beans.factory.annotation.Autowired(required=false) private com.rlibanez.eplsync.tasks.ScheduledTasks scheduledTasks;
     @org.springframework.beans.factory.annotation.Autowired(required=false) private com.rlibanez.eplsync.tasks.InternalTaskSettings internalTasks;
     private final com.rlibanez.eplsync.service.CatalogOperationGate catalogOperations;
+    @org.springframework.beans.factory.annotation.Autowired private ObjectProvider<com.rlibanez.eplsync.settings.RevisionCleanup> revisionCleanup;
     private final BulkStore bulk;
     private final ObjectProvider<BulkWorker> workers;
     private final DownloadTrackingService tracking;
@@ -50,7 +51,8 @@ public class DatabaseResetService {
     }
     public ResetResult reset(boolean eraseUsersAndSettings) {
         java.util.function.Supplier<ResetResult> action=() -> calibreTransfers.exclusive(() -> calibre.exclusive(() -> catalogOperations.run(() -> resetAdmitted(eraseUsersAndSettings))));
-        return scheduledTasks==null ? action.get() : scheduledTasks.exclusive(action);
+        java.util.function.Supplier<ResetResult> guarded=() -> revisionCleanup.getObject().exclusive(action);
+        return scheduledTasks==null ? guarded.get() : scheduledTasks.exclusive(guarded);
     }
     private ResetResult resetAdmitted(boolean eraseUsersAndSettings) {
         // Worker dispatch and job creation use this same monitor. Do not hold a
@@ -66,6 +68,7 @@ public class DatabaseResetService {
                     if (em.createQuery("select count(i) from BulkItem i where i.state = "
                             + "com.rlibanez.eplsync.torrent.bulk.BulkItem.State.IN_FLIGHT", Long.class)
                             .getSingleResult() > 0) throw busy();
+                    em.createNativeQuery("DELETE FROM revision_cleanup_jobs").executeUpdate();
                     em.createNativeQuery("DELETE FROM telegram_deliveries").executeUpdate();
                     em.createNativeQuery("DELETE FROM scheduled_automation_runs").executeUpdate();
                     em.createNativeQuery("DELETE FROM job_retry_items").executeUpdate();

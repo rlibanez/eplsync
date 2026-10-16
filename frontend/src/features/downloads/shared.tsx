@@ -145,7 +145,7 @@ export const itemStates = [
   "CANCELLED",
 ];
 export interface Job {
-  type?: "DOWNLOAD" | "UPDATE";
+  type?: "DOWNLOAD" | "UPDATE" | "CLEANUP";
   previousVersions?: string | null;
   cleanupTiming?: "immediate" | "afterDownload" | null;
   cleanup?: {

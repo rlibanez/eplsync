@@ -6,8 +6,8 @@ import org.springframework.http.HttpStatus;
 import java.util.*;
 
 /** Shared validation for explicit removal and deferred cleanup. Paths belong to the remote client. */
-final class TorrentRemovalSafety {
-    static Map<String, RemoteTorrent> index(List<RemoteTorrent> remote) {
+public final class TorrentRemovalSafety {
+    public static Map<String, RemoteTorrent> index(List<RemoteTorrent> remote) {
         var result = new HashMap<String, RemoteTorrent>();
         for (var torrent : remote) for (var hash : torrent.aliases()) {
             var previous = result.putIfAbsent(hash, torrent);
@@ -16,9 +16,9 @@ final class TorrentRemovalSafety {
         }
         return result;
     }
-    record Paths(NavigableMap<String, Integer> counts, Set<String> uncertainRoots, boolean complete) {}
-    enum PathSafety { EXCLUSIVE, UNKNOWN, SHARED }
-    static Paths paths(List<RemoteTorrent> remote) {
+    public record Paths(NavigableMap<String, Integer> counts, Set<String> uncertainRoots, boolean complete) {}
+    public enum PathSafety { EXCLUSIVE, UNKNOWN, SHARED }
+    public static Paths paths(List<RemoteTorrent> remote) {
         var counts = new TreeMap<String, Integer>();
         boolean complete = true;
         var uncertainRoots=new HashSet<String>();
@@ -36,7 +36,7 @@ final class TorrentRemovalSafety {
         return new Paths(counts, Set.copyOf(uncertainRoots), complete);
     }
     static boolean exclusivePath(RemoteTorrent torrent, Paths paths) {return assess(torrent,paths)==PathSafety.EXCLUSIVE;}
-    static PathSafety assess(RemoteTorrent torrent, Paths paths) {
+    public static PathSafety assess(RemoteTorrent torrent, Paths paths) {
         var path=normalize(torrent.contentPath());
         if(path==null) return PathSafety.UNKNOWN;
         if(paths.counts().getOrDefault(path,0)!=1) return PathSafety.SHARED;

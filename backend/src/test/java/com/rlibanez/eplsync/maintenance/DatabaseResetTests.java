@@ -34,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DatabaseResetTests {
     @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired DatabaseResetService service;
+    @Autowired org.springframework.context.ApplicationContext application;
     @Autowired CatalogImportService catalog;
     @MockitoBean FileDownloader downloader;
     @Autowired EntityManager em;
@@ -119,6 +120,7 @@ class DatabaseResetTests {
         @SuppressWarnings("unchecked") ObjectProvider<BulkWorker> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(worker);
         var guarded = new DatabaseResetService(bulk,provider,tracking,em,manager,new com.rlibanez.eplsync.service.CatalogOperationGate(new com.rlibanez.eplsync.config.CatalogImportProperties()));
+        org.springframework.test.util.ReflectionTestUtils.setField(guarded,"revisionCleanup",application.getBeanProvider(com.rlibanez.eplsync.settings.RevisionCleanup.class));
         org.springframework.test.util.ReflectionTestUtils.setField(guarded,"calibre",calibre);
         org.springframework.test.util.ReflectionTestUtils.setField(guarded,"calibreTransfers",calibreTransfers);
         when(worker.hasInFlightSends()).thenReturn(true);

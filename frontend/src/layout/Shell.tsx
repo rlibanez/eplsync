@@ -78,7 +78,9 @@ function ShellContent() {
       to: "/downloads/jobs",
       label: "nav.jobs",
       Icon: ListChecks,
-      visible: auth.can("TORRENT_JOBS_MANAGE"),
+      visible:
+        auth.can("TORRENT_JOBS_MANAGE") ||
+        (auth.can("TORRENT_SYNC") && auth.can("DOWNLOADS_DELETE")),
     },
   ].filter((item) => item.visible);
   const mobile = useMediaQuery("(max-width: 700px)");
@@ -197,7 +199,8 @@ function ShellContent() {
                 <span className="nav-text">{t("nav.updates")}</span>
               </NavLink>
               {(auth.can("CALIBRE_SEND") ||
-                auth.can("CALIBRE_JOBS_MANAGE")) && (
+                auth.can("CALIBRE_JOBS_MANAGE") ||
+                (auth.can("CALIBRE_READ") && auth.can("CALIBRE_DELETE"))) && (
                 <NavLink
                   to="/calibre/jobs"
                   aria-label={t("nav.jobs")}

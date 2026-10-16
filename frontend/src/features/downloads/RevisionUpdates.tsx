@@ -1,6 +1,7 @@
 import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import {
+  isSavedSearchChanged,
   latestSavedSearch,
   savedSearchPage,
   savedSearchUrl,
@@ -53,6 +54,7 @@ export function RevisionUpdates() {
     session.setView({ registeredStatus });
   const [selected, setSelected] = useState<number[]>([]);
   const [sending, setSending] = useState(false);
+  const [searching, setSearching] = useState(false);
   const defaults = useQuery({
     queryKey: ["update-preferences"],
     queryFn: ({ signal }) =>
@@ -70,8 +72,10 @@ export function RevisionUpdates() {
     queryKey: ["saved-download-updates", auth.user?.id],
     queryFn: ({ signal }) => latestSavedSearch("downloads", signal),
     refetchInterval: 30000,
+    enabled: !searching,
   });
   useEffect(() => {
+    if (searching) return;
     if (previousSearch.data === null && search) {
       setSelected([]);
       session.setView({ page: 0, search: null });
@@ -91,7 +95,7 @@ export function RevisionUpdates() {
         },
       });
     }
-  }, [previousSearch.data, search]);
+  }, [previousSearch.data, search, searching]);
   const savedUrl = savedSearchUrl("downloads", search?.generation ?? 0, sort, {
     status: registeredStatus ?? "",
   });
@@ -107,7 +111,10 @@ export function RevisionUpdates() {
     ],
     queryFn: ({ signal }) =>
       savedSearchPage<Update>(savedUrl, page, size, signal),
-    enabled: search !== null,
+    enabled:
+      !searching &&
+      search !== null &&
+      previousSearch.data?.searchedAt === search.generation,
     staleTime: Infinity,
     gcTime: Infinity,
     refetchOnMount: false,
@@ -122,8 +129,25 @@ export function RevisionUpdates() {
         predicate: (query) => query.getObserversCount() === 0,
       });
   }, [cache, auth.user?.id, result.data]);
+  useEffect(() => {
+    if (!searching && isSavedSearchChanged(result.error)) {
+      setSelected([]);
+      void previousSearch.refetch();
+    }
+  }, [result.error, searching]);
   const find = useMutation({
     mutationKey: ["torrent-sync"],
+    onMutate: async () => {
+      setSearching(true);
+      setSelected([]);
+      await Promise.all([
+        cache.cancelQueries({
+          queryKey: ["saved-download-updates", auth.user?.id],
+        }),
+        cache.cancelQueries({ queryKey: ["revision-updates", auth.user?.id] }),
+      ]);
+    },
+    onSettled: () => setSearching(false),
     mutationFn: () =>
       post<import("./SavedUpdateSearch").SavedSearch>(
         "/settings/tasks/searches/downloads",
@@ -135,6 +159,7 @@ export function RevisionUpdates() {
       cache.setQueryData(["saved-download-updates", auth.user?.id], saved);
       void cache.invalidateQueries({
         queryKey: ["revision-updates", auth.user?.id],
+        refetchType: "none",
       });
       setPage(0);
       setRegisteredStatus(null);
@@ -270,7 +295,7 @@ export function RevisionUpdates() {
             )
           }
         />
-        {result.isFetching ? (
+        {searching || result.isFetching ? (
           <Loading />
         ) : result.isError ? (
           <Failure error={result.error} retry={() => result.refetch()} />

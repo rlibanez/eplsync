@@ -53,7 +53,9 @@ public class HistoryActions {
     }
     public record HistoryDeletion(Long eplId,List<String> ids,Boolean confirm) {}
     public record DeletionResult(int deleted,long pendingCleanup) {}
-    public DeletionResult deleteHistory(HistoryDeletion request,boolean preview) {
+    public DeletionResult deleteHistory(HistoryDeletion request,boolean preview) {return deleteHistory(request,preview,true);}
+    public DeletionResult deleteRevisionHistory(Long eplId,String id) {return deleteHistory(new HistoryDeletion(eplId,List.of(id),true),false,false);}
+    private DeletionResult deleteHistory(HistoryDeletion request,boolean preview,boolean audited) {
         requireReadAccess();
         Permission.require(Permission.DOWNLOADS_DELETE);
         if(request==null) throw new UserInputException("Selecciona registros del historial");
@@ -65,7 +67,7 @@ public class HistoryActions {
             if(!preview) { downloads.deleteAll(rows);downloads.flush(); }
             return new DeletionResult(preview ? 0 : rows.size(),pending);
         });
-        if(preview) return operation.get();
+        if(preview || !audited) return operation.get();
         return events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOAD_HISTORY",eventScope(selection),
             operation,r -> Map.of("historyDeleted",r.deleted(),"pendingCleanup",r.pendingCleanup()));
     }
@@ -100,10 +102,12 @@ public class HistoryActions {
         }
         return new RemovalResult(outcomes.stream().map(r -> new RemovalItem(r.id(),r.status(),r.cleanupState(),r.message(),deleted.contains(r.id()))).toList());
     }
-    public Result refresh(Selection selection) {
+    public Result refresh(Selection selection) {return refresh(selection,true);}
+    public Result refreshRevision(Selection selection) {return refresh(selection,false);}
+    private Result refresh(Selection selection,boolean audited) {
         Permission.require(Permission.TORRENT_SYNC);
         requireSelection(selection);
-        return events.run(EventJournal.Category.TORRENT,"REFRESH_DOWNLOADS",eventScope(selection),() ->
+        java.util.function.Supplier<Result> operation=() ->
             client.exclusiveClient(adapter -> {
                 var rows=validate(selection);
                 var hashes=new HashSet<String>(); rows.forEach(r -> hashes.add(r.getHash()));
@@ -114,10 +118,17 @@ public class HistoryActions {
                     && !entries.findByClientInstanceIdAndHashInAndStateIn(tracking.instanceId(),Set.of(hash),CleanupQueue.PENDING).isEmpty())
                     queue.resolve(Set.of(hash));
                 return result(selection.ids());
-            }),r -> Map.of("checked",r.items().size()));
+            });
+        return audited?events.run(EventJournal.Category.TORRENT,"REFRESH_DOWNLOADS",eventScope(selection),operation,r -> Map.of("checked",r.items().size())):operation.get();
     }
     public Result remove(Selection selection) { return remove(selection,false); }
-    public Result remove(Selection selection,boolean retryUnconfirmed) {
+    public Result remove(Selection selection,boolean retryUnconfirmed) {return remove(selection,retryUnconfirmed,null,remote->{},true);}
+    /** Manual cleanup jobs own their single summary; use the existing durable removal and path guards. */
+    public Result removeRevision(Selection selection,String jobId,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard) {
+        if(jobId==null || !jobId.matches("[a-f0-9-]{36}")) throw new UserInputException("Trabajo de limpieza inválido");
+        return remove(selection,false,"revision:"+jobId,guard,false);
+    }
+    private Result remove(Selection selection,boolean retryUnconfirmed,String provenance,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard,boolean audited) {
         Permission.require(Permission.TORRENT_CLEANUP);
         requireSelection(selection);
         java.util.Objects.requireNonNull(selection);
@@ -127,18 +138,18 @@ public class HistoryActions {
             if (!Boolean.TRUE.equals(selection.confirmFiles())) throw new UserInputException("Confirma la eliminación irreversible de los archivos");
         }
         var scope=new LinkedHashMap<String,Object>(eventScope(selection));scope.put("deleteFiles",files);
-        return events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOADS",scope,() ->
-            client.exclusiveClient(adapter -> {
+        java.util.function.Supplier<Result> operation=() -> client.exclusiveClient(adapter -> {
                 var rows=validate(selection);
                 // Validate the complete response before persisting any removal intent.
                 var remote=adapter.listTorrents(); TorrentRemovalSafety.index(remote);
+                guard.accept(remote);
                 var actor=EventContext.actor();
                 var requests=tx.execute(status -> {
                 var pending=new ArrayList<UpdateCleanup>();
                 for (var row:rows) {
                     var entry=new UpdateCleanup();
                     // A provenance token also works with SQLite installations retaining the old NOT NULL job_id constraint.
-                    entry.setJobId("manual:"+entry.getId()); entry.setDownloadId(row.getId()); entry.setEplId(row.getEplId());entry.setHash(row.getHash());
+                    entry.setJobId(provenance==null?"manual:"+entry.getId():provenance); entry.setDownloadId(row.getId()); entry.setEplId(row.getEplId());entry.setHash(row.getHash());
                     entry.setClientInstanceId(row.getClientInstanceId()); entry.setPreviousVersions(files ? PreviousVersions.REMOVE_TORRENT_AND_FILES : PreviousVersions.REMOVE_TORRENT);
                     entry.setTargetHashes("[]");entry.setCreatedAt(Instant.now());entry.setUpdatedAt(entry.getCreatedAt());
                     entry.setAutomatic(false);entry.setImmediate(true);entry.setActorId(actor.id());entry.setActorUsername(actor.username());entry.setActorKind(actor.kind());
@@ -152,7 +163,8 @@ public class HistoryActions {
                     var outcome=byId.get(r.getId());
                     return new Item(r.getId(),r.getStatus(),outcome.state().name(),outcome.message());
                 }).toList());
-            }),r -> Map.of("checked",r.items().size(),"removed",r.items().stream().filter(i -> "REMOVED".equals(i.cleanupState())).count()));
+            });
+        return audited?events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOADS",scope,operation,r -> Map.of("checked",r.items().size(),"removed",r.items().stream().filter(i -> "REMOVED".equals(i.cleanupState())).count())):operation.get();
     }
     private Result result(List<String> ids) {
         return new Result(downloads.findAllById(ids).stream().map(r -> new Item(r.getId(),r.getStatus(),null,null)).toList());

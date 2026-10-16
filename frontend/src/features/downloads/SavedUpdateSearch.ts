@@ -1,4 +1,4 @@
-import { get } from "../../api/catalog";
+import { ApiError, get } from "../../api/catalog";
 import type { Page } from "./shared";
 export interface SavedSearch {
   searchedAt: number;
@@ -36,4 +36,13 @@ export async function latestSavedSearch(
     signal,
   );
   return result.search;
+}
+
+/** A stale generation is recoverable by fetching metadata, never by retrying its rows. */
+export function isSavedSearchChanged(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 400 &&
+    error.details === "La búsqueda guardada ha cambiado; actualiza la vista"
+  );
 }

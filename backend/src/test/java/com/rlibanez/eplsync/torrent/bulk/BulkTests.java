@@ -42,6 +42,7 @@ class BulkTests {
 
     @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired BulkStore store;
+    @Autowired com.rlibanez.eplsync.settings.WorkListings listings;
     @Autowired BulkJobRepository jobs;
     @Autowired BulkItemRepository items;
     @Autowired CatalogBookRepository books;
@@ -368,7 +369,7 @@ class BulkTests {
         assertThat(store.list(0, 20, List.of(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT)).items())
                 .extracting(value -> Objects.requireNonNull(value).status()).containsExactlyInAnyOrder(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT);
         assertThat(store.list(100, 20, null).items()).isEmpty();
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
@@ -403,7 +404,7 @@ class BulkTests {
         assertThat(store.list(0,20,null,"progress,asc",null,null,null,alice.getCreatedAt()).items()).isEmpty();
         assertThatThrownBy(() -> store.list(0,20,null,"username,asc",null,null,bob.getCreatedAt(),alice.getCreatedAt()))
             .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
-        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings))
             .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs")
             .param("username","ali").param("type","UPDATE").param("sort","username,asc"))
@@ -429,7 +430,7 @@ class BulkTests {
         assertThat(filtered.items()).extracting((BulkStore.View entryValue) -> java.util.Objects.requireNonNull(entryValue).jobId()).containsExactly("high");
         for(String invalid:List.of("eventActorUsername,asc","progress,sideways","accepted,asc,failed"))
             assertThatThrownBy(() -> store.list(0,20,null,invalid)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
-        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings))
             .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs").param("sort","progress,desc").param("size","1"))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
@@ -441,7 +442,7 @@ class BulkTests {
         assertThat(store.list(0,1,null,"progress,asc;accepted,desc").items().getFirst().jobId()).isEqualTo("b");
         assertThat(store.list(1,1,null,"progress,asc;accepted,desc").items().getFirst().jobId()).isEqualTo("a");
         assertThat(store.list(0,1,null,"status,asc;jobId,desc").items().getFirst().jobId()).isEqualTo("b");
-        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings))
             .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs")
             .param("sort","progress,asc","accepted,desc").param("size","1"))
@@ -474,7 +475,7 @@ class BulkTests {
         var next = store.details("table-job", 1, 1, null, "title,asc").items().getFirst();
         assertThat(next.eplId()).isEqualTo(2L); assertThat(next.title()).isEqualTo("Alpha");
         assertThat(next.coverUrl()).isEqualTo("https://example.org/cover.jpg");
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings))
             .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/table-job/items")
                 .param("sort", "title,asc").param("size", "1").param("page", "1"))
@@ -515,7 +516,7 @@ class BulkTests {
         rows.get(4).setState(BulkItem.State.FAILED); rows.get(4).setMessage("Envío rechazado");
         items.saveAll(rows);
         create(null); // Otro job no debe contaminar el filtro ni sus contadores.
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         String path = "/api/torrent/jobs/" + job.jobId() + "/items";
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path)
@@ -542,7 +543,7 @@ class BulkTests {
     @Test void endpointsAcceptOverridesAndExposeProgressWithoutSnapshots() throws Exception {
         var conversion = new org.springframework.format.support.DefaultFormattingConversionService();
         new com.rlibanez.eplsync.config.LanguageWebConfiguration().addFormatters(conversion);
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
                 .setConversionService(conversion)
                 .setCustomArgumentResolvers(new org.springframework.data.web.PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();

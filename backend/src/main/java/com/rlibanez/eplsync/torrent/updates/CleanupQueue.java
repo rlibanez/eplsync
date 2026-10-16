@@ -225,6 +225,7 @@ public class CleanupQueue {
         synchronized(bulk) {tx.executeWithoutResult(status -> {
             var changed=new LinkedHashMap<String,UpdateCleanup>();
             for(var candidate:selected) {
+                if(candidate.getJobId()!=null && candidate.getJobId().startsWith("revision:")) continue;
                 var entry=entries.findById(candidate.getId()).orElseThrow();em.refresh(entry);
                 String signature=switch(entry.getState()) {
                     case BLOCKED -> "BLOCKED:"+entry.getMessage();

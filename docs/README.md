@@ -16,6 +16,7 @@
 - [Trabajos](jobs.md): seguimiento, pausa y cancelación de envíos.
 - [Estado e historial de descargas](descargas.md): sincronización y gestión de registros.
 - [Actualizaciones de libros](actualizaciones.md): revisiones nuevas y limpieza de versiones anteriores.
+- [Limpiar revisiones antiguas](limpieza-revisiones.md): previsualización, selección y trabajos de limpieza de descargas y Calibre.
 - [Tareas programadas](tareas-programadas.md): cron, usuario asociado e intervalos de comprobación.
 - [Notificaciones de Telegram](telegram.md): configuración por usuario y avisos de operaciones.
 - [Logs y diagnóstico](logs.md): consultar errores y registros de acceso.

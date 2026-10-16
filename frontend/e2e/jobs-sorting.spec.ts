@@ -50,7 +50,7 @@ test("jobs filter stays compact and headers request sorting before pagination", 
     )
     .toBe(true);
   await page
-    .getByRole("button", { name: "Progreso de envío", exact: true })
+    .getByRole("button", { name: "Progreso", exact: true })
     .click();
   await expect
     .poll(() =>
@@ -66,7 +66,7 @@ test("jobs filter stays compact and headers request sorting before pagination", 
     page.locator('th[data-table-column="progress"]'),
   ).toHaveAttribute("aria-sort", "ascending");
   await page
-    .getByRole("button", { name: "Progreso de envío", exact: true })
+    .getByRole("button", { name: "Progreso", exact: true })
     .click();
   await expect(
     page.locator('th[data-table-column="progress"]'),

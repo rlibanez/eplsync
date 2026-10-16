@@ -117,3 +117,11 @@ docker compose up -d
 ```
 
 Conserva las carpetas de datos, logs y la clave de cifrado.
+
+## Migraciones de base de datos
+
+Flyway ejecuta todas las migraciones versionadas, en orden, al inicializar una base de datos vacía. La primera crea el esquema inicial y las siguientes lo evolucionan hasta el esquema actual. En una actualización, la tabla `flyway_schema_history` permite ejecutar únicamente las pendientes y comprobar los nombres y checksums de las ya aplicadas.
+
+Los números de migración identifican la evolución del **esquema**, no necesariamente la versión del programa. La versión 1.4.1 ya publicó las migraciones `V1_5_0`, `V1_5_0_1` y `V1_5_0_2`; se mantienen sus nombres y contenidos para conservar la compatibilidad. La limpieza manual añade `V1_5_0_3` sin modificar las anteriores. Este archivo también conserva su nombre para instalaciones de pruebas que ya lo hayan aplicado.
+
+Una instalación limpia no utiliza automáticamente una instantánea consolidada. Ese comportamiento exigiría preparar y mantener expresamente una migración de base o un mecanismo de baseline apropiado. No hay que renombrar, consolidar ni modificar las migraciones publicadas, ni reparar checksums para ocultar una modificación.

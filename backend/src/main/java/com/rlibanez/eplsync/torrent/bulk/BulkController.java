@@ -11,13 +11,15 @@ import org.springframework.web.bind.annotation.*;
 public class BulkController {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkController.class);
     private final BulkStore store;
-    public BulkController(BulkStore store) { this.store = store; }
+    private final com.rlibanez.eplsync.settings.WorkListings listings;
+    public BulkController(BulkStore store,com.rlibanez.eplsync.settings.WorkListings listings) { this.store = store;this.listings=listings; }
 
     @GetMapping("/jobs")
-    public PageResponse<BulkStore.View> list(@RequestParam(defaultValue = "0") int page,
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_JOBS_MANAGE') or (hasAuthority('TORRENT_SYNC') and hasAuthority('DOWNLOADS_DELETE'))")
+    public PageResponse<?> list(@RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size, @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "createdAt,desc") String sort,
-            @RequestParam(required=false) BulkJob.Type type, @RequestParam(required=false) String username,
+            @RequestParam(required=false) String type, @RequestParam(required=false) String username,
             @RequestParam(required=false) java.time.Instant from, @RequestParam(required=false) java.time.Instant before,
             jakarta.servlet.http.HttpServletRequest request) {
         var allowed = java.util.Set.of("page", "size", "status", "sort", "type", "username", "from", "before");
@@ -34,7 +36,7 @@ public class BulkController {
             }
         }
         sort = com.rlibanez.eplsync.config.TableOrdering.request(request, "createdAt,desc");
-        synchronized (store) { return store.list(page, size, states, sort,type,username,from,before); }
+        return listings.list("downloads",page,size,states==null?null:states.stream().map(state -> state.name()).toList(),type,username,from,before,sort);
     }
 
     @GetMapping("/jobs/{id}")

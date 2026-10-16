@@ -28,6 +28,7 @@ import { sortQuery } from "../downloads/TableControls";
 import { Paging, post, type Page } from "../downloads/shared";
 
 type Job = {
+  type?: "SEND" | "CLEANUP";
   id: string;
   createdAt: string;
   updatedAt: string;
@@ -152,6 +153,7 @@ export function CalibreJobs() {
   const [page, setPage] = useState(0),
     [size, setSize] = useState(20),
     [state, setState] = useState<string | null>(null),
+    [type, setType] = useState<string | null>(null),
     [username, setUsername] = useState(""),
     [from, setFrom] = useState(""),
     [to, setTo] = useState(""),
@@ -162,10 +164,20 @@ export function CalibreJobs() {
   if (bounds.before) dates.set("before", bounds.before);
   const choice = usePageSizeChoice(size);
   const result = useQuery({
-    queryKey: ["calibre-jobs", page, size, state, username, from, to, sort],
+    queryKey: [
+      "calibre-jobs",
+      page,
+      size,
+      state,
+      type,
+      username,
+      from,
+      to,
+      sort,
+    ],
     queryFn: ({ signal }) =>
       get<Page<Job>>(
-        `/calibre/transfers?page=${page}&size=${size}&state=${state ?? ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
+        `/calibre/transfers?page=${page}&size=${size}&state=${state ?? ""}&type=${type ?? ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
         signal,
       ),
     retry: false,
@@ -176,10 +188,15 @@ export function CalibreJobs() {
     [
       { field: "id", label: "downloads.job", width: 320 },
       { field: "createdAt", label: "downloads.createdAt", width: 200 },
+      { field: "type", label: "downloads.type", width: 140 },
       { field: "library", label: "calibre.library", width: 180 },
       { field: "state", label: "downloads.status", width: 180 },
       { field: "total", label: "calibreSend.filesColumn", width: 100 },
-      { field: "accepted", label: "downloads.accepted", width: 100 },
+      {
+        field: "accepted",
+        label: "revisionCleanup.sentOrRemoved",
+        width: 160,
+      },
       { field: "failed", label: "downloads.failedCount", width: 100 },
       { field: "username", label: "events.user", width: 180 },
     ],
@@ -213,6 +230,19 @@ export function CalibreJobs() {
       </div>
 
       <div className="filters jobs-filters">
+        <Select
+          label={t("downloads.type")}
+          value={type}
+          clearable
+          data={["SEND", "CLEANUP"].map((value) => ({
+            value,
+            label: t(`historyActions.jobTypes.${value}`),
+          }))}
+          onChange={(value) => {
+            setType(value);
+            setPage(0);
+          }}
+        />
         <Select
           label={t("downloads.status")}
           value={state}
@@ -259,6 +289,7 @@ export function CalibreJobs() {
           variant="subtle"
           onClick={() => {
             setState(null);
+            setType(null);
             setUsername("");
             setFrom("");
             setTo("");
@@ -292,12 +323,28 @@ export function CalibreJobs() {
                         <td>
                           <Link
                             className="book-title"
-                            to={`/calibre/jobs/${job.id}`}
+                            to={
+                              job.type === "CLEANUP"
+                                ? `/calibre/jobs/cleanup/${job.id}`
+                                : `/calibre/jobs/${job.id}`
+                            }
                           >
                             {job.id}
                           </Link>
                         </td>,
                         <td>{date(job.createdAt)}</td>,
+                        <td>
+                          <button
+                            type="button"
+                            className="catalog-value-filter"
+                            onClick={() => {
+                              setType(job.type ?? "SEND");
+                              setPage(0);
+                            }}
+                          >
+                            {t(`historyActions.jobTypes.${job.type ?? "SEND"}`)}
+                          </button>
+                        </td>,
                         <td>{job.library}</td>,
                         <td>
                           <button

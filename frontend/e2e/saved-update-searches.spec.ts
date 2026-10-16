@@ -191,3 +191,178 @@ for (const type of ["downloads", "calibre"] as const) {
     ).toHaveCount(0);
   });
 }
+
+for (const type of ["downloads", "calibre"] as const) {
+  test(`${type} switches generations without requesting obsolete rows and recovers external replacements`, async ({
+    page,
+  }) => {
+    let generation = 100;
+    const stale: number[] = [];
+    const metadata = () => ({
+      searchedAt: generation,
+      states: ["DOWNLOADED"],
+      origin: "MANUAL",
+    });
+    await page.route("**/api/settings/downloads/updates", (r) =>
+      r.fulfill({ json: { states: ["DOWNLOADED"] } }),
+    );
+    await page.route("**/api/settings/calibre/snapshot", (r) =>
+      r.fulfill({ json: { snapshot: null } }),
+    );
+    await page.route(`**/api/settings/tasks/searches/${type}**`, (r) => {
+      const url = new URL(r.request().url());
+      if (url.pathname.endsWith("/rows")) {
+        const requested = Number(url.searchParams.get("generation"));
+        if (requested !== generation) {
+          stale.push(requested);
+          return r.fulfill({
+            status: 400,
+            json: {
+              details: "La búsqueda guardada ha cambiado; actualiza la vista",
+            },
+          });
+        }
+        return r.fulfill({
+          json: {
+            items: [
+              {
+                eplId: 123,
+                calibreId: 1,
+                title: `Resultado ${generation}`,
+                authors: "Autor",
+                registeredRevision: 1,
+                availableRevision: 2,
+                revision: 1,
+                catalogRevision: 2,
+                status: "DOWNLOADED",
+                comparison: "OUTDATED",
+                presence: "PRESENT",
+                downloadAvailability: "READY",
+                coverAvailable: false,
+              },
+            ],
+            meta: {
+              page: 0,
+              size: 20,
+              totalItems: 1,
+              totalPages: 1,
+              hasNext: false,
+              hasPrevious: false,
+            },
+          },
+        });
+      }
+      if (r.request().method() === "POST") {
+        generation += 100;
+        return r.fulfill({
+          json:
+            type === "downloads"
+              ? metadata()
+              : { search: metadata(), snapshot: null },
+        });
+      }
+      return r.fulfill({ json: { search: metadata() } });
+    });
+    await page.goto(
+      type === "downloads" ? "/downloads/updates" : "/calibre/updates",
+    );
+    await expect(page.locator("tbody")).toContainText("Resultado 100");
+    for (const next of [200, 300]) {
+      await page.locator("tbody").getByRole("checkbox").first().check();
+      await page
+        .getByRole("button", { name: "Buscar actualizaciones", exact: true })
+        .click();
+      if (type === "downloads")
+        await page
+          .getByRole("dialog")
+          .getByRole("button", { name: "Buscar", exact: true })
+          .click();
+      await expect(page.locator("tbody")).toContainText(`Resultado ${next}`);
+      await expect(
+        page.getByRole("button", { name: /Quitar selección/ }),
+      ).toHaveCount(0);
+    }
+    expect(stale).toEqual([]);
+    generation = 400;
+    await page
+      .locator("thead")
+      .getByRole("button", { name: "Libro", exact: true })
+      .click();
+    await expect(page.locator("tbody")).toContainText("Resultado 400");
+    expect(stale).toEqual([300]);
+  });
+}
+
+for (const type of ["downloads", "calibre"] as const) {
+  test(`${type} ignores an old metadata response arriving after a manual search`, async ({
+    page,
+  }) => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let initialRead = false;
+    let searched = false;
+    const search = { searchedAt: 200, states: ["DOWNLOADED"] };
+    await page.route("**/api/settings/downloads/updates", (r) =>
+      r.fulfill({ json: { states: ["DOWNLOADED"] } }),
+    );
+    await page.route("**/api/settings/calibre/snapshot", (r) =>
+      r.fulfill({ json: { snapshot: null } }),
+    );
+    await page.route(`**/api/settings/tasks/searches/${type}**`, async (r) => {
+      if (new URL(r.request().url()).pathname.endsWith("/rows"))
+        return fulfillSavedSearch(r, {
+          json: {
+            search: {
+              ...search,
+              rows: [
+                {
+                  eplId: 123,
+                  calibreId: 1,
+                  title: "Resultado nuevo",
+                  registeredRevision: 1,
+                  availableRevision: 2,
+                  revision: 1,
+                  catalogRevision: 2,
+                  status: "DOWNLOADED",
+                  downloadAvailability: "READY",
+                },
+              ],
+            },
+          },
+        });
+      if (r.request().method() === "POST") {
+        searched = true;
+        return r.fulfill({
+          json: type === "downloads" ? search : { search, snapshot: null },
+        });
+      }
+      if (!initialRead) {
+        initialRead = true;
+        await held;
+        await r.fulfill({ json: { search: null } }).catch(() => {});
+        return;
+      }
+      return r.fulfill({ json: { search: searched ? search : null } });
+    });
+    await page.goto(
+      type === "downloads" ? "/downloads/updates" : "/calibre/updates",
+    );
+    await expect.poll(() => initialRead).toBe(true);
+    await page
+      .getByRole("button", { name: "Buscar actualizaciones", exact: true })
+      .click();
+    if (type === "downloads")
+      await page
+        .getByRole("dialog")
+        .getByRole("button", { name: "Buscar", exact: true })
+        .click();
+    await expect(page.locator("tbody")).toContainText("Resultado nuevo");
+    release();
+    await page
+      .getByRole("button", { name: "Buscar actualizaciones", exact: true })
+      .focus();
+    await expect(page.locator("tbody")).toContainText("Resultado nuevo");
+  });
+}

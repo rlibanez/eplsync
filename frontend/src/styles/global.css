@@ -2106,3 +2106,12 @@ summary {
 .scheduled-tasks-table:not(.resized) { table-layout: auto; }
 .scheduled-tasks-table:not(.resized) td:not(:first-child) { white-space: nowrap; max-width: none; }
 .scheduled-tasks-table:not(.resized) td:first-child { min-width: 220px; }
+
+/* Manual cleanup previews and job details share the application table frame. */
+.revision-cleanup-table { border: 1px solid var(--border, #2b342d); border-radius: 8px; }
+.revision-cleanup-table table { min-width: 760px; }
+.revision-cleanup-table td:first-child { min-width: 0; width: auto; }
+.revision-cleanup-table th, .revision-cleanup-table td { padding: 10px 12px; }
+.revision-cleanup-table td { overflow-wrap: anywhere; max-width: 240px; }
+.revision-cleanup-table small { color: var(--muted); }
+.revision-cleanup-table td p { margin: 6px 0 0; }

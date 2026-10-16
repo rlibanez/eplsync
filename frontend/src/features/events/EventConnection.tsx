@@ -64,6 +64,10 @@ export function EventConnection() {
         id: `operation:${event.operationId}:${event.outcome}`,
         title: translate.current("events.actions." + event.action),
         message: translate.current("events.outcomes." + event.outcome),
+        href:
+          event.action === "REVISION_CLEANUP"
+            ? `/${event.details.source === "calibre" ? "calibre" : "downloads"}/jobs/cleanup/${encodeURIComponent(event.operationId)}`
+            : undefined,
         tone: eventTone(event),
         phase: ["STARTED", "RESUMED", "RECOVERED"].includes(event.outcome)
           ? "start"
@@ -81,6 +85,9 @@ export function EventConnection() {
           "calibre-job",
           "saved-calibre-updates",
           "saved-download-updates",
+          "revision-cleanups",
+          "revision-cleanup",
+          "revision-cleanup-items",
         ])
           void cache.invalidateQueries({ queryKey: [key] });
       }
@@ -152,6 +159,9 @@ export function EventConnection() {
                   "calibre-jobs",
                   "calibre-job",
                   "calibre-job-items",
+                  "revision-cleanups",
+                  "revision-cleanup",
+                  "revision-cleanup-items",
                   "calibre-library",
                   "calibre-snapshot",
                 ];

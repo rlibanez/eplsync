@@ -107,13 +107,21 @@ export function Jobs() {
       { field: "createdAt", label: "downloads.createdAt", width: 200 },
       { field: "type", label: "downloads.type", width: 140 },
       { field: "status", label: "downloads.status", width: 160 },
-      { field: "progress", label: "downloads.progress", width: 180 },
+      {
+        field: "progress",
+        label: "revisionCleanup.progressColumn",
+        width: 180,
+      },
       {
         field: "selectedBooks",
         label: "downloads.jobBooks",
         width: 160,
       },
-      { field: "accepted", label: "downloads.accepted", width: 120 },
+      {
+        field: "accepted",
+        label: "revisionCleanup.acceptedOrRemoved",
+        width: 160,
+      },
       { field: "failed", label: "downloads.failedCount", width: 120 },
 
       { field: "username", label: "events.user", width: 180 },
@@ -150,7 +158,7 @@ export function Jobs() {
           label={t("downloads.type")}
           clearable
           value={type || null}
-          data={["DOWNLOAD", "UPDATE"].map((value) => ({
+          data={["DOWNLOAD", "UPDATE", "CLEANUP"].map((value) => ({
             value,
             label: t(`historyActions.jobTypes.${value}`),
           }))}
@@ -242,7 +250,11 @@ export function Jobs() {
                         <td>
                           <Link
                             className="book-title"
-                            to={`/downloads/jobs/${job.jobId}`}
+                            to={
+                              job.type === "CLEANUP"
+                                ? `/downloads/jobs/cleanup/${job.jobId}`
+                                : `/downloads/jobs/${job.jobId}`
+                            }
                           >
                             {job.jobId}
                           </Link>

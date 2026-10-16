@@ -1,13 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  isSavedSearchChanged,
   latestSavedSearch,
   savedSearchPage,
   savedSearchUrl,
 } from "./SavedUpdateSearch";
-import { get } from "../../api/catalog";
-vi.mock("../../api/catalog", () => ({ get: vi.fn() }));
+import { ApiError, get } from "../../api/catalog";
+vi.mock("../../api/catalog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/catalog")>()),
+  get: vi.fn(),
+}));
 describe("saved update searches", () => {
   beforeEach(() => vi.resetAllMocks());
+  it("recovers only the server stale-generation rejection", () => {
+    const message = "La búsqueda guardada ha cambiado; actualiza la vista";
+    expect(isSavedSearchChanged(new ApiError(400, null, message))).toBe(true);
+    expect(isSavedSearchChanged(new ApiError(500, null, message))).toBe(false);
+    expect(isSavedSearchChanged(new ApiError(400, null, "Otro fallo"))).toBe(
+      false,
+    );
+    expect(isSavedSearchChanged(new Error(message))).toBe(false);
+  });
   it("requests only a server page with filters, ordering and a stable generation", async () => {
     const page = { items: [{ eplId: 7 }], meta: { totalItems: 1200 } };
     vi.mocked(get).mockResolvedValue(page);

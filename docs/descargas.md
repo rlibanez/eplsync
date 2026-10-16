@@ -110,3 +110,11 @@ vista no consulta al servidor ni recalcula la comparación. La primera vez se
 muestra la tabla vacía. **Buscar actualizaciones** renueva el resultado; si
 falla, se conserva la búsqueda anterior. Borrar los datos del sitio elimina
 estas búsquedas guardadas; no se comparten entre dispositivos.
+
+## Limpieza manual de revisiones antiguas
+
+Consulta [Limpiar revisiones antiguas](limpieza-revisiones.md) para preparar una limpieza con previsualización, selección y seguimiento por trabajo.
+
+La limpieza manual permite marcar «Permitir la limpieza aunque la revisión superior no esté descargada» (desmarcado por defecto). La opción queda guardada en el trabajo y advierte de que se puede perder la única copia descargada. Siempre se conserva el torrent de la revisión superior y se comprueban las identidades, las rutas compartidas y los trabajos incompatibles antes de borrar.
+
+Si un trabajo de actualización ya espera el mismo borrado automático, con la misma política y revisión de sustitución, la limpieza manual puede adelantarlo. Al confirmar la ausencia del torrent antiguo, también se resuelve la solicitud del trabajo original; no se repite el borrado. Los envíos activos, las eliminaciones sin confirmar y las dependencias de Calibre siguen impidiendo la limpieza.

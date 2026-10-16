@@ -1,3 +1,4 @@
+import { CleanupLauncher } from "../cleanup/RevisionCleanup";
 import { PageTitle } from "../../components/PageTitle";
 import { SelectAllRows } from "../../components/SelectAllRows";
 import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
@@ -187,6 +188,7 @@ function DownloadHistory() {
           />
           {auth.can("TORRENT_SYNC") && (
             <div className="action-row">
+              <CleanupLauncher source="downloads" selected={selected} />
               {auth.can("CATALOG_READ") && (
                 <Button
                   component={Link}

@@ -9,6 +9,34 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       {
+        path: "/downloads/jobs/cleanup/:id",
+        lazy: async () => ({
+          Component: (await import("../features/cleanup/RevisionCleanup"))
+            .CleanupJob,
+        }),
+      },
+      {
+        path: "/calibre/jobs/cleanup/:id",
+        lazy: async () => ({
+          Component: (await import("../features/cleanup/RevisionCleanup"))
+            .CleanupJob,
+        }),
+      },
+      {
+        path: "/cleanup/jobs",
+        lazy: async () => ({
+          Component: (await import("../features/cleanup/RevisionCleanup"))
+            .CleanupJobs,
+        }),
+      },
+      {
+        path: "/cleanup/jobs/:id",
+        lazy: async () => ({
+          Component: (await import("../features/cleanup/RevisionCleanup"))
+            .CleanupJob,
+        }),
+      },
+      {
         path: "/downloads/sync",
         element: <Navigate to="/downloads" replace />,
       },

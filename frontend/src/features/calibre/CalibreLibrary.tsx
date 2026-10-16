@@ -1,6 +1,8 @@
+import { CleanupLauncher } from "../cleanup/RevisionCleanup";
 import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import {
+  isSavedSearchChanged,
   latestSavedSearch,
   savedSearchPage,
   savedSearchUrl,
@@ -53,6 +55,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       auth.can("CATALOG_READ")
     : auth.can("CALIBRE_FILES_READ");
   const [selected, setSelected] = useState<number[]>([]);
+  const [searching, setSearching] = useState(false);
   useEffect(
     () => setSelected([]),
     [title, author, eplId, comparison, presence, sort],
@@ -83,7 +86,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     queryKey: ["saved-calibre-updates", auth.user?.id],
     queryFn: ({ signal }) => latestSavedSearch("calibre", signal),
     refetchInterval: 30000,
-    enabled: updates,
+    enabled: updates && !searching,
   });
   useEffect(() => {
     if (updates) {
@@ -107,7 +110,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       previousSearch.data?.searchedAt,
       availability,
     ],
-    enabled: !updates || previousSearch.data !== undefined,
+    enabled: !updates || (!searching && previousSearch.data !== undefined),
+    retry: updates ? false : undefined,
     queryFn: ({ signal }) =>
       updates
         ? savedSearchPage<CalibreBook>(savedUrl, page, size, signal)
@@ -126,27 +130,49 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         signal,
       ).then((d) => d.snapshot),
   });
+  useEffect(() => {
+    if (updates && !searching && isSavedSearchChanged(result.error)) {
+      setSelected([]);
+      void previousSearch.refetch();
+    }
+  }, [updates, result.error, searching]);
   const sync = useMutation({
-    mutationFn: async () => {
-      if (!updates) return post<Snapshot>("/settings/calibre/sync", {});
-      const result = await post<{
+    onMutate: async () => {
+      if (!updates) return;
+      setSearching(true);
+      setSelected([]);
+      await Promise.all([
+        cache.cancelQueries({
+          queryKey: ["saved-calibre-updates", auth.user?.id],
+        }),
+        cache.cancelQueries({ queryKey: ["calibre-library", auth.user?.id] }),
+      ]);
+    },
+    mutationFn: async (): Promise<{
+      snapshot: Snapshot;
+      search?: import("../downloads/SavedUpdateSearch").SavedSearch;
+    }> => {
+      if (!updates)
+        return { snapshot: await post<Snapshot>("/settings/calibre/sync", {}) };
+      return post<{
         snapshot: Snapshot;
         search: import("../downloads/SavedUpdateSearch").SavedSearch;
       }>("/settings/tasks/searches/calibre", {});
-      cache.setQueryData(
-        ["saved-calibre-updates", auth.user?.id],
-        result.search,
-      );
-      return result.snapshot;
     },
     retry: false,
-    onSuccess: (data) => {
-      cache.setQueryData(["calibre-snapshot"], data);
-      void cache.invalidateQueries({ queryKey: ["calibre-library"] });
-      void cache.invalidateQueries({ queryKey: ["book"] });
+    onSuccess: ({ snapshot, search }) => {
       setPage(0);
       setSelected([]);
+      if (search)
+        cache.setQueryData(["saved-calibre-updates", auth.user?.id], search);
+      cache.setQueryData(["calibre-snapshot"], snapshot);
+      void cache.invalidateQueries({
+        queryKey: ["calibre-library"],
+        refetchType: updates ? "none" : "active",
+      });
+      void cache.invalidateQueries({ queryKey: ["book"] });
     },
+    onSettled: () => setSearching(false),
   });
   useEffect(() => {
     if (!updates || searchParams.get("search") !== "1") {
@@ -186,9 +212,13 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               : "calibre.libraryDescription",
           )}
         />
-        {auth.can("CALIBRE_SYNC") && (
+        {(auth.can("CALIBRE_SYNC") ||
+          (!updates && auth.can("CALIBRE_DELETE"))) && (
           <div className="action-row">
             {!updates && (
+              <CleanupLauncher source="calibre" selected={selected} />
+            )}
+            {!updates && auth.can("CALIBRE_SYNC") && (
               <Button
                 component={Link}
                 to="/calibre/updates?search=1"
@@ -197,9 +227,11 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
                 {t("revisionUpdates.search")}
               </Button>
             )}
-            <Button loading={sync.isPending} onClick={() => sync.mutate()}>
-              {t(updates ? "revisionUpdates.search" : "calibre.sync")}
-            </Button>
+            {auth.can("CALIBRE_SYNC") && (
+              <Button loading={sync.isPending} onClick={() => sync.mutate()}>
+                {t(updates ? "revisionUpdates.search" : "calibre.sync")}
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -370,7 +402,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             )
           }
         />
-        {result.isPending ? (
+        {searching || result.isPending ? (
           <Loading />
         ) : result.isError ? (
           <Failure error={result.error} retry={() => result.refetch()} />

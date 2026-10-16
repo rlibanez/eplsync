@@ -76,3 +76,7 @@ reconocen los reintentos del trabajo torrent, siempre para la revisión original
 Los reintentos comprueban de nuevo los permisos de envío y borrado. Cancelar una
 limpieza iniciada antes de esta funcionalidad puede haber descartado sus opciones;
 en ese caso, vuelve a seleccionar explícitamente las revisiones que quieras borrar.
+
+## Limpieza manual de revisiones antiguas
+
+Consulta [Limpiar revisiones antiguas](limpieza-revisiones.md) para preparar una limpieza con previsualización, selección y seguimiento por trabajo.
