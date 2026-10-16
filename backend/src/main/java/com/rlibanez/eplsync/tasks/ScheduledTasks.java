@@ -32,9 +32,11 @@ public class ScheduledTasks {
         }
         public Permission permission() {return switch(this) {case TORRENT_SYNC,TORRENT_AUTO_UPDATE -> Permission.TORRENT_SYNC; case CALIBRE_SYNC,CALIBRE_AUTO_UPDATE -> Permission.CALIBRE_SYNC; case CATALOG_IMPORT -> Permission.CATALOG_IMPORT; case TORRENT_UPDATE_SEARCH -> Permission.TORRENT_SYNC; case CALIBRE_UPDATE_SEARCH -> Permission.CALIBRE_SYNC;};}
     }
-    public record Input(String name,Operation operation,String cron,String ownerId,boolean enabled) {}
+    public record Input(String name,Operation operation,String cron,String ownerId,boolean enabled,Boolean telegramNotifications) {
+        public Input(String name,Operation operation,String cron,String ownerId,boolean enabled) {this(name,operation,cron,ownerId,enabled,true);}
+    }
     public record Task(String id,String name,Operation operation,String cron,String timezone,String ownerId,String ownerUsername,
-        boolean enabled,boolean running,Instant nextRun,Instant lastRun,Instant lastFinished,String lastResult,String lastMessage) {}
+        boolean enabled,boolean running,Instant nextRun,Instant lastRun,Instant lastFinished,String lastResult,String lastMessage,boolean telegramNotifications) {}
     private final String timezone;
     public String timezone() {return timezone;}
     private final JdbcTemplate jdbc;
@@ -46,7 +48,7 @@ public class ScheduledTasks {
     public List<Task> list() {return jdbc.query(SELECT+" ORDER BY t.created_at,t.id",ScheduledTasks::map);}
     public Task find(String id) {return jdbc.query(SELECT+" WHERE t.id=?",ScheduledTasks::map,id).stream().findFirst().orElseThrow(()->new UserInputException("La tarea ya no existe"));}
     private static Instant instant(java.sql.ResultSet row,String name) throws java.sql.SQLException {long value=row.getLong(name);return row.wasNull()?null:Instant.ofEpochMilli(value);}
-    private static Task map(java.sql.ResultSet r,int ignored) throws java.sql.SQLException {return new Task(r.getString("id"),r.getString("name"),Operation.valueOf(r.getString("operation")),r.getString("cron"),r.getString("timezone"),r.getString("owner_id"),r.getString("display_username"),r.getBoolean("enabled"),r.getBoolean("running"),instant(r,"next_run"),instant(r,"last_run"),instant(r,"last_finished"),r.getString("last_result"),r.getString("last_message"));}
+    private static Task map(java.sql.ResultSet r,int ignored) throws java.sql.SQLException {return new Task(r.getString("id"),r.getString("name"),Operation.valueOf(r.getString("operation")),r.getString("cron"),r.getString("timezone"),r.getString("owner_id"),r.getString("display_username"),r.getBoolean("enabled"),r.getBoolean("running"),instant(r,"next_run"),instant(r,"last_run"),instant(r,"last_finished"),r.getString("last_result"),r.getString("last_message"),r.getBoolean("telegram_notifications"));}
     public Account owner(String id,Operation operation) {
         var account=id==null?null:accounts.find(id);
         if(account==null || !account.status().equals("ACTIVE") || account.mustChangePassword() || !account.permissions().containsAll(operation.permissions()))
@@ -84,8 +86,8 @@ public class ScheduledTasks {
                 throw new UserInputException("Ya existe una tarea de este tipo de actualización automática, aunque esté desactivada; edita o elimina la existente");
             if(id==null) {
                 if(jdbc.queryForObject("SELECT count(*) FROM scheduled_tasks",Long.class)>=200) throw new UserInputException("Se permiten hasta 200 tareas programadas");
-                jdbc.update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,next_run,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",target,input.name().strip(),input.operation().name(),input.cron().strip(),timezone,owner.id(),owner.username(),input.enabled(),input.enabled()?next.toEpochMilli():null,now.toEpochMilli(),now.toEpochMilli());
-            } else if(jdbc.update("UPDATE scheduled_tasks SET name=?,operation=?,cron=?,timezone=?,owner_id=?,owner_username=?,enabled=?,next_run=?,updated_at=? WHERE id=? AND running=0",input.name().strip(),input.operation().name(),input.cron().strip(),timezone,owner.id(),owner.username(),input.enabled(),input.enabled()?next.toEpochMilli():null,now.toEpochMilli(),id)!=1) throw new UserInputException("La tarea está ejecutándose o ya no existe; espera antes de editarla");
+                jdbc.update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,next_run,created_at,updated_at,telegram_notifications) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",target,input.name().strip(),input.operation().name(),input.cron().strip(),timezone,owner.id(),owner.username(),input.enabled(),input.enabled()?next.toEpochMilli():null,now.toEpochMilli(),now.toEpochMilli(),!Boolean.FALSE.equals(input.telegramNotifications()));
+            } else if(jdbc.update("UPDATE scheduled_tasks SET name=?,operation=?,cron=?,timezone=?,owner_id=?,owner_username=?,enabled=?,next_run=?,updated_at=?,telegram_notifications=? WHERE id=? AND running=0",input.name().strip(),input.operation().name(),input.cron().strip(),timezone,owner.id(),owner.username(),input.enabled(),input.enabled()?next.toEpochMilli():null,now.toEpochMilli(),!Boolean.FALSE.equals(input.telegramNotifications()),id)!=1) throw new UserInputException("La tarea está ejecutándose o ya no existe; espera antes de editarla");
             return find(target);
         }));
     }
@@ -96,6 +98,11 @@ public class ScheduledTasks {
             if(jdbc.update("DELETE FROM scheduled_tasks WHERE id=? AND running=0 AND NOT EXISTS (SELECT 1 FROM scheduled_automation_runs r WHERE r.task_id=scheduled_tasks.id AND r.state IN ('WAITING','ATTENTION'))",id)!=1)
                 throw new UserInputException("La tarea está ejecutándose o tiene un ciclo pendiente; completa o cancela sus trabajos y cierra el ciclo antes de eliminarla");
         });
+    }
+    public Task notifications(String id,boolean enabled) {
+        if(jdbc.update("UPDATE scheduled_tasks SET telegram_notifications=?,updated_at=? WHERE id=?",enabled,Instant.now().toEpochMilli(),id)!=1)
+            throw new UserInputException("La tarea ya no existe");
+        return find(id);
     }
     public Task enable(String id,boolean enabled) {
         var value=find(id);if(enabled) owner(value.ownerId(),value.operation());

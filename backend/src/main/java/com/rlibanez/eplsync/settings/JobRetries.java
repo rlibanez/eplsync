@@ -203,7 +203,7 @@ public class JobRetries {
             String root=jdbc.queryForList("SELECT root_id FROM job_retry_jobs WHERE kind=? AND child_id=?",String.class,kind,id).stream().findFirst().orElse(id);
             jdbc.update("INSERT INTO job_retry_jobs VALUES(?,?,?,?,?,?,?)",kind,child,id,root,confirmation.token(),actor.id(),Instant.now().toEpochMilli());
             if(kind.equals("downloads")) cloneDownloads(child,parent,plan,actor);else cloneCalibre(child,parent,plan,actor);
-            if(!(com.rlibanez.eplsync.tasks.AutomationContext.active() && EventContext.origin()==EventContext.Origin.SCHEDULED)) events.record(EventJournal.Category.JOB,kind.equals("downloads")?"DOWNLOAD":"CALIBRE_SEND",EventJournal.Outcome.STARTED,EventContext.origin(),child,Map.of("parentJobId",id,"rootJobId",root,"kind",kind,"selected",plan.work().size()));
+            events.live(EventContext.actor(),EventJournal.Category.JOB,kind.equals("downloads")?"DOWNLOAD":"CALIBRE_SEND",EventJournal.Outcome.STARTED,EventContext.origin(),child,Map.of("parentJobId",id,"rootJobId",root,"kind",kind,"selected",plan.work().size()));
             return new Link(kind,child,id,root);
         });
     }

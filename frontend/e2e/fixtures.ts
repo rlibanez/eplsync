@@ -201,6 +201,21 @@ export const test = base.extend<{ eventTransport: void }>({
         error: true,
         seconds: 5,
       };
+      await page.route("**/api/auth/telegram", (route) =>
+        route.fulfill({
+          json: {
+            enabled: false,
+            tokenConfigured: false,
+            chatId: "",
+            success: false,
+            warning: true,
+            error: true,
+            language: "es",
+            pending: 0,
+            failed: 0,
+          },
+        }),
+      );
       await page.route("**/api/auth/notifications", (route) => {
         if (route.request().method() === "PUT")
           notificationPreferences = route.request().postDataJSON();

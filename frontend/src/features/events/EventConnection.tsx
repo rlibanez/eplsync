@@ -18,7 +18,6 @@ export function EventConnection() {
     let cursor = 0;
     let lost = false;
     let warning: number | undefined;
-    let epoch = Date.now();
     const channel = new EventTarget();
     const publish = (deleted = false) => {
       cache.setQueryData<{ cursor: number; revision: number }>(
@@ -44,7 +43,6 @@ export function EventConnection() {
     });
     channel.addEventListener("reset", (message) => {
       cursor = JSON.parse((message as MessageEvent).data).cursor;
-      epoch++;
       cache.setQueryData(["event-stream"], "connected");
       lost = false;
       window.clearTimeout(warning);
@@ -59,13 +57,42 @@ export function EventConnection() {
       publish(true);
       refresh();
     });
+    channel.addEventListener("operation-notice", (message) => {
+      const event: AppEvent = JSON.parse((message as MessageEvent).data);
+      if (event.actor?.id !== user?.id) return;
+      notify({
+        id: `operation:${event.operationId}:${event.outcome}`,
+        title: translate.current("events.actions." + event.action),
+        message: translate.current("events.outcomes." + event.outcome),
+        tone: eventTone(event),
+        phase: ["STARTED", "RESUMED", "RECOVERED"].includes(event.outcome)
+          ? "start"
+          : "result",
+      });
+      if (event.outcome !== "STARTED") {
+        for (const key of [
+          "downloads",
+          "download-summary",
+          "calibre-library",
+          "calibre-snapshot",
+          "jobs",
+          "job",
+          "calibre-jobs",
+          "calibre-job",
+          "saved-calibre-updates",
+          "saved-download-updates",
+        ])
+          void cache.invalidateQueries({ queryKey: [key] });
+      }
+      void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
+    });
     channel.addEventListener("event", (message) => {
       const event: AppEvent = JSON.parse((message as MessageEvent).data);
       if (!Number.isSafeInteger(event.id) || event.id <= cursor) return;
       cursor = event.id;
       publish();
       notify({
-        id: `server-event:${epoch}:${event.id}`,
+        id: `operation:${event.operationId}:${event.outcome}`,
         title: translate.current("events.actions." + event.action),
         message:
           event.outcome === "FAILED" && typeof event.details.reason === "string"

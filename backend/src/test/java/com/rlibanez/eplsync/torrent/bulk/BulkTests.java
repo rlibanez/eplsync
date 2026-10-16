@@ -156,8 +156,8 @@ class BulkTests {
         worker = new BulkWorker(store, client, properties);
         worker.start();
         awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
-        assertThat(events.after(cursor, 20)).hasSize(2)
-            .allSatisfy(event -> assertThat(event.actor()).isEqualTo(actor));
+        assertThat(events.after(cursor, 20)).isEmpty();
+        assertThat(jobs.findById(job.jobId()).orElseThrow().eventActor()).isEqualTo(actor);
     }
 
     @Test void automaticCoordinatorHonorsGlobalIntervalAndCompletesWithoutTicks() throws Exception {
@@ -174,14 +174,7 @@ class BulkTests {
         worker.start(); // El evento repetido no crea otro coordinador ni recupera envíos activos.
         awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
         assertThat(starts).hasSize(5);
-        var rows = events.after(cursor, 20);
-        assertThat(rows).extracting(value -> Objects.requireNonNull(value).outcome())
-                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
-                    com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
-        assertThat(rows).allSatisfy(row -> assertThat(row.operationId()).isEqualTo(job.jobId()));
-        assertThat(rows.get(1).details()).containsEntry("accepted", 5);
-        assertThat(rows).allSatisfy(row -> assertThat(row.origin()).isEqualTo(
-            com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED));
+        assertThat(events.after(cursor,20)).isEmpty();
         for (int i = 1; i < starts.size(); i++)
             assertThat(starts.get(i) - starts.get(i - 1)).isGreaterThanOrEqualTo(TimeUnit.MILLISECONDS.toNanos(90));
     }
@@ -704,8 +697,10 @@ class BulkTests {
             entered.countDown();release.await(3,TimeUnit.SECONDS);
             return TorrentDownloadResult.Status.ACCEPTED;
         });
-        long cursor=events.cursor();
-        var job=create(new BulkRequest(null,2,1,"0ms"));start();worker.tick();
+        var notices=new CopyOnWriteArrayList<com.rlibanez.eplsync.events.EventJournal.Entry>();
+        var job=create(new BulkRequest(null,2,1,"0ms"));
+        try(var subscription=events.listenNotices(notices::add)) {
+        start();worker.tick();
         try {
             assertThat(entered.await(2,TimeUnit.SECONDS)).isTrue();
             if (disable) properties.effective().setEnabled(false);
@@ -722,7 +717,7 @@ class BulkTests {
         until(() -> store.view(job.jobId()).inFlight()==0);
         assertThat(store.view(job.jobId()).accepted()).isEqualTo(1);
         assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);
-        var pauses=events.after(cursor,100).stream().filter(e -> e.operationId().equals(job.jobId())
+        var pauses=notices.stream().filter(e -> e.operationId().equals(job.jobId())
             && e.outcome()==com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED).toList();
         assertThat(pauses).hasSize(1);
         assertThat(pauses.getFirst().details()).containsKey("reason");
@@ -730,6 +725,7 @@ class BulkTests {
             .hasMessageContaining("destino original");
         properties.effective().setEnabled(true);properties.effective().setBaseUrl("http://localhost:8080");
         properties.effective().setClient(originalClient);
+        }
         store.control(job.jobId(),"resume");
         until(() -> store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
         verify(client,times(5)).addTorrent(any());

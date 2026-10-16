@@ -62,6 +62,10 @@ test("creates, edits and toggles cron tasks and changes required check periods",
             : input.interval;
       return route.fulfill({ json: item });
     }
+    if (path.endsWith("/notifications")) {
+      tasks[0].telegramNotifications = input.enabled;
+      return route.fulfill({ json: tasks[0] });
+    }
     if (path.endsWith("/enabled")) {
       tasks[0].enabled = input.enabled;
       tasks[0].nextRun = input.enabled ? "2026-10-15T01:00:00Z" : null;
@@ -140,6 +144,16 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   ).toHaveValue("30s");
   await page.getByRole("button", { name: "Crear tarea", exact: true }).click();
   const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("checkbox", {
+      name: "Enviar notificaciones de Telegram para esta tarea",
+    }),
+  ).toBeChecked();
+  await dialog
+    .getByRole("checkbox", {
+      name: "Enviar notificaciones de Telegram para esta tarea",
+    })
+    .uncheck();
   await expect(dialog.getByRole("textbox", { name: /^Operación/ })).toHaveValue(
     "",
   );
@@ -208,10 +222,33 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   await expect(dialog).toBeHidden();
   const row = page.locator("tbody tr").filter({ hasText: "Calibre nocturno" });
   await expect(row).toContainText("admin");
-  await expect(row).toContainText("Europe/Madrid");
-  await row.getByRole("switch").press("Space");
-  await expect(row.getByRole("switch")).not.toBeChecked();
+  await row
+    .getByRole("switch", { name: /^Activar o desactivar (?!Telegram)/ })
+    .press("Space");
+  await expect(
+    row.getByRole("switch", { name: /^Activar o desactivar (?!Telegram)/ }),
+  ).not.toBeChecked();
+  await expect(
+    page.getByRole("columnheader", { name: "Zona horaria", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("columnheader", { name: /^Notificaciones/ }),
+  ).toBeVisible();
+  const notificationToggle = row.getByRole("switch", {
+    name: /Activar o desactivar Telegram/,
+  });
+  await expect(notificationToggle).not.toBeChecked();
+  await notificationToggle.press("Space");
+  await expect(notificationToggle).toBeChecked();
+  await notificationToggle.press("Space");
+  await expect(notificationToggle).not.toBeChecked();
+  expect(tasks[0].telegramNotifications).toBe(false);
   await row.getByRole("button", { name: "Editar tarea" }).click();
+  await expect(
+    dialog.getByRole("checkbox", {
+      name: "Enviar notificaciones de Telegram para esta tarea",
+    }),
+  ).not.toBeChecked();
   await dialog
     .getByRole("textbox", { name: /^Nombre/ })
     .fill("Calibre semanal");
@@ -222,8 +259,15 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   await dialog.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator("tbody tr")).toContainText("Calibre semanal");
-  await page.locator("tbody tr").getByRole("switch").press("Space");
-  await expect(page.locator("tbody tr").getByRole("switch")).toBeChecked();
+  await page
+    .locator("tbody tr")
+    .getByRole("switch", { name: /^Activar o desactivar (?!Telegram)/ })
+    .press("Space");
+  await expect(
+    page
+      .locator("tbody tr")
+      .getByRole("switch", { name: /^Activar o desactivar (?!Telegram)/ }),
+  ).toBeChecked();
   expect(
     changes.some((change) => change.operation === "CALIBRE_SYNC"),
   ).toBeTruthy();
@@ -244,6 +288,57 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   await dialog.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.locator("tbody tr")).toContainText("Importar catálogo");
+  await page.setViewportSize({ width: 2400, height: 1100 });
+  const table = page.locator(".scheduled-tasks-table");
+  const container = table.locator("..");
+  await expect
+    .poll(
+      async () =>
+        (await table.boundingBox())!.width -
+        (await container.boundingBox())!.width,
+    )
+    .toBeGreaterThanOrEqual(-1);
+  for (const field of ["next", "duration", "enabled", "notifications"]) {
+    const heading = table.locator(`th[data-table-column="${field}"]`);
+    await expect(heading).toHaveCSS("white-space", "nowrap");
+    await expect
+      .poll(() => heading.evaluate((el) => el.scrollWidth - el.clientWidth))
+      .toBeLessThanOrEqual(1);
+  }
+  for (const field of ["cron", "cycle"]) {
+    await expect
+      .poll(
+        async () =>
+          (await table
+            .locator(`th[data-table-column="${field}"]`)
+            .boundingBox())!.width,
+      )
+      .toBeLessThan(155);
+  }
+  const header = page.locator('th[data-table-column="name"]');
+  const before = (await header.boundingBox())!.width;
+  const handle = header.getByRole("button", {
+    name: "Ajustar ancho de Nombre",
+  });
+  const bounds = (await handle.boundingBox())!;
+  await page.mouse.move(
+    bounds.x + bounds.width / 2,
+    bounds.y + bounds.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    bounds.x + bounds.width / 2 + 70,
+    bounds.y + bounds.height / 2,
+  );
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await header.boundingBox())!.width)
+    .toBeGreaterThan(before + 50);
+  const resized = (await header.boundingBox())!.width;
+  await page.reload();
+  await expect
+    .poll(async () => (await header.boundingBox())?.width ?? 0)
+    .toBeCloseTo(resized, 0);
   await page.screenshot({
     path: "/tmp/eplsync-scheduled-tasks.png",
     fullPage: true,
@@ -305,7 +400,7 @@ test("shows task execution data and runs once without changing its schedule", as
   });
   await page.goto("/settings/tasks");
   await expect(
-    page.getByRole("columnheader", { name: "Duración", exact: true }),
+    page.getByRole("columnheader", { name: /^Duración/ }),
   ).toBeVisible();
   await expect(
     page.getByRole("cell", { name: "2 s", exact: true }),

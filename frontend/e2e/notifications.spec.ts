@@ -78,7 +78,7 @@ test("backend events survive reload, appear live once, and local feedback stays 
   await expect(
     page.getByRole("link", { name: "Mantenimiento de eventos", exact: true }),
   ).toHaveCount(0);
-  await page.goto("/settings/events#events");
+  await page.goto("/settings/notifications#events");
   await expect(page.locator("#events")).toBeInViewport();
   await page.goto("/settings/torrent");
   await page
@@ -109,7 +109,7 @@ test("event maintenance confirms inclusive local dates and validates the range",
     await r.fulfill({ json: { deleted: 7 } });
   });
   await page.clock.setFixedTime(new Date("2026-10-26T12:00:00Z"));
-  await page.goto("/settings/events");
+  await page.goto("/settings/notifications");
   const section = page.locator("#events");
   await expect(section).toContainText("10000");
   await expect(section).toContainText("365");
@@ -280,7 +280,7 @@ test("start and finish share one unread operation and a later finish becomes unr
 test("notifications default to five seconds and fit the bottom right corner on desktop and mobile", async ({
   page,
 }) => {
-  await page.goto("/settings/events");
+  await page.goto("/settings/notifications");
   await expect(
     page.getByRole("textbox", { name: "Tiempo en pantalla (segundos)" }),
   ).toHaveValue("5 s");
@@ -304,3 +304,169 @@ test("notifications default to five seconds and fit the bottom right corner on d
     .click();
   await expect(toasts.getByRole("status")).toHaveCount(0);
 });
+
+for (const preference of [
+  { floating: true, starts: true },
+  { floating: true, starts: false },
+  { floating: false, starts: true },
+]) {
+  test(`task starts are transient and respect floating=${preference.floating}, starts=${preference.starts}`, async ({
+    page,
+  }) => {
+    await page.route("**/api/auth/notifications", (route) =>
+      route.fulfill({
+        json: {
+          ...preference,
+          unreadBadge: true,
+          finishes: true,
+          success: true,
+          warning: true,
+          error: true,
+          seconds: 60,
+        },
+      }),
+    );
+    await page.route("**/api/events/operations?**", (route) =>
+      route.fulfill({
+        json: operationResponse([historical], route.request().url()),
+      }),
+    );
+    await page.goto("/events");
+    await expect(page.locator(".events-table")).toBeVisible();
+    const emitStart = async (origin: string, owner: string, id: string) =>
+      page.evaluate(
+        ({ origin, owner, id }) => {
+          (
+            window as unknown as {
+              __event: (name: string, data: unknown) => void;
+            }
+          ).__event("operation-notice", {
+            id: 0,
+            operationId: id,
+            category: "JOB",
+            action: "SCHEDULED_TASK",
+            outcome: "STARTED",
+            origin,
+            actor: { id: owner, username: owner, kind: "USER" },
+            details: { taskId: "task", taskName: "Tarea nocturna" },
+          });
+        },
+        { origin, owner, id },
+      );
+    for (const origin of ["MANUAL", "SCHEDULED"])
+      await emitStart(origin, "test-admin", origin);
+    const notices = page.locator(".notification-toasts").getByRole("status");
+    await expect(notices).toHaveCount(
+      preference.floating && preference.starts ? 2 : 0,
+    );
+    await emitStart("SCHEDULED", "other-user", "other");
+    await expect(notices).toHaveCount(
+      preference.floating && preference.starts ? 2 : 0,
+    );
+    await expect(page.locator(".events-table tbody tr")).toHaveCount(1); // Only the historical row remains; transient starts do not add entries.
+    await page.reload();
+    await expect(notices).toHaveCount(0);
+  });
+}
+
+test("audited catalogue task uses one transient start notice and one completion notice", async ({
+  page,
+}) => {
+  await page.route("**/api/events/operations?**", (route) =>
+    route.fulfill({
+      json: operationResponse([historical], route.request().url()),
+    }),
+  );
+  await page.goto("/events");
+  await expect(page.locator(".events-table")).toBeVisible();
+  await page.evaluate(
+    (event) =>
+      (
+        window as unknown as { __event: (name: string, data: unknown) => void }
+      ).__event("operation-notice", event),
+    {
+      ...historical,
+      id: 0,
+      outcome: "STARTED",
+      operationId: "catalogue-task",
+      actor: { id: "test-admin", kind: "USER" },
+      details: { taskId: "task", taskName: "Catálogo diario" },
+    },
+  );
+  const notices = page.locator(".notification-toasts").getByRole("status");
+  await expect(notices).toHaveCount(1);
+  await emitEvent(page, {
+    ...historical,
+    id: 2,
+    outcome: "STARTED",
+    operationId: "catalogue-task",
+    details: { taskId: "task", taskName: "Catálogo diario" },
+  });
+  await expect(notices).toHaveCount(1);
+  await emitEvent(page, {
+    ...historical,
+    id: 3,
+    outcome: "SUCCEEDED",
+    operationId: "catalogue-task",
+    details: { taskId: "task", taskName: "Catálogo diario" },
+  });
+  await expect(notices).toHaveCount(2);
+});
+
+for (const enabled of [true, false]) {
+  test(`operation results share preferences and deduplicate live/history notices: ${enabled}`, async ({
+    page,
+  }) => {
+    await page.route("**/api/auth/notifications", (route) =>
+      route.fulfill({
+        json: {
+          floating: true,
+          starts: true,
+          finishes: true,
+          success: enabled,
+          error: true,
+          warning: true,
+          unreadBadge: true,
+          seconds: 60,
+        },
+      }),
+    );
+    await page.route("**/api/events/operations?**", (route) =>
+      route.fulfill({
+        json: operationResponse([historical], route.request().url()),
+      }),
+    );
+    await page.goto("/events");
+    await expect(page.locator(".events-table")).toBeVisible();
+    const base = {
+      ...historical,
+      category: "TORRENT",
+      action: "SYNC",
+      outcome: "SUCCEEDED",
+      id: 0,
+      actor: { id: "test-admin", kind: "USER" },
+    };
+    for (const [index, origin] of ["MANUAL", "MANUAL", "SCHEDULED"].entries()) {
+      const event = {
+        ...base,
+        origin,
+        operationId: `sync-${index}`,
+        details: index === 0 ? {} : { taskId: "task", taskName: "Sync" },
+      };
+      await page.evaluate(
+        (event) =>
+          (
+            window as unknown as {
+              __event: (name: string, data: unknown) => void;
+            }
+          ).__event("operation-notice", event),
+        event,
+      );
+      // The persisted copy (or a replay) must not show the same outcome twice.
+      await emitEvent(page, { ...event, id: index + 2 });
+    }
+    await expect(
+      page.locator(".notification-toasts").getByRole("status"),
+    ).toHaveCount(enabled ? 3 : 0);
+  });
+}

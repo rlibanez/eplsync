@@ -107,7 +107,7 @@ class DownloadTrackingTests {
             .andExpect(status().isAccepted()).andExpect(header().exists("Location"))
             .andExpect(jsonPath("$.selectedBooks").value(1));
         assertThat(bulkJobs.count()).isEqualTo(1); assertThat(bulkItems.count()).isEqualTo(1);
-        assertThat(events.after(cursor, 10)).hasSize(1);
+        assertThat(events.after(cursor, 10)).isEmpty();
         verify(stubClient, never()).addTorrent(any()); verify(stubClient, never()).addTorrent(any(),any());
         assertThat(downloads.count()).isZero();
     }
@@ -116,7 +116,7 @@ class DownloadTrackingTests {
             .andExpect(status().isBadRequest());
         assertThat(bulkJobs.count()).isZero();
     }
-    @Test void appliedSyncPublishesOnePersistedResultAndFailureIsRecorded() throws Exception {
+    @Test void appliedSyncOnlyPersistsProblemsAndPreviewRemainsAudited() throws Exception {
         long cursor = events.cursor();
         mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json")
                 .content("{\"dryRun\":true}"))
@@ -128,17 +128,12 @@ class DownloadTrackingTests {
         mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json").content("{\"dryRun\":false}"))
                 .andExpect(status().isOk()).andExpect(header().exists("X-EPLSync-Operation-Id"));
         var rows = events.after(cursor, 10);
-        assertThat(rows).extracting(value -> Objects.requireNonNull(value).outcome())
-                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
-                    com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
-        assertThat(rows.get(1).details()).containsEntry("checked", 0);
-        assertThat(rows.get(0).operationId()).isEqualTo(rows.get(1).operationId());
+        assertThat(rows).isEmpty();
         cursor = events.cursor();
         properties.effective().setEnabled(false);
         assertThatThrownBy(() -> service.syncDownloads(false, false)).isInstanceOf(RuntimeException.class);
         assertThat(events.after(cursor, 10)).extracting(value -> Objects.requireNonNull(value).outcome())
-                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,
-                    com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
+                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
     }
 
     @Test void catalogFiltersByExactRevisionAndCombinesOtherFilters() throws Exception {

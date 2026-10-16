@@ -1,4 +1,20 @@
 {
+  "telegram": {
+    "description": "Receive notifications about your operations even when EPL Sync is not open in your browser.",
+    "enabled": "Enable Telegram notifications",
+    "token": "Bot token",
+    "tokenSaved": "Token saved; leave empty to keep it",
+    "chat": "Chat ID",
+    "clearToken": "Remove saved token",
+    "setup": "Create a bot with BotFather, start a conversation with your bot and configure its token and numeric chat ID (message.chat.id), not the bot ID. No additional container is required.",
+    "success": "Successful operations",
+    "warning": "Partial results or attention required",
+    "error": "Failures",
+    "test": "Send test message",
+    "saved": "Telegram settings saved.",
+    "testOk": "Test message sent.",
+    "deliveryStatus": "Pending: {{pending}} · Undelivered in the last 7 days: {{failed}}"
+  },
   "automation": {
     "library": "Destination library",
     "close": "Close cycle",
@@ -53,6 +69,9 @@
     "calibreJob": "Calibre job"
   },
   "scheduledTasks": {
+    "notifications": "Notifications",
+    "toggleNotifications": "Enable or disable Telegram for {{name}}",
+    "telegramNotifications": "Send Telegram notifications for this task",
     "delete": "Delete…",
     "deleteConfirm": "Delete task “{{name}}”? Its configuration and cycles will be removed. Generated jobs and Events will be retained.",
     "duration": "Duration",
@@ -433,7 +452,7 @@
     "covers": "Covers",
     "about": "About",
     "repository": "Project repository",
-    "events": "Events",
+    "events": "Notifications",
     "downloads": "Downloads",
     "calibre": "Calibre"
   },
@@ -1063,7 +1082,10 @@
       "CLEANUP": "Clean up previous revisions",
       "CALIBRE_SEND": "Calibre transfer",
       "CALIBRE_SEND_FILE": "Send EPUB to Calibre",
-      "CALIBRE_JOB_CONTROL": "Control Calibre job"
+      "CALIBRE_JOB_CONTROL": "Control Calibre job",
+      "CALIBRE_SYNC": "Calibre synchronization",
+      "TORRENT_UPDATE_SEARCH": "Search catalog updates",
+      "CALIBRE_UPDATE_SEARCH": "Search Calibre updates"
     },
     "fields": {
       "removed": "Confirmed removals",

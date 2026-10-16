@@ -39,6 +39,19 @@ class ScheduledTasksTests {
     ScheduledTasks.Task due(String name,ScheduledTasks.Operation operation) {
         var task=tasks.save(null,input(name,operation));jdbc.update("UPDATE scheduled_tasks SET next_run=0 WHERE id=?",task.id());return task;
     }
+    @Test void savesTelegramPreferenceIndependentlyOfTaskActivation() {
+        var task=tasks.save(null,new ScheduledTasks.Input("Telegram",ScheduledTasks.Operation.TORRENT_SYNC,"0 5 * * *",owner.id(),true,false));
+        assertThat(tasks.find(task.id()).telegramNotifications()).isFalse();
+        task=tasks.save(task.id(),new ScheduledTasks.Input("Telegram",task.operation(),task.cron(),owner.id(),false,true));
+        assertThat(task.telegramNotifications()).isTrue();assertThat(task.enabled()).isFalse();
+        assertThat(tasks.enable(task.id(),true).telegramNotifications()).isTrue();
+        var before=tasks.find(task.id());
+        assertThat(tasks.notifications(task.id(),false).telegramNotifications()).isFalse();
+        var after=tasks.find(task.id());
+        assertThat(after.cron()).isEqualTo(before.cron());
+        assertThat(after.nextRun()).isEqualTo(before.nextRun());
+        assertThat(after.enabled()).isEqualTo(before.enabled());
+    }
     @Test void automaticTaskTypesAreUniqueEvenWhenDisabledAndWhenEditing() {
         for(var operation:List.of(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE)) {
             var first=tasks.save(null,input("First",operation));tasks.enable(first.id(),false);
@@ -199,6 +212,19 @@ class ScheduledTasksTests {
             scheduler.run(tasks.claim(Instant.now()).orElseThrow());
             assertThat(tasks.find(task.id()).lastResult()).isEqualTo("SUCCEEDED");
             verify(catalog).updateCatalog(null);verify(catalog,never()).importCatalog();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE action='UPDATE' AND category='CATALOG' AND origin='SCHEDULED'",Long.class)).isEqualTo(2);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE action='SCHEDULED_TASK' AND json_extract(details,'$.taskId')=?",Long.class,task.id())).isZero();
+        } finally {scheduler.close();}
+    }
+    @Test @WithMockUser(authorities="CATALOG_IMPORT") void runNowCatalogUsesTheSameCatalogEventWithoutGenericTaskDuplicates() {
+        when(catalog.updateCatalog(null)).thenReturn(new com.rlibanez.eplsync.dto.ImportResult(true,"ok",10,0,2,8,0));
+        var task=tasks.save(null,input("Manual catalogue",ScheduledTasks.Operation.CATALOG_IMPORT));
+        var scheduler=new TaskScheduler(tasks,calibre,torrent,journal,catalog,searches);
+        try {
+            scheduler.start();scheduler.runNow(task.id());
+            org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(5)).untilAsserted(()->assertThat(tasks.find(task.id()).lastResult()).isEqualTo("SUCCEEDED"));
+            var events=jdbc.queryForList("SELECT category,action,origin,outcome FROM app_events WHERE json_extract(details,'$.taskId')=? ORDER BY id",task.id());
+            assertThat(events).hasSize(2).allSatisfy(event->{assertThat(event).containsEntry("category","CATALOG").containsEntry("action","UPDATE").containsEntry("origin","MANUAL");});
         } finally {scheduler.close();}
     }
     @Test void restoringUsesInstallationConfigurationAndRemovesOnlyThatOverride() {
@@ -242,8 +268,8 @@ class ScheduledTasksTests {
             when(catalog.updateCatalog(null)).thenReturn(new com.rlibanez.eplsync.dto.ImportResult(true,"partial",10,2,0,8,0));
             var partial=due("Partial",ScheduledTasks.Operation.CATALOG_IMPORT);scheduler.run(tasks.claim(Instant.now()).orElseThrow());
             assertThat(tasks.find(partial.id()).lastResult()).isEqualTo("PARTIAL");
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE id>? AND action='SCHEDULED_TASK'",Long.class,cursor)).isEqualTo(1);
-            assertThat(jdbc.queryForObject("SELECT outcome FROM app_events WHERE id>? AND action='SCHEDULED_TASK'",String.class,cursor)).isEqualTo("PARTIAL");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE id>? AND action='SCHEDULED_TASK'",Long.class,cursor)).isZero();
+            assertThat(jdbc.queryForObject("SELECT outcome FROM app_events WHERE id>? AND category='CATALOG' AND action='UPDATE' AND outcome<>'STARTED'",String.class,cursor)).isEqualTo("PARTIAL");
             assertThat(appender.list).anyMatch(e -> e.getLevel()==ch.qos.logback.classic.Level.WARN && e.getFormattedMessage().contains("PARTIAL"));
         } finally {scheduler.close();logger.detachAppender(appender);appender.stop();logger.setLevel(previousLevel);}
     }
@@ -334,7 +360,7 @@ class ScheduledTasksTests {
         try {
             scheduler.run(tasks.claim(Instant.now()).orElseThrow());
             assertThat(tasks.find(task.id()).lastResult()).isEqualTo("FAILED");verify(calibre,never()).sync();
-            assertThat(jdbc.queryForObject("SELECT actor_id FROM app_events WHERE action='SCHEDULED_TASK' AND outcome='FAILED' ORDER BY id DESC LIMIT 1",String.class)).isEqualTo(reader);
+            assertThat(jdbc.queryForObject("SELECT actor_id FROM app_events WHERE action='CALIBRE_SYNC' AND outcome='FAILED' ORDER BY id DESC LIMIT 1",String.class)).isEqualTo(reader);
         } finally {scheduler.close();}
     }
     @Test void runnerUsesCurrentUserPermissionsAndRecordsScheduledOrigin() {

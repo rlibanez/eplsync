@@ -36,7 +36,7 @@ class CalibreTransfersTests {
     @MockitoBean EpubFiles files;
     Account owner;String record;byte[] bytes;MockMvc mvc;
     @BeforeEach void setup() throws Exception {
-        jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM calibre_books");jdbc.update("DELETE FROM app_settings WHERE setting_key IN ('calibre.connection','calibre.snapshot')");downloads.deleteAll();accounts.clear();
+        jdbc.update("DELETE FROM scheduled_tasks");jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM calibre_books");jdbc.update("DELETE FROM app_settings WHERE setting_key IN ('calibre.connection','calibre.snapshot')");downloads.deleteAll();accounts.clear();
         owner=accounts.initialize("Owner","owner@example.com","password123","password123");
         settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"main"));
         var row=new DownloadRecord();row.setEplId(1L);row.setRevision(1.1);row.setHash("A".repeat(40));row.setClient("qbittorrent");row.setClientInstanceId(tracking.instanceId());row.setStatus(DownloadStatus.DOWNLOADED);row.setOrigin(DownloadRecord.Origin.EPLSYNC);row.setCreatedAt(Instant.now());record=downloads.save(row).getId();
@@ -129,16 +129,35 @@ class CalibreTransfersTests {
         mvc.perform(get("/api/calibre/transfers").param("sort","invalid,asc"))
             .andExpect(status().isBadRequest());
     }
-    @Test void sendsAndPublishesVerifiedBookWithPersistentOwnerAndEvent() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=EventContext.Origin.class,names={"MANUAL","SCHEDULED"})
+    void taskCalibreJobsOnlyRecordProblemsForEitherOrigin(EventContext.Origin origin) {
+        for(boolean fail:List.of(false,true)) {
+            String task=UUID.randomUUID().toString(),run=UUID.randomUUID().toString();
+            jdbc.update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,created_at,updated_at) VALUES(?,'Calibre','CALIBRE_AUTO_UPDATE','0 5 * * *','UTC',?,'Owner',0,0,0)",task,owner.id());
+            var job=EventContext.withOrigin(origin,()->com.rlibanez.eplsync.tasks.AutomationContext.run(this::create));
+            jdbc.update("INSERT INTO scheduled_automation_runs(id,task_id,owner_id,state,created_at,configuration,context) VALUES(?,?,?,'WAITING',0,'{}',?)",run,task,owner.id(),origin.name());
+            jdbc.update("INSERT INTO scheduled_automation_jobs VALUES(?,'calibre',?)",run,job.id());
+            if(fail) when(files.download(record,0)).thenThrow(new com.rlibanez.eplsync.exception.UserInputException("No se puede leer el EPUB"));
+            transfers.cycle();
+            assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");
+            var events=jdbc.queryForList("SELECT outcome,origin FROM app_events WHERE operation_id=? ORDER BY id",job.id());
+            if(fail) {
+                assertThat(events).extracting(e->e.get("outcome")).containsExactly("STARTED","PARTIAL");
+                assertThat(events).allSatisfy(event->assertThat(event.get("origin")).isEqualTo(origin.name()));
+            } else assertThat(events).isEmpty();
+        }
+    }
+    @Test void sendsAndPublishesVerifiedBookWithoutSuccessfulHistoryEvent() {
         var job=create();transfers.cycle();
         assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
         assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items()).singleElement().satisfies(item -> assertThat(item.calibreId()).isEqualTo(9));
         verify(client).uploadEpub(any(),any(),eq("book.epub"),anyString());
         assertThat(catalog.snapshot().complete()).isFalse();assertThat(catalog.snapshot().total()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE action='CALIBRE_SEND_FILE'",Long.class)).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(DISTINCT operation_id) FROM app_events WHERE action='CALIBRE_SEND' AND actor_id=?",Long.class,owner.id())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT operation_id) FROM app_events WHERE action='CALIBRE_SEND' AND actor_id=?",Long.class,owner.id())).isZero();
     }
-    @Test void twentyFiveFilesHaveOneGeneralEventOperationAndNoIndividualEvents() {
+    @Test void twentyFiveSuccessfulFilesDoNotCreateHistoryEvents() {
         var choices=new java.util.ArrayList<CalibreTransfers.FileChoice>();
         var available=new java.util.ArrayList<EpubFiles.Item>();
         for(int index=0;index<25;index++) {
@@ -151,9 +170,9 @@ class CalibreTransfersTests {
             () -> transfers.create(new CalibreTransfers.Request("main",choices)));
         for(int index=0;index<25;index++) transfers.cycle();
         assertThat(transfers.job(job.id()).accepted()).isEqualTo(25);
-        assertThat(jdbc.queryForObject("SELECT count(DISTINCT operation_id) FROM app_events WHERE actor_id=? AND action='CALIBRE_SEND'",Long.class,owner.id())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT operation_id) FROM app_events WHERE actor_id=? AND action='CALIBRE_SEND'",Long.class,owner.id())).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE actor_id=? AND action='CALIBRE_SEND_FILE'",Long.class,owner.id())).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE operation_id=? AND outcome='SUCCEEDED'",Long.class,job.id())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE operation_id=? AND outcome='SUCCEEDED'",Long.class,job.id())).isZero();
     }
     @Test void preparationIdentifiesTheInaccessibleRecordInsteadOfAnAnonymousError() {
         when(files.list(record)).thenThrow(new com.rlibanez.eplsync.exception.TorrentOperationException(org.springframework.http.HttpStatus.CONFLICT,"No se puede leer el EPUB; revisa el montaje y los permisos de la carpeta"));

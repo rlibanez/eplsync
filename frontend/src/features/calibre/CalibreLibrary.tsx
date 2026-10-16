@@ -10,7 +10,6 @@ import { SelectAllRows } from "../../components/SelectAllRows";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { CalibreTable, calibreColumns, type CalibreBook } from "./CalibreTable";
-import { useNotifications } from "../notifications/Notifications";
 import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { Button, MultiSelect, Select, TextInput } from "@mantine/core";
@@ -36,7 +35,6 @@ export function CalibreUpdates() {
 export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
   const { t } = useTranslation();
   const auth = useAuth();
-  const { notify } = useNotifications();
   const { date } = useLocale();
   const cache = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -148,19 +146,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       void cache.invalidateQueries({ queryKey: ["book"] });
       setPage(0);
       setSelected([]);
-      notify({
-        title: "Calibre",
-        message: t("calibre.synced"),
-        tone: "success",
-      });
     },
-    onError: (error) =>
-      notify({
-        title: "Calibre",
-        message:
-          (error as { details?: string }).details || t("errors.unexpected"),
-        tone: "error",
-      }),
   });
   useEffect(() => {
     if (!updates || searchParams.get("search") !== "1") {
@@ -247,6 +233,9 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
           error={previousSearch.error}
           retry={() => previousSearch.refetch()}
         />
+      )}
+      {sync.isError && (
+        <Failure error={sync.error} retry={() => sync.mutate()} />
       )}
       {snapshot.isError && (
         <Failure error={snapshot.error} retry={() => snapshot.refetch()} />

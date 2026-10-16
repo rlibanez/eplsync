@@ -1,3 +1,4 @@
+import { useDownloadColumns } from "../downloads/DownloadTable";
 import { Link } from "react-router-dom";
 import {
   AutomationFields,
@@ -11,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
+  ActionIcon,
   Group,
   Stack,
   Switch,
@@ -21,7 +23,14 @@ import {
   Stepper,
   Checkbox,
 } from "@mantine/core";
-import { CalendarClock, Pencil, Plus, Play, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  Pencil,
+  Plus,
+  Play,
+  Trash2,
+  SquareCheck,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { get, ApiError, NetworkError } from "../../api/catalog";
 import { secureFetch } from "../auth/transport";
@@ -43,6 +52,7 @@ interface Input {
   operation: Operation | null;
   cron: string;
   enabled: boolean;
+  telegramNotifications: boolean;
   automation?: AutomationConfiguration;
 }
 interface Task extends Omit<Input, "operation"> {
@@ -109,12 +119,44 @@ export function ScheduledTaskSettings() {
     queryFn: ({ signal }) => get<View>("/settings/tasks", signal),
     refetchInterval: 5000,
   });
+  const columns = useDownloadColumns(
+    "eplsync.scheduled-tasks.columns.content-v2",
+    [
+      ["name", 210],
+      ["operation", 190],
+      ["owner", 110],
+      ["cron", 150],
+      ["next", 160],
+      ["last", 160],
+      ["duration", 90],
+      ["result", 130],
+      ["cycle", 170],
+      ["enabled", 80],
+      ["notifications", 140],
+      ["actions", 120],
+    ].map(([field, width]) => ({
+      field: String(field),
+      label: `scheduledTasks.${field}`,
+      width: Number(width),
+      sortable: false,
+    })),
+    "",
+    () => {},
+  );
   const [editing, setEditing] = useState<{ id?: string; input: Input } | null>(
     null,
   );
   const toggle = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       request<Task>(`/${id}/enabled`, "POST", { enabled }),
+    onSuccess: () => {
+      saved();
+      void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
+    },
+  });
+  const notifications = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      request<Task>(`/${id}/notifications`, "POST", { enabled }),
     onSuccess: () => {
       saved();
       void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
@@ -163,6 +205,7 @@ export function ScheduledTaskSettings() {
               operation: task.operation,
               cron: task.cron,
               enabled: task.enabled,
+              telegramNotifications: task.telegramNotifications ?? true,
               automation: query.data.automations?.[task.id]?.configuration,
             },
           }
@@ -172,6 +215,7 @@ export function ScheduledTaskSettings() {
               operation: null,
               cron: "0 5 * * *",
               enabled: true,
+              telegramNotifications: true,
             },
           },
     );
@@ -195,44 +239,36 @@ export function ScheduledTaskSettings() {
           </Button>
         </Group>
         <p>{t("scheduledTasks.description")}</p>
-        {(toggle.isError || run.isError) && (
+        {(toggle.isError || run.isError || notifications.isError) && (
           <Alert color="red" role="alert">
-            {((run.error ?? toggle.error) as ApiError)?.details ??
-              (run.error ?? toggle.error)?.message}
+            {((run.error ?? toggle.error ?? notifications.error) as ApiError)
+              ?.details ??
+              (run.error ?? toggle.error ?? notifications.error)?.message}
           </Alert>
         )}
         <div className="table-scroll">
           <table
-            className="catalog-table"
-            style={{ minWidth: 1700, width: "100%" }}
+            className={`catalog-table scheduled-tasks-table${Object.keys(columns.settings.widths).length ? " resized" : ""}`}
+            style={{
+              minWidth: "100%",
+              width: Object.keys(columns.settings.widths).length
+                ? columns.width
+                : "100%",
+            }}
           >
-            <colgroup>
-              {[180, 170, 120, 180, 150, 180, 180, 100, 150, 220, 80, 250].map(
-                (width, index) => (
-                  <col key={index} style={{ width }} />
-                ),
-              )}
-            </colgroup>
-            <thead>
-              <tr>
-                {[
-                  "name",
-                  "operation",
-                  "owner",
-                  "cron",
-                  "timezone",
-                  "next",
-                  "last",
-                  "duration",
-                  "result",
-                  "cycle",
-                  "enabled",
-                  "actions",
-                ].map((key) => (
-                  <th key={key}>{t(`scheduledTasks.${key}`)}</th>
+            {Object.keys(columns.settings.widths).length ? (
+              columns.colgroup
+            ) : (
+              <colgroup>
+                {columns.visible.map((column) => (
+                  <col
+                    key={column.field}
+                    style={{ width: column.field === "name" ? "auto" : "1%" }}
+                  />
                 ))}
-              </tr>
-            </thead>
+              </colgroup>
+            )}
+            <thead>{columns.headings}</thead>
             <tbody>
               {query.data.tasks.length === 0 ? (
                 <tr>
@@ -247,7 +283,6 @@ export function ScheduledTaskSettings() {
                     <td>
                       <code style={{ whiteSpace: "nowrap" }}>{task.cron}</code>
                     </td>
-                    <td style={{ whiteSpace: "nowrap" }}>{task.timezone}</td>
                     <td>{date(task.nextRun)}</td>
                     <td>{date(task.lastRun)}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
@@ -269,7 +304,7 @@ export function ScheduledTaskSettings() {
                     </td>
                     <td>
                       {query.data.automations?.[task.id]?.cycle ? (
-                        <Stack gap={4}>
+                        <Stack gap={4} align="flex-start">
                           <span className="badge">
                             {t(
                               `automation.cycles.${query.data.automations[task.id].cycle!.state}`,
@@ -320,58 +355,80 @@ export function ScheduledTaskSettings() {
                       />
                     </td>
                     <td>
-                      {query.data.automations?.[task.id]?.cycle?.state !==
-                        undefined &&
-                        query.data.automations[task.id].cycle!.state !==
-                          "COMPLETED" && (
-                          <Button
-                            size="xs"
-                            variant="subtle"
-                            disabled={task.running}
-                            onClick={() => {
-                              closeCycle.reset();
-                              setClosing(task.id);
-                            }}
-                          >
-                            {t("automation.close")}
-                          </Button>
-                        )}
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        leftSection={<Play size={14} />}
-                        disabled={task.running || run.isPending}
-                        onClick={() => run.mutate(task.id)}
-                      >
-                        {t("scheduledTasks.runNow")}
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        leftSection={<Pencil size={14} />}
-                        disabled={task.running}
-                        onClick={() => open(task)}
-                      >
-                        {t("scheduledTasks.edit")}
-                      </Button>
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        color="red"
-                        leftSection={<Trash2 size={14} />}
-                        disabled={
-                          task.running ||
-                          (!!query.data.automations?.[task.id]?.cycle &&
-                            query.data.automations[task.id].cycle!.state !==
-                              "COMPLETED")
+                      <Switch
+                        aria-label={t("scheduledTasks.toggleNotifications", {
+                          name: task.name,
+                        })}
+                        checked={task.telegramNotifications ?? true}
+                        disabled={notifications.isPending}
+                        onChange={(e) =>
+                          notifications.mutate({
+                            id: task.id,
+                            enabled: e.currentTarget.checked,
+                          })
                         }
-                        onClick={() => {
-                          remove.reset();
-                          setDeleting(task);
-                        }}
-                      >
-                        {t("scheduledTasks.delete")}
-                      </Button>
+                      />
+                    </td>
+                    <td>
+                      <Group gap="xs" wrap="nowrap">
+                        {query.data.automations?.[task.id]?.cycle?.state !==
+                          undefined &&
+                          query.data.automations[task.id].cycle!.state !==
+                            "COMPLETED" && (
+                            <ActionIcon
+                              size="sm"
+                              variant="subtle"
+                              disabled={task.running}
+                              onClick={() => {
+                                closeCycle.reset();
+                                setClosing(task.id);
+                              }}
+                              aria-label={t("automation.close")}
+                              title={t("automation.close")}
+                            >
+                              <SquareCheck size={18} />
+                            </ActionIcon>
+                          )}
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          disabled={task.running || run.isPending}
+                          onClick={() => run.mutate(task.id)}
+                          aria-label={t("scheduledTasks.runNow")}
+                          title={t("scheduledTasks.runNow")}
+                        >
+                          <Play size={18} />
+                        </ActionIcon>
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          disabled={task.running}
+                          onClick={() => open(task)}
+                          aria-label={t("scheduledTasks.edit")}
+                          title={t("scheduledTasks.edit")}
+                        >
+                          <Pencil size={18} />
+                        </ActionIcon>
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          color="red"
+                          disabled={
+                            task.running ||
+                            (!!query.data.automations?.[task.id]?.cycle &&
+                              query.data.automations[task.id].cycle!.state !==
+                                "COMPLETED")
+                          }
+                          onClick={() => {
+                            remove.reset();
+                            setDeleting(task);
+                          }}
+                          aria-label={t("scheduledTasks.delete")}
+                          title={t("scheduledTasks.delete")}
+                        >
+                          <Trash2 size={18} />
+                        </ActionIcon>
+                      </Group>{" "}
                     </td>
                   </tr>
                 ))
@@ -802,6 +859,14 @@ function TaskEditor({
             label={t("scheduledTasks.enabled")}
             checked={value.enabled}
             onChange={(e) => change("enabled", e.currentTarget.checked)}
+            disabled={mutation.isPending}
+          />
+          <Checkbox
+            label={t("scheduledTasks.telegramNotifications")}
+            checked={value.telegramNotifications}
+            onChange={(e) =>
+              change("telegramNotifications", e.currentTarget.checked)
+            }
             disabled={mutation.isPending}
           />
           {automatic && destructive && (

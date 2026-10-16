@@ -152,13 +152,26 @@ class AutomaticUpdatesTests {
         automations.refresh();assertThat(automations.latest(task.id()).state()).isEqualTo("COMPLETED");
         execute(task);assertThat(automations.latest(task.id()).jobs()).hasSize(1);
     }
-    @Test void scheduledAutomationDoesNotRecordSuccessfulJobEventsButRecordsPartialResults() {
-        var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of("maxRetries",0));execute(task);
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=EventContext.Origin.class,names={"MANUAL","SCHEDULED"})
+    void taskJobsOnlyRecordProblemsRegardlessOfExecutionOrigin(EventContext.Origin origin) {
+        var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of("maxRetries",0));
+        EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(origin,()->automations.execute(task)));
         String job=automations.latest(task.id()).jobs().getFirst().id();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE operation_id=?",Long.class,job)).isZero();
         bulk.next();var item=bulk.claim(job,bulk.pending(job,1).getFirst());bulk.finish(item.getId(),BulkItem.State.FAILED,"test",false,false);
         assertThat(jdbc.queryForList("SELECT outcome FROM app_events WHERE operation_id=? ORDER BY id",String.class,job)).containsExactly("STARTED","PARTIAL");
-        assertThat(jdbc.queryForList("SELECT DISTINCT origin FROM app_events WHERE operation_id=?",String.class,job)).containsExactly("SCHEDULED");
+        assertThat(jdbc.queryForList("SELECT DISTINCT origin FROM app_events WHERE operation_id=?",String.class,job)).containsExactly(origin.name());
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=EventContext.Origin.class,names={"MANUAL","SCHEDULED"})
+    void completedTaskDownloadJobsDoNotRecordSuccess(EventContext.Origin origin) {
+        var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of("torrentCleanup","keep"));
+        EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(origin,()->automations.execute(task)));
+        String job=automations.latest(task.id()).jobs().getFirst().id();
+        bulk.next();var item=bulk.claim(job,bulk.pending(job,1).getFirst());bulk.finish(item.getId(),BulkItem.State.ACCEPTED,"ok",false,false);
+        assertThat(bulk.view(job).status()).isEqualTo(BulkJob.State.COMPLETED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE operation_id=?",Long.class,job)).isZero();
     }
     @Test void pausedCyclesNotifyOnceAndRecoverWhenTheirJobsResume() {
         var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of());execute(task);

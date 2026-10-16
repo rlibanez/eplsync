@@ -56,8 +56,8 @@ public class TaskController {
                 com.rlibanez.eplsync.config.TableOrdering.request(request,"title,asc"),
                 java.util.Map.of("status",status,"title",title,"author",author,"eplId",eplId,"availability",availability));
     }
-    public record Input(String name,ScheduledTasks.Operation operation,String cron,boolean enabled,com.rlibanez.eplsync.settings.AutomaticUpdates.Configuration automation) {
-        ScheduledTasks.Input ownedBy(String id) {return new ScheduledTasks.Input(name,operation,cron,id,enabled);}
+    public record Input(String name,ScheduledTasks.Operation operation,String cron,boolean enabled,Boolean telegramNotifications,com.rlibanez.eplsync.settings.AutomaticUpdates.Configuration automation) {
+        ScheduledTasks.Input ownedBy(String id) {return new ScheduledTasks.Input(name,operation,cron,id,enabled,telegramNotifications);}
     }
     @PostMapping @org.springframework.transaction.annotation.Transactional
     public ScheduledTasks.Task create(@RequestBody Input input) {var task=tasks.save(null,input.ownedBy(sessions.current().id()));automations.save(task,input.automation());return task;}
@@ -75,6 +75,7 @@ public class TaskController {
     }
     @DeleteMapping("/{id}") @ResponseStatus(org.springframework.http.HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String id) {tasks.delete(id);}
+    @PostMapping("/{id}/notifications") public ScheduledTasks.Task notifications(@PathVariable String id,@RequestBody Enabled input) {return tasks.notifications(id,input.enabled());}
     @PostMapping("/{id}/enabled") public ScheduledTasks.Task enable(@PathVariable String id,@RequestBody Enabled input) {return tasks.enable(id,input.enabled());}
     @PostMapping("/internal/{id}/restore") public InternalTaskSettings.Period restore(@PathVariable String id) {return internal.restore(id);}
     @PutMapping("/internal/{id}") public InternalTaskSettings.Period period(@PathVariable String id,@RequestBody Interval input) {return internal.save(id,input.interval());}

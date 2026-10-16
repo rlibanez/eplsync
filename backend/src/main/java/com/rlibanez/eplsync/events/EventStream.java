@@ -54,9 +54,13 @@ public class EventStream {
         // Subscribe before taking the snapshot, so events cannot slip between replay and live delivery.
         long initialResetVersion = journal.resetVersion();
         var listener = journal.listen(() -> signals.offer(true));
+        var starts=new ArrayBlockingQueue<EventJournal.Entry>(32);
+        var startListener=journal.listenNotices(entry->{
+            if(Objects.equals(entry.actor().id(),account.id())) {starts.offer(entry);signals.offer(true);}
+        });
         connections.add(emitter);
         try { writers.submit(() -> {
-            try (listener) {
+            try (listener; startListener) {
                 long resetVersion = initialResetVersion;
                 long latest = journal.cursor();
                 long cursor = after == null ? latest : Math.min(after, latest);
@@ -68,6 +72,9 @@ public class EventStream {
                         resetVersion = journal.resetVersion();
                         emitter.send(SseEmitter.event().name("database-reset").data(Map.of("cursor", journal.cursor())));
                     }
+                    EventJournal.Entry started;
+                    while((started=starts.poll())!=null)
+                        emitter.send(SseEmitter.event().name("operation-notice").data(started));
                     var rows = journal.after(cursor, 100);
                     for (var row : rows) {
                         if (row.category()!=EventJournal.Category.SECURITY || (account!=null && account.role().equals("ADMIN")))
@@ -90,6 +97,7 @@ public class EventStream {
             finally { connections.remove(emitter); release.run(); }
         }); } catch (RejectedExecutionException ex) {
             try { listener.close(); } catch (Exception ignored) { }
+            try { if(startListener!=null) startListener.close(); } catch (Exception ignored) { }
             connections.remove(emitter); release.run(); emitter.complete();
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"El canal de eventos se está cerrando");
         }

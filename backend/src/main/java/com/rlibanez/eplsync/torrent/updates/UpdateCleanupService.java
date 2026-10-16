@@ -91,25 +91,15 @@ public class UpdateCleanupService {
             com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
     }
     public DownloadTrackingService.SyncResult synchronize(boolean dryRun,boolean details) {
-        var startedAt=java.time.Instant.now();
-        // The tracking service audits reconciliation; failures before entering it need their own event.
-        var trackingStarted=new java.util.concurrent.atomic.AtomicBoolean();
-        try {
-            return client.exclusiveClient(adapter -> {
-                var remote=adapter.listTorrents();
-                trackingStarted.set(true);
-                var result=tracking.sync(() -> remote,dryRun,details);
-                if (!dryRun && com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP)) {
-                    var selected=queue.manualPending();
-                    if (!selected.isEmpty()) result=result.withCleanup(queue.execute(selected,adapter,remote,false,false));
-                }
-                return result;
-            });
-        } catch (RuntimeException ex) {
-            if (!trackingStarted.get()) events.rejected(com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,
-                dryRun ? "SYNC_PREVIEW" : "SYNC",Map.of("dryRun",dryRun),startedAt,ex);
-            throw ex;
-        }
+        return events.runWithPolicy(!dryRun,com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,dryRun?"SYNC_PREVIEW":"SYNC",Map.of("dryRun",dryRun),()->client.exclusiveClient(adapter -> {
+            var remote=adapter.listTorrents();
+            var result=tracking.sync(() -> remote,dryRun,details);
+            if(!dryRun && com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP)) {
+                var selected=queue.manualPending();
+                if(!selected.isEmpty()) result=result.withCleanup(queue.execute(selected,adapter,remote,false,false));
+            }
+            return result;
+        }),result->Map.of("checked",result.records().checked(),"created",result.records().created(),"updated",result.records().updated(),"ignored",result.remote().ignored()));
     }
     public record JobResult(String jobId,long checked,long removed,long waiting,long blocked,long requested,String error) {}
     public record GlobalResult(int selectedJobs,long failedJobs,long checked,long removed,long waiting,long blocked,long requested,List<JobResult> jobs) {}

@@ -30,6 +30,63 @@ class EventJournalTests {
     final Filter all = new Filter(null, null, null, null);
     Entry record() { return journal.record(Category.CATALOG, "UPDATE", Outcome.SUCCEEDED,
         EventContext.origin(), java.util.UUID.randomUUID().toString(), Map.of("created", 2)); }
+    @Test void sameOperationHasTheSameHistoryAndLiveFeedbackForAllEntryPoints() throws Exception {
+        for(var origin:java.util.List.of(EventContext.Origin.MANUAL,EventContext.Origin.SCHEDULED)) {
+            for(boolean task:java.util.List.of(false,true)) {
+                var notices=new java.util.ArrayList<Entry>();
+                var actor=new EventContext.Actor("owner","Owner","USER");
+                Map<String,Object> context=task?Map.of("taskId","task","taskName","Synchronize"):Map.of();
+                long cursor=journal.cursor();
+                try(var subscription=journal.listenNotices(notices::add)) {
+                    EventContext.withActor(actor,()->EventContext.withOrigin(origin,()->journal.runFailuresOnly(Category.TORRENT,"SYNC",context,()->{
+                        // A search or task may delegate to a synchronization: do not announce it twice.
+                        return journal.runFailuresOnly(Category.TORRENT,"SYNC",Map.of(),()->Map.<String,Object>of("checked",3),result->result);
+                    },result->result)));
+                    assertThat(journal.after(cursor,20)).isEmpty();
+                    assertThat(notices).extracting(Entry::outcome).containsExactly(Outcome.STARTED,Outcome.SUCCEEDED);
+                    assertThat(notices).allSatisfy(entry->{assertThat(entry.id()).isZero();assertThat(entry.actor()).isEqualTo(actor);assertThat(entry.origin()).isEqualTo(origin);assertThat(entry.action()).isEqualTo("SYNC");});
+                    assertThat(notices.getFirst().operationId()).isEqualTo(notices.getLast().operationId());
+                    notices.clear();
+                    assertThatThrownBy(()->EventContext.withActor(actor,()->EventContext.withOrigin(origin,()->journal.runFailuresOnly(Category.TORRENT,"SYNC",context,()->{throw new com.rlibanez.eplsync.exception.UserInputException("Sin conexión");},result->Map.of())))).hasMessage("Sin conexión");
+                    assertThat(notices).extracting(Entry::outcome).containsExactly(Outcome.STARTED);
+                    assertThat(journal.after(cursor,20)).singleElement().satisfies(entry->{assertThat(entry.outcome()).isEqualTo(Outcome.FAILED);assertThat(entry.action()).isEqualTo("SYNC");assertThat(entry.origin()).isEqualTo(origin);});
+                }
+            }
+        }
+    }
+    @Test void transientResultsAreOnlyPublishedAfterCommit() throws Exception {
+        var notices=new java.util.ArrayList<Entry>();
+        try(var subscription=journal.listenNotices(notices::add)) {
+            new TransactionTemplate(manager).executeWithoutResult(tx->{
+                journal.live(EventContext.actor(),Category.TORRENT,"SYNC",Outcome.SUCCEEDED,EventContext.origin(),"rollback",Map.of());
+                assertThat(notices).isEmpty();tx.setRollbackOnly();
+            });
+            assertThat(notices).isEmpty();
+            new TransactionTemplate(manager).executeWithoutResult(tx->journal.live(EventContext.actor(),Category.TORRENT,"SYNC",Outcome.SUCCEEDED,EventContext.origin(),"commit",Map.of()));
+            assertThat(notices).extracting(Entry::operationId).containsExactly("commit");
+        }
+    }
+    @Test void catalogueStepsOfScheduledTasksRemainAuditedWithoutDuplicateTaskFailures() {
+        for(boolean fail:java.util.List.of(false,true)) {
+            long cursor=journal.cursor();
+            java.util.function.Supplier<Map<String,Object>> work=()->journal.run(Category.CATALOG,"UPDATE",()->{
+                if(fail) throw new com.rlibanez.eplsync.exception.UserInputException("Catálogo no disponible");
+                return Map.<String,Object>of("created",2);
+            },result->result);
+            if(fail) assertThatThrownBy(()->journal.runFailuresOnly(Category.JOB,"SCHEDULED_TASK",Map.of("taskId","task"),work,result->result)).hasMessage("Catálogo no disponible");
+            else journal.runFailuresOnly(Category.JOB,"SCHEDULED_TASK",Map.of("taskId","task"),work,result->result);
+            var entries=journal.after(cursor,100);
+            assertThat(entries).hasSize(2).allSatisfy(entry->{assertThat(entry.category()).isEqualTo(Category.CATALOG);assertThat(entry.action()).isEqualTo("UPDATE");assertThat(entry.details()).containsEntry("taskId","task");});
+            assertThat(entries.getLast().outcome()).isEqualTo(fail?Outcome.FAILED:Outcome.SUCCEEDED);
+        }
+    }
+    @Test void partialCatalogueFollowedByTaskAbortDoesNotDuplicateItsProblem() {
+        assertThatThrownBy(()->journal.runFailuresOnly(Category.JOB,"SCHEDULED_TASK",Map.of("taskId","task"),()->{
+            journal.run(Category.CATALOG,"UPDATE",()->Map.<String,Object>of("errors",2),result->result);
+            throw new com.rlibanez.eplsync.exception.UserInputException("El catálogo terminó con errores");
+        },result->Map.of())).hasMessage("El catálogo terminó con errores");
+        assertThat(journal.after(0,100)).hasSize(2).allSatisfy(entry->assertThat(entry.action()).isEqualTo("UPDATE"));
+    }
     @BeforeEach void clear() {
         settings.getRetention().setMaxCount(10000);
         settings.getRetention().setMaxAgeDays(365);

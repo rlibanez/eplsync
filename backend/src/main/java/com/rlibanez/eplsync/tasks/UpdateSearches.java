@@ -12,6 +12,7 @@ import com.rlibanez.eplsync.exception.UserInputException;
 /** Shared last complete manual or scheduled search per user. */
 @Service
 public class UpdateSearches {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     private final JdbcTemplate jdbc;
     private final RevisionUpdates updates;
     private final UpdatePreferences preferences;
@@ -47,6 +48,10 @@ public class UpdateSearches {
         return Map.of("updates",searchDownloads(userId,preferences.get()).rows().size());
     }
     public Search searchDownloads(String userId,UpdatePreferences.Preferences input) {
+        if(events==null) return performDownloads(userId,input);
+        return events.runFailuresOnly(com.rlibanez.eplsync.events.EventJournal.Category.JOB,"TORRENT_UPDATE_SEARCH",Map.of(),()->performDownloads(userId,input),result->Map.of("updates",result.rows().size()));
+    }
+    private Search performDownloads(String userId,UpdatePreferences.Preferences input) {
         RevisionUpdates.validate(input,0,1000,"eplId,asc");
         String context=serverSettings.updateSearchContext();
         torrent.synchronize(false,false);
@@ -66,6 +71,10 @@ public class UpdateSearches {
         return Map.of("updates",result.search().rows().size(),"total",result.snapshot().total(),"identified",result.snapshot().identified());
     }
     public CalibreSearch searchCalibre(String userId) {
+        if(events==null) return performCalibre(userId);
+        return events.runFailuresOnly(com.rlibanez.eplsync.events.EventJournal.Category.JOB,"CALIBRE_UPDATE_SEARCH",Map.of(),()->performCalibre(userId),result->Map.of("updates",result.search().rows().size(),"total",result.snapshot().total(),"identified",result.snapshot().identified()));
+    }
+    private CalibreSearch performCalibre(String userId) {
         String context=calibreSettings.updateSearchContext();
         boolean checkFiles=Permission.has(Permission.DOWNLOADS_FILES_READ);
         String downloadContext=checkFiles?serverSettings.updateSearchContext():null;

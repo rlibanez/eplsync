@@ -66,6 +66,7 @@ public class DatabaseResetService {
                     if (em.createQuery("select count(i) from BulkItem i where i.state = "
                             + "com.rlibanez.eplsync.torrent.bulk.BulkItem.State.IN_FLIGHT", Long.class)
                             .getSingleResult() > 0) throw busy();
+                    em.createNativeQuery("DELETE FROM telegram_deliveries").executeUpdate();
                     em.createNativeQuery("DELETE FROM scheduled_automation_runs").executeUpdate();
                     em.createNativeQuery("DELETE FROM job_retry_items").executeUpdate();
                     em.createNativeQuery("DELETE FROM job_retry_jobs").executeUpdate();

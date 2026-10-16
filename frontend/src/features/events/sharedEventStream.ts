@@ -1,10 +1,24 @@
 import { sessionRevision } from "../auth/sessionChanges";
 
 export type StreamMessage = {
-  type: "ready" | "reset" | "database-reset" | "refresh" | "event" | "error";
+  type:
+    | "ready"
+    | "reset"
+    | "database-reset"
+    | "refresh"
+    | "event"
+    | "operation-notice"
+    | "error";
   data: string;
 };
-const types = ["ready", "reset", "database-reset", "refresh", "event"] as const;
+const types = [
+  "ready",
+  "reset",
+  "database-reset",
+  "refresh",
+  "event",
+  "operation-notice",
+] as const;
 
 /** Prefer a SharedWorker (also over LAN HTTP); retain locks and polling as fallbacks. */
 export function subscribeEventStream(

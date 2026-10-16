@@ -48,6 +48,23 @@ class EventStreamQuotaTests {
             action.accept(new java.io.IOException("Disconnected"));
         } else ((Runnable)invocation.getArgument(0)).run();
     }
+    @Test void taskStartsAreDeliveredOnlyToTheirOwnerWithoutEventCursorOrReplay() throws Exception {
+        var subscribers=new CopyOnWriteArrayList<java.util.function.Consumer<EventJournal.Entry>>();
+        when(journal.listenNotices(any())).thenAnswer(call->{
+            java.util.function.Consumer<EventJournal.Entry> subscriber=call.getArgument(0);subscribers.add(subscriber);
+            return (AutoCloseable)()->subscribers.remove(subscriber);
+        });
+        try(var construction=mockConstruction(SseEmitter.class)) {
+            account("one");var first=stream.connect(null);
+            account("two");var second=stream.connect(null);
+            var event=new EventJournal.Entry(0,java.time.Instant.now(),EventJournal.Category.JOB,"SCHEDULED_TASK",EventJournal.Outcome.STARTED,EventContext.Origin.SCHEDULED,"run",Map.of("taskName","Nocturna"),new EventContext.Actor("one","one","USER"));
+            subscribers.forEach(subscriber->subscriber.accept(event));
+            await().atMost(Duration.ofSeconds(5)).untilAsserted(()->verify(first).send(argThat((SseEmitter.SseEventBuilder builder)->builder.build().stream().anyMatch(data->data.getData().toString().contains("event:operation-notice")))));
+            verify(second,never()).send(argThat((SseEmitter.SseEventBuilder builder)->builder.build().stream().anyMatch(data->data.getData().toString().contains("event:operation-notice"))));
+            signal(first,"onCompletion");signal(second,"onCompletion");awaitSlots(32);
+            assertThat(subscribers).isEmpty();
+        }
+    }
     @Test void quotaIsSharedAcrossSessionsButOtherAccountsCanConnect() {
         account("one");for(int i=0;i<4;i++) {account("one");stream.connect(null);}
         assertThatThrownBy(()->stream.connect(null)).isInstanceOfSatisfying(ResponseStatusException.class,e->assertThat(e.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));

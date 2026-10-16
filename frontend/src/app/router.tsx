@@ -91,6 +91,10 @@ export const router = createBrowserRouter([
           },
           {
             path: "events",
+            element: <Navigate to="/settings/notifications" replace />,
+          },
+          {
+            path: "notifications",
             lazy: async () => ({
               Component: (await import("../features/settings/EventSettings"))
                 .EventSettings,

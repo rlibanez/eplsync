@@ -76,7 +76,13 @@ public class CalibreCatalogService {
         if (!gate.tryAcquire()) throw new UserInputException("Hay una sincronización de Calibre en curso; espera antes de reiniciar la base de datos");
         try { return action.get(); } finally { gate.release(); }
     }
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     public Snapshot sync() {
+        if(events==null) return performSync();
+        return events.runFailuresOnly(com.rlibanez.eplsync.events.EventJournal.Category.JOB,"CALIBRE_SYNC",Map.of(),this::performSync,
+            result->Map.of("total",result.total(),"identified",result.identified()));
+    }
+    private Snapshot performSync() {
         if (!gate.tryAcquire()) throw new UserInputException("Ya hay una sincronización de Calibre en curso");
         String generation=UUID.randomUUID().toString();
         long deadline=System.nanoTime()+java.time.Duration.ofMinutes(10).toNanos();

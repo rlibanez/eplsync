@@ -196,24 +196,27 @@ public class CalibreTransfers {
     }
     private void event(EventContext.Actor actor,String id,String action,EventJournal.Outcome outcome,Map<String,?> details) {
         var origin=EventContext.origin();
-        boolean automated=com.rlibanez.eplsync.tasks.AutomationContext.active();
         if(!action.equals("CALIBRE_JOB_CONTROL")) {
             String job=action.equals("CALIBRE_SEND_FILE")?Objects.toString(details.get("jobId"),id):id;
             var origins=jdbc.queryForList("SELECT r.context FROM scheduled_automation_runs r JOIN scheduled_automation_jobs j ON j.run_id=r.id WHERE j.kind='calibre' AND j.job_id=?",String.class,job);
-            if(!origins.isEmpty()) {origin=EventContext.Origin.valueOf(origins.getFirst());automated=true;}
+            if(!origins.isEmpty()) {origin=EventContext.Origin.valueOf(origins.getFirst());}
         }
         var level=origin!=EventContext.Origin.SCHEDULED && action.equals("CALIBRE_SEND") && Set.of(EventJournal.Outcome.STARTED,EventJournal.Outcome.SUCCEEDED,EventJournal.Outcome.PARTIAL).contains(outcome) ? log.atInfo() : log.atDebug();
         level.log("Trabajo de Calibre: operación={}, acción={}, resultado={}, userId={}, usuario={}, detalles={}",id,action,outcome,actor.id(),actor.username(),details);
         if(action.equals("CALIBRE_SEND_FILE")) return;
-        if(automated && origin==EventContext.Origin.SCHEDULED) {
-            if(!Set.of(EventJournal.Outcome.FAILED,EventJournal.Outcome.PARTIAL).contains(outcome)) return;
-            events.recordAs(actor,EventJournal.Category.JOB,action,EventJournal.Outcome.STARTED,origin,id,details);
+        if(!action.equals("CALIBRE_JOB_CONTROL") && !Set.of(EventJournal.Outcome.FAILED,EventJournal.Outcome.PARTIAL).contains(outcome)) {
+            events.live(actor,EventJournal.Category.JOB,action,outcome,origin,id,details);
+            events.notifyCompletion(actor,EventJournal.Category.JOB,action,outcome,origin,id,details);
+            return;
         }
         if(action.equals("CALIBRE_JOB_CONTROL")) {
             String operation=UUID.randomUUID().toString();var context=new LinkedHashMap<String,Object>(details);context.put("jobId",id);
             events.recordAs(actor,EventJournal.Category.JOB,action,EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,operation,context);
             events.recordAs(actor,EventJournal.Category.JOB,action,outcome,EventContext.Origin.MANUAL,operation,context);
-        } else events.recordAs(actor,EventJournal.Category.JOB,action,outcome,origin,id,details);
+        } else {
+            events.recordAs(actor,EventJournal.Category.JOB,action,EventJournal.Outcome.STARTED,origin,id,details);
+            events.recordAs(actor,EventJournal.Category.JOB,action,outcome,origin,id,details);
+        }
     }
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=1000)
     public void schedule() {

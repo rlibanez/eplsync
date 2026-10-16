@@ -1,4 +1,20 @@
 {
+  "telegram": {
+    "description": "Recibe avisos de tus operaciones aunque EPL Sync no esté abierto en el navegador.",
+    "enabled": "Activar notificaciones de Telegram",
+    "token": "Token del bot",
+    "tokenSaved": "Token guardado; déjalo vacío para conservarlo",
+    "chat": "ID del chat",
+    "clearToken": "Eliminar el token guardado",
+    "setup": "Crea un bot con BotFather, inicia una conversación con tu bot y configura su token y el ID numérico de tu chat (message.chat.id), no el ID del bot. No necesitas otro contenedor.",
+    "success": "Operaciones completadas",
+    "warning": "Resultados parciales o intervención necesaria",
+    "error": "Fallos",
+    "test": "Enviar mensaje de prueba",
+    "saved": "Configuración de Telegram guardada.",
+    "testOk": "Mensaje de prueba enviado.",
+    "deliveryStatus": "Pendientes: {{pending}} · No entregados en los últimos 7 días: {{failed}}"
+  },
   "automation": {
     "library": "Biblioteca de destino",
     "close": "Cerrar ciclo",
@@ -53,6 +69,9 @@
     "calibreJob": "Trabajo de Calibre"
   },
   "scheduledTasks": {
+    "notifications": "Notificaciones",
+    "toggleNotifications": "Activar o desactivar Telegram para {{name}}",
+    "telegramNotifications": "Enviar notificaciones de Telegram para esta tarea",
     "delete": "Eliminar…",
     "deleteConfirm": "¿Eliminar la tarea «{{name}}»? Se eliminarán su configuración y sus ciclos. Los trabajos y los Eventos generados se conservarán.",
     "duration": "Duración",
@@ -433,7 +452,7 @@
     "covers": "Portadas",
     "about": "Acerca de",
     "repository": "Repositorio del proyecto",
-    "events": "Eventos",
+    "events": "Notificaciones",
     "downloads": "Descargas",
     "calibre": "Calibre"
   },
@@ -1063,7 +1082,10 @@
       "CLEANUP": "Limpiar revisiones anteriores",
       "CALIBRE_SEND": "Envío a Calibre",
       "CALIBRE_SEND_FILE": "Enviar EPUB a Calibre",
-      "CALIBRE_JOB_CONTROL": "Controlar trabajo de Calibre"
+      "CALIBRE_JOB_CONTROL": "Controlar trabajo de Calibre",
+      "CALIBRE_SYNC": "Sincronización de Calibre",
+      "TORRENT_UPDATE_SEARCH": "Buscar actualizaciones del catálogo",
+      "CALIBRE_UPDATE_SEARCH": "Buscar actualizaciones de Calibre"
     },
     "fields": {
       "removed": "Eliminaciones confirmadas",

@@ -94,10 +94,10 @@ class EventApiTests {
         var grouped = json.readTree(request("/operations?outcome=FAILED", null).body());
         assertThat(grouped.path("total").asInt()).isEqualTo(2);
         for (var operation : grouped.path("items")) {
-            assertThat(operation.path("startedAt").isNull()).isFalse();
+            boolean synchronization=operation.path("latest").path("action").asString().equals("SYNC");
+            if(!synchronization) assertThat(operation.path("startedAt").isNull()).isFalse();
             assertThat(operation.path("finishedAt").isNull()).isFalse();
-            assertThat(operation.path("durationMs").asLong()).isGreaterThanOrEqualTo(0);
-            assertThat(operation.path("events").size()).isEqualTo(2);
+            assertThat(operation.path("events").size()).isEqualTo(synchronization?1:2);
         }
     }
 

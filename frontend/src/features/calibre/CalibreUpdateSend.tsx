@@ -14,7 +14,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/Auth";
-import { useNotifications } from "../notifications/Notifications";
 import { Failure } from "../../components/Feedback";
 import { post } from "../downloads/shared";
 interface File {
@@ -49,7 +48,6 @@ interface Result {
 export function CalibreUpdateSend({ selected }: { selected: number[] }) {
   const { t } = useTranslation();
   const auth = useAuth();
-  const { notify } = useNotifications();
   const cache = useQueryClient();
   const [customize, setCustomize] = useState(false);
   const [cleanup, setCleanup] = useState("KEEP");
@@ -101,11 +99,6 @@ export function CalibreUpdateSend({ selected }: { selected: number[] }) {
       }),
     retry: false,
     onSuccess: () => {
-      notify({
-        title: "Calibre",
-        message: t("calibreUpdateSend.created"),
-        tone: "success",
-      });
       void cache.invalidateQueries({ queryKey: ["calibre-jobs"] });
     },
   });

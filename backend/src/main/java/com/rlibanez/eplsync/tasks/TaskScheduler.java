@@ -54,6 +54,20 @@ public class TaskScheduler {
     private void run(ScheduledTasks.Task task,EventContext.Origin origin) {
         tasks.withExecution(()->{ execute(task,origin);return null; });
     }
+    private static EventJournal.Category category(ScheduledTasks.Operation operation) {
+        return operation==ScheduledTasks.Operation.CATALOG_IMPORT?EventJournal.Category.CATALOG:
+            operation==ScheduledTasks.Operation.TORRENT_SYNC?EventJournal.Category.TORRENT:EventJournal.Category.JOB;
+    }
+    private static String action(ScheduledTasks.Operation operation) {
+        return switch(operation) {
+            case CATALOG_IMPORT -> "UPDATE";
+            case TORRENT_SYNC -> "SYNC";
+            case CALIBRE_SYNC -> "CALIBRE_SYNC";
+            case TORRENT_UPDATE_SEARCH -> "TORRENT_UPDATE_SEARCH";
+            case CALIBRE_UPDATE_SEARCH -> "CALIBRE_UPDATE_SEARCH";
+            default -> "SCHEDULED_TASK";
+        };
+    }
     private void execute(ScheduledTasks.Task task,EventContext.Origin origin) {
         String outcome="FAILED",message=null;
         Map<String,Object> details=Map.of();
@@ -63,7 +77,7 @@ public class TaskScheduler {
             var context=SecurityContextHolder.createEmptyContext();
             SecurityContextHolder.setContext(context);
             var summary=EventContext.withActor(new EventContext.Actor(task.ownerId(),task.ownerUsername(),"USER"),()->EventContext.withOrigin(origin,()->
-                journal.runFailuresOnly(EventJournal.Category.JOB,"SCHEDULED_TASK",Map.of("taskId",task.id(),"taskName",task.name(),"taskOperation",task.operation().name()),()->{
+                journal.runWithPolicy(task.operation()!=ScheduledTasks.Operation.CATALOG_IMPORT,category(task.operation()),action(task.operation()),Map.of("taskId",task.id(),"taskName",task.name(),"taskOperation",task.operation().name()),()->{
                     var owner=tasks.owner(task.ownerId(),task.operation());
                     var authorities=new ArrayList<SimpleGrantedAuthority>();
                     owner.permissions().forEach(p -> authorities.add(new SimpleGrantedAuthority(p.name())));

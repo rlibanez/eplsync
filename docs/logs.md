@@ -4,15 +4,21 @@
 
 ## Eventos y notificaciones
 
-En **Ajustes → Eventos → Notificaciones** puedes activar o desactivar los avisos
+En **Ajustes → Notificaciones** puedes activar o desactivar los avisos
 flotantes y el contador de eventos sin leer de forma independiente. Los filtros
 de inicio, final y resultado, y la duración de los avisos (de 1 a 60 segundos),
 se guardan en tu cuenta y se aplican también en otros navegadores.
 
-Desactivar los avisos no impide registrar eventos ni oculta los errores dentro
-de las vistas. Las tareas programadas registran en Eventos solo los fallos
-y resultados parciales; su inicio y final correcto se escriben en el log
-con nivel DEBUG.
+Desactivar los avisos no impide registrar eventos ni oculta los errores dentro de las vistas.
+La política depende de la operación, tanto desde su vista como desde una tarea con
+**Ejecutar ahora** o por horario:
+
+- Las actualizaciones del catálogo conservan sus eventos de inicio y resultado, sin un evento adicional de «Tarea programada».
+- Las sincronizaciones de Torrent y Calibre, las búsquedas de actualizaciones y los trabajos de envío guardan solo fallos o resultados parciales. El detalle de cada elemento permanece en su trabajo.
+- Los avisos de inicio y resultado correcto se transmiten en directo sin añadir eventos al historial ni incrementar el contador. No se reproducen al recargar.
+- Un mismo identificador de operación y resultado produce un único aviso, aunque llegue por el canal en directo y por el historial. Se respetan los ajustes de inicio, final y resultado de cada cuenta.
+
+El resto de operaciones mantiene su registro habitual. Telegram conserva su configuración independiente y solo avisa de tareas con las notificaciones habilitadas.
 
 ## Consultar los logs
 

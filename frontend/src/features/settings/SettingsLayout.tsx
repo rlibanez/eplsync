@@ -46,7 +46,10 @@ export function SettingsLayout() {
             return true;
           })
           .map((key) => (
-            <NavLink key={key} to={`/settings/${key}`}>
+            <NavLink
+              key={key}
+              to={`/settings/${key === "events" ? "notifications" : key}`}
+            >
               {t(
                 key === "account"
                   ? "auth.account"

@@ -100,9 +100,30 @@ test("browses the local library with filters and configurable columns", async ({
   await page
     .getByRole("button", { name: "Sincronizar biblioteca", exact: true })
     .click();
+  // The view must not emit a second local confirmation alongside the backend notice.
   await expect(
     page.getByText("Biblioteca sincronizada.", { exact: true }),
-  ).toContainText("Biblioteca sincronizada");
+  ).toHaveCount(0);
+  await page.evaluate(() =>
+    (
+      window as unknown as { __event: (name: string, data: unknown) => void }
+    ).__event("operation-notice", {
+      id: 0,
+      category: "JOB",
+      action: "CALIBRE_SYNC",
+      outcome: "SUCCEEDED",
+      origin: "MANUAL",
+      operationId: "library-sync",
+      details: { total: 1 },
+      actor: { id: "test-admin", kind: "USER" },
+    }),
+  );
+  await expect(
+    page.locator(".notification-toasts").getByRole("status"),
+  ).toHaveCount(1);
+  await expect(page.locator(".notification-toasts")).toContainText(
+    "Completado",
+  );
 });
 
 test("read-only Calibre users can browse without catalog links or synchronization", async ({

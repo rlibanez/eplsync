@@ -38,13 +38,26 @@ public class EventJournal {
         }
     }
     public record Page(List<Entry> items, long total, int page, int size, long cursor) {}
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.rlibanez.eplsync.settings.TelegramNotifications> telegram;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final EventSettings settings;
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final CopyOnWriteArrayList<Runnable> listeners = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<Consumer<Entry>> notices = new CopyOnWriteArrayList<>();
+    public AutoCloseable listenNotices(Consumer<Entry> listener) {notices.add(listener);return ()->notices.remove(listener);}
+    /** Transient feedback for operations whose successful results are deliberately not retained. */
+    public void live(EventContext.Actor actor,Category category,String action,Outcome outcome,EventContext.Origin origin,String id,Map<String,?> details) {
+        Runnable publish=()-> {
+            var entry=new Entry(0,Instant.now(),category,action,outcome,origin,id,new LinkedHashMap<>(details),actor);
+            for(var listener:notices) try {listener.accept(entry);}catch(RuntimeException ex) {log.debug("Suscriptor de avisos desconectado",ex);}
+        };
+        if(TransactionSynchronizationManager.isActualTransactionActive() && TransactionSynchronizationManager.isSynchronizationActive())
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() { @Override public void afterCommit() {publish.run();} });
+        else publish.run();
+    }
     private static class Run {
-        final Category category; final String action, id; final Map<String, ?> context; boolean recorded, failuresOnly;
+        final Category category; final String action, id; final Map<String, ?> context; boolean recorded, failuresOnly, nestedFailureRecorded;
         Run(Category category, String action, String id, Map<String, ?> context) { this.category = category; this.action = action; this.id = id; this.context = context; }
     }
     private final ThreadLocal<Run> capturing = new ThreadLocal<>();
@@ -106,10 +119,17 @@ public class EventJournal {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() { signal(); }
             });
+            notifyCompletion(actor,category,action,outcome,origin,operationId,details);
             return new Entry(id, Instant.ofEpochMilli(now), category, action, outcome, origin, operationId, new LinkedHashMap<>(details), actor);
         });
     }
 
+    /** Notifications are independent of the event retention policy and never perform remote I/O here. */
+    public void notifyCompletion(EventContext.Actor actor,Category category,String action,Outcome outcome,EventContext.Origin origin,String operation,Map<String,?> details) {
+        if(telegram==null) return;
+        try {telegram.getObject().enqueue(actor,category,action,outcome,origin,operation,details);}
+        catch(RuntimeException ex) {log.warn("No se pudo preparar una notificación de Telegram: tipo={}",ex.getClass().getSimpleName());}
+    }
     private String failureReason(RuntimeException ex) {
         if(ex instanceof com.rlibanez.eplsync.exception.CatalogImportInterruptedException)
             return "La operación de importación fue interrumpida";
@@ -152,10 +172,29 @@ public class EventJournal {
     public <T> T runFailuresOnly(Category category, String action, Map<String, ?> context, Supplier<T> work, Function<T, Map<String, ?>> summary) {
         return EventContext.withActor(EventContext.actor(), () -> runCaptured(category, action, context, work, summary, true));
     }
+    public <T> T runWithPolicy(boolean failuresOnly,Category category,String action,Map<String,?> context,Supplier<T> work,Function<T,Map<String,?>> summary) {
+        return EventContext.withActor(EventContext.actor(),()->runCaptured(category,action,context,work,summary,failuresOnly));
+    }
     private <T> T runCaptured(Category category, String action, Map<String, ?> context, Supplier<T> work, Function<T, Map<String, ?>> summary, boolean failuresOnly) {
-        if (capturing.get() != null) return work.get();
+        var parent=capturing.get();
+        if(parent!=null) {
+            // Catalogue imports remain auditable when they are a step of an automatic update task.
+            if(category==Category.CATALOG && Set.of("UPDATE","REPLACE").contains(action) && parent.category!=Category.CATALOG && parent.context.containsKey("taskId")) {
+                var nestedContext=new LinkedHashMap<String,Object>(parent.context);nestedContext.putAll(context);
+                capturing.remove();
+                try {return runCaptured(category,action,nestedContext,work,result->{
+                    var details=summary.apply(result);
+                    if(details.get("errors") instanceof Number errors && errors.longValue()>0) parent.nestedFailureRecorded=true;
+                    return details;
+                },false);}
+                catch(RuntimeException ex) {parent.nestedFailureRecorded=true;throw ex;}
+                finally {capturing.set(parent);}
+            }
+            return work.get();
+        }
         String operationId = UUID.randomUUID().toString();
         if (!failuresOnly) record(category, action, Outcome.STARTED, EventContext.origin(), operationId, context);
+        else live(EventContext.actor(),category,action,Outcome.STARTED,EventContext.origin(),operationId,context);
         if (org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()
                 instanceof org.springframework.web.context.request.ServletRequestAttributes request && request.getResponse() != null)
             request.getResponse().setHeader("X-EPLSync-Operation-Id", operationId);
@@ -168,12 +207,16 @@ public class EventJournal {
             details.putAll(summary.apply(result));
             var outcome = details.get("errors") instanceof Number n && n.longValue() > 0 ? Outcome.PARTIAL : Outcome.SUCCEEDED;
             if (!capturing.get().recorded && (!failuresOnly || outcome == Outcome.PARTIAL)) record(category, action, outcome, EventContext.origin(), operationId, details);
+            if (!capture.recorded && failuresOnly && outcome == Outcome.SUCCEEDED) {
+                live(EventContext.actor(),category,action,outcome,EventContext.origin(),operationId,details);
+                notifyCompletion(EventContext.actor(),category,action,outcome,EventContext.origin(),operationId,details);
+            }
             return result;
         } catch (RuntimeException ex) {
             try {
                 var failure = new LinkedHashMap<String, Object>(context);
                 failure.put("reason", failureReason(ex));
-                record(category, action, Outcome.FAILED, EventContext.origin(), operationId, failure);
+                if(!capture.nestedFailureRecorded) record(category, action, Outcome.FAILED, EventContext.origin(), operationId, failure);
             }
             catch (RuntimeException recording) { log.error("No se pudo registrar el fallo de {}", operationId, recording); }
             throw ex;
@@ -189,6 +232,10 @@ public class EventJournal {
         var outcome = summary.get("errors") instanceof Number n && n.longValue() > 0 ? Outcome.PARTIAL : Outcome.SUCCEEDED;
         if (!run.failuresOnly || outcome == Outcome.PARTIAL)
             record(category, action, outcome, EventContext.origin(), run.id, details);
+        else {
+            live(EventContext.actor(),category,action,outcome,EventContext.origin(),run.id,details);
+            notifyCompletion(EventContext.actor(),category,action,outcome,EventContext.origin(),run.id,details);
+        }
         run.recorded = true;
     }
 

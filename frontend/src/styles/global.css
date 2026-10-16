@@ -2086,3 +2086,23 @@ summary {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.telegram-settings-content { display: grid; gap: 24px; }
+.telegram-connection-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; max-width: 960px; }
+.telegram-results h3 { margin: 0 0 16px; font-size: 14px; font-weight: 600; }
+.telegram-actions { padding-top: 4px; }
+.telegram-settings .mantine-Checkbox-root { margin: 0; }
+.telegram-settings .mantine-Checkbox-body { align-items: center; }
+.telegram-settings .muted { margin: 0; }
+@media (max-width: 640px) {
+  .telegram-connection-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+}
+
+.scheduled-tasks-table th {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  text-overflow: clip;
+}
+.scheduled-tasks-table:not(.resized) { table-layout: auto; }
+.scheduled-tasks-table:not(.resized) td:not(:first-child) { white-space: nowrap; max-width: none; }
+.scheduled-tasks-table:not(.resized) td:first-child { min-width: 220px; }

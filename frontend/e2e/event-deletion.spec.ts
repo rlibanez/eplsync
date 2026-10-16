@@ -8,7 +8,7 @@ test("event deletion supports inclusive dates, open ranges and explicit all", as
     requests.push(r.request().postDataJSON());
     return r.fulfill({json: {deleted: 1}});
   });
-  await page.goto("/settings/events");
+  await page.goto("/settings/notifications");
   await expect(page.getByRole("heading", {name: "Configuración de eventos"})).toBeVisible();
   const section = page.locator("section#events");
   const remove = section.getByRole("button", {name: "Eliminar eventos", exact: true});

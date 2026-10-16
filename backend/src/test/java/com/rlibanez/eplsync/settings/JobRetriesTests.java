@@ -86,6 +86,19 @@ class JobRetriesTests {
         assertThat(retries.history("downloads",parent).retries()).contains(child);
         assertThat(failed("downloads",parent).send()).isZero();
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=com.rlibanez.eplsync.events.EventContext.Origin.class,names={"MANUAL","SCHEDULED"})
+    void taskAndDirectRetryCreationDoNotPersistSuccessfulStartEvents(com.rlibanez.eplsync.events.EventContext.Origin origin) throws Exception {
+        for(String kind:List.of("downloads","calibre")) {
+            String parent=kind.equals("downloads")?torrentJob("COMPLETED","FAILED"):calibreJob("COMPLETED","FAILED");
+            var preview=failed(kind,parent);
+            var child=com.rlibanez.eplsync.events.EventContext.withOrigin(origin,()->com.rlibanez.eplsync.tasks.AutomationContext.run(()->create(kind,parent,preview)));
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE operation_id=?",Long.class,child.jobId())).isZero();
+            String directParent=kind.equals("downloads")?torrentJob("COMPLETED","FAILED"):calibreJob("COMPLETED","FAILED");
+            var direct=create(kind,directParent,failed(kind,directParent));
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE operation_id=? AND outcome='STARTED'",Long.class,direct.jobId())).isZero();
+        }
+    }
     @Test void selectedRetriesExcludeSuccessAndRejectForeignItemsAndRunningJobs() throws Exception {
         var parent=torrentJob("COMPLETED","FAILED","ACCEPTED","CANCELLED");
         var p=selected("downloads",parent,parent+"-0",parent+"-1",parent+"-2");assertThat(p.send()).isEqualTo(2);assertThat(p.excluded()).isEqualTo(1);

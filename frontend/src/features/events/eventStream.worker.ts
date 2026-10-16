@@ -10,7 +10,14 @@ let session: string | undefined;
 let generation = -1;
 let account: string | undefined;
 let state: { type: string; data: string } | undefined;
-const types = ["ready", "reset", "database-reset", "refresh", "event"];
+const types = [
+  "ready",
+  "reset",
+  "database-reset",
+  "refresh",
+  "event",
+  "operation-notice",
+];
 function closeSource() {
   source?.close();
   source = undefined;

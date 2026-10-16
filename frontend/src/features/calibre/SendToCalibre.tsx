@@ -9,7 +9,6 @@ import { TableAction } from "../../components/TableAction";
 import { Loading, Failure } from "../../components/Feedback";
 import { useAuth } from "../auth/Auth";
 import { post } from "../downloads/shared";
-import { useNotifications } from "../notifications/Notifications";
 import { useLocale } from "../../locales/useLocale";
 
 type Candidate = {
@@ -37,7 +36,6 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
   const { revision } = useLocale();
   const navigate = useNavigate();
   const cache = useQueryClient();
-  const { notify } = useNotifications();
   const prepare = useMutation({
     mutationFn: (records: string[]) =>
       post<Prepared>("/calibre/transfers/prepare", { ids: records }),
@@ -63,7 +61,6 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
     onSuccess: (job) => {
       setOpened(false);
       void cache.invalidateQueries({ queryKey: ["calibre-jobs"] });
-      notify({ tone: "success", title: t("calibreSend.created"), message: "" });
       navigate(`/calibre/jobs/${job.id}`);
     },
   });

@@ -140,7 +140,7 @@ test("filters page and scroll survive leaving, returning and reload while data r
     .click();
   await page
     .locator(".settings-tabs")
-    .getByRole("link", { name: "Eventos", exact: true })
+    .getByRole("link", { name: "Notificaciones", exact: true })
     .click();
   await expect(
     page.getByRole("checkbox", { name: "Inicios de ejecución", exact: true }),
@@ -170,7 +170,7 @@ test("filters page and scroll survive leaving, returning and reload while data r
     .click();
   await page
     .locator(".settings-tabs")
-    .getByRole("link", { name: "Eventos", exact: true })
+    .getByRole("link", { name: "Notificaciones", exact: true })
     .click();
   await expect(
     page.getByRole("checkbox", { name: "Inicios de ejecución", exact: true }),
@@ -189,7 +189,7 @@ test("notification preferences apply immediately and persist without hiding jour
   page,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.goto("/settings/events");
+  await page.goto("/settings/notifications");
   await page.locator(".notification-settings").scrollIntoViewIfNeeded();
   await page
     .locator(".notification-settings")
@@ -222,7 +222,7 @@ test("notification preferences apply immediately and persist without hiding jour
   await expect(toast.getByRole("status")).toHaveCount(0);
   await toggle("Inicios de ejecución");
   await toggle("Finales de ejecución y cambios de estado");
-  await emitEvent(page, { ...started, id: 2 });
+  await emitEvent(page, { ...started, id: 2, operationId: "after-enable" });
   await expect(toast).toContainText("Importando catálogo…");
   await toast.getByRole("button", { name: "Cerrar notificación" }).click();
   await emitEvent(page, { ...started, id: 3, outcome: "SUCCEEDED" });
@@ -392,7 +392,7 @@ test("opening one operation marks only that operation read and persists after re
       },
     });
   });
-  await page.goto("/settings/events");
+  await page.goto("/settings/notifications");
   const badge = page.locator(".event-unread-count");
   await expect(badge).toHaveText("2");
   await emitEvent(page, entries[1]);
