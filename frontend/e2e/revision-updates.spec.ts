@@ -233,11 +233,15 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     .getByRole("option", { name: "Inmediatamente", exact: true })
     .click();
   await expect(
-    wizard.getByRole("button", { name: /Crear trabajo/ }),
-  ).toBeDisabled();
-  await wizard
-    .getByRole("checkbox", { name: /Entiendo que se eliminarán/ })
-    .check();
+    wizard.getByRole("checkbox", { name: /Entiendo que se eliminarán/ }),
+  ).toHaveCount(0);
+  await expect(wizard).not.toContainText(
+    "La limpieza se realizará automáticamente cuando la nueva revisión esté completamente descargada.",
+  );
+  await page.screenshot({
+    path: "/tmp/eplsync-send-two-columns.png",
+    fullPage: true,
+  });
   await wizard.getByRole("button", { name: /Crear trabajo/ }).click();
   await expect.poll(() => submission?.ids).toEqual([123]);
   expect(submission.previousVersions).toBe("removeTorrentAndFiles");

@@ -1644,6 +1644,20 @@ summary {
   font-size: 15px;
   font-weight: 600;
 }
+.send-previous-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px;
+}
+.send-cleanup-select {
+  min-width: 0;
+}
+.send-history-option {
+  grid-column: 1 / -1;
+  order: 2;
+}
+
 .send-options-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1656,7 +1670,7 @@ summary {
   box-shadow: inset 3px 0 0 var(--mantine-primary-color-filled);
 }
 @media (max-width: 650px) {
-  .send-options-grid { grid-template-columns: minmax(0, 1fr); }
+  .send-options-grid, .send-previous-options { grid-template-columns: minmax(0, 1fr); }
   .send-pattern-field { grid-column: auto; }
 }
 

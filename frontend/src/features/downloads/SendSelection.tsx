@@ -37,7 +37,6 @@ export function SendSelection({
   const [previousVersions, setPreviousVersions] = useState("keep");
   const [cleanupTiming, setCleanupTiming] = useState("afterDownload");
   const [deleteHistory, setDeleteHistory] = useState(false);
-  const [confirmFiles, setConfirmFiles] = useState(false);
   const [start, setStart] = useState("inherit");
   const [auto, setAuto] = useState("inherit");
   const [rename, setRename] = useState("inherit");
@@ -72,7 +71,6 @@ export function SendSelection({
   const initialized = useRef(false);
   function restoreDefaults(d: SendDefaults) {
     setPreviousVersions("keep");
-    setConfirmFiles(false);
     setStart(String(d.start));
     setAuto(String(d.autoManagement));
     setPath(d.savePath ?? "");
@@ -164,7 +162,7 @@ export function SendSelection({
                 previousVersions === "keep" && !deleteHistory
                   ? "afterDownload"
                   : cleanupTiming,
-              confirmFiles,
+              confirmFiles: previousVersions === "removeTorrentAndFiles",
             }
           : {}),
         ...(!single && !revisionStates
@@ -226,13 +224,7 @@ export function SendSelection({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (
-            !active &&
-            ready &&
-            initialized.current &&
-            (previousVersions !== "removeTorrentAndFiles" || confirmFiles)
-          )
-            send();
+          if (!active && ready && initialized.current) send();
         }}
       >
         <fieldset
@@ -240,9 +232,10 @@ export function SendSelection({
           style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
         >
           {revisionStates && (
-            <fieldset className="send-options-group">
+            <fieldset className="send-options-group send-previous-options">
               <legend>{t("send.previousVersions")}</legend>
               <Select
+                className="send-cleanup-select"
                 label={t("send.previousAction")}
                 value={previousVersions}
                 allowDeselect={false}
@@ -268,11 +261,11 @@ export function SendSelection({
                 ]}
                 onChange={(value) => {
                   setPreviousVersions(value ?? "keep");
-                  setConfirmFiles(false);
                 }}
               />
               {auth.can("DOWNLOADS_DELETE") && (
                 <Checkbox
+                  className="send-history-option"
                   label={t("send.deleteHistory")}
                   checked={deleteHistory}
                   onChange={(event) =>
@@ -283,18 +276,8 @@ export function SendSelection({
               {(previousVersions !== "keep" || deleteHistory) && (
                 <>
                   <Select
+                    className="send-cleanup-select"
                     label={t("send.cleanupTiming")}
-                    description={t(
-                      cleanupTiming === "immediate"
-                        ? "send.cleanupImmediateHelp"
-                        : "send.cleanupAfterCompletion",
-                    )}
-                    inputWrapperOrder={[
-                      "label",
-                      "input",
-                      "description",
-                      "error",
-                    ]}
                     value={cleanupTiming}
                     allowDeselect={false}
                     data={[
@@ -309,15 +292,6 @@ export function SendSelection({
                     }
                   />
                 </>
-              )}
-              {previousVersions === "removeTorrentAndFiles" && (
-                <Checkbox
-                  label={t("send.confirmPreviousFiles")}
-                  checked={confirmFiles}
-                  onChange={(event) =>
-                    setConfirmFiles(event.currentTarget.checked)
-                  }
-                />
               )}
             </fieldset>
           )}
@@ -450,12 +424,7 @@ export function SendSelection({
           <Button
             type="submit"
             loading={active}
-            disabled={
-              !ready ||
-              !initialized.current ||
-              count === 0 ||
-              (previousVersions === "removeTorrentAndFiles" && !confirmFiles)
-            }
+            disabled={!ready || !initialized.current || count === 0}
           >
             {t("selection.createJob")}
           </Button>
