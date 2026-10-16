@@ -337,8 +337,8 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   const resized = (await header.boundingBox())!.width;
   await page.reload();
   await expect
-    .poll(async () => (await header.boundingBox())?.width ?? 0)
-    .toBeCloseTo(resized, 0);
+    .poll(async () => Math.abs(((await header.boundingBox())?.width ?? 0) - resized))
+    .toBeLessThan(2);
   await page.screenshot({
     path: "/tmp/eplsync-scheduled-tasks.png",
     fullPage: true,

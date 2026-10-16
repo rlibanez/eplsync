@@ -1,3 +1,4 @@
+import { RowNumberHeading, RowNumberCell } from "../../components/RowNumber";
 import { useSettingsSaved } from "../settings/useSettingsSaved";
 import { compareText } from "../../locales/textOrdering";
 import { useEffect, useState, type FormEvent } from "react";
@@ -154,6 +155,7 @@ export function UserSettings() {
           <table className="catalog-table users-table">
             <thead>
               <tr>
+                <RowNumberHeading />
                 {(["username", "role", "status"] as const).map((key) => {
                   const active = sort.key === key;
                   const Icon = active
@@ -195,8 +197,9 @@ export function UserSettings() {
               </tr>
             </thead>
             <tbody>
-              {sortedUsers.map((user) => (
+              {sortedUsers.map((user, rowIndex) => (
                 <tr key={user.id}>
+                  <RowNumberCell value={rowIndex + 1} />
                   <td>
                     {user.username}
                     <div className="muted">{user.email}</div>

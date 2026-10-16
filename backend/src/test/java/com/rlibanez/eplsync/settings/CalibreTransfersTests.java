@@ -238,6 +238,20 @@ class CalibreTransfersTests {
     CalibreTransfers.Job create() {
         return EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),() -> transfers.create(new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,0)))));
     }
+    @Test void detailFilterCombinesWithStateBeforePagination() throws Exception {
+        var job=create();
+        jdbc.update("UPDATE calibre_job_items SET state='ACCEPTED',message='EPUB enviado y verificado' WHERE job_id=?",job.id());
+        for(int i=1;i<=3;i++) jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,message) VALUES(?,?,?,?,?,?,?,?,?,?,?)",UUID.randomUUID().toString(),job.id(),i,record,i,"book.epub",100,1,"1.1",i==3?"FAILED":"ACCEPTED",i==2?"Esperando 100%_ descarga":"EPUB enviado y verificado");
+        var page=transfers.items(job.id(),1,1,"ACCEPTED"," ENVIADO Y VERIFICADO ",List.of("position,asc"));
+        assertThat(page.meta().totalItems()).isEqualTo(2);
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().getFirst().position()).isEqualTo(1);
+        assertThat(transfers.items(job.id(),0,20,"","%_",List.of("position,asc")).items()).hasSize(1);
+        assertThat(transfers.items(job.id(),0,20,"FAILED","esperando",List.of("position,asc")).items()).isEmpty();
+        assertThat(transfers.items(create().id(),0,20,"","verificado",List.of("position,asc")).items()).isEmpty();
+        mvc.perform(get("/api/calibre/transfers/"+job.id()+"/items").param("detail","esperando").param("state","ACCEPTED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1));
+    }
     @Test void emptyJobsCanBeReadWithDefaultAndExplicitOrdering() throws Exception {
         mvc.perform(get("/api/calibre/transfers")).andExpect(status().isOk())
             .andExpect(jsonPath("$.meta.totalItems").value(0));

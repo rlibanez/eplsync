@@ -337,7 +337,7 @@ test("users sort by translated headers and edit in grouped responsive dialog", a
   await page.goto("/settings/users");
   const names = () =>
     page
-      .locator("tbody tr td:first-child")
+      .locator("tbody tr td:nth-child(2)")
       .evaluateAll((cells) =>
         cells.map((cell) => cell.childNodes[0].textContent),
       );

@@ -37,7 +37,7 @@ test("pasted multiline IDs remain separate and number ranges use one grid column
     const range = search.getByRole("group", {name: label, exact: true});
     const box = await range.boundingBox();
     expect(Math.abs(box!.width - first!.width)).toBeLessThan(2);
-    const revision = await search.getByRole("textbox", {name: "Revisión", exact: true}).boundingBox();
+    const revision = await search.locator(".catalog-filter-grid").first().getByRole("textbox", {name: "Revisión", exact: true}).boundingBox();
     expect(box!.y).toBeGreaterThan(revision!.y + revision!.height);
   }
   await ids.press("Enter");

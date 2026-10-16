@@ -1,3 +1,4 @@
+import { RowNumberHeading, RowNumberCell } from "../../components/RowNumber";
 import { WorkNavigation } from "../jobs/WorkNavigation";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -394,10 +395,12 @@ function CleanupWizard({
 }
 function CleanupItems({
   rows,
+  offset = 0,
   selected,
   onSelect,
 }: {
   rows: Item[];
+  offset?: number;
   selected?: string[];
   onSelect?: (ids: string[]) => void;
 }) {
@@ -409,6 +412,7 @@ function CleanupItems({
         <thead>
           <tr>
             {onSelect && <th aria-label={t("revisionCleanup.selection")} />}
+            <RowNumberHeading />
             <th>EPL ID</th>
             <th>{t("revisionCleanup.book")}</th>
             <th>{t("revisionCleanup.remove")}</th>
@@ -419,10 +423,10 @@ function CleanupItems({
         <tbody>
           {!rows.length && (
             <tr>
-              <td colSpan={onSelect ? 6 : 5}>{t("revisionCleanup.empty")}</td>
+              <td colSpan={onSelect ? 7 : 6}>{t("revisionCleanup.empty")}</td>
             </tr>
           )}
-          {rows.map((item) => (
+          {rows.map((item, rowIndex) => (
             <tr key={item.id}>
               {onSelect && (
                 <td>
@@ -442,6 +446,7 @@ function CleanupItems({
                   />
                 </td>
               )}
+              <RowNumberCell value={offset + rowIndex + 1} />
               <td>{item.eplId}</td>
               <td>
                 {auth.can("CATALOG_READ") ? (
@@ -759,7 +764,7 @@ export function CleanupJob() {
         <Loading />
       ) : (
         <>
-          <CleanupItems rows={rows.data.items} />
+          <CleanupItems rows={rows.data.items} offset={page * 20} />
           <Pager
             page={page}
             pages={rows.data.meta.totalPages}

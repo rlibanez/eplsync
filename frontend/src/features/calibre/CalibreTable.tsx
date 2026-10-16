@@ -51,6 +51,7 @@ calibreColumns.push({
 });
 export function CalibreTable({
   items,
+  offset = 0,
   columns,
   emptyMessage,
   showCovers = true,
@@ -59,6 +60,7 @@ export function CalibreTable({
   onSelection,
 }: {
   items: CalibreBook[];
+  offset?: number;
   emptyMessage?: string;
   selected?: number[];
   onSelection?: (ids: number[]) => void;
@@ -112,7 +114,7 @@ export function CalibreTable({
               </td>
             </tr>
           )}
-          {items.map((book) => (
+          {items.map((book, rowIndex) => (
             <tr key={book.calibreId}>
               {selectable && (
                 <td className="history-selection">
@@ -236,7 +238,7 @@ export function CalibreTable({
                 ].filter(
                   (_, index) =>
                     !excludedFields.includes(calibreColumns[index].field),
-                ),
+                ), offset + rowIndex + 1
               )}
             </tr>
           ))}

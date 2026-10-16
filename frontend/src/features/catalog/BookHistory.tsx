@@ -71,7 +71,7 @@ export function BookHistory({ id }: { id: number }) {
       defaults: "revision,desc",
       selection: selectable,
       hidden: can("DOWNLOADS_FILES_READ") ? [] : ["actions"],
-    },
+    }, (page + 1) * size,
   );
   const result = useQuery<Page<HistoryItem>>({
     queryKey: ["book-history", id, page, size, sort],
@@ -159,7 +159,7 @@ export function BookHistory({ id }: { id: number }) {
                   )}
                 </thead>
                 <tbody>
-                  {result.data.items.map((item) => (
+                  {result.data.items.map((item, rowIndex) => (
                     <tr key={item.id}>
                       {selectable && (
                         <td className="history-selection">
@@ -202,7 +202,7 @@ export function BookHistory({ id }: { id: number }) {
                             <SendToCalibre ids={[item.id]} inline />
                           </Group>
                         </td>,
-                      ])}
+                      ], page * size + rowIndex + 1)}
                     </tr>
                   ))}
                 </tbody>

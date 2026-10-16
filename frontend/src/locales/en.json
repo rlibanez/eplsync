@@ -903,6 +903,8 @@
     "clearLibraryRevision": "Clear {{library}} revision filter"
   },
   "columns": {
+    "rowNumber": "#",
+    "rowNumberHelp": "Row position",
     "title": "Columns",
     "help": "Choose visible columns and change their order. Saved in this browser.",
     "up": "Move {{column}} up",
@@ -1623,6 +1625,7 @@
     "selectRecord": "Select EPL ID {{id}} (r{{revision}})"
   },
   "calibreSend": {
+    "detailContains": "Detail contains",
     "catalogLimit": "Select at most 1000 books to send to Calibre",
     "missing": "{{count}} books do not have the catalog revision EPUB available.",
     "downloadMissing": "Download unavailable EPUBs and send them to Calibre when complete",

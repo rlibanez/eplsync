@@ -176,7 +176,7 @@ function DownloadHistory() {
       extraSort: [
         { field: "createdAt", label: "downloads.createdAt", width: 200 },
       ],
-    },
+    }, (page + 1) * size,
   );
   return (
     <CalibreSendProvider>
@@ -354,7 +354,7 @@ function DownloadHistory() {
                           )}
                         </thead>
                         <tbody>
-                          {result.data.items.map((d) => (
+                          {result.data.items.map((d, rowIndex) => (
                             <tr key={d.id}>
                               {selectable && (
                                 <td className="history-selection">
@@ -444,7 +444,7 @@ function DownloadHistory() {
                                     )}
                                   </Group>
                                 </td>,
-                              ])}
+                              ], page * size + rowIndex + 1)}
                             </tr>
                           ))}
                         </tbody>

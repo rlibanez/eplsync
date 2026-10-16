@@ -197,7 +197,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     {
       defaults: "title,asc",
       selection: selectable,
-    },
+    }, (page + 1) * size,
   );
   return (
     <>
@@ -409,6 +409,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         ) : (
           <>
             <CalibreTable
+              offset={page * size}
               items={result.data.items}
               emptyMessage={updates ? t("revisionUpdates.empty") : undefined}
               excludedFields={excludedFields}

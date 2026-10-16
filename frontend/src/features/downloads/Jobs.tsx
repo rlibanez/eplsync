@@ -133,7 +133,7 @@ export function Jobs() {
       setSort(value);
       setPage(0);
     },
-    { defaults: "createdAt,desc" },
+    { defaults: "createdAt,desc" }, (page + 1) * size,
   );
   return (
     <>
@@ -246,7 +246,7 @@ export function Jobs() {
                 {columns.colgroup}
                 <thead>{columns.headings}</thead>
                 <tbody>
-                  {result.data.items.map((job) => (
+                  {result.data.items.map((job, rowIndex) => (
                     <tr key={job.jobId}>
                       {columns.cells([
                         <td>
@@ -327,7 +327,7 @@ export function Jobs() {
                             "—"
                           )}
                         </td>,
-                      ])}
+                      ], page * size + rowIndex + 1)}
                     </tr>
                   ))}
                 </tbody>
@@ -443,7 +443,7 @@ export function JobDetail() {
       extraSort: [
         { field: "position", label: "tableControls.position", width: 100 },
       ],
-    },
+    }, (page + 1) * size,
   );
   const data = job.data;
   return (
@@ -740,7 +740,7 @@ export function JobDetail() {
                   )}
                 </thead>
                 <tbody>
-                  {items.data.items.map((item) => (
+                  {items.data.items.map((item, rowIndex) => (
                     <tr key={item.id}>
                       {retry.selectable && (
                         <td>
@@ -776,7 +776,7 @@ export function JobDetail() {
                         <td>{status(item.status)}</td>,
                         <td>{item.attempts}</td>,
                         <td>{item.message || "—"}</td>,
-                      ])}
+                      ], page * size + rowIndex + 1)}
                     </tr>
                   ))}
                 </tbody>

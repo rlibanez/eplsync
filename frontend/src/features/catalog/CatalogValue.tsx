@@ -35,7 +35,7 @@ export function CatalogValue({
 }: {
   separator?: string;
   book: Book;
-  column: Exclude<Column, "title" | "selection">;
+  column: Exclude<Column, "title" | "selection" | "rowNumber">;
   onFilter: (column: Column, value: string) => void;
 }) {
   const { t } = useTranslation();

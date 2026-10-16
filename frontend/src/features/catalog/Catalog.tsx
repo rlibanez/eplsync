@@ -1,3 +1,4 @@
+import { rowNumberWidth } from "../../components/RowNumber";
 import type { Metadata } from "../maintenance/CatalogMetadata";
 import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
@@ -97,7 +98,7 @@ export function Catalog() {
     widths: Partial<Record<Column, number>>;
   } | null>(null);
   const columnWidth = (key: Column) =>
-    columns.settings.widths[key] ??
+    key === "rowNumber" ? rowNumberWidth(lastRowNumber) : columns.settings.widths[key] ??
     (key === "selection" ? 70 : key === "title" ? 320 : 180);
   const resized = Object.keys(columns.settings.widths).length > 0;
   const [search, setSearch] = useSearchParams();
@@ -116,6 +117,7 @@ export function Catalog() {
         signal,
       ),
   });
+  const lastRowNumber = Number(params.get("page") ?? 0) * Number(params.get("size") ?? 20) + (result.data?.items.length ?? 1);
   const selection = useCatalogSelection(selectionQuery(params));
   const count = selection.count(result.data?.meta.totalItems ?? 0);
   const pageIds = result.data?.items.map((book) => book.eplId) ?? [];
@@ -364,6 +366,9 @@ export function Catalog() {
                       scope="col"
                       key={key}
                       data-column={key}
+                      className={key === "rowNumber" ? "row-number" : undefined}
+                      style={key === "rowNumber" ? {minWidth: rowNumberWidth(lastRowNumber)} : undefined}
+                      title={key === "rowNumber" ? t("columns.rowNumberHelp") : undefined}
                       aria-sort={
                         ordering.includes(`${key},asc`)
                           ? "ascending"
@@ -387,7 +392,7 @@ export function Catalog() {
                             selection.toggle(pageIds, e.currentTarget.checked)
                           }
                         />
-                      ) : (
+                      ) : key === "rowNumber" ? t("columns.rowNumber") : (
                         <button
                           type="button"
                           className="catalog-sort-heading"
@@ -412,7 +417,7 @@ export function Catalog() {
                             )}
                         </button>
                       )}
-                      <button
+                      {key !== "rowNumber" && (<button
                         className="column-resizer"
                         type="button"
                         aria-label={t("columns.resize", {
@@ -487,19 +492,19 @@ export function Catalog() {
                             },
                           });
                         }}
-                      />
+                      />)}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {result.data.items.map((book) => (
+                {result.data.items.map((book, rowIndex) => (
                   <tr key={book.eplId}>
                     {columns.visible.map((key) => (
                       <td
                         key={key}
                         className={
-                          key === "title" ? "catalog-title-cell" : undefined
+                          key === "rowNumber" ? "row-number" : key === "title" ? "catalog-title-cell" : undefined
                         }
                       >
                         {key === "selection" ? (
@@ -515,6 +520,8 @@ export function Catalog() {
                               )
                             }
                           />
+                        ) : key === "rowNumber" ? (
+                          Number(params.get("page") ?? 0) * Number(params.get("size") ?? 20) + rowIndex + 1
                         ) : key === "title" ? (
                           <Link
                             className="book-title"

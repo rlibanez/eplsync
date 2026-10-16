@@ -1,3 +1,4 @@
+import { RowNumberHeading, RowNumberCell } from "../../components/RowNumber";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { Paging } from "../downloads/shared";
 import { secureFetch } from "../auth/transport";
@@ -115,14 +116,16 @@ export function MissingBooks({ disabled }: { disabled: boolean }) {
               <table>
                 <thead>
                   <tr>
+                    <RowNumberHeading />
                     <th>{t("filters.eplId")}</th>
                     <th>{t("missing.bookTitle")}</th>
                     <th>{t("missing.revision")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.items.map((book) => (
+                  {preview.items.map((book, rowIndex) => (
                     <tr key={book.eplId}>
+                      <RowNumberCell value={preview.page * preview.size + rowIndex + 1} />
                       <td>{book.eplId}</td>
                       <td>{book.title}</td>
                       <td>{book.revision}</td>

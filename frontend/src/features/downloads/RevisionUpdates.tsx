@@ -203,7 +203,7 @@ export function RevisionUpdates() {
       setPage(0);
       setSelected([]);
     },
-    { defaults: "title,asc", selection: auth.can("TORRENT_SEND") },
+    { defaults: "title,asc", selection: auth.can("TORRENT_SEND") }, (page + 1) * size,
   );
   const rows = result.data?.items ?? [];
   const allChecked =
@@ -340,7 +340,7 @@ export function RevisionUpdates() {
                       </td>
                     </tr>
                   )}
-                  {rows.map((row) => (
+                  {rows.map((row, rowIndex) => (
                     <tr key={row.eplId}>
                       {auth.can("TORRENT_SEND") && (
                         <td className="updates-selection">
@@ -369,7 +369,7 @@ export function RevisionUpdates() {
                         <td>{status(row.status)}</td>,
                         <td>{revision(row.registeredRevision)}</td>,
                         <td>{revision(row.availableRevision)}</td>,
-                      ])}
+                      ], page * size + rowIndex + 1)}
                     </tr>
                   ))}
                 </tbody>

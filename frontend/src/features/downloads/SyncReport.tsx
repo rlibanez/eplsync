@@ -115,7 +115,7 @@ export function SyncReport({
     ],
     view.bookSort,
     (value) => setView({ bookSort: value, page: 0 }),
-    { defaults: "eplId,asc" },
+    { defaults: "eplId,asc" }, (page + 1) * size,
   );
   const ignoredColumns = useDownloadColumns(
     "eplsync.sync.ignored.columns",
@@ -132,7 +132,7 @@ export function SyncReport({
     ],
     view.ignoredSort,
     (value) => setView({ ignoredSort: value, page: 0 }),
-    { defaults: "name,asc" },
+    { defaults: "name,asc" }, (page + 1) * size,
   );
   const columns = tab === "books" ? bookColumns : ignoredColumns;
   function sorted<T>(
@@ -421,7 +421,7 @@ export function SyncReport({
                   <thead>{columns.headings}</thead>
                   <tbody>
                     {tab === "books"
-                      ? visibleItems.map((item) => (
+                      ? visibleItems.map((item, rowIndex) => (
                           <tr key={`${item.eplId}:${item.hash}`}>
                             {bookColumns.cells([
                               <td>
@@ -468,10 +468,10 @@ export function SyncReport({
                                   </div>
                                 )}
                               </td>,
-                            ])}
+                            ], page * size + rowIndex + 1)}
                           </tr>
                         ))
-                      : visibleIgnored.map((original) => {
+                      : visibleIgnored.map((original, rowIndex) => {
                           const item = {
                             ...original,
                             linked:
@@ -503,7 +503,7 @@ export function SyncReport({
                                     )}
                                   </Button>
                                 </td>,
-                              ])}
+                              ], page * size + rowIndex + 1)}
                             </tr>
                           );
                         })}

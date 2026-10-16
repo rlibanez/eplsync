@@ -127,7 +127,7 @@ for (const kind of ["state", "job"] as const) {
         )
         .toBeGreaterThan(0);
       await expect(
-        table.locator("th").nth(kind === "state" ? 1 : 0),
+        table.locator('th[data-table-column="eplId"]'),
       ).toContainText("EPL ID");
       const cells = table.locator("tbody tr").first().locator("td");
       await expect(cells.nth(2)).toHaveCSS("display", "table-cell");

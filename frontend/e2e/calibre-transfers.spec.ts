@@ -268,7 +268,7 @@ test("Calibre jobs filter by clicking state and user", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Trabajos de Calibre", exact: true }),
   ).toBeVisible();
-  await expect(page.locator("thead th").first()).toHaveText(/Trabajo/);
+  await expect(page.locator('th[data-table-column="id"]')).toHaveText(/Trabajo/);
   await expect(
     page.locator("tbody").getByRole("link", { name: "job", exact: true }),
   ).toHaveAttribute("href", "/calibre/jobs/job");
@@ -327,4 +327,33 @@ test("send order is optional, hidden by default even with saved columns, and per
   await expect(page.getByRole("cell",{name:"25",exact:true})).toHaveText("25");
   await page.reload();
   await expect(page.locator('th[data-table-column="position"]')).toBeVisible();
+});
+
+test("filtra los elementos del trabajo por estado y detalle pulsando sus valores", async ({ page }) => {
+  await jobRoutes(page);
+  await page.route("**/api/calibre/transfers/job/items?**", r => r.fulfill({json: {
+    items: [{id:"filtered",position:0,eplId:1,name:"Libro.epub",revision:"1",state:"ACCEPTED",message:"EPUB enviado y verificado"}],
+    meta: {...meta,totalItems:1}
+  }}));
+  await page.goto("/calibre/jobs/job");
+  await page.getByRole("button", { name: "Enviado", exact:true }).click();
+  await expect(page.getByRole("textbox", {name:"Estado",exact:true})).toHaveValue("Enviado");
+  const request = page.waitForRequest(r => r.url().includes("/job/items?") && new URL(r.url()).searchParams.get("detail") === "EPUB enviado y verificado" && new URL(r.url()).searchParams.get("state") === "ACCEPTED");
+  await page.getByRole("button", {name:"EPUB enviado y verificado",exact:true}).click();
+  await request;
+  await expect(page.getByRole("textbox", {name:"Detalle contiene"})).toHaveValue("EPUB enviado y verificado");
+  const waiting = page.waitForRequest(r => r.url().includes("/job/items?") && new URL(r.url()).searchParams.get("detail") === "esperando" && new URL(r.url()).searchParams.get("page") === "0");
+  await page.getByRole("textbox", {name:"Detalle contiene"}).fill("esperando");
+  await waiting;
+  await page.getByRole("button", {name:"Limpiar: Detalle contiene",exact:true}).click();
+  await expect(page.getByRole("textbox", {name:"Detalle contiene"})).toHaveValue("");
+  await expect(page.getByRole("textbox", {name:"Estado",exact:true})).toHaveValue("Enviado");
+  await page.getByRole("textbox", {name:"Detalle contiene"}).fill("verificado");
+  const cleared = page.waitForRequest(r => r.url().includes("/job/items?") && new URL(r.url()).searchParams.get("detail") === "" && new URL(r.url()).searchParams.get("state") === "" && new URL(r.url()).searchParams.get("page") === "0");
+  await page.getByRole("button", {name:"Limpiar",exact:true}).click();
+  await cleared;
+  await expect(page.getByRole("textbox", {name:"Detalle contiene"})).toHaveValue("");
+  await expect(page.getByRole("textbox", {name:"Estado",exact:true})).toHaveValue("");
+  const labels = await page.locator(".jobs-filters label").allTextContents();
+  expect(labels).toEqual(["Estado", "Detalle contiene"]);
 });

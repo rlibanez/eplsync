@@ -141,7 +141,7 @@ export function ScheduledTaskSettings() {
       sortable: false,
     })),
     "",
-    () => {},
+    () => {}, undefined, query.data?.tasks.length ?? 1,
   );
   const [editing, setEditing] = useState<{ id?: string; input: Input } | null>(
     null,
@@ -263,7 +263,7 @@ export function ScheduledTaskSettings() {
                 {columns.visible.map((column) => (
                   <col
                     key={column.field}
-                    style={{ width: column.field === "name" ? "auto" : "1%" }}
+                    style={{ width: column.field === "rowNumber" ? column.width : column.field === "name" ? "auto" : "1%" }}
                   />
                 ))}
               </colgroup>
@@ -272,164 +272,184 @@ export function ScheduledTaskSettings() {
             <tbody>
               {query.data.tasks.length === 0 ? (
                 <tr>
-                  <td colSpan={12}>{t("scheduledTasks.empty")}</td>
+                  <td colSpan={columns.visible.length}>
+                    {t("scheduledTasks.empty")}
+                  </td>
                 </tr>
               ) : (
-                query.data.tasks.map((task) => (
+                query.data.tasks.map((task, rowIndex) => (
                   <tr key={task.id}>
-                    <td>{task.name}</td>
-                    <td>{t(`scheduledTasks.operations.${task.operation}`)}</td>
-                    <td>{task.ownerUsername}</td>
-                    <td>
-                      <code style={{ whiteSpace: "nowrap" }}>{task.cron}</code>
-                    </td>
-                    <td>{date(task.nextRun)}</td>
-                    <td>{date(task.lastRun)}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      {task.lastRun && task.lastFinished && !task.running
-                        ? `${number(Math.max(0, (Date.parse(task.lastFinished) - Date.parse(task.lastRun)) / 1000), { maximumFractionDigits: 1 })} s`
-                        : "—"}
-                    </td>
-                    <td>
-                      <span className="badge">
-                        {task.running
-                          ? t("scheduledTasks.results.RUNNING")
-                          : task.lastResult
-                            ? t(`scheduledTasks.results.${task.lastResult}`)
+                    {columns.cells(
+                      [
+                        <td>{task.name}</td>,
+                        <td>
+                          {t(`scheduledTasks.operations.${task.operation}`)}
+                        </td>,
+                        <td>{task.ownerUsername}</td>,
+                        <td>
+                          <code style={{ whiteSpace: "nowrap" }}>
+                            {task.cron}
+                          </code>
+                        </td>,
+                        <td>{date(task.nextRun)}</td>,
+                        <td>{date(task.lastRun)}</td>,
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          {task.lastRun && task.lastFinished && !task.running
+                            ? `${number(Math.max(0, (Date.parse(task.lastFinished) - Date.parse(task.lastRun)) / 1000), { maximumFractionDigits: 1 })} s`
                             : "—"}
-                      </span>
-                      {task.lastMessage && (
-                        <small className="hash-text">{task.lastMessage}</small>
-                      )}
-                    </td>
-                    <td>
-                      {query.data.automations?.[task.id]?.cycle ? (
-                        <Stack gap={4} align="flex-start">
+                        </td>,
+                        <td>
                           <span className="badge">
-                            {t(
-                              `automation.cycles.${query.data.automations[task.id].cycle!.state}`,
-                            )}
+                            {task.running
+                              ? t("scheduledTasks.results.RUNNING")
+                              : task.lastResult
+                                ? t(`scheduledTasks.results.${task.lastResult}`)
+                                : "—"}
                           </span>
-                          {query.data.automations[task.id].cycle!.jobs.map(
-                            (job) => (
-                              <Link
-                                key={`${job.kind}-${job.id}`}
-                                to={
-                                  job.kind === "downloads"
-                                    ? `/downloads/jobs/${job.id}`
-                                    : `/calibre/jobs/${job.id}`
-                                }
-                              >
-                                {t(
-                                  job.kind === "downloads"
-                                    ? "automation.downloadJob"
-                                    : "automation.calibreJob",
-                                )}{" "}
-                                · {job.id.slice(0, 8)}
-                              </Link>
-                            ),
-                          )}
-                          {query.data.automations[task.id].cycle!.message && (
-                            <small>
-                              {query.data.automations[task.id].cycle!.message}
+                          {task.lastMessage && (
+                            <small className="hash-text">
+                              {task.lastMessage}
                             </small>
                           )}
-                        </Stack>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td>
-                      <Switch
-                        aria-label={t("scheduledTasks.toggle", {
-                          name: task.name,
-                        })}
-                        checked={task.enabled}
-                        disabled={toggle.isPending}
-                        onChange={(e) =>
-                          toggle.mutate({
-                            id: task.id,
-                            enabled: e.currentTarget.checked,
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <Switch
-                        aria-label={t("scheduledTasks.toggleNotifications", {
-                          name: task.name,
-                        })}
-                        checked={task.telegramNotifications ?? true}
-                        disabled={notifications.isPending}
-                        onChange={(e) =>
-                          notifications.mutate({
-                            id: task.id,
-                            enabled: e.currentTarget.checked,
-                          })
-                        }
-                      />
-                    </td>
-                    <td>
-                      <Group gap="xs" wrap="nowrap">
-                        {query.data.automations?.[task.id]?.cycle?.state !==
-                          undefined &&
-                          query.data.automations[task.id].cycle!.state !==
-                            "COMPLETED" && (
+                        </td>,
+                        <td>
+                          {query.data.automations?.[task.id]?.cycle ? (
+                            <Stack gap={4} align="flex-start">
+                              <span className="badge">
+                                {t(
+                                  `automation.cycles.${query.data.automations[task.id].cycle!.state}`,
+                                )}
+                              </span>
+                              {query.data.automations[task.id].cycle!.jobs.map(
+                                (job) => (
+                                  <Link
+                                    key={`${job.kind}-${job.id}`}
+                                    to={
+                                      job.kind === "downloads"
+                                        ? `/downloads/jobs/${job.id}`
+                                        : `/calibre/jobs/${job.id}`
+                                    }
+                                  >
+                                    {t(
+                                      job.kind === "downloads"
+                                        ? "automation.downloadJob"
+                                        : "automation.calibreJob",
+                                    )}{" "}
+                                    · {job.id.slice(0, 8)}
+                                  </Link>
+                                ),
+                              )}
+                              {query.data.automations[task.id].cycle!
+                                .message && (
+                                <small>
+                                  {
+                                    query.data.automations[task.id].cycle!
+                                      .message
+                                  }
+                                </small>
+                              )}
+                            </Stack>
+                          ) : (
+                            "—"
+                          )}
+                        </td>,
+                        <td>
+                          <Switch
+                            aria-label={t("scheduledTasks.toggle", {
+                              name: task.name,
+                            })}
+                            checked={task.enabled}
+                            disabled={toggle.isPending}
+                            onChange={(e) =>
+                              toggle.mutate({
+                                id: task.id,
+                                enabled: e.currentTarget.checked,
+                              })
+                            }
+                          />
+                        </td>,
+                        <td>
+                          <Switch
+                            aria-label={t(
+                              "scheduledTasks.toggleNotifications",
+                              {
+                                name: task.name,
+                              },
+                            )}
+                            checked={task.telegramNotifications ?? true}
+                            disabled={notifications.isPending}
+                            onChange={(e) =>
+                              notifications.mutate({
+                                id: task.id,
+                                enabled: e.currentTarget.checked,
+                              })
+                            }
+                          />
+                        </td>,
+                        <td>
+                          <Group gap="xs" wrap="nowrap">
+                            {query.data.automations?.[task.id]?.cycle?.state !==
+                              undefined &&
+                              query.data.automations[task.id].cycle!.state !==
+                                "COMPLETED" && (
+                                <ActionIcon
+                                  size="sm"
+                                  variant="subtle"
+                                  disabled={task.running}
+                                  onClick={() => {
+                                    closeCycle.reset();
+                                    setClosing(task.id);
+                                  }}
+                                  aria-label={t("automation.close")}
+                                  title={t("automation.close")}
+                                >
+                                  <SquareCheck size={18} />
+                                </ActionIcon>
+                              )}
+                            <ActionIcon
+                              size="sm"
+                              variant="subtle"
+                              disabled={task.running || run.isPending}
+                              onClick={() => run.mutate(task.id)}
+                              aria-label={t("scheduledTasks.runNow")}
+                              title={t("scheduledTasks.runNow")}
+                            >
+                              <Play size={18} />
+                            </ActionIcon>
                             <ActionIcon
                               size="sm"
                               variant="subtle"
                               disabled={task.running}
-                              onClick={() => {
-                                closeCycle.reset();
-                                setClosing(task.id);
-                              }}
-                              aria-label={t("automation.close")}
-                              title={t("automation.close")}
+                              onClick={() => open(task)}
+                              aria-label={t("scheduledTasks.edit")}
+                              title={t("scheduledTasks.edit")}
                             >
-                              <SquareCheck size={18} />
+                              <Pencil size={18} />
                             </ActionIcon>
-                          )}
-                        <ActionIcon
-                          size="sm"
-                          variant="subtle"
-                          disabled={task.running || run.isPending}
-                          onClick={() => run.mutate(task.id)}
-                          aria-label={t("scheduledTasks.runNow")}
-                          title={t("scheduledTasks.runNow")}
-                        >
-                          <Play size={18} />
-                        </ActionIcon>
-                        <ActionIcon
-                          size="sm"
-                          variant="subtle"
-                          disabled={task.running}
-                          onClick={() => open(task)}
-                          aria-label={t("scheduledTasks.edit")}
-                          title={t("scheduledTasks.edit")}
-                        >
-                          <Pencil size={18} />
-                        </ActionIcon>
-                        <ActionIcon
-                          size="sm"
-                          variant="subtle"
-                          color="red"
-                          disabled={
-                            task.running ||
-                            (!!query.data.automations?.[task.id]?.cycle &&
-                              query.data.automations[task.id].cycle!.state !==
-                                "COMPLETED")
-                          }
-                          onClick={() => {
-                            remove.reset();
-                            setDeleting(task);
-                          }}
-                          aria-label={t("scheduledTasks.delete")}
-                          title={t("scheduledTasks.delete")}
-                        >
-                          <Trash2 size={18} />
-                        </ActionIcon>
-                      </Group>{" "}
-                    </td>
+                            <ActionIcon
+                              size="sm"
+                              variant="subtle"
+                              color="red"
+                              disabled={
+                                task.running ||
+                                (!!query.data.automations?.[task.id]?.cycle &&
+                                  query.data.automations[task.id].cycle!
+                                    .state !== "COMPLETED")
+                              }
+                              onClick={() => {
+                                remove.reset();
+                                setDeleting(task);
+                              }}
+                              aria-label={t("scheduledTasks.delete")}
+                              title={t("scheduledTasks.delete")}
+                            >
+                              <Trash2 size={18} />
+                            </ActionIcon>
+                          </Group>{" "}
+                        </td>,
+                      ],
+                      rowIndex + 1,
+                    )}
                   </tr>
                 ))
               )}

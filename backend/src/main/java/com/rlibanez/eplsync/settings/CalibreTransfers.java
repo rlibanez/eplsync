@@ -175,10 +175,15 @@ public class CalibreTransfers {
     }
     public Page<Item> items(String id,int page,int size,List<String> sort) {return items(id,page,size,"",sort);}
     public Page<Item> items(String id,int page,int size,String state,List<String> sort) {
+        return items(id,page,size,state,"",sort);
+    }
+    public Page<Item> items(String id,int page,int size,String state,String detail,List<String> sort) {
         paging(page,size);job(id);
+        if(detail==null || detail.length()>4096) throw new UserInputException("Filtro de detalle inválido");
         if(state==null || !state.isEmpty() && !Set.of("PENDING","SENDING","ACCEPTED","SKIPPED","FAILED","UNCERTAIN","CANCELLED","WAITING_DOWNLOAD","BLOCKED_DOWNLOAD","CLEANUP_PENDING").contains(state)) throw new UserInputException("Estado de envío inválido");
         String where=" WHERE job_id=?";var args=new ArrayList<Object>();args.add(id);
         if(!state.isEmpty()) {where+=" AND state=?";args.add(state);}
+        if(!detail.isBlank()) {where+=" AND instr(lower(coalesce(message,'')),lower(?))>0";args.add(detail.trim());}
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items"+where,Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
         var rows=jdbc.query("SELECT * FROM calibre_job_items"+where+" ORDER BY "+order(sort,Map.of("position","position","eplId","epl_id","revision","CAST(revision AS REAL)","name","name COLLATE EPL_TEXT","state","state","calibreId","calibre_id","message","message COLLATE EPL_TEXT"))+",position LIMIT ? OFFSET ?",CalibreTransfers::mapItem,args.toArray());

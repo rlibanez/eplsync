@@ -184,7 +184,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
           ).length,
       ),
     )
-    .toBe(5);
+    .toBe(6);
   await checkTableControls(page, "title", "Libro");
   expect(queries).toHaveLength(1);
   expect(queries[0].params.toString()).toBe("");
@@ -358,7 +358,7 @@ test("last search, page, filter and ordering survive route changes and covers ma
     .click();
   await expect(page.locator("th[data-update-column]").first()).toHaveAttribute(
     "data-update-column",
-    "eplId",
+    "rowNumber",
   );
   const title = page
     .getByRole("link", { name: "A Test book", exact: true })

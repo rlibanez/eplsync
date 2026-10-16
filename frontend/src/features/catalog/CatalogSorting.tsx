@@ -13,7 +13,7 @@ export function CatalogSorting({
 }) {
   const { t } = useTranslation();
   const labels = columnLabels;
-  const fields = Object.keys(labels).filter((key) => key !== "selection");
+  const fields = Object.keys(labels).filter((key) => key !== "selection" && key !== "rowNumber");
   function move(index: number, offset: number) {
     const next = [...ordering];
     [next[index], next[index + offset]] = [next[index + offset], next[index]];

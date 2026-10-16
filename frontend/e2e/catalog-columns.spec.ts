@@ -39,7 +39,7 @@ test("column visibility and order persist and can be restored", async ({
   await page.route("https://images.epublibre.org/**", (r) => r.abort());
   await page.goto("/catalog");
   const headings = page.locator("thead th");
-  await expect(headings).toHaveCount(14);
+  await expect(headings).toHaveCount(15);
   await page.getByRole("button", { name: "Columnas", exact: true }).click();
   await page
     .getByRole("checkbox", { name: "Colección", exact: true })
@@ -53,6 +53,7 @@ test("column visibility and order persist and can be restored", async ({
   await page
     .getByRole("button", { name: "Mover Autor hacia arriba", exact: true })
     .click();
+  await page.getByRole("button", {name: "Mover Autor hacia arriba", exact: true}).click();
   await expect(headings.first()).toHaveText("Autor");
   await page.keyboard.press("Escape");
   const author = page.getByRole("columnheader", { name: /^Autor/ });
@@ -77,7 +78,7 @@ test("column visibility and order persist and can be restored", async ({
     )
     .toBeLessThan(2);
   await expect(headings.first()).toHaveText("Autor");
-  await expect(headings).toHaveCount(13);
+  await expect(headings).toHaveCount(14);
   await page.getByRole("button", { name: "Columnas", exact: true }).click();
   await page
     .getByRole("button", { name: "Restaurar columnas", exact: true })
@@ -90,5 +91,5 @@ test("column visibility and order persist and can be restored", async ({
   await page.reload();
   await expect(headings.first()).toHaveText("EPL ID");
   await expect(page.locator(".row-link")).toHaveCount(0);
-  await expect(headings).toHaveCount(14);
+  await expect(headings).toHaveCount(15);
 });

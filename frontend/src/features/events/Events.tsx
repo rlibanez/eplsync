@@ -101,7 +101,7 @@ function EventsView({ operationId }: { operationId?: string }) {
       setSort(value);
       setPage(0);
     },
-    { defaults: "startedAt,desc" },
+    { defaults: "startedAt,desc" }, (page + 1) * size,
   );
   const [expanded, setExpanded] = useState(saved.expanded);
   const navigation = useRef(saved);
@@ -441,7 +441,7 @@ function EventsView({ operationId }: { operationId?: string }) {
                 {columns.colgroup}
                 <thead>{columns.headings}</thead>
                 <tbody>
-                  {result.data.items.map((operation) => {
+                  {result.data.items.map((operation, rowIndex) => {
                     const event = operation.latest;
                     const outcome = operationOutcome(event.outcome);
                     const outcomeLabel =
@@ -529,7 +529,7 @@ function EventsView({ operationId }: { operationId?: string }) {
                               <EventSummary operation={operation} />
                             </details>
                           </td>,
-                        ])}
+                        ], page * size + rowIndex + 1)}
                       </tr>
                     );
                   })}

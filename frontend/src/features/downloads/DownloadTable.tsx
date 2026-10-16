@@ -1,3 +1,4 @@
+import { ROW_NUMBER, RowNumberCell, rowNumberWidth } from "../../components/RowNumber";
 import {
   cloneElement,
   useRef,
@@ -24,7 +25,7 @@ export type TableColumn = {
 const clamp = (value: number) => Math.min(1200, Math.max(80, value));
 export function useDownloadColumns(
   key: string,
-  columns: TableColumn[],
+  inputColumns: TableColumn[],
   sort: string,
   onSort: (value: string) => void,
   options: {
@@ -33,8 +34,18 @@ export function useDownloadColumns(
     hidden?: string[];
     extraSort?: TableColumn[];
   } = { defaults: "createdAt,desc" },
+  lastRowNumber = 1,
 ) {
   const { t } = useTranslation();
+  const columns: TableColumn[] = [
+    {
+      field: ROW_NUMBER,
+      label: "columns.rowNumber",
+      width: rowNumberWidth(lastRowNumber),
+      sortable: false,
+    },
+    ...inputColumns,
+  ];
   const fields = columns.map((column) => column.field);
   const [settings, setSettings] = useState<ColumnSettings>(() => {
     const initial = { order: fields, hidden: options.hidden ?? [], widths: {} };
@@ -52,10 +63,16 @@ export function useDownloadColumns(
           ),
         );
         fields.forEach((field) => {
-          if (!order.includes(field)) order.push(field);
+          if (!order.includes(field)) {
+            if (field === ROW_NUMBER) order.unshift(field);
+            else order.push(field);
+          }
         });
-        const hidden = fields.filter((field) => saved.hidden.includes(field) ||
-          (!saved.order.includes(field) && options.hidden?.includes(field)));
+        const hidden = fields.filter(
+          (field) =>
+            saved.hidden.includes(field) ||
+            (!saved.order.includes(field) && options.hidden?.includes(field)),
+        );
         const widths: Record<string, number> = {};
         fields.forEach((field) => {
           const value = saved.widths?.[field];
@@ -71,7 +88,7 @@ export function useDownloadColumns(
       const legacy = JSON.parse(localStorage.getItem(key) || "null");
       if (
         Array.isArray(legacy) &&
-        legacy.length === columns.length &&
+        (legacy.length === columns.length || legacy.length === inputColumns.length) &&
         legacy.every(
           (value) => typeof value === "number" && Number.isFinite(value),
         )
@@ -79,7 +96,7 @@ export function useDownloadColumns(
         return {
           ...initial,
           widths: Object.fromEntries(
-            fields.map((field, index) => [field, clamp(legacy[index])]),
+            (legacy.length === inputColumns.length ? inputColumns.map(column => column.field) : fields).map((field, index) => [field, clamp(legacy[index])]),
           ),
         };
     } catch {
@@ -99,7 +116,7 @@ export function useDownloadColumns(
     .filter((field) => !settings.hidden.includes(field))
     .map((field) => columns.find((column) => column.field === field)!);
   const widthFor = (field: string) =>
-    settings.widths[field] ??
+    field === ROW_NUMBER ? rowNumberWidth(lastRowNumber) : settings.widths[field] ??
     columns.find((column) => column.field === field)!.width;
   const drag = useRef<{
     field: string;
@@ -144,6 +161,9 @@ export function useDownloadColumns(
         data-table-column={column.field}
         data-update-column={column.field}
         scope="col"
+        className={column.field === ROW_NUMBER ? "row-number" : undefined}
+        style={column.field === ROW_NUMBER ? {minWidth: rowNumberWidth(lastRowNumber)} : undefined}
+        title={column.field === ROW_NUMBER ? t("columns.rowNumberHelp") : undefined}
         aria-sort={
           criterion
             ? criterion.endsWith(",asc")
@@ -188,7 +208,7 @@ export function useDownloadColumns(
             )}
           </button>
         )}
-        <button
+        {column.field !== ROW_NUMBER && (<button
           type="button"
           className="column-resizer"
           aria-label={t("columns.resize", { column: t(column.label) })}
@@ -231,7 +251,7 @@ export function useDownloadColumns(
               );
             }
           }}
-        />
+        />)}
       </th>
     );
   });
@@ -258,11 +278,18 @@ export function useDownloadColumns(
         {headings}
       </tr>
     ),
-    cells: (cells: ReactElement[]) =>
+    cells: (cells: ReactElement[], rowNumber: number) =>
       visible.map((column) =>
-        cloneElement(cells[fields.indexOf(column.field)], {
-          key: column.field,
-        }),
+        column.field === ROW_NUMBER ? (
+          <RowNumberCell key={column.field} value={rowNumber} />
+        ) : (
+          cloneElement(
+            cells[
+              inputColumns.findIndex((value) => value.field === column.field)
+            ],
+            { key: column.field },
+          )
+        ),
       ),
     controls: (
       <>

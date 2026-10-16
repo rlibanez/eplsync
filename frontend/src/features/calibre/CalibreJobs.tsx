@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Checkbox,
+  CloseButton,
   Button,
   Group,
   Progress,
@@ -211,6 +212,7 @@ export function CalibreJobs() {
       setPage(0);
     },
     { defaults: "createdAt,desc" },
+    (page + 1) * size,
   );
   useEffect(() => {
     if (result.data)
@@ -322,81 +324,86 @@ export function CalibreJobs() {
                 {columns.colgroup}
                 <thead>{columns.headings}</thead>
                 <tbody>
-                  {result.data.items.map((job) => (
+                  {result.data.items.map((job, rowIndex) => (
                     <tr key={job.id}>
-                      {columns.cells([
-                        <td>
-                          <Link
-                            className="book-title"
-                            state={{
-                              workList: {
-                                source: "calibre",
-                                query: `state=${state ?? ""}&type=${type ?? ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
-                                view: {
-                                  page,
-                                  size,
-                                  filter: state ?? "",
-                                  type: type ?? "",
-                                  username,
-                                  from,
-                                  to,
-                                  sort,
+                      {columns.cells(
+                        [
+                          <td>
+                            <Link
+                              className="book-title"
+                              state={{
+                                workList: {
+                                  source: "calibre",
+                                  query: `state=${state ?? ""}&type=${type ?? ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
+                                  view: {
+                                    page,
+                                    size,
+                                    filter: state ?? "",
+                                    type: type ?? "",
+                                    username,
+                                    from,
+                                    to,
+                                    sort,
+                                  },
                                 },
-                              },
-                            }}
-                            to={
-                              job.type === "CLEANUP"
-                                ? `/calibre/jobs/cleanup/${job.id}`
-                                : `/calibre/jobs/${job.id}`
-                            }
-                          >
-                            {job.id}
-                          </Link>
-                        </td>,
-                        <td>{date(job.createdAt)}</td>,
-                        <td>
-                          <button
-                            type="button"
-                            className="catalog-value-filter"
-                            onClick={() => {
-                              setType(job.type ?? "SEND");
-                              setPage(0);
-                            }}
-                          >
-                            {t(`historyActions.jobTypes.${job.type ?? "SEND"}`)}
-                          </button>
-                        </td>,
-                        <td>{job.library}</td>,
-                        <td>
-                          <button
-                            type="button"
-                            className="catalog-value-filter"
-                            onClick={() => {
-                              setState(job.state);
-                              setPage(0);
-                            }}
-                          >
-                            <span className="badge">
-                              {t(`calibreSend.states.${job.state}`)}
-                            </span>
-                          </button>
-                        </td>,
-                        <td>{number(job.total)}</td>,
-                        <td>{number(job.accepted)}</td>,
-                        <td>{number(job.failed)}</td>,
-                        <td>
-                          <button
-                            type="button"
-                            className="catalog-value-filter"
-                            onClick={() => {
-                              setUsername(job.username);
-                              setPage(0);
-                            }}
-                          >
-                            {job.username}
-                          </button>
-                        </td>,
-                      ])}
+                              }}
+                              to={
+                                job.type === "CLEANUP"
+                                  ? `/calibre/jobs/cleanup/${job.id}`
+                                  : `/calibre/jobs/${job.id}`
+                              }
+                            >
+                              {job.id}
+                            </Link>
+                          </td>,
+                          <td>{date(job.createdAt)}</td>,
+                          <td>
+                            <button
+                              type="button"
+                              className="catalog-value-filter"
+                              onClick={() => {
+                                setType(job.type ?? "SEND");
+                                setPage(0);
+                              }}
+                            >
+                              {t(
+                                `historyActions.jobTypes.${job.type ?? "SEND"}`,
+                              )}
+                            </button>
+                          </td>,
+                          <td>{job.library}</td>,
+                          <td>
+                            <button
+                              type="button"
+                              className="catalog-value-filter"
+                              onClick={() => {
+                                setState(job.state);
+                                setPage(0);
+                              }}
+                            >
+                              <span className="badge">
+                                {t(`calibreSend.states.${job.state}`)}
+                              </span>
+                            </button>
+                          </td>,
+                          <td>{number(job.total)}</td>,
+                          <td>{number(job.accepted)}</td>,
+                          <td>{number(job.failed)}</td>,
+                          <td>
+                            <button
+                              type="button"
+                              className="catalog-value-filter"
+                              onClick={() => {
+                                setUsername(job.username);
+                                setPage(0);
+                              }}
+                            >
+                              {job.username}
+                            </button>
+                          </td>,
+                        ],
+                        page * size + rowIndex + 1,
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -429,9 +436,10 @@ export function CalibreJobDetail() {
     [size, setSize] = useState(20),
     [sort, setSort] = useState("position,asc");
   const [itemState, setItemState] = useState<string | null>(null);
+  const [itemDetail, setItemDetail] = useState("");
   const choice = usePageSizeChoice(size);
   const [selected, setSelected] = useState<string[]>([]);
-  useEffect(() => setSelected([]), [id, itemState, sort]);
+  useEffect(() => setSelected([]), [id, itemState, itemDetail, sort]);
   const job = useQuery({
     queryKey: ["calibre-job", id],
     queryFn: ({ signal }) => get<Job>(`/calibre/transfers/${id}`, signal),
@@ -442,10 +450,18 @@ export function CalibreJobDetail() {
     setSelected([]),
   );
   const result = useQuery({
-    queryKey: ["calibre-job-items", id, page, size, sort, itemState],
+    queryKey: [
+      "calibre-job-items",
+      id,
+      page,
+      size,
+      sort,
+      itemState,
+      itemDetail.trim(),
+    ],
     queryFn: ({ signal }) =>
       get<Page<Item>>(
-        `/calibre/transfers/${id}/items?page=${page}&size=${size}&state=${itemState ?? ""}&${sortQuery(sort)}`,
+        `/calibre/transfers/${id}/items?page=${page}&size=${size}&state=${itemState ?? ""}&detail=${encodeURIComponent(itemDetail.trim())}&${sortQuery(sort)}`,
         signal,
       ),
     retry: false,
@@ -487,6 +503,7 @@ export function CalibreJobDetail() {
       defaults: "position,asc",
       hidden: ["position"],
     },
+    (page + 1) * size,
   );
   if (job.isPending) return <Loading />;
   if (job.isError)
@@ -600,6 +617,37 @@ export function CalibreJobDetail() {
             setPage(0);
           }}
         />
+        <TextInput
+          label={t("calibreSend.detailContains")}
+          value={itemDetail}
+          maxLength={4096}
+          rightSection={
+            itemDetail ? (
+              <CloseButton
+                aria-label={`${t("catalog.clear")}: ${t("calibreSend.detailContains")}`}
+                onClick={() => {
+                  setItemDetail("");
+                  setPage(0);
+                }}
+              />
+            ) : null
+          }
+          onChange={(event) => {
+            setItemDetail(event.currentTarget.value);
+            setPage(0);
+          }}
+        />
+        <Button
+          type="button"
+          variant="subtle"
+          onClick={() => {
+            setItemState(null);
+            setItemDetail("");
+            setPage(0);
+          }}
+        >
+          {t("catalog.clear")}
+        </Button>
       </div>
       <section className="panel">
         <SelectionToolbar
@@ -658,7 +706,7 @@ export function CalibreJobDetail() {
                   )}
                 </thead>
                 <tbody>
-                  {result.data.items.map((item) => (
+                  {result.data.items.map((item, rowIndex) => (
                     <tr key={item.id}>
                       {retry.selectable && (
                         <td>
@@ -676,59 +724,85 @@ export function CalibreJobDetail() {
                           />
                         </td>
                       )}
-                      {columns.cells([
-                        <td>{number(item.position + 1)}</td>,
-                        <td>
-                          {can("CATALOG_READ") ? (
-                            <Link to={`/catalog/${item.eplId}`}>
-                              {item.eplId}
-                            </Link>
-                          ) : (
-                            item.eplId
-                          )}
-                        </td>,
-                        <td className="catalog-title-cell">
-                          <div className="book-title">
-                            <BookCover
-                              book={{
-                                eplId: item.eplId,
-                                title: item.name,
-                                coverUrl: item.coverUrl ?? null,
-                                coverAvailable: item.coverAvailable ?? null,
-                              }}
-                            />
-                            <span>
-                              {can("CATALOG_READ") && item.eplId > 0 ? (
-                                <Link to={`/catalog/${item.eplId}`}>
-                                  {item.name}
-                                </Link>
-                              ) : (
-                                item.name
-                              )}
-                            </span>
-                          </div>
-                        </td>,
-                        <td>{revision(item.revision)}</td>,
-                        <td>
-                          <span className="badge">
-                            {t(`calibreSend.states.${item.state}`)}
-                          </span>
-                        </td>,
-                        <td>{item.calibreId ?? "—"}</td>,
-                        <td>
-                          {item.message ?? "—"}
-                          {item.downloadJobId && can("TORRENT_JOBS_MANAGE") && (
-                            <>
-                              <br />
-                              <Link
-                                to={`/downloads/jobs/${item.downloadJobId}`}
-                              >
-                                {t("calibreUpdateSend.downloadJob")}
+                      {columns.cells(
+                        [
+                          <td>{number(item.position + 1)}</td>,
+                          <td>
+                            {can("CATALOG_READ") ? (
+                              <Link to={`/catalog/${item.eplId}`}>
+                                {item.eplId}
                               </Link>
-                            </>
-                          )}
-                        </td>,
-                      ])}
+                            ) : (
+                              item.eplId
+                            )}
+                          </td>,
+                          <td className="catalog-title-cell">
+                            <div className="book-title">
+                              <BookCover
+                                book={{
+                                  eplId: item.eplId,
+                                  title: item.name,
+                                  coverUrl: item.coverUrl ?? null,
+                                  coverAvailable: item.coverAvailable ?? null,
+                                }}
+                              />
+                              <span>
+                                {can("CATALOG_READ") && item.eplId > 0 ? (
+                                  <Link to={`/catalog/${item.eplId}`}>
+                                    {item.name}
+                                  </Link>
+                                ) : (
+                                  item.name
+                                )}
+                              </span>
+                            </div>
+                          </td>,
+                          <td>{revision(item.revision)}</td>,
+                          <td>
+                            <button
+                              type="button"
+                              className="catalog-value-filter"
+                              onClick={() => {
+                                setItemState(item.state);
+                                setPage(0);
+                              }}
+                            >
+                              <span className="badge">
+                                {t(`calibreSend.states.${item.state}`)}
+                              </span>
+                            </button>
+                          </td>,
+                          <td>{item.calibreId ?? "—"}</td>,
+                          <td>
+                            {item.message?.trim() ? (
+                              <button
+                                type="button"
+                                className="catalog-value-filter"
+                                onClick={() => {
+                                  setItemDetail(item.message ?? "");
+                                  setPage(0);
+                                }}
+                              >
+                                {item.message}
+                              </button>
+                            ) : (
+                              "—"
+                            )}
+                            {item.downloadJobId &&
+                              can("TORRENT_JOBS_MANAGE") && (
+                                <>
+                                  <br />
+                                  <Link
+                                    to={`/downloads/jobs/${item.downloadJobId}`}
+                                  >
+                                    {t("calibreUpdateSend.downloadJob")}
+                                  </Link>
+                                </>
+                              )}
+                          </td>,
+                        ],
+                        page * size + rowIndex + 1,
+                      )}
                     </tr>
                   ))}
                 </tbody>

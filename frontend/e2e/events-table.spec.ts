@@ -103,13 +103,13 @@ test("summary does not shift columns and widths can be resized and persist", asy
     steps: 5,
   });
   await page.mouse.up();
-  expect((await geometry())[0].width).toBeCloseTo(before[0].width + 80, 0);
+  expect((await geometry())[1].width).toBeCloseTo(before[1].width + 80, 0);
   await handle.focus();
   await page.keyboard.press("ArrowLeft");
-  expect((await geometry())[0].width).toBeCloseTo(before[0].width + 60, 0);
+  expect((await geometry())[1].width).toBeCloseTo(before[1].width + 60, 0);
   await page.reload();
   await expect(page.locator(".events-table tbody tr")).toHaveCount(3);
-  expect((await geometry())[0].width).toBeCloseTo(before[0].width + 60, 0);
+  expect((await geometry())[1].width).toBeCloseTo(before[1].width + 60, 0);
 });
 
 test("event cell filters its action without leaving events and clears with other filters", async ({

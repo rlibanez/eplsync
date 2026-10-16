@@ -2156,3 +2156,7 @@ summary {
 @media (max-width: 500px) {
   .catalog-library-filter { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Visual result position; independent of record identity and sort keys. */
+th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; padding-right: 8px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+:is(.catalog-table, .updates-table, .download-record-table, .events-table) :is(th, td).row-number { overflow: visible; text-overflow: clip; }

@@ -121,7 +121,7 @@ test("execution shows local searchable detail without repeating sync", async ({
     .locator('th[data-table-column="eplId"] button.catalog-sort-heading')
     .click();
   await expect(
-    report.locator("tbody tr").first().locator("td").first(),
+    report.locator("tbody tr").first().locator("td").nth(1),
   ).toHaveText("25");
   await report
     .locator('th[data-table-column="eplId"] button.catalog-sort-heading')

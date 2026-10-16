@@ -42,7 +42,7 @@ export function BookCalibre({ book }: { book: Book }) {
     {
       defaults: "revision,desc",
       selection: selectable,
-    },
+    }, (page + 1) * size,
   );
   const result = useQuery<Page<CalibreBook>>({
     queryKey: ["calibre-library", book.eplId, page, size, sort],
@@ -93,6 +93,7 @@ export function BookCalibre({ book }: { book: Book }) {
         ) : result.data.meta.totalItems > 0 ? (
           <>
             <CalibreTable
+              offset={page * size}
               items={result.data.items}
               columns={columns}
               selected={selectable ? selected : undefined}

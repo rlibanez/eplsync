@@ -4,6 +4,7 @@ import { ArrowUp, ArrowDown, Columns3, GripVertical } from "lucide-react";
 import { useTranslation } from "react-i18next";
 export const columnLabels = {
   selection: "selection.column",
+  rowNumber: "columns.rowNumber",
   title: "catalog.book",
   author: "catalog.author",
   collection: "filters.collection",
@@ -28,6 +29,7 @@ function read(): Settings {
     if (data && Array.isArray(data.order) && Array.isArray(data.hidden)) {
       const order = [...new Set<Column>(data.order.filter((key: Column) => defaults.includes(key)))];
       if (!order.includes("selection")) order.unshift("selection");
+      if (!order.includes("rowNumber")) order.splice(order.indexOf("selection") + 1, 0, "rowNumber");
       defaults.forEach(key => { if (!order.includes(key)) order.push(key); });
       const hidden = defaults.filter(key => data.hidden.includes(key));
       const widths: Partial<Record<Column, number>> = {};
