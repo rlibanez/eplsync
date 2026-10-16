@@ -20,6 +20,7 @@ public class CalibreCatalogService {
     }
     static final String KEY = "calibre.snapshot";
     private static final int MAX_BOOKS = 500_000;
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(CalibreCatalogService.class);
     private final JdbcTemplate jdbc;
     private final CalibreSettings settings;
     private final CalibreClient client;
@@ -84,6 +85,7 @@ public class CalibreCatalogService {
     }
     private Snapshot performSync() {
         if (!gate.tryAcquire()) throw new UserInputException("Ya hay una sincronización de Calibre en curso");
+        long started=System.nanoTime();
         String generation=UUID.randomUUID().toString();
         long deadline=System.nanoTime()+java.time.Duration.ofMinutes(10).toNanos();
         try {
@@ -125,6 +127,13 @@ public class CalibreCatalogService {
                 jdbc.update("DELETE FROM calibre_books WHERE active=true");
                 jdbc.update("UPDATE calibre_books SET active=true WHERE generation=?",generation);
                 jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value",KEY,json.writeValueAsString(snapshot));
+                org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCommit() {
+                            log.info("Sincronización {} de Calibre finalizada: biblioteca={}, total={}, identificados={}, duraciónMs={}",
+                                com.rlibanez.eplsync.events.EventContext.operationOriginLabel(),snapshot.library(),snapshot.total(),snapshot.identified(),(System.nanoTime()-started)/1_000_000);
+                        }
+                    });
             });
             return snapshot;
         } finally {

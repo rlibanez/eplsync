@@ -32,6 +32,26 @@ class CalibreCatalogTests {
         jdbc.update("DELETE FROM catalog_books");
         settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"main"));
     }
+    @Test void syncFinalSummaryUsesInfoForBothOriginsAndDoesNotAnnounceFailures() {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CalibreCatalogService.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
+            when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100));
+            for(var origin:List.of(com.rlibanez.eplsync.events.EventContext.Origin.MANUAL,com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED)) {
+                capture.list.clear();
+                com.rlibanez.eplsync.events.EventContext.withOrigin(origin,snapshots::sync);
+                assertThat(capture.list).singleElement().satisfies(e->{
+                    assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.INFO);
+                    assertThat(e.getFormattedMessage()).contains(origin==com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED?"programada":"manual").contains("biblioteca=main", "total=1", "identificados=1", "duraciónMs=");
+                });
+            }
+            capture.list.clear();
+            when(client.books(any(),eq(0),eq(100))).thenThrow(new com.rlibanez.eplsync.exception.UserInputException("Sin conexión"));
+            assertThatThrownBy(snapshots::sync).hasMessage("Sin conexión");
+            assertThat(capture.list).isEmpty();
+        } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
+    }
     @Test @WithMockUser(authorities={"ROLE_ADMIN", "CALIBRE_READ", "CALIBRE_SYNC"}) void missingSnapshotReturnsJsonInsteadOfAnEmptyBody() throws Exception {
         mvc.perform(get("/api/settings/calibre/snapshot")).andExpect(status().isOk())
             .andExpect(content().contentTypeCompatibleWith("application/json"))

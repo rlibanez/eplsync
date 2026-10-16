@@ -164,7 +164,7 @@ public class DownloadTrackingService {
                             "updated", summary.records().updated(), "ignored", summary.remote().ignored()));
                     return summary;
                 });
-                com.rlibanez.eplsync.events.EventContext.routineLog(log).log("Sincronización {} finalizada: dryRun={}, remote={}, records={}, outcomes={}", com.rlibanez.eplsync.events.EventContext.operationOriginLabel(), dryRun, result.remote(), result.records(), result.outcomes());
+                log.info("Sincronización {} finalizada: dryRun={}, remote={}, records={}, outcomes={}", com.rlibanez.eplsync.events.EventContext.operationOriginLabel(), dryRun, result.remote(), result.records(), result.outcomes());
                 if (report != null) report.finish();
                 return result;
             }

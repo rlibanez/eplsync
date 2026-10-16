@@ -63,13 +63,14 @@ class DownloadTrackingTests {
     List<DownloadTrackingService.IgnoredTorrent> ignored(DownloadTrackingService.SyncResult result) {
         return reports.page(result.detailsId(),"ignored",0,1000,List.of(),Set.of(),List.of(),DownloadTrackingService.IgnoredTorrent.class).items();
     }
-    @Test void syncLogsIdentifyTheOriginAndScheduledRunsUseDebug() {
+    @Test void syncFinalSummaryUsesInfoWhileScheduledProgressUsesDebug() {
         var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(DownloadTrackingService.class);
         var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
         var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
         try {
             com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,()->tracking.sync(List::of,false,false));
-            assertThat(capture.list).hasSize(2).allMatch(e -> e.getLevel()==ch.qos.logback.classic.Level.DEBUG);
+            assertThat(capture.list).extracting(ch.qos.logback.classic.spi.ILoggingEvent::getLevel).containsExactly(ch.qos.logback.classic.Level.DEBUG,ch.qos.logback.classic.Level.INFO);
+            assertThat(capture.list.getLast().getFormattedMessage()).contains("finalizada", "records=", "outcomes=");
             assertThat(capture.list).allMatch(e -> e.getFormattedMessage().contains("programada"));
             capture.list.clear();
             tracking.sync(List::of,false,false);
