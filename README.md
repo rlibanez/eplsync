@@ -116,7 +116,7 @@ cd eplsync
 ### 3. Descarga Docker Compose
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.4.1/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.4.2/docker-compose.yml -o docker-compose.yml
 ```
 
 ### 4. Configura `.env`
@@ -124,7 +124,7 @@ curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.4.1/docker-comp
 Después, descarga la plantilla de configuración:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.4.1/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.4.2/.env.example -o .env
 chmod 600 .env
 ```
 
@@ -132,7 +132,7 @@ Edita `.env`. Para empezar, revisa estas variables:
 
 | Variable | Descripción | Valor predeterminado |
 | --- | --- | --- |
-| `EPLSYNC_VERSION` | Versión de la imagen. | `1.4.1` |
+| `EPLSYNC_VERSION` | Versión de la imagen. | `1.4.2` |
 | `PUID` | ID del usuario que puede escribir en las carpetas. En Linux, consulta su valor con `id -u`. | `1000` |
 | `PGID` | ID del grupo que puede escribir en las carpetas. En Linux, consulta su valor con `id -g`. | `1000` |
 | `HOST_PORT` | Puerto publicado. | `8088` |
@@ -181,8 +181,8 @@ instrucciones para su ejecución en Windows/Linux.
 ### 1. Descarga y descomprime el paquete
 
 Instala [Java 25](https://adoptium.net/temurin/releases/?version=25) y descarga
-`eplsync-1.4.1.jar` desde los archivos de la
-[Release 1.4.1](https://github.com/rlibanez/eplsync/releases/tag/v1.4.1).
+`eplsync-1.4.2.jar` desde los archivos de la
+[Release 1.4.2](https://github.com/rlibanez/eplsync/releases/tag/v1.4.2).
 El mismo paquete sirve para Windows y Linux.
 
 Guárdalo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
@@ -191,7 +191,7 @@ Guárdalo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
 
 ```text
 EPL-Sync/
-├── eplsync-1.4.1.jar
+├── eplsync-1.4.2.jar
 ├── application.yaml
 ├── data/
 └── logs/
@@ -224,7 +224,7 @@ Conserva la configuración y no compartas sus claves.
 Abre una terminal en la carpeta del JAR y ejecuta, tanto en Windows como en Linux:
 
 ```sh
-java --enable-native-access=ALL-UNNAMED -jar eplsync-1.4.1.jar --spring.config.additional-location=file:./application.yaml
+java --enable-native-access=ALL-UNNAMED -jar eplsync-1.4.2.jar --spring.config.additional-location=file:./application.yaml
 ```
 
 El comando carga el archivo externo de configuración. En esta modalidad no se

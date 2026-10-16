@@ -150,12 +150,20 @@ class DatabaseMigrationTests {
         assertEquals(0,upgrade.migrate().migrationsExecuted);
         assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());upgrade.validate();
     }
-    @Test void upgrades140To141PreservingExistingDataAndPendingAutomations() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"1.4.0.2","1.5.0.2"})
+    void upgrades140And141To142PreservingExistingDataAndPendingAutomations(String baseline) {
         var source=new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()));
-        Flyway.configure().dataSource(source).locations("classpath:db/migration").target("1.4.0.2").load().migrate();
+        Flyway.configure().dataSource(source).locations("classpath:db/migration").target(baseline).load().migrate();
+        boolean release141=baseline.equals("1.5.0.2");
         var jdbc=jdbc();
         jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at,notification_preferences) VALUES('owner','alice','alice','a@b.c','hash','ADMIN','ACTIVE','now','now',?)", "{\"floating\":false}");
         jdbc.update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,next_run,created_at,updated_at) VALUES('auto','Automatic','TORRENT_AUTO_UPDATE','0 5 * * *','UTC','owner','alice',1,100,0,0)");
+        if(release141) {
+            jdbc.update("UPDATE scheduled_tasks SET telegram_notifications=0 WHERE id='auto'");
+            jdbc.update("INSERT INTO telegram_settings VALUES('owner',1,'encrypted-test-token','123456',0,1,1,'es')");
+            jdbc.update("INSERT INTO telegram_deliveries(id,user_id,operation_id,action,outcome,permission,configuration,message,state,created_at,next_attempt,task_id) VALUES('delivery','owner','pending-operation','SCHEDULED_TASK','SUCCEEDED','SETTINGS_MANAGE','fingerprint','Test message','PENDING',0,0,'auto')");
+        }
         jdbc.update("INSERT INTO scheduled_automation_settings VALUES('auto','{}')");
         jdbc.update("INSERT INTO scheduled_automation_runs(id,task_id,owner_id,state,created_at,configuration,context) VALUES('cycle','auto','owner','WAITING',0,'{}','SCHEDULED')");
         jdbc.update("INSERT INTO app_settings VALUES('preserved.connection','{\"url\":\"http://calibre.test\"}')");
@@ -174,15 +182,15 @@ class DatabaseMigrationTests {
         var before=new java.util.LinkedHashMap<String,java.util.List<java.util.Map<String,Object>>>();
         for(var table:jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('flyway_schema_history','sqlite_sequence') ORDER BY name",String.class))
             before.put(table,jdbc.queryForList("SELECT * FROM "+table+" ORDER BY rowid"));
-        var upgrade=flyway("classpath:db/migration");assertEquals(7,upgrade.migrate().migrationsExecuted);
+        var upgrade=flyway("classpath:db/migration");assertEquals(release141?4:7,upgrade.migrate().migrationsExecuted);
         for(var entry:before.entrySet()) {
             var after=jdbc.queryForList("SELECT * FROM "+entry.getKey()+" ORDER BY rowid");
-            if(entry.getKey().equals("scheduled_tasks")) for(var row:after) assertEquals(1,row.remove("telegram_notifications"));
+            if(!release141 && entry.getKey().equals("scheduled_tasks")) for(var row:after) assertEquals(1,row.remove("telegram_notifications"));
             if(entry.getKey().equals("torrent_update_plans") || entry.getKey().equals("torrent_update_cleanup")) for(var row:after) assertEquals(0,row.remove("delete_history"));
             assertEquals(entry.getValue(),after);
         }
-        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM telegram_settings",Integer.class));
-        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM telegram_deliveries",Integer.class));
+        assertEquals(release141?1:0,jdbc.queryForObject("SELECT count(*) FROM telegram_settings",Integer.class));
+        assertEquals(release141?1:0,jdbc.queryForObject("SELECT count(*) FROM telegram_deliveries",Integer.class));
         assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
         assertEquals("ok",jdbc.queryForObject("PRAGMA integrity_check",String.class));
     }
