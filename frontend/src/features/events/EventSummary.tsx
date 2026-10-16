@@ -34,7 +34,9 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
   };
   const visibleDetails = (event: AppEvent) =>
     Object.entries(event.details).filter(
-      ([key]) => event.action !== "SYNC" || key !== "dryRun",
+      ([key]) =>
+        key !== "dryRun" ||
+        (event.action !== "SYNC" && event.category !== "CATALOG"),
     );
   const copy = async () => {
     const text = [

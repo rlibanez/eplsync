@@ -51,6 +51,29 @@ class RetainedCatalogPreviewTests {
         jdbc.execute("DROP TRIGGER IF EXISTS fail_preview_apply");
         store.clear();
     }
+    @Test void completedImportsLogAfterCommitButPreviewsAndRollbacksDoNot() {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CatalogImportService.class);
+        var previous=logger.getLevel();logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
+            var preview=service.previewCatalog(null,0,50);
+            assertThat(capture.list).noneMatch(e->e.getFormattedMessage().contains("Importación del catálogo finalizada"));
+            service.applyPreview(preview.summary().preview().token());
+            assertThat(capture.list).anyMatch(e->e.getLevel()==ch.qos.logback.classic.Level.INFO && e.getFormattedMessage().contains("resultado=SUCCEEDED") && e.getFormattedMessage().contains("creados=1") && e.getFormattedMessage().contains("duraciónMs="));
+            capture.list.clear();
+            com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,()->service.updateCatalog(null));
+            assertThat(capture.list).singleElement().satisfies(e->{assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.INFO);assertThat(e.getFormattedMessage()).contains("resultado=SUCCEEDED");});
+            capture.list.clear();
+            csv="EPL Id,Título,Autor,Revisión\n2,Original,Autor,1.0\ninvalid,Incorrecto,Autor,1.0\n";
+            com.rlibanez.eplsync.events.EventContext.withOrigin(com.rlibanez.eplsync.events.EventContext.Origin.SCHEDULED,()->service.updateCatalog(null));
+            assertThat(capture.list).singleElement().satisfies(e->{assertThat(e.getLevel()).isEqualTo(ch.qos.logback.classic.Level.WARN);assertThat(e.getFormattedMessage()).contains("resultado=PARTIAL", "errores=1");});
+            capture.list.clear();
+            jdbc.execute("CREATE TRIGGER fail_preview_apply BEFORE UPDATE ON catalog_books BEGIN SELECT RAISE(ABORT,'test rollback'); END");
+            csv="EPL Id,Título,Autor,Revisión\n2,Changed,Autor,2.0\n";
+            assertThatThrownBy(()->service.updateCatalog(null)).isInstanceOf(RuntimeException.class);
+            assertThat(capture.list).noneMatch(e->e.getFormattedMessage().contains("Importación del catálogo finalizada"));
+        } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
+    }
     @Test void sharedDeadlineRejectsDownloadedZipAndCleansTemporaryFilesWithoutChangingCatalog() throws Exception {
         service.updateCatalog(null);
         String originalHash=metadata.findById(1L).orElseThrow().getSourceSha256();

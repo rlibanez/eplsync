@@ -16,7 +16,7 @@ test.beforeEach(async ({ page }) => {
     operationId: "long-operation-".repeat(20) + entry.id,
     details: {
       message: "Un resumen muy largo ".repeat(100),
-      ...(entry.id === 3 ? { dryRun: false } : {}),
+      dryRun: false,
     },
   }));
   await page.route("**/api/events/operations?**", (r) =>
@@ -171,4 +171,16 @@ test("event filter values are alphabetized by their displayed labels", async ({
     );
     await page.keyboard.press("Escape");
   }
+});
+
+test("historical catalog summaries omit simulation too", async ({ page }) => {
+  const row = page
+    .locator(".events-table tbody tr")
+    .filter({ hasText: "Actualización del catálogo" })
+    .first();
+  await row.locator("summary").click();
+  await expect(row.locator(".event-timeline")).toBeVisible();
+  await expect(row.locator(".event-details dt")).not.toContainText([
+    "Simulación",
+  ]);
 });
