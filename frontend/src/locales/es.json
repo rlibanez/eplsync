@@ -753,7 +753,9 @@
     "cleanupAfterDownload": "Cuando la nueva revisión esté descargada",
     "cleanupImmediateHelp": "Las versiones anteriores se eliminarán tras aceptar el envío de la nueva revisión, sin esperar a que termine su descarga.",
     "cleanupAfterCompletion": "La limpieza se realizará automáticamente cuando la nueva revisión esté completamente descargada.",
-    "confirmPreviousFiles": "Entiendo que se eliminarán los archivos de las versiones anteriores. Esta acción es irreversible."
+    "confirmPreviousFiles": "Entiendo que se eliminarán los archivos de las versiones anteriores. Esta acción es irreversible.",
+    "deleteHistory": "Borrar también el registro de EPL Sync",
+    "keepHistory": "Conservar el registro de EPL Sync"
   },
   "pagination": {
     "page": "Página",
@@ -1772,8 +1774,8 @@
     "error": "No se pudo completar la operación.",
     "actions": {
       "RECORD": "Borrar solo el registro de EPL Sync; conservar torrent y archivos",
-      "TORRENT": "Borrar torrent y registro de EPL Sync; conservar archivos",
-      "FILES": "Borrar torrent, archivos y registro de EPL Sync",
+      "TORRENT": "Borrar solo el torrent; conservar archivos",
+      "FILES": "Borrar torrent y archivos",
       "EPUB": "Borrar el EPUB de la revisión antigua; conservar otros formatos y metadatos",
       "BOOK": "Borrar la entrada antigua completa de Calibre y todos sus formatos"
     },

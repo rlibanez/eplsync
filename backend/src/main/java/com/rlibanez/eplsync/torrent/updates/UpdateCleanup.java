@@ -11,6 +11,7 @@ import java.util.UUID;
     @Index(name="idx_cleanup_state_checked",columnList="state,lastCheckedAt,createdAt")})
 @Getter @Setter
 public class UpdateCleanup {
+    private Boolean deleteHistory = false;
     public enum State { KEPT, WAITING, BLOCKED, REQUESTED, REMOVED, CANCELLED }
     @Id private String id = UUID.randomUUID().toString();
     private String jobId;
@@ -35,6 +36,7 @@ public class UpdateCleanup {
     private Boolean replacementAccepted = false;
 
     public void initialize(UpdatePlan plan, java.util.List<String> targets, com.rlibanez.eplsync.events.EventContext.Actor actor) {
+        deleteHistory = Boolean.TRUE.equals(plan.getDeleteHistory());
         clientInstanceId = plan.getClientInstanceId(); previousVersions = plan.getPreviousVersions();
         targetHashes = tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(targets);
         createdAt = plan.getCreatedAt(); automatic = Boolean.TRUE.equals(plan.getAutomaticCleanup()); immediate = plan.getCleanupTiming()==CleanupTiming.IMMEDIATE;

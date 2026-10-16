@@ -47,8 +47,13 @@ const job = {
   failed: 0,
   uncertain: 0,
 };
-for (const source of ["downloads", "calibre"] as const) {
-  test(`${source}: preview, selection, confirmation and tracking`, async ({
+for (const { source, deleteHistory, action } of [
+  { source: "downloads", deleteHistory: false, action: "FILES" },
+  { source: "downloads", deleteHistory: true, action: "FILES" },
+  { source: "downloads", deleteHistory: true, action: "RECORD" },
+  { source: "calibre", deleteHistory: false, action: "BOOK" },
+] as const) {
+  test(`${source}, ${action}, deleteHistory=${deleteHistory}: preview, selection, confirmation and tracking`, async ({
     page,
   }) => {
     await page.route("**/api/torrent/downloads?**", (r) =>
@@ -63,14 +68,16 @@ for (const source of ["downloads", "calibre"] as const) {
     let current = {
       ...job,
       source,
-      action: source === "calibre" ? "BOOK" : "FILES",
+      deleteHistory,
+      action,
     };
     let creates = 0;
     await page.route("**/api/revision-cleanups/preview", async (r) => {
       expect(r.request().postDataJSON()).toEqual({
         source,
-        action: current.action,
+        action: action === "RECORD" ? "KEEP" : action,
         allowUndownloaded: source === "downloads",
+        deleteHistory,
         ids: [],
       });
       await r.fulfill({ json: current });
@@ -90,7 +97,7 @@ for (const source of ["downloads", "calibre"] as const) {
         expect(r.request().postDataJSON()).toEqual({
           ids: [ready.id],
           confirm: true,
-          confirmDestructive: true,
+          confirmDestructive: action !== "RECORD",
         });
         current = {
           ...current,
@@ -108,6 +115,31 @@ for (const source of ["downloads", "calibre"] as const) {
       .click();
     const modal = page.getByRole("dialog");
     if (source === "downloads") {
+      await modal.getByRole("textbox", { name: "Acción", exact: true }).click();
+      await page
+        .getByRole("option", {
+          name:
+            action === "RECORD"
+              ? "Conservar torrents y archivos"
+              : "Borrar torrent y archivos",
+          exact: true,
+        })
+        .click();
+      if (action === "RECORD")
+        await expect(
+          modal.getByRole("button", { name: "Previsualizar", exact: true }),
+        ).toBeDisabled();
+      await expect(
+        modal.getByRole("checkbox", {
+          name: "Borrar también el registro de EPL Sync",
+        }),
+      ).not.toBeChecked();
+      if (deleteHistory)
+        await modal
+          .getByRole("checkbox", {
+            name: "Borrar también el registro de EPL Sync",
+          })
+          .check();
       const force = modal.getByRole("checkbox", {
         name: "Permitir la limpieza aunque la revisión superior no esté descargada",
       });
@@ -116,13 +148,6 @@ for (const source of ["downloads", "calibre"] as const) {
       await expect(modal).not.toContainText(
         "Puedes quedarte sin una copia descargada",
       );
-      await modal.getByRole("textbox", { name: "Acción", exact: true }).click();
-      await page
-        .getByRole("option", {
-          name: "Borrar torrent, archivos y registro de EPL Sync",
-          exact: true,
-        })
-        .click();
     } else {
       await expect(
         modal.getByRole("textbox", { name: "Acción", exact: true }),
@@ -160,12 +185,14 @@ for (const source of ["downloads", "calibre"] as const) {
     await modal
       .getByRole("checkbox", { name: "He revisado la selección" })
       .check();
-    await expect(
-      modal.getByRole("button", { name: "Crear trabajo de limpieza" }),
-    ).toBeDisabled();
-    await modal
-      .getByRole("checkbox", { name: "Confirmo la eliminación irreversible" })
-      .check();
+    if (action !== "RECORD") {
+      await expect(
+        modal.getByRole("button", { name: "Crear trabajo de limpieza" }),
+      ).toBeDisabled();
+      await modal
+        .getByRole("checkbox", { name: "Confirmo la eliminación irreversible" })
+        .check();
+    }
     await modal
       .getByRole("button", { name: "Crear trabajo de limpieza" })
       .click();

@@ -96,7 +96,8 @@ public class HistoryActions {
         if(history) {
             var confirmed=outcomes.stream().filter(r -> !clientRemoval || "REMOVED".equals(r.cleanupState())).map((Item entryValue) -> java.util.Objects.requireNonNull(entryValue).id()).toList();
             if(!confirmed.isEmpty()) {
-                deleteHistory(new HistoryDeletion(request.eplId(),confirmed,true),false);
+                var remaining=confirmed.stream().filter(downloads::existsById).toList();
+                if(!remaining.isEmpty()) deleteHistory(new HistoryDeletion(request.eplId(),remaining,true),false);
                 deleted.addAll(confirmed);
             }
         }
@@ -173,9 +174,10 @@ public class HistoryActions {
                 });
                 var outcomes=queue.execute(requests,adapter,remote,retryUnconfirmed,false);
                 var byId=new HashMap<String,CleanupQueue.Result>();outcomes.forEach(r -> byId.put(r.downloadId(),r));
-                return new Result(downloads.findAllById(selection.ids()).stream().map(r -> {
+                return new Result(rows.stream().map(r -> {
                     var outcome=byId.get(r.getId());
-                    return new Item(r.getId(),r.getStatus(),outcome.state().name(),outcome.message());
+                    var current=downloads.findById(r.getId()).orElse(null);
+                    return new Item(r.getId(),current==null?DownloadStatus.NOT_FOUND:current.getStatus(),outcome.state().name(),outcome.message());
                 }).toList());
             });
         return audited?events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOADS",scope,operation,r -> Map.of("checked",r.items().size(),"removed",r.items().stream().filter(i -> "REMOVED".equals(i.cleanupState())).count())):operation.get();

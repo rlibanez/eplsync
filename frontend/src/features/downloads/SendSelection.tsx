@@ -36,6 +36,7 @@ export function SendSelection({
   const cache = useQueryClient();
   const [previousVersions, setPreviousVersions] = useState("keep");
   const [cleanupTiming, setCleanupTiming] = useState("afterDownload");
+  const [deleteHistory, setDeleteHistory] = useState(false);
   const [confirmFiles, setConfirmFiles] = useState(false);
   const [start, setStart] = useState("inherit");
   const [auto, setAuto] = useState("inherit");
@@ -158,8 +159,11 @@ export function SendSelection({
               ids: filters.eplId,
               states: revisionStates,
               previousVersions,
+              deleteHistory,
               cleanupTiming:
-                previousVersions === "keep" ? "afterDownload" : cleanupTiming,
+                previousVersions === "keep" && !deleteHistory
+                  ? "afterDownload"
+                  : cleanupTiming,
               confirmFiles,
             }
           : {}),
@@ -267,7 +271,16 @@ export function SendSelection({
                   setConfirmFiles(false);
                 }}
               />
-              {previousVersions !== "keep" && (
+              {auth.can("DOWNLOADS_DELETE") && (
+                <Checkbox
+                  label={t("send.deleteHistory")}
+                  checked={deleteHistory}
+                  onChange={(event) =>
+                    setDeleteHistory(event.currentTarget.checked)
+                  }
+                />
+              )}
+              {(previousVersions !== "keep" || deleteHistory) && (
                 <>
                   <Select
                     label={t("send.cleanupTiming")}

@@ -42,7 +42,7 @@ public class UpdateController {
         validate(params,"page","size"); return cleanup.view(jobId,page,size);
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_CLEANUP')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_CLEANUP') or hasAuthority('DOWNLOADS_DELETE')")
     @PostMapping("/cleanup")
     public UpdateCleanupService.GlobalResult cleanAll(
             @RequestParam(defaultValue = "false") boolean retryUnconfirmed,
@@ -54,7 +54,7 @@ public class UpdateController {
         });
     }
 
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_CLEANUP')")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_CLEANUP') or hasAuthority('DOWNLOADS_DELETE')")
     @PostMapping("/{jobId}/cleanup")
     public UpdateCleanupService.View clean(@PathVariable String jobId,
             @RequestParam(defaultValue = "false") boolean retryUnconfirmed,

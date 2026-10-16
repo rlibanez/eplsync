@@ -86,7 +86,8 @@ public class UpdateCleanupService {
         return selected.stream().filter(e -> CleanupQueue.PENDING.contains(e.getState())).toList();
     }
     private void authorize(List<UpdateCleanup> selected) {
-        com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP);
+        if(selected.stream().anyMatch(e->e.getPreviousVersions()!=PreviousVersions.KEEP)) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP);
+        if(selected.stream().anyMatch(e->Boolean.TRUE.equals(e.getDeleteHistory()))) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.DOWNLOADS_DELETE);
         if (selected.stream().anyMatch(e -> e.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES))
             com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
     }
@@ -94,7 +95,7 @@ public class UpdateCleanupService {
         return events.runWithPolicy(!dryRun,com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,dryRun?"SYNC_PREVIEW":"SYNC",Map.of("dryRun",dryRun),()->client.exclusiveClient(adapter -> {
             var remote=adapter.listTorrents();
             var result=tracking.sync(() -> remote,dryRun,details);
-            if(!dryRun && com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP)) {
+            if(!dryRun && (com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP) || com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.DOWNLOADS_DELETE))) {
                 var selected=queue.manualPending();
                 if(!selected.isEmpty()) result=result.withCleanup(queue.execute(selected,adapter,remote,false,false));
             }

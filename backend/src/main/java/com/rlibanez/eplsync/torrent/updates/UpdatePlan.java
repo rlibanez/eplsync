@@ -7,6 +7,7 @@ import java.time.Instant;
 
 @Entity @Table(name = "torrent_update_plans") @Getter @Setter
 public class UpdatePlan {
+    private Boolean deleteHistory = false;
     private Boolean automaticCleanup = false;
     @Id private String jobId;
     @Column(nullable = false) private String clientInstanceId;

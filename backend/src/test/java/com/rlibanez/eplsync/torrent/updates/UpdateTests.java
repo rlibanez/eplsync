@@ -117,6 +117,46 @@ class UpdateTests {
         return com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor(owner.id(),owner.username(),"USER"),
             () -> selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),policy,true,null,2,10,"0ms",MultipleHashes.ALL,CleanupTiming.IMMEDIATE)));
     }
+    @Test void updateCleanupDeletesHistoryOnlyWhenRequestedAndAbsenceConfirmed() {
+        for(var policy:List.of(PreviousVersions.REMOVE_TORRENT,PreviousVersions.REMOVE_TORRENT_AND_FILES)) {
+            var old=downloads.findAll().stream().filter(d->d.getHash().equals(OLD)).findFirst().orElseGet(()->history(1,1,OLD,DownloadStatus.DOWNLOADED));
+            var job=selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),policy,true,null,2,10,"0ms",MultipleHashes.ALL,CleanupTiming.AFTER_DOWNLOAD,true));
+            assertThat(plans.findById(job.jobId()).orElseThrow().getDeleteHistory()).isTrue();
+            history(1,1.2,NEW,DownloadStatus.DOWNLOADED);
+            var rows=cleanup.findByJobIdOrderByEplIdAsc(job.jobId());assertThat(rows).allSatisfy(e->assertThat(e.getDeleteHistory()).isTrue());
+            var oldRemote=remote(OLD,DownloadStatus.DOWNLOADED,"/books/old.epub");var replacement=remote(NEW,DownloadStatus.DOWNLOADED,"/books/new.epub");
+            when(stubClient.listTorrents()).thenReturn(List.of(oldRemote,replacement));
+            queue.execute(rows,stubClient,List.of(oldRemote,replacement),false,false);
+            assertThat(downloads.findById(old.getId())).isPresent(); // Sending delete is insufficient.
+            when(stubClient.listTorrents()).thenReturn(List.of(replacement));
+            queue.execute(rows,stubClient,List.of(replacement),false,false);
+            assertThat(downloads.findById(old.getId())).isEmpty();
+            assertThat(downloads.findAll()).anySatisfy(d->assertThat(d.getHash()).isEqualTo(NEW));
+            cleanup.deleteAll();plans.deleteAll();items.deleteAll();jobs.deleteAll();downloads.deleteAll();
+        }
+        verify(stubClient,never()).deleteTorrent(eq(NEW),anyBoolean());
+    }
+    @Test void manualDeletionResolvesPendingHistoryDeletionWithoutDeletingTwice() {
+        var old=downloads.findAll().getFirst();
+        var job=selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),PreviousVersions.REMOVE_TORRENT,true,null,2,10,"0ms",MultipleHashes.ALL,CleanupTiming.AFTER_DOWNLOAD,true));
+        var replacement=remote(NEW,DownloadStatus.DOWNLOADED,"/books/new.epub");
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/books/old.epub"),replacement)).thenReturn(List.of(replacement));
+        var result=historyActions.removeRecords(new HistoryActions.Removal(1L,List.of(old.getId()),true,"torrent",true,false));
+        assertThat(result.items()).singleElement().satisfies(i->assertThat(i.historyDeleted()).isTrue());
+        assertThat(downloads.findById(old.getId())).isEmpty();assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        verify(stubClient,times(1)).deleteTorrent(OLD,false);verify(stubClient,never()).deleteTorrent(eq(NEW),anyBoolean());
+    }
+    @Test void recordOnlyUpdateWaitsForReplacementAndNeverDeletesTorrent() {
+        var old=downloads.findAll().getFirst();
+        var job=selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),PreviousVersions.KEEP,null,null,2,10,"0ms",MultipleHashes.ALL,CleanupTiming.AFTER_DOWNLOAD,true));
+        var rows=cleanup.findByJobIdOrderByEplIdAsc(job.jobId());assertThat(rows.getFirst().getState()).isEqualTo(UpdateCleanup.State.WAITING);
+        var oldRemote=remote(OLD,DownloadStatus.DOWNLOADED,"/books/old.epub");
+        queue.execute(rows,stubClient,List.of(oldRemote,remote(NEW,DownloadStatus.QUEUED,null)),false,false);
+        assertThat(downloads.findById(old.getId())).isPresent();
+        queue.execute(rows,stubClient,List.of(oldRemote,remote(NEW,DownloadStatus.DOWNLOADED,"/books/new.epub")),false,false);
+        assertThat(downloads.findById(old.getId())).isEmpty();assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+    }
     @Test void cleanupWaitsWhileCalibreNeedsTheOldEpubAndContinuesAfterCompletion() {
         var job=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
         var item=items.findByJobIdOrderByPosition(job.jobId(),org.springframework.data.domain.PageRequest.of(0,20)).getContent().getFirst();

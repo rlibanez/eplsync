@@ -12,7 +12,7 @@ final class BulkSummaries {
                           long failed,long cancelled,long books,long torrents,long processedTorrents) {
         private static final Counts EMPTY=new Counts(0,0,0,0,0,0,0,0,0,0,0);
     }
-    private record Plan(PreviousVersions policy,CleanupTiming timing) {}
+    private record Plan(PreviousVersions policy,CleanupTiming timing,Boolean deleteHistory) {}
     static List<BulkStore.View> load(EntityManager em,List<BulkJob> jobs) {
         if(jobs.isEmpty()) return List.of();
         var ids=jobs.stream().map((BulkJob entryValue) -> java.util.Objects.requireNonNull(entryValue).getId()).toList();
@@ -50,9 +50,9 @@ final class BulkSummaries {
                     number(row[5]),number(row[6]),number(row[7]),number(row[8]),number(row[9]),number(row[10]),number(row[11])));
         }
         var plans=new HashMap<String,Plan>();
-        for(var row:em.createQuery("select p.jobId,p.previousVersions,p.cleanupTiming from UpdatePlan p where p.jobId in :ids",Object[].class)
+        for(var row:em.createQuery("select p.jobId,p.previousVersions,p.cleanupTiming,p.deleteHistory from UpdatePlan p where p.jobId in :ids",Object[].class)
                 .setParameter("ids",ids).getResultList())
-            plans.put((String)row[0],new Plan((PreviousVersions)row[1],(CleanupTiming)row[2]));
+            plans.put((String)row[0],new Plan((PreviousVersions)row[1],(CleanupTiming)row[2],(Boolean)row[3]));
         var cleanup=new HashMap<String,EnumMap<UpdateCleanup.State,Long>>();
         if(!plans.isEmpty()) for(var row:em.createQuery("select c.jobId,c.state,count(c) from UpdateCleanup c where c.jobId in :ids group by c.jobId,c.state",Object[].class)
                 .setParameter("ids",plans.keySet()).getResultList())
@@ -70,7 +70,7 @@ final class BulkSummaries {
                     j.getBatchSize(),j.getConcurrency(),j.getIntervalMillis()+"ms",j.getCreatedAt(),j.getUpdatedAt(),j.getRetryAt(),j.getMessage(),
                     j.getMultipleHashes()==null ? MultipleHashes.SKIP : j.getMultipleHashes(),c.torrents,c.processedTorrents,
                     c.total,c.accepted+c.existing+c.skipped+c.failed,p==null ? BulkJob.Type.DOWNLOAD : BulkJob.Type.UPDATE,
-                    p==null ? null : p.policy,summary,p==null ? null : p.timing==null ? CleanupTiming.AFTER_DOWNLOAD : p.timing,j.getEventActorUsername());
+                    p==null ? null : p.policy,summary,p==null ? null : p.timing==null ? CleanupTiming.AFTER_DOWNLOAD : p.timing,j.getEventActorUsername(),p!=null && Boolean.TRUE.equals(p.deleteHistory));
         }).toList();
     }
     private static long number(Object value) { return ((Number)value).longValue(); }

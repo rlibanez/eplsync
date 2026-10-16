@@ -214,6 +214,11 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
     .getByRole("button", { name: "Enviar actualizaciones (1)", exact: true })
     .click();
   const wizard = page.getByRole("dialog");
+  const deleteHistory = wizard.getByRole("checkbox", {
+    name: "Borrar también el registro de EPL Sync",
+  });
+  await expect(deleteHistory).not.toBeChecked();
+  await deleteHistory.check();
   await wizard.getByRole("textbox", { name: "Acción", exact: true }).click();
   await page
     .getByRole("option", { name: "Eliminar torrents y archivos", exact: true })
@@ -237,6 +242,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
   await expect.poll(() => submission?.ids).toEqual([123]);
   expect(submission.previousVersions).toBe("removeTorrentAndFiles");
   expect(submission.confirmFiles).toBe(true);
+  expect(submission.deleteHistory).toBe(true);
   expect(submission.cleanupTiming).toBe("immediate");
   expect(submission.states).toContain("NOT_FOUND");
 });

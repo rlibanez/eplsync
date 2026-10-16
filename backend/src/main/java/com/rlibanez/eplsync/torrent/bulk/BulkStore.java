@@ -70,7 +70,7 @@ public class BulkStore {
             long pending, long inFlight, long cancelled, int batchSize, int concurrency,
             String interval, Instant createdAt, Instant updatedAt, Instant retryAt, String message,
             MultipleHashes multipleHashes, long selectedTorrents, long processedTorrents,
-            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming, String username) {}
+            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming, String username, boolean deleteHistory) {}
     public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {}
     public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision) {
         public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null); }

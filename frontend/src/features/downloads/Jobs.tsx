@@ -596,7 +596,8 @@ export function JobDetail() {
                                       ? status("CLEANUP_WAIT")
                                       : data.cleanup?.cancelled
                                         ? status("CANCELLED")
-                                        : data.previousVersions === "keep"
+                                        : data.previousVersions === "keep" &&
+                                            !data.deleteHistory
                                           ? t("jobReport.notRequired")
                                           : status("COMPLETED"),
                               ],
@@ -611,7 +612,8 @@ export function JobDetail() {
                                   ]
                                 : []),
                               ...(data.previousVersions &&
-                              data.previousVersions !== "keep"
+                              (data.previousVersions !== "keep" ||
+                                data.deleteHistory)
                                 ? [
                                     [
                                       "send.cleanupTiming",
@@ -619,6 +621,18 @@ export function JobDetail() {
                                         data.cleanupTiming === "immediate"
                                           ? "send.cleanupImmediate"
                                           : "send.cleanupAfterDownload",
+                                      ),
+                                    ],
+                                  ]
+                                : []),
+                              ...(data.previousVersions
+                                ? [
+                                    [
+                                      "send.deleteHistory",
+                                      t(
+                                        data.deleteHistory
+                                          ? "common.yes"
+                                          : "common.no",
                                       ),
                                     ],
                                   ]

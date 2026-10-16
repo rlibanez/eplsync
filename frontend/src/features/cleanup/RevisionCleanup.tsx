@@ -37,6 +37,7 @@ interface Job {
   message: string | null;
   library: string | null;
   allowUndownloaded?: boolean;
+  deleteHistory?: boolean;
   createdAt: number;
   total: number;
   selected: number;
@@ -138,7 +139,10 @@ function CleanupWizard({
   const navigate = useNavigate();
   const cache = useQueryClient();
   const [step, setStep] = useState(0);
-  const [action, setAction] = useState(actions[0]);
+  const [action, setAction] = useState(
+    actions.includes("TORRENT") ? "TORRENT" : actions[0],
+  );
+  const [deleteHistory, setDeleteHistory] = useState(false);
   const [allowUndownloaded, setAllowUndownloaded] = useState(false);
   const [scope, setScope] = useState(selected.length ? "selected" : "all");
   const [preview, setPreview] = useState<Job>();
@@ -150,8 +154,9 @@ function CleanupWizard({
     mutationFn: async () => {
       const job = await post<Job>("/revision-cleanups/preview", {
         source,
-        action,
+        action: action === "RECORD" ? "KEEP" : action,
         allowUndownloaded,
+        deleteHistory,
         ids: scope === "selected" ? selected : [],
       });
       const items = await get<Page<Item>>(
@@ -217,13 +222,25 @@ function CleanupWizard({
                 onChange={(value) => value && setAction(value)}
                 data={actions.map((value) => ({
                   value,
-                  label: t(`revisionCleanup.actions.${value}`),
+                  label: t(
+                    value === "RECORD"
+                      ? "send.keepPrevious"
+                      : `revisionCleanup.actions.${value}`,
+                  ),
                 }))}
               />
             </>
           )}
           {source === "downloads" && (
             <>
+              <Checkbox
+                mt="sm"
+                label={t("send.deleteHistory")}
+                checked={deleteHistory}
+                onChange={(event) =>
+                  setDeleteHistory(event.currentTarget.checked)
+                }
+              />
               <Checkbox
                 mt="sm"
                 checked={allowUndownloaded}
@@ -288,7 +305,18 @@ function CleanupWizard({
               {t("revisionCleanup.confirmCount", { count: checked.length })}
             </strong>
           </p>
-          <p>{t(`revisionCleanup.actions.${action}`)}</p>
+          <p>
+            {t(
+              action === "RECORD"
+                ? "send.keepPrevious"
+                : `revisionCleanup.actions.${action}`,
+            )}
+          </p>
+          {source === "downloads" && (
+            <p>
+              {t(deleteHistory ? "send.deleteHistory" : "send.keepHistory")}
+            </p>
+          )}
           <p>
             {t(
               allowUndownloaded
@@ -335,7 +363,13 @@ function CleanupWizard({
           {t(step ? "revisionCleanup.back" : "revisionCleanup.close")}
         </Button>
         {step === 0 ? (
-          <Button loading={prepare.isPending} onClick={() => prepare.mutate()}>
+          <Button
+            disabled={
+              source === "downloads" && action === "RECORD" && !deleteHistory
+            }
+            loading={prepare.isPending}
+            onClick={() => prepare.mutate()}
+          >
             {t("revisionCleanup.preview")}
           </Button>
         ) : step === 1 ? (
@@ -669,8 +703,22 @@ export function CleanupJob() {
                 <dl className="import-summary">
                   <div>
                     <dt>{t("revisionCleanup.action")}</dt>
-                    <dd>{t(`revisionCleanup.actions.${data.action}`)}</dd>
+                    <dd>
+                      {t(
+                        data.action === "RECORD"
+                          ? "send.keepPrevious"
+                          : `revisionCleanup.actions.${data.action}`,
+                      )}
+                    </dd>
                   </div>
+                  {data.source === "downloads" && (
+                    <div>
+                      <dt>{t("send.deleteHistory")}</dt>
+                      <dd>
+                        {t(data.deleteHistory ? "common.yes" : "common.no")}
+                      </dd>
+                    </div>
+                  )}
                   {data.library && (
                     <div>
                       <dt>{t("calibre.library")}</dt>

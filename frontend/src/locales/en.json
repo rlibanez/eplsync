@@ -753,7 +753,9 @@
     "cleanupAfterDownload": "When the new revision is downloaded",
     "cleanupImmediateHelp": "Previous versions will be removed after the new revision submission is accepted, without waiting for its download to finish.",
     "cleanupAfterCompletion": "Cleanup will run automatically once the new revision is fully downloaded.",
-    "confirmPreviousFiles": "I understand that files belonging to previous versions will be deleted. This action cannot be undone."
+    "confirmPreviousFiles": "I understand that files belonging to previous versions will be deleted. This action cannot be undone.",
+    "deleteHistory": "Also delete the EPL Sync record",
+    "keepHistory": "Keep the EPL Sync record"
   },
   "pagination": {
     "page": "Page",
@@ -1772,8 +1774,8 @@
     "error": "The operation could not be completed.",
     "actions": {
       "RECORD": "Delete EPL Sync record only; keep torrent and files",
-      "TORRENT": "Delete torrent and EPL Sync record; keep files",
-      "FILES": "Delete torrent, files and EPL Sync record",
+      "TORRENT": "Delete only the torrent; keep files",
+      "FILES": "Delete torrent and files",
       "EPUB": "Delete the older EPUB; keep other formats and metadata",
       "BOOK": "Delete the complete older Calibre entry and all formats"
     },

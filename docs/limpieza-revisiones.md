@@ -14,11 +14,13 @@ Las previsualizaciones caducan a los 30 minutos, admiten hasta 1000 revisiones y
 
 ## Descargas
 
-Se ofrecen tres acciones:
+La acción sobre qBittorrent y el registro local se eligen por separado:
 
-- **Solo registro de EPL Sync:** conserva el torrent y los archivos.
-- **Torrent y registro:** conserva los archivos.
-- **Torrent, archivos y registro:** solicita también el borrado de archivos a qBittorrent.
+- **Conservar torrent y archivos.**
+- **Borrar solo el torrent; conservar archivos.**
+- **Borrar torrent y archivos.**
+
+La casilla **Borrar también el registro de EPL Sync** está desmarcada por defecto. Permite borrar únicamente el registro si se conservan torrent y archivos. Si se solicita también un borrado en qBittorrent, el registro se elimina solo después de confirmar la ausencia del torrent; una orden enviada o un fallo de conexión no bastan. La elección queda guardada en el trabajo y se conserva al comprobarlo o reintentarlo. Los trabajos anteriores conservan su política original.
 
 Por defecto, solo se elimina una revisión si existe otra estrictamente superior del mismo EPL ID, registrada como descargada, todavía completa en el cliente y con un EPUB accesible desde EPL Sync. La última revisión del Catálogo, por sí sola, no basta.
 

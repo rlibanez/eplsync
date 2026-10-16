@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.tasks.worker-enabled=false","eplsync.torrent.enabled=true","eplsync.torrent.qbittorrent.auth.api-key=test-retry-api-key","eplsync.torrent.cleanup.enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.calibre.transfers.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
-@WithMockUser(authorities={"ROLE_ADMIN","SETTINGS_MANAGE","CALIBRE_READ","CALIBRE_SEND","CALIBRE_JOBS_MANAGE","CALIBRE_DELETE","DOWNLOADS_FILES_READ","TORRENT_JOBS_MANAGE","TORRENT_SEND","TORRENT_SYNC","TORRENT_CLEANUP","TORRENT_FILES_DELETE"})
+@WithMockUser(authorities={"ROLE_ADMIN","SETTINGS_MANAGE","CALIBRE_READ","CALIBRE_SEND","CALIBRE_JOBS_MANAGE","CALIBRE_DELETE","DOWNLOADS_FILES_READ","DOWNLOADS_DELETE","TORRENT_JOBS_MANAGE","TORRENT_SEND","TORRENT_SYNC","TORRENT_CLEANUP","TORRENT_FILES_DELETE"})
 class JobRetriesTests {
     @Autowired JobRetries retries;
     @Autowired JdbcTemplate jdbc;
@@ -169,16 +169,22 @@ class JobRetriesTests {
         transfers.cycle();assertThat(transfers.job(child.jobId()).state()).isEqualTo("COMPLETED");
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());verify(client).remove(any(),eq(8L),eq(false));
     }
-    @Test void cleanupOnlyTorrentRetryDoesNotQueueAnotherSendOrChangeTheOriginal() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void cleanupOnlyTorrentRetryDoesNotQueueAnotherSendOrChangeTheOriginal(boolean deleteHistory) throws Exception {
         var parent=torrentJob("CANCELLED","ACCEPTED");
         jdbc.update("UPDATE torrent_bulk_jobs SET type='UPDATE',previous_versions='REMOVE_TORRENT_AND_FILES' WHERE id=?",parent);
         jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('old',1,1,'oldhash','qbittorrent',?,'DOWNLOADED','EPLSYNC',0)",tracking.instanceId());
         jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,cleanup_timing,created_at,snapshot,automatic_cleanup) VALUES(?,?,'REMOVE_TORRENT_AND_FILES','IMMEDIATE',0,'{\"items\":[]}',1)",parent,tracking.instanceId());
         jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state,created_at,client_instance_id,previous_versions,target_hashes,automatic,immediate,replacement_accepted) VALUES('cleanup',?,'old',1,'oldhash','CANCELLED',0,?,'REMOVE_TORRENT_AND_FILES','[\"0000000000000000000000000000000000000001\"]',1,1,1)",parent,tracking.instanceId());
+        jdbc.update("UPDATE torrent_update_plans SET delete_history=? WHERE job_id=?",deleteHistory,parent);
+        jdbc.update("UPDATE torrent_update_cleanup SET delete_history=? WHERE job_id=?",deleteHistory,parent);
         var p=selected("downloads",parent,parent+"-0");assertThat(p.cleanup()).isEqualTo(1);assertThat(p.send()).isZero();
         var child=create("downloads",parent,p);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state='PENDING'",Long.class,child.jobId())).isZero();
         assertThat(jdbc.queryForObject("SELECT replacement_accepted FROM torrent_update_cleanup WHERE job_id=?",Integer.class,child.jobId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT delete_history FROM torrent_update_plans WHERE job_id=?",Boolean.class,child.jobId())).isEqualTo(deleteHistory);
+        assertThat(jdbc.queryForObject("SELECT delete_history FROM torrent_update_cleanup WHERE job_id=?",Boolean.class,child.jobId())).isEqualTo(deleteHistory);
         assertThat(jdbc.queryForObject("SELECT state FROM torrent_update_cleanup WHERE id='cleanup'",String.class)).isEqualTo("CANCELLED");
         jdbc.update("UPDATE torrent_update_cleanup SET state='REQUESTED' WHERE job_id=?",parent);
         assertThat(retries.history("downloads",parent).terminal()).isFalse();

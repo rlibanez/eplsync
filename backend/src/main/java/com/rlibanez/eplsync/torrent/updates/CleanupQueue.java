@@ -99,6 +99,8 @@ public class CleanupQueue {
     public List<UpdateCleanup> manualPending() {
         return entries.findByClientInstanceIdAndStateIn(tracking.instanceId(),PENDING).stream()
             .filter(e -> !Boolean.TRUE.equals(e.getImmediate()) || Boolean.TRUE.equals(e.getAutomatic()) || e.getState()==UpdateCleanup.State.REQUESTED)
+            .filter(e -> e.getPreviousVersions()==PreviousVersions.KEEP ? Permission.has(Permission.DOWNLOADS_DELETE) : Permission.has(Permission.TORRENT_CLEANUP))
+            .filter(e -> !Boolean.TRUE.equals(e.getDeleteHistory()) || Permission.has(Permission.DOWNLOADS_DELETE))
             .filter(e -> e.getPreviousVersions()!=PreviousVersions.REMOVE_TORRENT_AND_FILES || Permission.has(Permission.TORRENT_FILES_DELETE))
             .sorted(Comparator.comparing((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getCreatedAt()).thenComparing((UpdateCleanup entryValue) -> java.util.Objects.requireNonNull(entryValue).getId())).toList();
     }
@@ -146,17 +148,18 @@ public class CleanupQueue {
             if (!entry.getClientInstanceId().equals(tracking.instanceId())) continue;
             // Automatic requests were authorized when persisted. Manual actions still require current permissions.
             if (!automatic) {
-                Permission.require(Permission.TORRENT_CLEANUP);
+                if(entry.getPreviousVersions()!=PreviousVersions.KEEP) Permission.require(Permission.TORRENT_CLEANUP);
+                if(Boolean.TRUE.equals(entry.getDeleteHistory())) Permission.require(Permission.DOWNLOADS_DELETE);
                 if (entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES) Permission.require(Permission.TORRENT_FILES_DELETE);
             }
             touch(entry);
             try {
                 var old=byHash.get(entry.getHash());
-                if (old==null) { resolve(Set.of(entry.getHash())); continue; }
+                if (old==null && entry.getPreviousVersions()!=PreviousVersions.KEEP) { resolve(Set.of(entry.getHash())); continue; }
                 var job=entry.getJobId()==null ? null : em.find(com.rlibanez.eplsync.torrent.bulk.BulkJob.class,entry.getJobId());
                 if (job!=null && (job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED
                         || job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED)) continue;
-                if (uncertain.contains(old.hash()) && !retryUnconfirmed) {
+                if (old!=null && uncertain.contains(old.hash()) && !retryUnconfirmed) {
                     save(entry,UpdateCleanup.State.REQUESTED,"Eliminación sin confirmar; no se repetirá automáticamente"); continue;
                 }
                 var targetHashes=targets(entry);
@@ -168,6 +171,23 @@ public class CleanupQueue {
                 if (!Boolean.TRUE.equals(entry.getImmediate()) && (targetHashes.isEmpty()
                         || targetHashes.stream().anyMatch(h -> byHash.get(h)==null || byHash.get(h).status()!=DownloadStatus.DOWNLOADED))) {
                     save(entry,UpdateCleanup.State.WAITING,"La nueva revisión todavía no está completa en el cliente"); continue;
+                }
+                if(entry.getPreviousVersions()==PreviousVersions.KEEP) {
+                    if(!Boolean.TRUE.equals(entry.getDeleteHistory())) continue;
+                    if(protectedTargets.contains(old==null?entry.getHash():old.hash()) || targetHashes.contains(entry.getHash())) {
+                        save(entry,UpdateCleanup.State.BLOCKED,"Registro necesario para una revisión de sustitución pendiente");continue;
+                    }
+                    synchronized(bulk) {tx.executeWithoutResult(status -> {
+                        if(!claim(entry,"Eliminación del registro en curso")) return;
+                        var row=downloads.findById(entry.getDownloadId()).orElse(null);
+                        if(row!=null) {
+                            if(!row.getEplId().equals(entry.getEplId()) || !row.getHash().equals(entry.getHash()) || !row.getClientInstanceId().equals(entry.getClientInstanceId()))
+                                throw new IllegalStateException("La identidad del registro cambió");
+                            downloads.delete(row);downloads.flush();
+                        }
+                        save(entry,UpdateCleanup.State.REMOVED,"Registro eliminado; torrent y archivos conservados");
+                    });}
+                    continue;
                 }
                 if (protectedTargets.contains(old.hash()) || targetHashes.stream().anyMatch(old.aliases()::contains)) {
                     save(entry,UpdateCleanup.State.BLOCKED,"Torrent necesario para una revisión de sustitución pendiente"); continue;
@@ -295,7 +315,7 @@ public class CleanupQueue {
             long needed=((Number)em.createNativeQuery("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id JOIN torrent_downloads d ON (d.id=i.record_id OR (d.epl_id=i.epl_id AND d.revision=CAST(i.revision AS REAL))) WHERE d.hash=:hash AND d.client_instance_id=:instance AND i.state IN ('PENDING','SENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','UNCERTAIN','CLEANUP_PENDING') AND (j.state NOT IN ('COMPLETED','CANCELLED') OR i.state='UNCERTAIN') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)")
                 .setParameter("hash",entry.getHash()).setParameter("instance",entry.getClientInstanceId()).getSingleResult()).longValue();
             if(needed>0) {save(entry,UpdateCleanup.State.WAITING,"EPUB necesario para un trabajo pendiente de Calibre");return false;}
-            if(retryAuthorization!=null && !retryAuthorization.torrent(entry.getJobId(),true,entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES)) {
+            if(retryAuthorization!=null && !retryAuthorization.torrent(entry.getJobId(),entry.getPreviousVersions()!=PreviousVersions.KEEP,entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES,Boolean.TRUE.equals(entry.getDeleteHistory()))) {
                 save(entry,UpdateCleanup.State.BLOCKED,"El usuario del reintento ya no tiene permisos para eliminar estas revisiones");return false;
             }
             save(entry,UpdateCleanup.State.REQUESTED,message);return true;
@@ -324,8 +344,17 @@ public class CleanupQueue {
     }
     public void resolve(Set<String> aliases) {
         synchronized(bulk) {tx.executeWithoutResult(status -> {
-            for (var entry:entries.findByClientInstanceIdAndHashInAndStateIn(tracking.instanceId(),aliases,PENDING))
-                save(entry,UpdateCleanup.State.REMOVED,"Ausencia confirmada en el cliente; historial conservado");
+            var resolved=entries.findByClientInstanceIdAndHashInAndStateIn(tracking.instanceId(),aliases,PENDING);
+            for (var entry:resolved) {
+                if(entry.getPreviousVersions()==PreviousVersions.KEEP) continue;
+                if(Boolean.TRUE.equals(entry.getDeleteHistory())) {
+                    var row=downloads.findById(entry.getDownloadId()).orElse(null);
+                    if(row!=null && row.getEplId().equals(entry.getEplId()) && row.getClientInstanceId().equals(entry.getClientInstanceId()) && row.getHash().equals(entry.getHash())) {
+                        downloads.delete(row);downloads.flush();
+                    }
+                }
+                save(entry,UpdateCleanup.State.REMOVED,Boolean.TRUE.equals(entry.getDeleteHistory())?"Ausencia confirmada en el cliente; registro eliminado":"Ausencia confirmada en el cliente; historial conservado");
+            }
             for (var row:downloads.findByClientInstanceIdAndHashIn(tracking.instanceId(),aliases)) {
                 row.setStatus(DownloadStatus.NOT_FOUND); row.setLastCheckedAt(Instant.now()); row.setLastError(null); downloads.save(row);
             }

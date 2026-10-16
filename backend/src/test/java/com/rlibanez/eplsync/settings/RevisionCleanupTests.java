@@ -264,8 +264,38 @@ class RevisionCleanupTests {
     @Test void sharedFilesAreExcluded() {remote.set(0,remote("A","/downloads/new.epub"));assertThat(preview("downloads","FILES").excluded()).isEqualTo(1);assertThat(preview("downloads","TORRENT").ready()).isEqualTo(1);}
     @Test void pathChangeAfterPreviewStopsDeletion() {var job=preview("downloads","FILES");start(job);remote.set(0,remote("A","/downloads/new.epub"));cleanup.cycle();assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());}
     @Test void replacementMissingStopsAllActions() {var job=preview("downloads","RECORD");start(job);remote.remove(1);cleanup.cycle();assertThat(downloads.findById(old)).isPresent();assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);}
+    @Test void torrentCleanupKeepsHistoryByDefaultForBothClientActions() {
+        for(var action:List.of("TORRENT","FILES")) {
+            remote=new ArrayList<>(List.of(remote("A","/downloads/old.epub"),remote("B","/downloads/new.epub")));
+            var job=start(cleanup.preview(new RevisionCleanup.PreviewInput("downloads",action,List.of(),false,false)));
+            assertThat(job.deleteHistory()).isFalse();cleanup.cycle();
+            assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+            assertThat(downloads.findById(old)).isPresent();assertThat(downloads.findById(newer)).isPresent();
+            jdbc.update("DELETE FROM revision_cleanup_jobs");
+        }
+        verify(adapter).deleteTorrent("A".repeat(40),false);verify(adapter).deleteTorrent("A".repeat(40),true);
+        verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
+    }
+    @Test void uncertainCleanupKeepsHistoryUntilExplicitlyConfirmedAbsent() {
+        doThrow(new RuntimeException("Disconnected")).when(adapter).deleteTorrent(anyString(),anyBoolean());
+        var job=start(cleanup.preview(new RevisionCleanup.PreviewInput("downloads","FILES",List.of(),false,true)));
+        cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);
+        assertThat(downloads.findById(old)).isPresent();
+        remote.removeIf(row->row.hash().equals("A".repeat(40)));
+        cleanup.control(job.id(),"verify");cleanup.cycle();
+        assertThat(downloads.findById(old)).isEmpty();assertThat(downloads.findById(newer)).isPresent();
+        verify(adapter,times(1)).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void keepClientActionRequiresExplicitHistoryDeletion() {
+        assertThatThrownBy(()->cleanup.preview(new RevisionCleanup.PreviewInput("downloads","KEEP",List.of(),false,false)))
+            .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        var job=start(cleanup.preview(new RevisionCleanup.PreviewInput("downloads","KEEP",List.of(),false,true)));
+        assertThat(job.action()).isEqualTo("RECORD");assertThat(job.deleteHistory()).isTrue();cleanup.cycle();
+        assertThat(downloads.findById(old)).isEmpty();assertThat(downloads.findById(newer)).isPresent();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
     @Test void recordOnlyNeverDeletesTorrent() {var job=start(preview("downloads","RECORD"));cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);assertThat(downloads.findById(old)).isEmpty();assertThat(downloads.findById(newer)).isPresent();verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());}
-    @Test void deletesTorrentAndFilesOnlyAfterChecks() {var job=start(preview("downloads","FILES"));cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);assertThat(downloads.findById(old)).isEmpty();verify(adapter).deleteTorrent("A".repeat(40),true);assertThat(remote).hasSize(1);}
+    @Test void deletesTorrentAndFilesOnlyAfterChecks() {var job=start(cleanup.preview(new RevisionCleanup.PreviewInput("downloads","FILES",List.of(),false,true)));cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);assertThat(downloads.findById(old)).isEmpty();verify(adapter).deleteTorrent("A".repeat(40),true);assertThat(remote).hasSize(1);}
     @Test void torrentOnlyKeepsFiles() {var job=start(preview("downloads","TORRENT"));cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);verify(adapter).deleteTorrent("A".repeat(40),false);}
     @Test void explicitDestructiveConfirmationIsMandatoryAndStartIdempotent() {var job=preview("downloads","FILES");var selection=List.of(item(job).id());assertThatThrownBy(()->cleanup.start(job.id(),new RevisionCleanup.Confirmation(selection,true,false))).hasMessageContaining("irreversible");start(job);start(job);cleanup.cycle();verify(adapter,times(1)).deleteTorrent(anyString(),anyBoolean());}
     @Test void unconfirmedDeletionIsNeverAutomaticallyRepeated() {doNothing().when(adapter).deleteTorrent(anyString(),anyBoolean());var job=start(preview("downloads","TORRENT"));cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);cleanup.cycle();cleanup.control(job.id(),"verify");cleanup.cycle();verify(adapter,times(1)).deleteTorrent(anyString(),anyBoolean());assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);remote.remove(0);cleanup.control(job.id(),"verify");cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);}

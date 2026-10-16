@@ -148,9 +148,10 @@ public class UpdatePlanner {
         if(input.options()!=null && input.options().hash()!=null) throw new com.rlibanez.eplsync.exception.UserInputException("Las actualizaciones no admiten options.hash");
         if(input.policy()!=PreviousVersions.KEEP) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP);
         if(input.policy()==PreviousVersions.REMOVE_TORRENT_AND_FILES) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
+        if(Boolean.TRUE.equals(input.deleteHistory())) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.DOWNLOADS_DELETE);
         var job=bulk.beginPrepared(input.bulk()); job.setType(BulkJob.Type.UPDATE);job.setPreviousVersions(input.policy()); String jobId=job.getId();
         var plan=new UpdatePlan(); plan.setJobId(jobId); plan.setClientInstanceId(tracking.instanceId());
-        plan.setPreviousVersions(input.policy()); plan.setCleanupTiming(input.timing()); plan.setAutomaticCleanup(input.policy()!=PreviousVersions.KEEP && input.timing()==CleanupTiming.IMMEDIATE); plan.setCreatedAt(Instant.now()); plan.setSnapshot("{\"items\":[]}"); plans.saveAndFlush(plan);
+        plan.setDeleteHistory(Boolean.TRUE.equals(input.deleteHistory()));plan.setPreviousVersions(input.policy()); plan.setCleanupTiming(input.timing()); plan.setAutomaticCleanup((input.policy()!=PreviousVersions.KEEP || Boolean.TRUE.equals(input.deleteHistory())) && input.timing()==CleanupTiming.IMMEDIATE); plan.setCreatedAt(Instant.now()); plan.setSnapshot("{\"items\":[]}"); plans.saveAndFlush(plan);
         long[] counts={0,0};
         scan(filter,includeNotFound,input.multipleHashes()==null ? properties.getBulk().getMultipleHashes() : input.multipleHashes(),selection,c -> {
             var book=books.findById(c.eplId()).orElseThrow(); counts[0]++;
@@ -167,7 +168,7 @@ public class UpdatePlanner {
                 for(var old:history) {
                     var entry=new UpdateCleanup(); entry.setJobId(jobId); entry.setDownloadId(old.getId()); entry.setEplId(c.eplId());
                     entry.setHash(old.getHash()); entry.setUpdatedAt(Instant.now());
-                    entry.setState(input.policy()==PreviousVersions.KEEP ? UpdateCleanup.State.KEPT : UpdateCleanup.State.WAITING);
+                    entry.setState(input.policy()==PreviousVersions.KEEP && !Boolean.TRUE.equals(input.deleteHistory()) ? UpdateCleanup.State.KEPT : UpdateCleanup.State.WAITING);
                     entry.initialize(plan, c.targetHashes(), com.rlibanez.eplsync.events.EventContext.actor()); cleanup.save(entry);
                 }
                 em.flush(); em.clear(); if(!history.hasNext()) break;

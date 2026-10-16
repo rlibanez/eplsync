@@ -18,7 +18,8 @@ import com.rlibanez.eplsync.exception.UserInputException;
 @Service
 public class SelectedUpdateSender {
     public record Request(List<Long> ids,List<DownloadStatus> states,PreviousVersions previousVersions,Boolean confirmFiles,
-        TorrentDownloadRequest options,Integer concurrency,Integer batchSize,String interval,MultipleHashes multipleHashes,CleanupTiming cleanupTiming) {
+        TorrentDownloadRequest options,Integer concurrency,Integer batchSize,String interval,MultipleHashes multipleHashes,CleanupTiming cleanupTiming, Boolean deleteHistory) {
+        public Request(List<Long> ids,List<DownloadStatus> states,PreviousVersions policy,Boolean confirmFiles,TorrentDownloadRequest options,Integer concurrency,Integer batchSize,String interval,MultipleHashes hashes,CleanupTiming timing) {this(ids,states,policy,confirmFiles,options,concurrency,batchSize,interval,hashes,timing,false);}
         public Request(List<Long> ids,List<DownloadStatus> states,PreviousVersions policy,Boolean confirmFiles,TorrentDownloadRequest options,Integer concurrency,Integer batchSize,String interval,MultipleHashes hashes) {this(ids,states,policy,confirmFiles,options,concurrency,batchSize,interval,hashes,null);}
     }
     private final RevisionUpdates updates;
@@ -44,7 +45,7 @@ public class SelectedUpdateSender {
             || input.ids().stream().anyMatch(id -> id==null || id<1) || new HashSet<>(input.ids()).size()!=input.ids().size())
             throw new UserInputException("Selecciona entre 1 y 10000 libros, sin duplicados");
         var selection=new UpdatePreferences.Preferences(input.states());RevisionUpdates.validate(selection,0,1,"eplId,asc");
-        var request=new UpdateRequest(input.previousVersions(),input.options(),input.batchSize(),input.concurrency(),input.interval(),input.multipleHashes(),input.cleanupTiming());
+        var request=new UpdateRequest(input.previousVersions(),input.options(),input.batchSize(),input.concurrency(),input.interval(),input.multipleHashes(),input.cleanupTiming(),input.deleteHistory());
         if(request.options()!=null && request.options().hash()!=null) throw new UserInputException("Las actualizaciones no admiten un hash específico");
         if(request.policy()!=PreviousVersions.KEEP) Permission.require(Permission.TORRENT_CLEANUP);
         if(request.policy()==PreviousVersions.REMOVE_TORRENT_AND_FILES) {
@@ -52,9 +53,10 @@ public class SelectedUpdateSender {
             if(!Boolean.TRUE.equals(input.confirmFiles())) throw new UserInputException("Confirma la eliminación irreversible de los archivos anteriores");
         }
         var policy=input.multipleHashes()==null ? properties.getBulk().getMultipleHashes() : input.multipleHashes();
+        if(Boolean.TRUE.equals(request.deleteHistory())) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.DOWNLOADS_DELETE);
         var job=bulk.beginPrepared(request.bulk()); job.setType(BulkJob.Type.UPDATE);job.setPreviousVersions(request.policy());
         var plan=new UpdatePlan();plan.setJobId(job.getId());plan.setClientInstanceId(tracking.instanceId());plan.setPreviousVersions(request.policy());
-        plan.setCleanupTiming(request.timing());plan.setAutomaticCleanup(request.policy()!=PreviousVersions.KEEP);plan.setSnapshot("{\"items\":[]}");plan.setCreatedAt(Instant.now());plans.saveAndFlush(plan);
+        plan.setDeleteHistory(Boolean.TRUE.equals(request.deleteHistory()));plan.setCleanupTiming(request.timing());plan.setAutomaticCleanup((request.policy()!=PreviousVersions.KEEP || Boolean.TRUE.equals(request.deleteHistory())));plan.setSnapshot("{\"items\":[]}");plan.setCreatedAt(Instant.now());plans.saveAndFlush(plan);
         long count=0,position=0,deadline=System.nanoTime()+java.time.Duration.ofMinutes(2).toNanos();
         for(var id:input.ids()) {
             if(System.nanoTime()>=deadline || Thread.currentThread().isInterrupted()) throw new UserInputException("La preparación superó el tiempo máximo; reduce la selección");
@@ -75,7 +77,7 @@ public class SelectedUpdateSender {
                     cb.equal(root.get("eplId"),id),cb.lessThan(root.get("revision"),book.getRevision())),PageRequest.of(page++,100,Sort.by("id")));
                 for(var old:history) {
                     var entry=new UpdateCleanup();entry.setJobId(job.getId());entry.setDownloadId(old.getId());entry.setEplId(id);entry.setHash(old.getHash());
-                    entry.setState(request.policy()==PreviousVersions.KEEP ? UpdateCleanup.State.KEPT : UpdateCleanup.State.WAITING);entry.setUpdatedAt(Instant.now());entry.initialize(plan, targets, com.rlibanez.eplsync.events.EventContext.actor()); cleanup.save(entry);
+                    entry.setState(request.policy()==PreviousVersions.KEEP && !Boolean.TRUE.equals(request.deleteHistory()) ? UpdateCleanup.State.KEPT : UpdateCleanup.State.WAITING);entry.setUpdatedAt(Instant.now());entry.initialize(plan, targets, com.rlibanez.eplsync.events.EventContext.actor()); cleanup.save(entry);
                 }
                 em.flush();em.clear();if(!history.hasNext()) break;
             }

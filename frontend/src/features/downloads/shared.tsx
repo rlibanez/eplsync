@@ -146,6 +146,7 @@ export const itemStates = [
 ];
 export interface Job {
   type?: "DOWNLOAD" | "UPDATE" | "CLEANUP";
+  deleteHistory?: boolean;
   previousVersions?: string | null;
   cleanupTiming?: "immediate" | "afterDownload" | null;
   cleanup?: {

@@ -171,6 +171,7 @@ public class JobRetries {
         if(kind.equals("downloads")) {
             if(work.stream().anyMatch(w->w.phase().equals("SEND"))) Permission.require(Permission.TORRENT_SEND);
             if(work.stream().anyMatch(w->!w.cleanup().isEmpty())) Permission.require(Permission.TORRENT_CLEANUP);
+            if(work.stream().flatMap(w->w.cleanup().stream()).anyMatch(c->Boolean.TRUE.equals(c.get("delete_history")) || c.get("delete_history") instanceof Number n && n.intValue()==1)) Permission.require(Permission.DOWNLOADS_DELETE);
             if(work.stream().flatMap(w->w.cleanup().stream()).anyMatch(c->"REMOVE_TORRENT_AND_FILES".equals(c.get("previous_versions")))) Permission.require(Permission.TORRENT_FILES_DELETE);
         } else {
             Permission.require(Permission.CALIBRE_SEND);Permission.require(Permission.DOWNLOADS_FILES_READ);
@@ -226,11 +227,11 @@ public class JobRetries {
             work.cleanup().forEach(c->cleanups.put((String)c.get("id"),c));
         }
         if("UPDATE".equals(parent.get("type"))) {
-            jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,cleanup_timing,created_at,snapshot,automatic_cleanup) SELECT ?,client_instance_id,previous_versions,cleanup_timing,?,'{\"items\":[]}',1 FROM torrent_update_plans WHERE job_id=?",child,now,plan.parent());
+            jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,cleanup_timing,created_at,snapshot,automatic_cleanup,delete_history) SELECT ?,client_instance_id,previous_versions,cleanup_timing,?,'{\"items\":[]}',1,delete_history FROM torrent_update_plans WHERE job_id=?",child,now,plan.parent());
             for(var c:cleanups.values()) {
                 String childItem=jdbc.queryForObject("SELECT id FROM torrent_bulk_items WHERE job_id=? AND epl_id=? ORDER BY position LIMIT 1",String.class,child,c.get("epl_id"));
                 claim(child,plan,new Work((String)c.get("id"),"CLEANUP",c,List.of()),childItem);
-                jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state,message,created_at,updated_at,client_instance_id,previous_versions,target_hashes,actor_id,actor_username,actor_kind,automatic,immediate,replacement_accepted) VALUES(?,?,?,?,?,'WAITING',NULL,?,?,?,?,?,?,?,'USER',1,?,?)",UUID.randomUUID().toString(),child,c.get("download_id"),c.get("epl_id"),c.get("hash"),now,now,c.get("client_instance_id"),c.get("previous_versions"),c.get("target_hashes"),actor.id(),actor.username(),c.get("immediate"),plan.work().stream().noneMatch(w->Objects.equals(w.row().get("epl_id"),c.get("epl_id")) && w.phase().equals("SEND")));
+                jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state,message,created_at,updated_at,client_instance_id,previous_versions,target_hashes,actor_id,actor_username,actor_kind,automatic,immediate,replacement_accepted,delete_history) VALUES(?,?,?,?,?,'WAITING',NULL,?,?,?,?,?,?,?,'USER',1,?,?,?)",UUID.randomUUID().toString(),child,c.get("download_id"),c.get("epl_id"),c.get("hash"),now,now,c.get("client_instance_id"),c.get("previous_versions"),c.get("target_hashes"),actor.id(),actor.username(),c.get("immediate"),plan.work().stream().noneMatch(w->Objects.equals(w.row().get("epl_id"),c.get("epl_id")) && w.phase().equals("SEND")),c.get("delete_history"));
             }
         }
     }
