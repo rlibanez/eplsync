@@ -49,7 +49,10 @@ class EventJournalTests {
                     notices.clear();
                     assertThatThrownBy(()->EventContext.withActor(actor,()->EventContext.withOrigin(origin,()->journal.runFailuresOnly(Category.TORRENT,"SYNC",context,()->{throw new com.rlibanez.eplsync.exception.UserInputException("Sin conexión");},result->Map.of())))).hasMessage("Sin conexión");
                     assertThat(notices).extracting(entry -> Objects.requireNonNull(entry).outcome()).containsExactly(Outcome.STARTED);
-                    assertThat(journal.after(cursor,20)).singleElement().satisfies(entry->{assertThat(entry.outcome()).isEqualTo(Outcome.FAILED);assertThat(entry.action()).isEqualTo("SYNC");assertThat(entry.origin()).isEqualTo(origin);});
+                    var history=journal.after(cursor,20);
+                    assertThat(history).extracting(entry->Objects.requireNonNull(entry).outcome()).containsExactly(Outcome.STARTED,Outcome.FAILED);
+                    assertThat(history).allSatisfy(entry->{assertThat(entry.action()).isEqualTo("SYNC");assertThat(entry.origin()).isEqualTo(origin);assertThat(entry.actor()).isEqualTo(actor);});
+                    assertThat(history.getFirst().operationId()).isEqualTo(history.getLast().operationId());
                 }
             }
         }
@@ -100,11 +103,47 @@ class EventJournalTests {
             journal.completed(Category.JOB,"SCHEDULED_TASK",Map.of("errors",2));
             return Map.<String,Object>of("errors",2);
         },result->result);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events",Long.class)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT outcome FROM app_events",String.class)).isEqualTo("PARTIAL");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events",Long.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT outcome FROM app_events WHERE outcome<>'STARTED'",String.class)).isEqualTo("PARTIAL");
         assertThatThrownBy(()->journal.runFailuresOnly(Category.JOB,"SCHEDULED_TASK",Map.of(),()->{throw new IllegalArgumentException("failure");},result->Map.of())).isInstanceOf(IllegalArgumentException.class);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE outcome='FAILED'",Long.class)).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE outcome='STARTED'",Long.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE outcome='STARTED'",Long.class)).isEqualTo(2);
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void failureOnlyPartialKeepsActualStartAndCommitsBothBoundariesTogether(boolean completedInsideTransaction) {
+        Instant before=Instant.now();var inside=new java.util.concurrent.atomic.AtomicReference<Instant>();
+        var observed=new java.util.ArrayList<Integer>();
+        try(var _=journal.listen(()->observed.add(jdbc.queryForObject("SELECT count(*) FROM app_events",Integer.class)))) {
+            journal.runFailuresOnly(Category.TORRENT,"SYNC",Map.of("selected",3),()->{
+                inside.set(Instant.now());assertThat(journal.after(0,20)).isEmpty();
+                if(completedInsideTransaction) new TransactionTemplate(manager).executeWithoutResult(tx->{
+                    journal.completed(Category.TORRENT,"SYNC",Map.of("errors",1));
+                    assertThat(observed).isEmpty();
+                });
+                return Map.<String,Object>of("errors",1);
+            },result->result);
+        }catch(Exception ex) {throw new AssertionError(ex);}
+        var rows=journal.after(0,20);
+        assertThat(rows).extracting(row->Objects.requireNonNull(row).outcome()).containsExactly(Outcome.STARTED,Outcome.PARTIAL);
+        assertThat(rows.getFirst().createdAt()).isBetween(before.truncatedTo(java.time.temporal.ChronoUnit.MILLIS),Objects.requireNonNull(inside.get()));
+        assertThat(rows.getLast().createdAt()).isAfterOrEqualTo(rows.getFirst().createdAt());
+        assertThat(rows.getFirst().details()).containsEntry("selected",3);
+        assertThat(rows.getFirst().operationId()).isEqualTo(rows.getLast().operationId());
+        assertThat(observed).isNotEmpty().allSatisfy(count->assertThat(count).isEqualTo(2));
+    }
+    @Test void failureOnlyRolledBackPartialDoesNotLeaveDuplicateStartsOrPartialResults() {
+        assertThatThrownBy(()->journal.runFailuresOnly(Category.TORRENT,"SYNC",Map.of(),()->{
+            new TransactionTemplate(manager).executeWithoutResult(tx->{journal.completed(Category.TORRENT,"SYNC",Map.of("errors",1));throw new IllegalStateException("rollback");});
+            return 1;
+        },result->Map.of())).hasMessage("rollback");
+        assertThat(journal.after(0,20)).extracting(row->Objects.requireNonNull(row).outcome()).containsExactly(Outcome.STARTED,Outcome.FAILED);
+    }
+    @Test void failedResultPersistenceCannotLeaveAnOrphanStart() {
+        jdbc.execute("CREATE TRIGGER reject_failure BEFORE INSERT ON app_events WHEN NEW.action='ATOMIC_FAILURE' AND NEW.outcome='FAILED' BEGIN SELECT RAISE(ABORT,'test failure'); END");
+        try {
+            assertThatThrownBy(()->journal.runFailuresOnly(Category.TORRENT,"ATOMIC_FAILURE",Map.of(),()->{throw new IllegalStateException("original");},result->Map.of())).hasMessage("original");
+            assertThat(journal.after(0,20)).isEmpty();
+        }finally {jdbc.execute("DROP TRIGGER reject_failure");}
     }
     @AfterEach void restore() {
         settings.getRetention().setMaxCount(10000);

@@ -506,3 +506,44 @@ test("an event arriving during the initial unread request cannot leave the badge
   release();
   await expect(page.locator(".event-unread-count")).toHaveText("1");
 });
+
+for (const outcome of ["FAILED", "PARTIAL"]) {
+  test(`synchronization ${outcome} retains its start without duplicating the live notification`, async ({
+    page,
+  }) => {
+    await page.route("**/api/events/operations?**", (route) =>
+      route.fulfill({
+        json: operationResponse([historical], route.request().url()),
+      }),
+    );
+    await page.goto("/events");
+    await expect(page.locator(".events-table")).toBeVisible();
+    const start = {
+      ...historical,
+      id: 0,
+      category: "TORRENT",
+      action: "SYNC",
+      origin: "MANUAL",
+      outcome: "STARTED",
+      operationId: "sync-failure",
+      actor: { id: "test-admin", kind: "USER" },
+    };
+    await page.evaluate(
+      (event) =>
+        (
+          window as unknown as {
+            __event: (name: string, data: unknown) => void;
+          }
+        ).__event("operation-notice", event),
+      start,
+    );
+    const notices = page.locator('.notification-toasts [role="status"], .notification-toasts [role="alert"]');
+    await expect(notices).toHaveCount(1);
+    await emitEvent(page, { ...start, id: 2 });
+    await expect(notices).toHaveCount(1);
+    const result = { ...start, id: 3, outcome };
+    await emitEvent(page, result);
+    await emitEvent(page, result);
+    await expect(notices).toHaveCount(2);
+  });
+}

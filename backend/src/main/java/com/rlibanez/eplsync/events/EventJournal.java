@@ -65,8 +65,8 @@ public class EventJournal {
         else publish.run();
     }
     private static class Run {
-        final Category category; final String action, id; final Map<String, ?> context; boolean recorded, failuresOnly, nestedFailureRecorded;
-        Run(Category category, String action, String id, Map<String, ?> context) { this.category = category; this.action = action; this.id = id; this.context = context; }
+        final Category category; final String action, id; final Map<String, ?> context; final Instant startedAt; boolean recorded, failuresOnly, nestedFailureRecorded;
+        Run(Category category, String action, String id, Map<String, ?> context) { this.category = category; this.action = action; this.id = id; this.context = context; this.startedAt=Instant.now(); }
     }
     private final ThreadLocal<Run> capturing = new ThreadLocal<>();
     private final ScheduledExecutorService maintenance = Executors.newSingleThreadScheduledExecutor(
@@ -201,20 +201,20 @@ public class EventJournal {
             return work.get();
         }
         String operationId = UUID.randomUUID().toString();
-        if (!failuresOnly) record(category, action, Outcome.STARTED, EventContext.origin(), operationId, context);
+        var capture = new Run(category, action, operationId, context);
+        capture.failuresOnly = failuresOnly;
+        if (!failuresOnly) recordAt(category, action, Outcome.STARTED, EventContext.origin(), operationId, context,capture.startedAt);
         else live(EventContext.actor(),category,action,Outcome.STARTED,EventContext.origin(),operationId,context);
         if (org.springframework.web.context.request.RequestContextHolder.getRequestAttributes()
                 instanceof org.springframework.web.context.request.ServletRequestAttributes request && request.getResponse() != null)
             request.getResponse().setHeader("X-EPLSync-Operation-Id", operationId);
-        var capture = new Run(category, action, operationId, context);
-        capture.failuresOnly = failuresOnly;
         capturing.set(capture);
         try {
             T result = work.get();
             var details = new LinkedHashMap<String, Object>(context);
             details.putAll(summary.apply(result));
             var outcome = details.get("errors") instanceof Number n && n.longValue() > 0 ? Outcome.PARTIAL : Outcome.SUCCEEDED;
-            if (!capturing.get().recorded && (!failuresOnly || outcome == Outcome.PARTIAL)) record(category, action, outcome, EventContext.origin(), operationId, details);
+            if (!capturing.get().recorded && (!failuresOnly || outcome == Outcome.PARTIAL)) recordResult(capture,outcome,details);
             if (!capture.recorded && failuresOnly && outcome == Outcome.SUCCEEDED) {
                 live(EventContext.actor(),category,action,outcome,EventContext.origin(),operationId,details);
                 notifyCompletion(EventContext.actor(),category,action,outcome,EventContext.origin(),operationId,details);
@@ -224,11 +224,20 @@ public class EventJournal {
             try {
                 var failure = new LinkedHashMap<String, Object>(context);
                 failure.put("reason", failureReason(ex));
-                if(!capture.nestedFailureRecorded) record(category, action, Outcome.FAILED, EventContext.origin(), operationId, failure);
+                if(!capture.nestedFailureRecorded) recordResult(capture,Outcome.FAILED,failure);
             }
             catch (RuntimeException recording) { log.error("No se pudo registrar el fallo de {}", operationId, recording); }
             throw ex;
         } finally { capturing.remove(); }
+    }
+
+    /** Failure-only operations retain both boundaries atomically, with the original start time. */
+    private void recordResult(Run run,Outcome outcome,Map<String,?> details) {
+        transactions.executeWithoutResult(tx->{
+            if(run.failuresOnly && jdbc.queryForObject("SELECT count(*) FROM app_events WHERE operation_id=? AND outcome='STARTED'",Long.class,run.id)==0)
+                recordAt(run.category,run.action,Outcome.STARTED,EventContext.origin(),run.id,run.context,run.startedAt);
+            record(run.category,run.action,outcome,EventContext.origin(),run.id,details);
+        });
     }
 
     /** Called inside the business transaction when an atomic result/event commit is possible. */
@@ -239,7 +248,7 @@ public class EventJournal {
         details.putAll(summary);
         var outcome = summary.get("errors") instanceof Number n && n.longValue() > 0 ? Outcome.PARTIAL : Outcome.SUCCEEDED;
         if (!run.failuresOnly || outcome == Outcome.PARTIAL)
-            record(category, action, outcome, EventContext.origin(), run.id, details);
+            recordResult(run,outcome,details);
         else {
             live(EventContext.actor(),category,action,outcome,EventContext.origin(),run.id,details);
             notifyCompletion(EventContext.actor(),category,action,outcome,EventContext.origin(),run.id,details);

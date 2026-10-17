@@ -134,7 +134,7 @@ class DownloadTrackingTests {
         properties.effective().setEnabled(false);
         assertThatThrownBy(() -> service.syncDownloads(false, false)).isInstanceOf(RuntimeException.class);
         assertThat(events.after(cursor, 10)).extracting(value -> Objects.requireNonNull(value).outcome())
-                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
+                .containsExactly(com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED,com.rlibanez.eplsync.events.EventJournal.Outcome.FAILED);
     }
 
     @Test void catalogFiltersByExactRevisionAndCombinesOtherFilters() throws Exception {
