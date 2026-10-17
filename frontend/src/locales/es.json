@@ -1855,6 +1855,9 @@
     "sentOrRemoved": "Enviados / Eliminados"
   },
   "calibreRemoval": {
+    "confirmDeletion": "Confirmo el borrado irreversible de los libros seleccionados.",
+    "confirmCount_one": "Se eliminará {{count}} libro de Calibre y todos sus formatos.",
+    "confirmCount_other": "Se eliminarán {{count}} libros de Calibre y todos sus formatos.",
     "delete": "Eliminar",
     "description": "Se eliminarán las entradas seleccionadas de Calibre y todos sus formatos. Los torrents, archivos y registros de Descargas se conservarán.",
     "jobTitle": "Trabajo de borrado de Calibre",

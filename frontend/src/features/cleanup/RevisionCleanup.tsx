@@ -187,7 +187,8 @@ function CleanupWizard({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const cache = useQueryClient();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(direct ? 1 : 0);
+  const previewRequested = useRef(false);
   const [action, setAction] = useState(
     actions.includes("TORRENT") ? "TORRENT" : actions[0],
   );
@@ -233,6 +234,12 @@ function CleanupWizard({
       setStep(1);
     },
   });
+  useEffect(() => {
+    if (direct && !previewRequested.current) {
+      previewRequested.current = true;
+      prepare.mutate();
+    }
+  }, [direct, prepare]);
   const start = useMutation({
     mutationFn: () =>
       post<Job>(`/revision-cleanups/${preview!.id}/start`, {
@@ -261,8 +268,12 @@ function CleanupWizard({
       icon={Eraser}
       width="wide"
     >
-      <Stepper active={step} size="xs" allowNextStepsSelect={false}>
-        <Stepper.Step label={t("revisionCleanup.configure")} />
+      <Stepper
+        active={direct ? step - 1 : step}
+        size="xs"
+        allowNextStepsSelect={false}
+      >
+        {!direct && <Stepper.Step label={t("revisionCleanup.configure")} />}
         <Stepper.Step label={t("revisionCleanup.preview")} />
         <Stepper.Step label={t("revisionCleanup.confirm")} />
       </Stepper>
@@ -345,6 +356,13 @@ function CleanupWizard({
       )}
       {step === 1 && (
         <>
+          {direct && <p>{t("calibreRemoval.description")}</p>}
+          {prepare.isPending && <Loading />}
+          {direct && prepare.isError && (
+            <Button variant="default" onClick={() => prepare.mutate()}>
+              {t("revisionCleanup.preview")}
+            </Button>
+          )}
           <p>
             {t("revisionCleanup.previewSummary", {
               ready: preview?.ready,
@@ -380,18 +398,23 @@ function CleanupWizard({
         <>
           <p>
             <strong>
-              {t("revisionCleanup.confirmCount", { count: checked.length })}
+              {t(
+                direct
+                  ? "calibreRemoval.confirmCount"
+                  : "revisionCleanup.confirmCount",
+                { count: checked.length },
+              )}
             </strong>
           </p>
-          <p>
-            {t(
-              direct
-                ? "calibreRemoval.action"
-                : action === "RECORD"
+          {!direct && (
+            <p>
+              {t(
+                action === "RECORD"
                   ? "send.keepPrevious"
                   : `revisionCleanup.actions.${action}`,
-            )}
-          </p>
+              )}
+            </p>
+          )}
           {source === "downloads" && (
             <p>
               {t(deleteHistory ? "send.deleteHistory" : "send.keepHistory")}
@@ -407,11 +430,18 @@ function CleanupWizard({
             </p>
           )}
           <Checkbox
-            label={t("revisionCleanup.confirmSelection")}
+            label={t(
+              direct
+                ? "calibreRemoval.confirmDeletion"
+                : "revisionCleanup.confirmSelection",
+            )}
             checked={confirm}
-            onChange={(event) => setConfirm(event.currentTarget.checked)}
+            onChange={(event) => {
+              setConfirm(event.currentTarget.checked);
+              if (direct) setDestructive(event.currentTarget.checked);
+            }}
           />
-          {["FILES", "BOOK"].includes(action) && (
+          {!direct && ["FILES", "BOOK"].includes(action) && (
             <Checkbox
               mt="sm"
               label={t("revisionCleanup.confirmDestructive")}
@@ -433,7 +463,7 @@ function CleanupWizard({
           variant="default"
           disabled={busy}
           onClick={
-            step
+            step > (direct ? 1 : 0)
               ? () => {
                   setStep(step - 1);
                   setConfirm(false);
@@ -442,7 +472,11 @@ function CleanupWizard({
               : close
           }
         >
-          {t(step ? "revisionCleanup.back" : "revisionCleanup.close")}
+          {t(
+            step > (direct ? 1 : 0)
+              ? "revisionCleanup.back"
+              : "revisionCleanup.close",
+          )}
         </Button>
         {step === 0 ? (
           <Button

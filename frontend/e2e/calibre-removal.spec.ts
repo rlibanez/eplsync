@@ -94,12 +94,22 @@ for (const inline of [false, true]) {
     await target.getByRole("button", { name: "Eliminar", exact: true }).click();
     const modal = page.getByRole("dialog");
     await expect(modal).toContainText("todos sus formatos");
-    await modal
-      .getByRole("button", { name: "Previsualizar", exact: true })
-      .click();
+    await expect(modal.getByText("Opciones", { exact: true })).toHaveCount(0);
+    await expect(
+      modal.getByRole("button", { name: "Anterior", exact: true }),
+    ).toHaveCount(0);
     await expect(modal).toContainText("EPUB, PDF");
     expect(starts).toBe(0);
     await modal.getByRole("button", { name: "Siguiente", exact: true }).click();
+    await expect(modal).toContainText(
+      "Se eliminará 1 libro de Calibre y todos sus formatos.",
+    );
+    await expect(modal).not.toContainText("revisiones antiguas");
+    await expect(modal.getByRole("checkbox")).toHaveCount(1);
+    await expect(modal).not.toContainText("Borrar las entradas completas");
+    await expect(
+      modal.getByRole("button", { name: /Crear trabajo/ }),
+    ).toBeDisabled();
     for (const checkbox of await modal.getByRole("checkbox").all())
       await checkbox.check();
     await modal.getByRole("button", { name: /Crear trabajo/ }).click();

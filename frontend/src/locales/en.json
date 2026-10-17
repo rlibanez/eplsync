@@ -1855,6 +1855,9 @@
     "sentOrRemoved": "Sent / Removed"
   },
   "calibreRemoval": {
+    "confirmDeletion": "I confirm the irreversible deletion of the selected books.",
+    "confirmCount_one": "{{count}} book and all its formats will be deleted from Calibre.",
+    "confirmCount_other": "{{count}} books and all their formats will be deleted from Calibre.",
     "delete": "Delete",
     "description": "The selected Calibre entries and all their formats will be deleted. Torrents, files and download records will be preserved.",
     "jobTitle": "Calibre deletion job",
