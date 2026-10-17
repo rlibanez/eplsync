@@ -35,12 +35,19 @@ class CalibreTransfersTests {
     @MockitoSpyBean AccountStore accounts;
     @MockitoBean CalibreClient client;
     @MockitoBean EpubFiles files;
+    @MockitoSpyBean com.rlibanez.eplsync.service.TorrentClientService torrent;
+    com.rlibanez.eplsync.torrent.TorrentClient adapter;
+
     Account owner;String record;byte[] bytes;MockMvc mvc;
     @BeforeEach void setup() throws Exception {
         jdbc.update("DELETE FROM scheduled_tasks");jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM calibre_books");jdbc.update("DELETE FROM app_settings WHERE setting_key IN ('calibre.connection','calibre.snapshot')");downloads.deleteAll();accounts.clear();
         owner=accounts.initialize("Owner","owner@example.com","password123","password123");
         settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"main"));
         var row=new DownloadRecord();row.setEplId(1L);row.setRevision(1.1);row.setHash("A".repeat(40));row.setClient("qbittorrent");row.setClientInstanceId(tracking.instanceId());row.setStatus(DownloadStatus.DOWNLOADED);row.setOrigin(DownloadRecord.Origin.EPLSYNC);row.setCreatedAt(Instant.now());record=downloads.save(row).getId();
+        adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);
+        when(adapter.listTorrents(anySet())).thenAnswer(call -> downloads.findAll().stream()
+            .map(download -> new RemoteTorrent(download.getHash(),download.getStatus(),null)).toList());
+        doAnswer(call -> call.<java.util.function.Function<com.rlibanez.eplsync.torrent.TorrentClient,Object>>getArgument(0).apply(adapter)).when(torrent).exclusiveClient(any());
         bytes=epub(1,"1.10");
         when(client.check(any())).thenReturn(new CalibreClient.Check(true,List.of(new CalibreClient.Library("main","Main"),new CalibreClient.Library("other","Other")),"main"));
         when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
@@ -182,6 +189,60 @@ class CalibreTransfersTests {
             // Repeating the request while the new sends are pending must reuse them.
             var third=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(catalogSelection(2L,3L),true)));
             assertThat(transfers.items(third.id(),0,20,List.of("position,asc")).items()).allSatisfy(item -> assertThat(item.downloadJobId()).isEqualTo(replacement));
+        } finally {torrentProperties.effective().setEnabled(false);}
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SEND","TORRENT_SYNC"})
+    void catalogRechecksCachedCompletedRecordAndDoesNotTreatNetworkFailureAsAbsence() throws Exception {
+        seedCatalog();torrentProperties.effective().setEnabled(true);
+        try {
+            String record=completedCatalogDownload(2,"D".repeat(40));
+            int count=jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class);
+            when(adapter.listTorrents(anySet())).thenThrow(new IllegalStateException("remote unavailable"));
+            assertThatThrownBy(() -> catalogSelection(2L)).hasMessage("remote unavailable");
+            assertThat(downloads.findById(record).orElseThrow().getStatus()).isEqualTo(DownloadStatus.DOWNLOADED);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class)).isEqualTo(count);
+            doReturn(List.of()).when(adapter).listTorrents(anySet());
+            var prepared=catalogSelection(2L);
+            assertThat(prepared.files()).isEmpty();
+            assertThat(prepared.missing()).singleElement().satisfies(book -> assertThat(book.eplId()).isEqualTo(2));
+            var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+            var job=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(prepared,true)));
+            assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items()).singleElement().satisfies(item -> {
+                assertThat(item.state()).isEqualTo("WAITING_DOWNLOAD");assertThat(item.downloadJobId()).isNotBlank();
+            });
+        } finally {torrentProperties.effective().setEnabled(false);}
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SEND","TORRENT_SYNC"})
+    void catalogChecksRemotePresenceBeforeReusingAcceptedDownload(boolean present) throws Exception {
+        seedCatalog();torrentProperties.effective().setEnabled(true);
+        try {
+            var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+            var first=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(catalogSelection(2L),true)));
+            String original=transfers.items(first.id(),0,20,List.of("position,asc")).items().getFirst().downloadJobId();
+            int previousJobs=jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class);
+            jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED' WHERE job_id=?",original);
+            jdbc.update("UPDATE torrent_bulk_jobs SET state='COMPLETED' WHERE id=?",original);
+            String hash=jdbc.queryForObject("SELECT hash FROM torrent_bulk_items WHERE job_id=?",String.class,original);
+            String record=completedCatalogDownload(2,hash);
+            jdbc.update("UPDATE torrent_downloads SET status='DOWNLOADING' WHERE id=?",record);
+            var request=catalogRequest(catalogSelection(2L),true);
+            when(adapter.listTorrents(anySet())).thenReturn(present?List.of(new RemoteTorrent(hash,DownloadStatus.DOWNLOADING,null)):List.of());
+            var second=EventContext.withActor(actor,()->catalogTransfers.create(request));
+            var item=transfers.items(second.id(),0,20,List.of("position,asc")).items().getFirst();
+            assertThat(item.state()).isEqualTo("WAITING_DOWNLOAD");
+            if(present) assertThat(item.downloadJobId()).isEqualTo(original);
+            else {
+                assertThat(item.downloadJobId()).isNotEqualTo(original);
+                assertThat(downloads.findById(record).orElseThrow().getStatus()).isEqualTo(DownloadStatus.NOT_FOUND);
+            }
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class)).isEqualTo(previousJobs+(present?0:1));
+            assertThat(EventContext.withActor(actor,()->catalogTransfers.create(request)).id()).isEqualTo(second.id());
+            var another=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(catalogSelection(2L),true)));
+            assertThat(transfers.items(another.id(),0,20,List.of("position,asc")).items()).singleElement().satisfies(next -> assertThat(next.downloadJobId()).isEqualTo(item.downloadJobId()));
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class)).isEqualTo(previousJobs+(present?0:1));
+            verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
         } finally {torrentProperties.effective().setEnabled(false);}
     }
     @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SEND","TORRENT_SYNC"})
@@ -708,9 +769,130 @@ class CalibreTransfersTests {
     @Test void failureToReadRemoteFormatsLeavesUploadUncertain() {
         when(client.hasEpub(any(),eq(9L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_GATEWAY,"No se pueden comprobar los formatos"));
         var job=create();transfers.cycle();
-        assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(job.id()).state()).isEqualTo("RUNNING");
         assertThat(transfers.job(job.id()).accepted()).isZero();
         assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+
+    @Test void directRequestsAreDurablyIdempotentEvenWithoutEpubIdentifiers() throws Exception {
+        bytes=withoutIdentifiers(true,true);when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        var request=new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,0)),List.of(),UUID.randomUUID().toString());
+        var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+        var first=EventContext.withActor(actor,()->transfers.create(request));
+        assertThat(EventContext.withActor(actor,()->transfers.create(request)).id()).isEqualTo(first.id());
+        transfers.cycle();
+        assertThat(EventContext.withActor(actor,()->transfers.create(request)).id()).isEqualTo(first.id());
+        assertThat(transfers.job(first.id()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        assertThatThrownBy(()->EventContext.withActor(actor,()->transfers.create(new CalibreTransfers.Request("other",request.files(),List.of(),request.id())))).hasMessageContaining("otra selección");
+    }
+    @Test void localCalibreCapacityDefersWithoutPausingOrConsumingRetries() {
+        var job=create();when(client.findRevision(any(),anyLong(),any())).thenThrow(new CalibreClient.Busy());
+        for(int n=0;n<6;n++) {jdbc.update("UPDATE calibre_jobs SET next_check=0 WHERE id=?",job.id());jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE job_id=?",job.id());transfers.cycle();}
+        assertThat(transfers.job(job.id()).state()).isEqualTo("RUNNING");
+        assertThat(jdbc.queryForObject("SELECT transient_attempts FROM calibre_job_items WHERE job_id=?",Integer.class,job.id())).isZero();
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        doReturn(null).when(client).findRevision(any(),anyLong(),any());
+        jdbc.update("UPDATE calibre_jobs SET next_check=0 WHERE id=?",job.id());jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE job_id=?",job.id());
+        transfers.cycle();assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+    }
+    @Test void temporaryVerificationFailureRetriesWithoutRepeatingUpload() {
+        var job=create();when(client.book(any(),eq(9L))).thenThrow(new CalibreClient.TransientFailure(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"Temporary",null));
+        transfers.cycle();assertThat(transfers.job(job.id()).state()).isEqualTo("RUNNING");assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        doReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true)).when(client).book(any(),eq(9L));
+        jdbc.update("UPDATE calibre_jobs SET next_check=0 WHERE id=?",job.id());jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE job_id=?",job.id());
+        transfers.recoverInterrupted();transfers.cycle();assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void queuedJobsGetTurnsWithoutAggregatingWholeLargeJobForEveryFile() {
+        var heavy=create();
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES(?,?,1,?,1,'book.epub',?,1,'1.1','PENDING')",UUID.randomUUID().toString(),heavy.id(),record,bytes.length);
+        var small=create();clearInvocations(jdbc);
+        transfers.cycle();
+        assertThat(mockingDetails(jdbc).getInvocations()).noneMatch(call -> call.getArguments().length>0 && call.getArgument(0) instanceof String sql && sql.startsWith("SELECT j.*,count(i.id)"));
+        transfers.cycle();assertThat(transfers.job(small.id()).accepted()).isEqualTo(1);assertThat(transfers.job(heavy.id()).pending()).isEqualTo(1);
+    }
+    @Test void explicitResolutionVerifiesUnidentifiedUploadWithoutSendingAgain() throws Exception {
+        bytes=withoutIdentifiers(true,true);when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        var job=create();when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());transfers.cycle();
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        transfers.resolve(job.id(),new CalibreTransfers.Resolution(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().id(),"verify",9L,true));
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);assertThat(transfers.job(job.id()).uncertain()).isZero();
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        var history=context.getBean(JobRetryHistory.class);
+        var attempt=history.attempts("calibre",job.id(),0,20).items().getFirst();
+        assertThat(attempt.state()).isEqualTo("COMPLETED");
+        assertThat(history.details("calibre",job.id(),attempt.id(),0,20).items()).singleElement().satisfies(detail->{assertThat(detail.beforeState()).isEqualTo("UNCERTAIN");assertThat(detail.state()).isEqualTo("ACCEPTED");assertThat(detail.beforeMessage()).contains("No se ha confirmado");});
+    }
+    @Test void explicitResolutionRequiresConfirmationAndRejectsWrongBook() {
+        var job=create();when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());transfers.cycle();
+        String item=transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().id();
+        assertThatThrownBy(()->transfers.resolve(job.id(),new CalibreTransfers.Resolution(item,"retry",null,false))).hasMessageContaining("Confirma");
+        when(client.book(any(),eq(10L))).thenReturn(new CalibreClient.Book(10,"Other",List.of(),2L,new BigDecimal("1.1"),true));
+        assertThatThrownBy(()->transfers.resolve(job.id(),new CalibreTransfers.Resolution(item,"verify",10L,true))).hasMessageContaining("no coinciden");
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+    }
+
+    @Test void concurrentDirectRequestsCreateOneJob() throws Exception {
+        var request=new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,0)),List.of(),UUID.randomUUID().toString());
+        var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+        var security=org.springframework.security.core.context.SecurityContextHolder.getContext();
+        var ready=new java.util.concurrent.CountDownLatch(2);
+        when(files.list(record)).thenAnswer(call->{ready.countDown();if(!ready.await(10,java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Test timeout");return List.of(new EpubFiles.Item(0,"book.epub",bytes.length));});
+        try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            java.util.concurrent.Callable<CalibreTransfers.Job> create=()->{
+                org.springframework.security.core.context.SecurityContextHolder.setContext(security);
+                try {return EventContext.withActor(actor,()->transfers.create(request));}finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
+            };
+            var first=executor.submit(create);var second=executor.submit(create);
+            assertThat(first.get(15,java.util.concurrent.TimeUnit.SECONDS).id()).isEqualTo(second.get(15,java.util.concurrent.TimeUnit.SECONDS).id());
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Integer.class)).isEqualTo(1);
+        transfers.cycle();verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void explicitUnconfirmedRetryFirstChecksWhetherMatchingBookAlreadyExists() {
+        var job=create();when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());transfers.cycle();
+        when(client.findRevision(any(),eq(1L),any())).thenReturn(9L);
+        var item=transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst();
+        transfers.resolve(job.id(),new CalibreTransfers.Resolution(item.id(),"retry",null,true));
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void explicitUnconfirmedRetryRequiresAbsenceConfirmationAndKeepsOriginalJob() throws Exception {
+        bytes=withoutIdentifiers(true,true);when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        var job=create();when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());transfers.cycle();
+        String item=transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().id();
+        transfers.control(job.id(),"cancel");
+        transfers.resolve(job.id(),new CalibreTransfers.Resolution(item,"retry",null,true));
+        doReturn(9L).when(client).uploadEpub(any(),any(),anyString(),anyString());transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Integer.class)).isEqualTo(1);
+        verify(client,times(2)).uploadEpub(any(),any(),anyString(),anyString());
+        var history=context.getBean(JobRetryHistory.class);var attempt=history.attempts("calibre",job.id(),0,20).items().getFirst();
+        assertThat(history.details("calibre",job.id(),attempt.id(),0,20).items()).singleElement().satisfies(detail->{assertThat(detail.phase()).isEqualTo("SEND");assertThat(detail.beforeState()).isEqualTo("UNCERTAIN");assertThat(detail.state()).isEqualTo("ACCEPTED");});
+    }
+
+    @Test void permanentConfigurationFailurePausesImmediatelyWithItsActionableReason() {
+        var job=create();when(client.findRevision(any(),anyLong(),any())).thenThrow(new CalibreClient.PermanentFailure("La URL no corresponde al servidor de contenido de Calibre; comprueba el puerto"));
+        transfers.cycle();assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).contains("comprueba el puerto");
+        assertThat(jdbc.queryForObject("SELECT transient_attempts FROM calibre_job_items WHERE job_id=?",Integer.class,job.id())).isZero();
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+
+    @Test void shutdownStopsTheBoundedBatchBeforeAnotherCycleStarts() throws Exception {
+        var isolated=spy(new CalibreTransfers(jdbc,context.getBean(org.springframework.transaction.PlatformTransactionManager.class),settings,client,catalog,files,downloads,tracking,torrentProperties,accounts,context.getBean(EventJournal.class)));
+        org.springframework.test.util.ReflectionTestUtils.setField(isolated,"enabled",true);
+        var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call->{entered.countDown();if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Test timeout");return null;}).when(isolated).cycle();
+        try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            isolated.schedule();assertThat(entered.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            var closing=executor.submit(isolated::close);
+            long deadline=System.nanoTime()+java.time.Duration.ofSeconds(5).toNanos();
+            while(Boolean.TRUE.equals(org.springframework.test.util.ReflectionTestUtils.getField(isolated,"enabled")) && System.nanoTime()<deadline) Thread.onSpinWait();
+            assertThat(org.springframework.test.util.ReflectionTestUtils.getField(isolated,"enabled")).isEqualTo(false);
+            release.countDown();closing.get(5,java.util.concurrent.TimeUnit.SECONDS);
+            verify(isolated,times(1)).cycle();
+        } finally {release.countDown();isolated.close();}
     }
 }

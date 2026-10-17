@@ -733,7 +733,8 @@ class UpdateTests {
 
     @Test void selectedUpdatesPersistPolicyAndAutomaticCleanupWaitsForCompletion() {
         var request=new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),PreviousVersions.REMOVE_TORRENT_AND_FILES,true,null,2,10,"0ms",MultipleHashes.ALL);
-        var job=com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor("owner","owner","USER"),() -> selectedSender.create(request));
+        ownerStore.clear();var owner=ownerStore.initialize("owner","owner@example.org","password123","password123");
+        var job=com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor(owner.id(),"owner","USER"),() -> selectedSender.create(request));
         assertThat(plans.findById(job.jobId()).orElseThrow().getAutomaticCleanup()).isTrue();
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
         var automatic=new AutomaticUpdateCleanup(queue,bulk);
@@ -753,7 +754,7 @@ class UpdateTests {
     }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({"IMMEDIATE,deleted", "IMMEDIATE,disabled", "IMMEDIATE,revoked", "AFTER_DOWNLOAD,deleted", "AFTER_DOWNLOAD,disabled", "AFTER_DOWNLOAD,revoked"})
-    void persistedCleanupSurvivesOwnerChanges(CleanupTiming timing,String change) {
+    void persistedCleanupStopsWhenOwnerLosesAuthorization(CleanupTiming timing,String change) {
         ownerStore.clear();
         var owner=ownerStore.initialize("cleanupowner","owner@example.org","a permanent cleanup password","a permanent cleanup password");
         ownerStore.create("remainingadmin","remaining@example.org","ADMIN",owner.id());
@@ -768,7 +769,7 @@ class UpdateTests {
             default -> throw new AssertionError(change);
         }
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
-        // No logged-in user or current privileges are needed to execute an authorized queued request.
+        // Background cleanup rechecks the persisted owner even without a logged-in session.
         var context=org.springframework.security.core.context.SecurityContextHolder.getContext();
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
         try {
@@ -776,8 +777,8 @@ class UpdateTests {
             when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old.epub"),remote(NEW,state,"/new.epub"))).thenReturn(List.of(remote(NEW,state,"/new.epub")));
             if(timing==CleanupTiming.IMMEDIATE) queue.runImmediate(100,Instant.now());
             else queue.runAutomatic(100);
-            verify(stubClient).deleteTorrent(OLD,true);
-            assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+            verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+            assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.BLOCKED);
 
         } finally {org.springframework.security.core.context.SecurityContextHolder.setContext(context);}
     }

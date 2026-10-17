@@ -116,4 +116,13 @@ class CalibreTransferProtocolTests {
         searchBooks="{\"8\":{\"identifiers\":{\"epl\":\"1\",\"revision\":\"1.1\"}},\"9\":{}}";
         assertThatThrownBy(() -> client.findRevision(connection,1,new BigDecimal("1.1"))).hasMessageContaining("formatos");
     }
+
+    @Test void connectionFailurePreservesTechnicalCauseWithoutLoggingSecrets() throws Exception {
+        int port;try(var socket=new java.net.ServerSocket(0)) {port=socket.getLocalPort();}
+        try {client.check(new CalibreSettings.Connection("http://127.0.0.1:"+port,"private-user","secret-password","main"));org.junit.jupiter.api.Assertions.fail("Expected failure");}
+        catch(CalibreClient.TransientFailure failure) {
+            assertThat(failure.getCause()).isNotNull();
+            assertThat(com.rlibanez.eplsync.exception.OperationDiagnostics.technical(failure)).contains("Connect").doesNotContain("secret-password","private-user");
+        }
+    }
 }

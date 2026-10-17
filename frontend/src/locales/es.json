@@ -1673,7 +1673,15 @@
     },
     "cancel": "Cancelar",
     "detail": "Detalle",
-    "deferred": "Se comprobarán los EPUB de {{count}} libros durante el trabajo, sin consultarlos todos al abrir el asistente."
+    "deferred": "Se comprobarán los EPUB de {{count}} libros durante el trabajo, sin consultarlos todos al abrir el asistente.",
+    "resolve": "Resolver envío sin confirmar",
+    "resolveHelp": "Comprueba primero la biblioteca de Calibre. Puedes verificar una entrada existente indicando su ID, o confirmar que el envío no se recibió y solicitar un reintento en este trabajo.",
+    "resolveVerify": "Verificar una entrada existente de Calibre",
+    "resolveRetry": "Reintentar el envío no recibido",
+    "remoteId": "ID de la entrada en Calibre",
+    "resolveConfirmBook": "He comprobado que esta entrada corresponde al EPUB enviado.",
+    "resolveConfirmAbsent": "He comprobado que el envío no está en Calibre. Entiendo que podría duplicarse si ya existe sin identificadores.",
+    "resolveApply": "Aplicar resolución"
   },
   "calibreUpdateSend": {
     "open": "Enviar actualizaciones ({{count}})",

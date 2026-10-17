@@ -305,4 +305,32 @@ class CalibreUpdateFlowTests {
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
         verify(client,never()).remove(any(),anyLong(),anyBoolean());
     }
+
+    @Test void updatesDoNotReuseClosedDownloadWithoutCurrentRecord() {
+        downloadItem("ACCEPTED");jdbc.update("UPDATE torrent_bulk_jobs SET state='COMPLETED',target_fingerprint=? WHERE id='download-job'",tracking.instanceId());
+        // The real planner is exercised separately; this assertion checks the shared resolver directly.
+        var dependencies=new DownloadDependencies(downloads,tracking,torrent,jdbc);
+        assertThat(dependencies.reusable(Map.of(2L,1.1))).isEmpty();
+        jdbc.update("UPDATE torrent_bulk_items SET state='PENDING' WHERE job_id='download-job'");
+        assertThat(dependencies.reusable(Map.of(2L,1.1))).containsEntry(2L,"download-job");
+    }
+    @Test void transientTorrentTimeoutIsRetriedAndOnlyPausesAfterBudgetExhaustion() {
+        var result=submit(List.of(missing()),true,true);downloadItem("ACCEPTED");
+        when(torrent.exclusiveClient(any())).thenThrow(new com.rlibanez.eplsync.exception.TorrentConnectionException(com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.TIMEOUT));
+        for(int n=0;n<4;n++) {
+            jdbc.update("UPDATE calibre_jobs SET next_check=0,next_probe=0 WHERE id=?",result.calibreJobId());jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE job_id=?",result.calibreJobId());transfers.cycle();
+            assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo(n<3?"RUNNING":"PAUSED");
+        }
+        assertThat(transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items().getFirst().message()).contains("Se agotaron");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        transfers.control(result.calibreJobId(),"resume");assertThat(jdbc.queryForObject("SELECT transient_attempts FROM calibre_job_items WHERE job_id=?",Integer.class,result.calibreJobId())).isZero();
+    }
+
+    @Test void manualCalibreUpdateAlsoReusesActiveDownloadWithoutCustomOptions() {
+        downloadItem("PENDING");jdbc.update("UPDATE torrent_bulk_jobs SET target_fingerprint=? WHERE id='download-job'",tracking.instanceId());
+        var result=submit(List.of(missing()),true,true);
+        assertThat(result.downloadJobId()).isNull();
+        assertThat(transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items().getFirst().downloadJobId()).isEqualTo("download-job");
+        verify(bulk,never()).create(any(),any(),anyBoolean(),anyBoolean(),any());
+    }
 }

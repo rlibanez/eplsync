@@ -25,7 +25,12 @@ async function records(page: Page) {
   );
 }
 async function jobRoutes(page: Page) {
-  await page.route("https://example.org/custom-cover.jpg",r=>r.fulfill({contentType:"image/svg+xml",body:'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="30"><rect width="20" height="30" fill="green"/></svg>'}));
+  await page.route("https://example.org/custom-cover.jpg", (r) =>
+    r.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="30"><rect width="20" height="30" fill="green"/></svg>',
+    }),
+  );
   let state = "QUEUED";
   const job = () => ({
     id: "job",
@@ -119,6 +124,7 @@ test("sends selected EPUB files to a library and controls its job", async ({
   await page.route("**/api/calibre/transfers", (r) => {
     expect(r.request().method()).toBe("POST");
     expect(r.request().postDataJSON()).toEqual({
+      id: expect.any(String),
       library: "main",
       files: [{ recordId: "1", index: 0 }],
     });
@@ -268,7 +274,9 @@ test("Calibre jobs filter by clicking state and user", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Trabajos de Calibre", exact: true }),
   ).toBeVisible();
-  await expect(page.locator('th[data-table-column="id"]')).toHaveText(/Trabajo/);
+  await expect(page.locator('th[data-table-column="id"]')).toHaveText(
+    /Trabajo/,
+  );
   await expect(
     page.locator("tbody").getByRole("link", { name: "job", exact: true }),
   ).toHaveAttribute("href", "/calibre/jobs/job");
@@ -307,53 +315,180 @@ test("Calibre jobs filter by clicking state and user", async ({ page }) => {
   );
 });
 
-test("job rows use the catalog cover URL instead of assuming the default EPUBLibre path", async ({page}) => {
+test("job rows use the catalog cover URL instead of assuming the default EPUBLibre path", async ({
+  page,
+}) => {
   await jobRoutes(page);
   await page.goto("/calibre/jobs/job");
-  const image=page.locator('tbody img[src="https://example.org/custom-cover.jpg"]');
+  const image = page.locator(
+    'tbody img[src="https://example.org/custom-cover.jpg"]',
+  );
   await expect(image).toBeVisible();
-  await expect(image).toHaveJSProperty("naturalWidth",20);
+  await expect(image).toHaveJSProperty("naturalWidth", 20);
 });
 
-test("send order is optional, hidden by default even with saved columns, and persists when enabled", async ({page}) => {
-  await page.addInitScript(() => { if (!localStorage.getItem("eplsync.calibre.job.items.columns.settings.v1")) localStorage.setItem("eplsync.calibre.job.items.columns.settings.v1",JSON.stringify({order:["eplId","name","revision","state","calibreId","message"],hidden:[],widths:{}})); });
+test("send order is optional, hidden by default even with saved columns, and persists when enabled", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("eplsync.calibre.job.items.columns.settings.v1"))
+      localStorage.setItem(
+        "eplsync.calibre.job.items.columns.settings.v1",
+        JSON.stringify({
+          order: ["eplId", "name", "revision", "state", "calibreId", "message"],
+          hidden: [],
+          widths: {},
+        }),
+      );
+  });
   await jobRoutes(page);
   await page.goto("/calibre/jobs/job");
   await expect(page.locator('th[data-table-column="position"]')).toHaveCount(0);
-  await page.getByRole("button",{name:"Columnas",exact:true}).click();
-  const toggle=page.getByRole("checkbox",{name:"Orden de envío",exact:true});
-  await expect(toggle).not.toBeChecked();await toggle.check();await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Columnas", exact: true }).click();
+  const toggle = page.getByRole("checkbox", {
+    name: "Orden de envío",
+    exact: true,
+  });
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await page.keyboard.press("Escape");
   await expect(page.locator('th[data-table-column="position"]')).toBeVisible();
-  await expect(page.getByRole("cell",{name:"25",exact:true})).toHaveText("25");
+  await expect(page.getByRole("cell", { name: "25", exact: true })).toHaveText(
+    "25",
+  );
   await page.reload();
   await expect(page.locator('th[data-table-column="position"]')).toBeVisible();
 });
 
-test("filtra los elementos del trabajo por estado y detalle pulsando sus valores", async ({ page }) => {
+test("filtra los elementos del trabajo por estado y detalle pulsando sus valores", async ({
+  page,
+}) => {
   await jobRoutes(page);
-  await page.route("**/api/calibre/transfers/job/items?**", r => r.fulfill({json: {
-    items: [{id:"filtered",position:0,eplId:1,name:"Libro.epub",revision:"1",state:"ACCEPTED",message:"EPUB enviado y verificado"}],
-    meta: {...meta,totalItems:1}
-  }}));
+  await page.route("**/api/calibre/transfers/job/items?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            id: "filtered",
+            position: 0,
+            eplId: 1,
+            name: "Libro.epub",
+            revision: "1",
+            state: "ACCEPTED",
+            message: "EPUB enviado y verificado",
+          },
+        ],
+        meta: { ...meta, totalItems: 1 },
+      },
+    }),
+  );
   await page.goto("/calibre/jobs/job");
-  await page.getByRole("button", { name: "Enviado", exact:true }).click();
-  await expect(page.getByRole("textbox", {name:"Estado",exact:true})).toHaveValue("Enviado");
-  const request = page.waitForRequest(r => r.url().includes("/job/items?") && new URL(r.url()).searchParams.get("detail") === "EPUB enviado y verificado" && new URL(r.url()).searchParams.get("state") === "ACCEPTED");
-  await page.getByRole("button", {name:"EPUB enviado y verificado",exact:true}).click();
+  await page.getByRole("button", { name: "Enviado", exact: true }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Estado", exact: true }),
+  ).toHaveValue("Enviado");
+  const request = page.waitForRequest(
+    (r) =>
+      r.url().includes("/job/items?") &&
+      new URL(r.url()).searchParams.get("detail") ===
+        "EPUB enviado y verificado" &&
+      new URL(r.url()).searchParams.get("state") === "ACCEPTED",
+  );
+  await page
+    .getByRole("button", { name: "EPUB enviado y verificado", exact: true })
+    .click();
   await request;
-  await expect(page.getByRole("textbox", {name:"Detalle contiene"})).toHaveValue("EPUB enviado y verificado");
-  const waiting = page.waitForRequest(r => r.url().includes("/job/items?") && new URL(r.url()).searchParams.get("detail") === "esperando" && new URL(r.url()).searchParams.get("page") === "0");
-  await page.getByRole("textbox", {name:"Detalle contiene"}).fill("esperando");
+  await expect(
+    page.getByRole("textbox", { name: "Detalle contiene" }),
+  ).toHaveValue("EPUB enviado y verificado");
+  const waiting = page.waitForRequest(
+    (r) =>
+      r.url().includes("/job/items?") &&
+      new URL(r.url()).searchParams.get("detail") === "esperando" &&
+      new URL(r.url()).searchParams.get("page") === "0",
+  );
+  await page
+    .getByRole("textbox", { name: "Detalle contiene" })
+    .fill("esperando");
   await waiting;
-  await page.getByRole("button", {name:"Limpiar: Detalle contiene",exact:true}).click();
-  await expect(page.getByRole("textbox", {name:"Detalle contiene"})).toHaveValue("");
-  await expect(page.getByRole("textbox", {name:"Estado",exact:true})).toHaveValue("Enviado");
-  await page.getByRole("textbox", {name:"Detalle contiene"}).fill("verificado");
-  const cleared = page.waitForRequest(r => r.url().includes("/job/items?") && new URL(r.url()).searchParams.get("detail") === "" && new URL(r.url()).searchParams.get("state") === "" && new URL(r.url()).searchParams.get("page") === "0");
-  await page.getByRole("button", {name:"Limpiar",exact:true}).click();
+  await page
+    .getByRole("button", { name: "Limpiar: Detalle contiene", exact: true })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "Detalle contiene" }),
+  ).toHaveValue("");
+  await expect(
+    page.getByRole("textbox", { name: "Estado", exact: true }),
+  ).toHaveValue("Enviado");
+  await page
+    .getByRole("textbox", { name: "Detalle contiene" })
+    .fill("verificado");
+  const cleared = page.waitForRequest(
+    (r) =>
+      r.url().includes("/job/items?") &&
+      new URL(r.url()).searchParams.get("detail") === "" &&
+      new URL(r.url()).searchParams.get("state") === "" &&
+      new URL(r.url()).searchParams.get("page") === "0",
+  );
+  await page.getByRole("button", { name: "Limpiar", exact: true }).click();
   await cleared;
-  await expect(page.getByRole("textbox", {name:"Detalle contiene"})).toHaveValue("");
-  await expect(page.getByRole("textbox", {name:"Estado",exact:true})).toHaveValue("");
+  await expect(
+    page.getByRole("textbox", { name: "Detalle contiene" }),
+  ).toHaveValue("");
+  await expect(
+    page.getByRole("textbox", { name: "Estado", exact: true }),
+  ).toHaveValue("");
   const labels = await page.locator(".jobs-filters label").allTextContents();
   expect(labels).toEqual(["Estado", "Detalle contiene"]);
+});
+
+test("repeating a direct send after a lost response keeps its request identifier", async ({
+  page,
+}) => {
+  await records(page);
+  await jobRoutes(page);
+  await page.route("**/api/calibre/transfers/prepare", (route) =>
+    route.fulfill({
+      json: {
+        library: "main",
+        libraries: [{ id: "main", name: "Main" }],
+        files: [
+          {
+            recordId: "1",
+            index: 0,
+            name: "Book.epub",
+            size: 200,
+            expectedSize: 200,
+            eplId: 1,
+            revision: 1.1,
+          },
+        ],
+      },
+    }),
+  );
+  const ids: string[] = [];
+  await page.route("**/api/calibre/transfers", (route) => {
+    ids.push(route.request().postDataJSON().id);
+    return ids.length === 1
+      ? route.fulfill({ status: 503, json: { details: "Respuesta perdida" } })
+      : route.fulfill({ json: { id: "job" } });
+  });
+  await page.goto("/downloads");
+  await page
+    .getByRole("checkbox", { name: "Seleccionar registros de esta página" })
+    .check();
+  await page
+    .getByRole("button", { name: "Enviar a Calibre", exact: true })
+    .first()
+    .click();
+  const modal = page.getByRole("dialog");
+  await modal
+    .getByRole("button", { name: "Enviar a Calibre", exact: true })
+    .click();
+  await expect(modal).toContainText("Respuesta perdida");
+  await modal.getByRole("button", { name: "Enviar a Calibre", exact: true }).click();
+  await expect(page).toHaveURL(/\/calibre\/jobs\/job$/);
+  expect(ids).toHaveLength(2);
+  expect(ids[0]).toBeTruthy();
+  expect(ids[1]).toBe(ids[0]);
 });

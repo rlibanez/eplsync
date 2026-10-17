@@ -23,7 +23,7 @@ public class JobRetryHistory {
     @Transactional
     public void freeze(String kind,String job) {
         var rows=jdbc.queryForList("SELECT * FROM "+jobs(kind)+" WHERE id=?",job);
-        if(rows.isEmpty() || !Set.of("COMPLETED","CANCELLED").contains(rows.getFirst().get("state"))) return;
+        if(rows.isEmpty() || !Set.of("COMPLETED","CANCELLED").contains(rows.getFirst().get("state")) && !pausedBoundary(kind,job)) return;
         if(jdbc.queryForObject("SELECT count(*) FROM "+items(kind)+" WHERE job_id=? AND state=?",Long.class,job,kind.equals("downloads")?"IN_FLIGHT":"SENDING")>0) return;
         if(kind.equals("downloads") && jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id=? AND state='REQUESTED'",Long.class,job)>0) return;
         for(var attempt:jdbc.queryForList("SELECT id FROM job_retry_attempts WHERE kind=? AND job_id=? AND finished_at IS NULL",String.class,kind,job)) {
@@ -33,6 +33,32 @@ public class JobRetryHistory {
             }
             jdbc.update("UPDATE job_retry_attempts SET finished_at=?,result=? WHERE id=?",timestamp(rows.getFirst().get("updated_at")),rows.getFirst().get("state"),attempt);
         }
+    }
+    /** Explicit reconciliation is an attempt boundary too, including paused uncertain uploads. */
+    @Transactional
+    public String resolution(String job,String item,String phase,com.rlibanez.eplsync.events.EventContext.Actor actor) {
+        if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items WHERE job_id=? AND state='SENDING'",Long.class,job)>0) throw new com.rlibanez.eplsync.exception.UserInputException("Espera a que termine el envío en curso");
+        long now=Instant.now().toEpochMilli();
+        for(String attempt:jdbc.queryForList("SELECT id FROM job_retry_attempts WHERE kind='calibre' AND job_id=? AND finished_at IS NULL",String.class,job)) {
+            for(String previous:jdbc.queryForList("SELECT item_id FROM job_retry_attempt_items WHERE attempt_id=?",String.class,attempt)) {
+                var current=jdbc.queryForMap("SELECT * FROM calibre_job_items WHERE id=? AND job_id=?",previous,job);
+                jdbc.update("UPDATE job_retry_attempt_items SET after_item=? WHERE attempt_id=? AND item_id=?",json.writeValueAsString(current),attempt,previous);
+            }
+            jdbc.update("UPDATE job_retry_attempts SET finished_at=?,result='PAUSED' WHERE id=?",now,attempt);
+        }
+        String id=UUID.randomUUID().toString();
+        long created=Math.max(now,jdbc.queryForObject("SELECT coalesce(max(created_at),0)+1 FROM job_retry_attempts WHERE kind='calibre' AND job_id=?",Long.class,job));
+        jdbc.update("INSERT INTO job_retry_attempts(id,kind,job_id,owner_id,username,created_at,before_job) VALUES(?,'calibre',?,?,?,?,?)",id,job,actor.id(),Objects.toString(actor.username(),"Sistema"),created,json.writeValueAsString(jdbc.queryForMap("SELECT * FROM calibre_jobs WHERE id=?",job)));
+        jdbc.update("INSERT INTO job_retry_attempt_items(attempt_id,item_id,position,phase,before_item) VALUES(?,?,0,?,?)",id,item,phase,json.writeValueAsString(jdbc.queryForMap("SELECT * FROM calibre_job_items WHERE id=?",item)));
+        return id;
+    }
+    @Transactional
+    public void resolved(String attempt,String item) {
+        jdbc.update("UPDATE job_retry_attempt_items SET after_item=? WHERE attempt_id=? AND item_id=?",json.writeValueAsString(jdbc.queryForMap("SELECT * FROM calibre_job_items WHERE id=?",item)),attempt,item);
+        jdbc.update("UPDATE job_retry_attempts SET finished_at=?,result='COMPLETED' WHERE id=?",Instant.now().toEpochMilli(),attempt);
+    }
+    private boolean pausedBoundary(String kind,String job) {
+        return kind.equals("downloads") && Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM torrent_bulk_jobs j WHERE j.id=? AND j.state='PAUSED' AND j.type='UPDATE' AND EXISTS(SELECT 1 FROM torrent_bulk_items i WHERE i.job_id=j.id AND i.state='FAILED') AND NOT EXISTS(SELECT 1 FROM torrent_bulk_items i WHERE i.job_id=j.id AND i.state IN ('PENDING','IN_FLIGHT')))",Boolean.class,job));
     }
     private Map<String,Object> snapshot(String kind,String job,Map<String,Object> row) {
         var result=new LinkedHashMap<>(row);
@@ -56,7 +82,7 @@ public class JobRetryHistory {
         long total=jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE kind=? AND job_id=?",Long.class,kind,job);
         var current=jdbc.queryForMap("SELECT state,updated_at FROM "+jobs(kind)+" WHERE id=?",job);
         String state=current.get("state").toString();
-        Long finished=Set.of("COMPLETED","CANCELLED").contains(state)?timestamp(current.get("updated_at")):null;
+        Long finished=Set.of("COMPLETED","CANCELLED").contains(state) || pausedBoundary(kind,job)?timestamp(current.get("updated_at")):null;
         var rows=jdbc.query("SELECT a.*,(SELECT count(*) FROM job_retry_attempt_items i WHERE i.attempt_id=a.id) total FROM job_retry_attempts a WHERE kind=? AND job_id=? ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",(r,n)->new Attempt(r.getString("id"),r.getLong("created_at"),r.getObject("finished_at")==null?finished:Long.valueOf(r.getLong("finished_at")),r.getString("username"),Objects.requireNonNullElse(r.getString("result"),state),r.getLong("total")),kind,job,size,(long)page*size);
         return new PageResponse<>(rows,meta(page,size,total));
     }

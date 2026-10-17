@@ -1,5 +1,6 @@
 import { stateOperatorProps } from "../../components/StateOperator";
 import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
+import { ResolveCalibreUpload } from "./ResolveCalibreUpload";
 import { useJobRetry } from "../jobs/useJobRetry";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { PageTitle } from "../../components/PageTitle";
@@ -822,6 +823,19 @@ export function CalibreJobDetail() {
                             ) : (
                               "—"
                             )}
+                            {item.state === "UNCERTAIN" &&
+                              ["PAUSED", "CANCELLED"].includes(value.state) &&
+                              can("CALIBRE_JOBS_MANAGE") &&
+                              can("CALIBRE_SEND") &&
+                              can("DOWNLOADS_FILES_READ") && (
+                                <>
+                                  <br />
+                                  <ResolveCalibreUpload
+                                    jobId={value.id}
+                                    itemId={item.id}
+                                  />
+                                </>
+                              )}
                             {item.downloadJobId &&
                               can("TORRENT_JOBS_MANAGE") && (
                                 <>

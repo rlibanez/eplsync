@@ -500,7 +500,7 @@ public class BulkStore {
         if (job.getState() != BulkJob.State.RUNNING) return false;
         String reason = !properties.isEnabled() ? "La integración torrent se ha desactivado"
                 : !job.getTargetFingerprint().equals(fingerprint()) ? "El destino configurado ha cambiado"
-                : retryAuthorization!=null && !retryAuthorization.torrent(id,false,false) ? "El usuario del reintento ya no está autorizado para enviar torrents" : null;
+                : retryAuthorization!=null && !retryAuthorization.torrent(id,false,false) ? "El usuario del trabajo ya no está autorizado para enviar torrents" : null;
         if (reason == null) return true;
         // If everything is already in flight, let its normal completion finalize the job.
         if (count(id, BulkItem.State.PENDING) == 0) return true;
@@ -558,10 +558,12 @@ public class BulkStore {
             "select count(c) from UpdateCleanup c where c.jobId=:job and c.state in :pending",Long.class)
             .setParameter("job",job.getId()).setParameter("pending",com.rlibanez.eplsync.torrent.updates.CleanupQueue.PENDING)
             .getSingleResult() : 0;
-        var state=unfinishedCleanup>0 ? BulkJob.State.CLEANUP_WAIT : BulkJob.State.COMPLETED;
+        boolean failedReplacement=unfinishedCleanup>0 && count(job.getId(),BulkItem.State.FAILED)>0;
+        var state=failedReplacement ? BulkJob.State.PAUSED : unfinishedCleanup>0 ? BulkJob.State.CLEANUP_WAIT : BulkJob.State.COMPLETED;
         if (job.getState()==state) return;
-        job.setState(state); job.setUpdatedAt(Instant.now()); job.setMessage(null); job.setRetryAt(null);
+        job.setState(state); job.setUpdatedAt(Instant.now()); job.setMessage(failedReplacement ? "Falló el envío de una revisión de sustitución; reintenta los elementos fallidos para continuar la limpieza" : null); job.setRetryAt(null);
         jobs.saveAndFlush(job);
+        if(failedReplacement) event(job,com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED);
         if(state==BulkJob.State.COMPLETED) event(job, count(job.getId(), BulkItem.State.FAILED)>0
             ? com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL : com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
     }

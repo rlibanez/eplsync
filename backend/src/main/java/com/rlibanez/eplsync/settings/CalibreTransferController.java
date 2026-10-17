@@ -31,6 +31,9 @@ public class CalibreTransferController {
 
     @GetMapping("/{id}") public CalibreTransfers.Job job(@PathVariable String id) {return transfers.job(id);}
     @GetMapping("/{id}/items") public CalibreTransfers.Page<CalibreTransfers.Item> items(@PathVariable String id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,@RequestParam(defaultValue="") String state,@RequestParam(defaultValue="") String detail,@RequestParam(defaultValue="eq") String statusOperator,@RequestParam org.springframework.util.MultiValueMap<String,String> params) {return transfers.items(id,page,size,state,detail,params.getOrDefault("sort",List.of("position,asc")),statusOperator);}
+    @PostMapping("/{id}/resolution")
+    @PreAuthorize("hasAuthority('CALIBRE_JOBS_MANAGE') and hasAuthority('CALIBRE_SEND') and hasAuthority('DOWNLOADS_FILES_READ')")
+    public CalibreTransfers.Job resolve(@PathVariable String id,@RequestBody CalibreTransfers.Resolution input) {return transfers.resolve(id,input);}
     @PostMapping("/{id}/{command}")
     @PreAuthorize("hasAuthority('CALIBRE_JOBS_MANAGE')")
     public CalibreTransfers.Job control(@PathVariable String id,@PathVariable String command) {return transfers.control(id,command);}

@@ -391,4 +391,11 @@ class JobRetriesTests {
     @Test @WithMockUser(authorities={"TORRENT_JOBS_MANAGE","CALIBRE_JOBS_MANAGE"}) void retriesRespectSendPermissions() throws Exception {
         var parent=torrentJob("COMPLETED","FAILED");assertThatThrownBy(()->failed("downloads",parent)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
+
+    @Test void newAttemptGetsAFreshTransientFailureBudget() throws Exception {
+        String parent=calibreJob("CANCELLED","CANCELLED");
+        jdbc.update("UPDATE calibre_job_items SET transient_attempts=4 WHERE job_id=?",parent);
+        create("calibre",parent,selected("calibre",parent,parent+"-0"));
+        assertThat(jdbc.queryForObject("SELECT transient_attempts FROM calibre_job_items WHERE job_id=?",Integer.class,parent)).isZero();
+    }
 }

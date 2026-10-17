@@ -1,4 +1,10 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { Alert, Button, Checkbox, Select, Stack } from "@mantine/core";
 import { Upload } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -31,7 +37,8 @@ type Prepared = {
 };
 type Selection = { ids: string[] } | { filters: Record<string, unknown> };
 const Sender = createContext<((selection: Selection) => void) | null>(null);
-const requestIdentifier = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const requestIdentifier = () =>
+  `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const key = (file: Candidate) => `${file.recordId}:${file.index}`;
 export function CalibreSendProvider({ children }: { children: ReactNode }) {
   const [opened, setOpened] = useState(false),
@@ -40,8 +47,8 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
     [requestId, setRequestId] = useState(""),
     [chosen, setChosen] = useState<string[]>([]),
     [library, setLibrary] = useState<string | null>(null);
-  const [filePage,setFilePage] = useState(0);
-  const chosenSet=useMemo(()=>new Set(chosen),[chosen]);
+  const [filePage, setFilePage] = useState(0);
+  const chosenSet = useMemo(() => new Set(chosen), [chosen]);
   const { t } = useTranslation();
   const auth = useAuth();
   const { revision } = useLocale();
@@ -49,7 +56,12 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
   const cache = useQueryClient();
   const prepare = useMutation({
     mutationFn: (selected: Selection) =>
-      post<Prepared>("filters" in selected ? "/calibre/transfers/catalog/prepare" : "/calibre/transfers/prepare", selected),
+      post<Prepared>(
+        "filters" in selected
+          ? "/calibre/transfers/catalog/prepare"
+          : "/calibre/transfers/prepare",
+        selected,
+      ),
     retry: false,
     onSuccess: (data) => {
       setChosen(data.files.map(key));
@@ -62,14 +74,34 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
   });
   const send = useMutation({
     mutationFn: () =>
-      post<{ id: string }>("filters" in selection ? "/calibre/transfers/catalog" : "/calibre/transfers", {
-        ...("filters" in selection ? {id: requestId, books: prepare.data?.books, download, pending: [...(download ? prepare.data?.missing?.map(book => book.eplId) ?? [] : []), ...(prepare.data?.deferred?.map(book=>book.eplId) ?? [])]} : {}),
-        library,
-        ...("filters" in selection || !prepare.data?.deferredRecords?.length ? {} : {deferredRecords: prepare.data.deferredRecords}),
-        files: prepare.data?.files
-          .filter((f) => chosenSet.has(key(f)))
-          .map((f) => ({ recordId: f.recordId, index: f.index })),
-      }),
+      post<{ id: string }>(
+        "filters" in selection
+          ? "/calibre/transfers/catalog"
+          : "/calibre/transfers",
+        {
+          ...("filters" in selection
+            ? {
+                id: requestId,
+                books: prepare.data?.books,
+                download,
+                pending: [
+                  ...(download
+                    ? (prepare.data?.missing?.map((book) => book.eplId) ?? [])
+                    : []),
+                  ...(prepare.data?.deferred?.map((book) => book.eplId) ?? []),
+                ],
+              }
+            : {}),
+          id: requestId,
+          library,
+          ...("filters" in selection || !prepare.data?.deferredRecords?.length
+            ? {}
+            : { deferredRecords: prepare.data.deferredRecords }),
+          files: prepare.data?.files
+            .filter((f) => chosenSet.has(key(f)))
+            .map((f) => ({ recordId: f.recordId, index: f.index })),
+        },
+      ),
     retry: false,
     onSuccess: (job) => {
       setOpened(false);
@@ -81,7 +113,8 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
     <Sender.Provider
       value={(selected) => {
         setSelection(selected);
-        setDownload(false);setFilePage(0);
+        setDownload(false);
+        setFilePage(0);
         setRequestId(requestIdentifier());
         prepare.reset();
         send.reset();
@@ -102,7 +135,10 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
         {prepare.isPending ? (
           <Loading />
         ) : prepare.isError ? (
-          <Failure error={prepare.error} retry={() => prepare.mutate(selection)} />
+          <Failure
+            error={prepare.error}
+            retry={() => prepare.mutate(selection)}
+          />
         ) : (
           prepare.data && (
             <Stack gap="md">
@@ -114,7 +150,10 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                   label: l.name,
                 }))}
                 value={library}
-                onChange={(value) => {setLibrary(value);setRequestId(requestIdentifier());}}
+                onChange={(value) => {
+                  setLibrary(value);
+                  setRequestId(requestIdentifier());
+                }}
                 allowDeselect={false}
                 disabled={send.isPending}
               />
@@ -130,42 +169,87 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                     {file.name}: {t("epubDownload.sizeWarning")}
                   </Alert>
                 ))}
-              {!!prepare.data.missing?.length && <>
-                <Alert color="yellow">{t("calibreSend.missing", {count: prepare.data.missing.length})}</Alert>
-                <Checkbox
-                  label={t("calibreSend.downloadMissing")}
-                  checked={download}
-                  disabled={send.isPending || !auth.can("TORRENT_SEND") || !auth.can("TORRENT_SYNC")}
-                  onChange={event => {setDownload(event.currentTarget.checked);setRequestId(requestIdentifier());}}
-                />
-              </>}
-              {!!((prepare.data.deferred?.length ?? 0) || (prepare.data.deferredRecords?.length ?? 0)) && <Alert>{t("calibreSend.deferred",{count: prepare.data.deferred?.length || prepare.data.deferredRecords?.length})}</Alert>}
+              {!!prepare.data.missing?.length && (
+                <>
+                  <Alert color="yellow">
+                    {t("calibreSend.missing", {
+                      count: prepare.data.missing.length,
+                    })}
+                  </Alert>
+                  <Checkbox
+                    label={t("calibreSend.downloadMissing")}
+                    checked={download}
+                    disabled={
+                      send.isPending ||
+                      !auth.can("TORRENT_SEND") ||
+                      !auth.can("TORRENT_SYNC")
+                    }
+                    onChange={(event) => {
+                      setDownload(event.currentTarget.checked);
+                      setRequestId(requestIdentifier());
+                    }}
+                  />
+                </>
+              )}
+              {!!(
+                (prepare.data.deferred?.length ?? 0) ||
+                (prepare.data.deferredRecords?.length ?? 0)
+              ) && (
+                <Alert>
+                  {t("calibreSend.deferred", {
+                    count:
+                      prepare.data.deferred?.length ||
+                      prepare.data.deferredRecords?.length,
+                  })}
+                </Alert>
+              )}
               <fieldset className="send-options-group">
                 <legend>{t("calibreSend.files")}</legend>
                 <Stack gap="sm">
-                  {prepare.data.files.slice(filePage*100,(filePage+1)*100).map((file) => (
-                    <Checkbox
-                      key={key(file)}
-                      label={`${file.name} · EPL ID ${file.eplId} · ${t("downloads.revision")} ${revision(file.revision)}`}
-                      checked={chosenSet.has(key(file))}
-                      disabled={send.isPending}
-                      onChange={(e) => {
-                        const checked = e.currentTarget.checked;
-                        setRequestId(requestIdentifier());
-                        setChosen((previous) =>
-                          checked
-                            ? [...previous, key(file)]
-                            : previous.filter((value) => value !== key(file)),
-                        );
-                      }}
-                    />
-                  ))}
+                  {prepare.data.files
+                    .slice(filePage * 100, (filePage + 1) * 100)
+                    .map((file) => (
+                      <Checkbox
+                        key={key(file)}
+                        label={`${file.name} · EPL ID ${file.eplId} · ${t("downloads.revision")} ${revision(file.revision)}`}
+                        checked={chosenSet.has(key(file))}
+                        disabled={send.isPending}
+                        onChange={(e) => {
+                          const checked = e.currentTarget.checked;
+                          setRequestId(requestIdentifier());
+                          setChosen((previous) =>
+                            checked
+                              ? [...previous, key(file)]
+                              : previous.filter((value) => value !== key(file)),
+                          );
+                        }}
+                      />
+                    ))}
                 </Stack>
-                {prepare.data.files.length>100 && <div className="pagination">
-                  <Button variant="subtle" disabled={!filePage} onClick={()=>setFilePage(page=>page-1)}>{t("catalog.previous")}</Button>
-                  <span>{filePage+1} / {Math.ceil(prepare.data.files.length/100)}</span>
-                  <Button variant="subtle" disabled={(filePage+1)*100>=prepare.data.files.length} onClick={()=>setFilePage(page=>page+1)}>{t("catalog.next")}</Button>
-                </div>}
+                {prepare.data.files.length > 100 && (
+                  <div className="pagination">
+                    <Button
+                      variant="subtle"
+                      disabled={!filePage}
+                      onClick={() => setFilePage((page) => page - 1)}
+                    >
+                      {t("catalog.previous")}
+                    </Button>
+                    <span>
+                      {filePage + 1} /{" "}
+                      {Math.ceil(prepare.data.files.length / 100)}
+                    </span>
+                    <Button
+                      variant="subtle"
+                      disabled={
+                        (filePage + 1) * 100 >= prepare.data.files.length
+                      }
+                      onClick={() => setFilePage((page) => page + 1)}
+                    >
+                      {t("catalog.next")}
+                    </Button>
+                  </div>
+                )}
               </fieldset>
               <p className="muted">{t("calibreSend.duplicates")}</p>
               {send.isError && (
@@ -185,7 +269,14 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
             {t("import.cancel")}
           </Button>
           <Button
-            disabled={!prepare.isSuccess || !library || (!chosen.length && !prepare.data?.deferred?.length && !prepare.data?.deferredRecords?.length && !(download && prepare.data?.missing?.length))}
+            disabled={
+              !prepare.isSuccess ||
+              !library ||
+              (!chosen.length &&
+                !prepare.data?.deferred?.length &&
+                !prepare.data?.deferredRecords?.length &&
+                !(download && prepare.data?.missing?.length))
+            }
             loading={send.isPending}
             onClick={() => send.mutate()}
           >
@@ -219,7 +310,10 @@ export function SendToCalibre({
   )
     return null;
   return inline ? (
-    <TableAction label={t("calibreSend.title")} onClick={() => open(filters ? { filters } : { ids: ids ?? [] })}>
+    <TableAction
+      label={t("calibreSend.title")}
+      onClick={() => open(filters ? { filters } : { ids: ids ?? [] })}
+    >
       <Upload size={16} aria-hidden="true" />
     </TableAction>
   ) : (

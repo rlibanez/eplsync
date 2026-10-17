@@ -23,6 +23,7 @@ public class CatalogCalibreTransfers {
     private final CatalogBookService catalog;
     private final DownloadRepository downloads;
     private final DownloadTrackingService tracking;
+    private final DownloadDependencies dependencies;
     private final EpubFiles epub;
     private final CalibreSettings settings;
     private final CalibreClient client;
@@ -33,9 +34,9 @@ public class CatalogCalibreTransfers {
     private final tools.jackson.databind.json.JsonMapper json;
     public CatalogCalibreTransfers(CatalogBookService catalog,DownloadRepository downloads,DownloadTrackingService tracking,
             EpubFiles epub,CalibreSettings settings,CalibreClient client,CalibreTransfers transfers,BulkStore bulk,
-            org.springframework.jdbc.core.JdbcTemplate jdbc,org.springframework.transaction.PlatformTransactionManager manager) {
+            org.springframework.jdbc.core.JdbcTemplate jdbc,org.springframework.transaction.PlatformTransactionManager manager,DownloadDependencies dependencies) {
         this.catalog=catalog;this.downloads=downloads;this.tracking=tracking;this.epub=epub;this.settings=settings;
-        this.client=client;this.transfers=transfers;this.bulk=bulk;this.jdbc=jdbc;this.manager=manager;
+        this.client=client;this.transfers=transfers;this.bulk=bulk;this.jdbc=jdbc;this.manager=manager;this.dependencies=dependencies;
         this.json=tools.jackson.databind.json.JsonMapper.builder().build();
     }
     private static void require() {
@@ -46,6 +47,7 @@ public class CatalogCalibreTransfers {
         if(selection==null || selection.filters()==null) throw new UserInputException("Selecciona libros del catálogo");
         var books=books(selection.filters());
         if(books.isEmpty()) throw new UserInputException("Selecciona libros del catálogo");
+        if(Permission.has(Permission.TORRENT_SYNC)) dependencies.refresh(books.stream().map(book -> Objects.requireNonNull(book).eplId()).toList());
         var connection=settings.connection();var check=client.check(connection);
         var candidates=new ArrayList<CalibreTransfers.Candidate>();var missing=new ArrayList<Book>();var deferred=new ArrayList<Book>();var deferredIds=new HashMap<Long,String>();
         var records=new HashMap<Long,List<DownloadRecord>>();
@@ -134,14 +136,9 @@ public class CatalogCalibreTransfers {
                 if(!current.equals(request.books())) throw new UserInputException("El catálogo cambió; vuelve a preparar el envío");
                 var dependencies=new HashMap<Long,String>();var missing=new ArrayList<Long>();
                 var needed=waits.stream().filter(book->!deferredRecords.containsKey(book.eplId())).toList();
-                for(int offset=0;offset<needed.size();offset+=500) {
-                    var batch=needed.subList(offset,Math.min(offset+500,needed.size()));
-                    var placeholders=String.join(",",Collections.nCopies(batch.size(),"?"));
-                    var args=new ArrayList<Object>();args.add(instance);args.add(instance);batch.forEach(book->args.add(book.eplId()));
-                    var active=jdbc.queryForList("SELECT i.epl_id,i.revision,i.job_id FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE j.target_fingerprint=? AND j.state<>'CANCELLED' AND (i.state IN ('PENDING','IN_FLIGHT') OR (i.state IN ('ACCEPTED','ALREADY_EXISTS') AND EXISTS(SELECT 1 FROM torrent_downloads present WHERE present.client_instance_id=j.target_fingerprint AND present.hash=i.hash AND present.status NOT IN ('ERROR','NOT_FOUND')))) AND NOT EXISTS(SELECT 1 FROM torrent_downloads d WHERE d.client_instance_id=? AND d.hash=i.hash AND d.status IN ('ERROR','NOT_FOUND')) AND i.epl_id IN ("+placeholders+") ORDER BY j.created_at DESC",args.toArray());
-                    for(var row:active) {long epl=((Number)row.get("epl_id")).longValue();if(Double.compare(((Number)row.get("revision")).doubleValue(),pinned.get(epl).revision())==0) dependencies.putIfAbsent(epl,(String)row.get("job_id"));}
-                    for(var book:batch) if(!dependencies.containsKey(book.eplId())) missing.add(book.eplId());
-                }
+                var wanted=new HashMap<Long,Double>();needed.forEach(book->wanted.put(book.eplId(),book.revision()));
+                dependencies.putAll(this.dependencies.reusable(wanted));
+                needed.forEach(book->{if(!dependencies.containsKey(book.eplId())) missing.add(book.eplId());});
                 String downloadId=null;
                 if(!missing.isEmpty()) {
                     var downloadFilter=new CatalogBookFilter();downloadFilter.setSelectedIds(missing.toArray(Long[]::new));

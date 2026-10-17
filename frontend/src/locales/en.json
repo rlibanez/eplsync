@@ -1673,7 +1673,15 @@
     },
     "cancel": "Cancel",
     "detail": "Details",
-    "deferred": "EPUB files for {{count}} books will be checked during the job, without querying them all when opening the wizard."
+    "deferred": "EPUB files for {{count}} books will be checked during the job, without querying them all when opening the wizard.",
+    "resolve": "Resolve unconfirmed upload",
+    "resolveHelp": "Check the Calibre library first. Verify an existing entry by its ID, or confirm the upload was not received and request a retry in this job.",
+    "resolveVerify": "Verify an existing Calibre entry",
+    "resolveRetry": "Retry the upload not received",
+    "remoteId": "Calibre entry ID",
+    "resolveConfirmBook": "I checked that this entry corresponds to the uploaded EPUB.",
+    "resolveConfirmAbsent": "I checked that the upload is absent from Calibre. It could be duplicated if it already exists without identifiers.",
+    "resolveApply": "Apply resolution"
   },
   "calibreUpdateSend": {
     "open": "Send updates ({{count}})",

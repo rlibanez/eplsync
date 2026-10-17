@@ -16,11 +16,16 @@ public class RetryAuthorization {
         var owners=jdbc.queryForList("SELECT owner_id FROM job_retry_attempts WHERE kind='downloads' AND job_id=? ORDER BY created_at DESC,id DESC LIMIT 1",String.class,id);
         if(owners.isEmpty()) owners=jdbc.queryForList("SELECT owner_id FROM job_retry_jobs WHERE kind='downloads' AND child_id=?",String.class,id);
         if(owners.isEmpty()) owners=jdbc.queryForList("SELECT r.owner_id FROM scheduled_automation_runs r JOIN scheduled_automation_jobs j ON j.run_id=r.id WHERE j.kind='downloads' AND j.job_id=?",String.class,id);
-        if(owners.isEmpty()) return true; // Existing jobs retain their established authorization policy.
+        if(owners.isEmpty()) {
+            var original=jdbc.queryForList("SELECT event_actor_id FROM torrent_bulk_jobs WHERE id=? AND event_actor_id IS NOT NULL",String.class,id);
+            if(original.isEmpty()) original=jdbc.queryForList("SELECT actor_id FROM torrent_update_cleanup WHERE job_id=? AND actor_id IS NOT NULL ORDER BY created_at,id LIMIT 1",String.class,id);
+            if(original.isEmpty()) return true; // Legacy/system jobs without a persisted identity.
+            owners=original;
+        }
         String owner=owners.getFirst();var account=owner==null?null:accounts.find(owner);
         return account!=null && account.status().equals("ACTIVE") && !account.mustChangePassword()
             && (account.temporaryExpiresAt()==null || account.temporaryExpiresAt().isAfter(Instant.now()))
-            && account.permissions().contains(cleanup?Permission.TORRENT_CLEANUP:Permission.TORRENT_SEND)
+            && account.permissions().contains(cleanup?Permission.TORRENT_CLEANUP:deleteHistory?Permission.DOWNLOADS_DELETE:Permission.TORRENT_SEND)
             && (!deleteHistory || account.permissions().contains(Permission.DOWNLOADS_DELETE))
             && (!cleanup || !deleteFiles || account.permissions().contains(Permission.TORRENT_FILES_DELETE));
     }

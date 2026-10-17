@@ -32,6 +32,7 @@ class AutomaticUpdatesTests {
     @MockitoBean UpdateSearches searches;
     @MockitoBean CalibreClient client;
     @MockitoBean EpubFiles files;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.rlibanez.eplsync.service.TorrentClientService torrentService;
     @MockitoBean SessionAccess sessions;
     @MockitoBean com.rlibanez.eplsync.service.CatalogImportService catalog;
     Account owner;
@@ -39,6 +40,7 @@ class AutomaticUpdatesTests {
     @BeforeEach void setup() {
         jdbc.update("DELETE FROM scheduled_tasks");jdbc.update("DELETE FROM job_retry_items");jdbc.update("DELETE FROM job_retry_jobs");jdbc.update("DELETE FROM job_retry_previews");
         jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM calibre_update_requests");jdbc.update("DELETE FROM torrent_update_cleanup");jdbc.update("DELETE FROM torrent_update_plans");jdbc.update("DELETE FROM torrent_bulk_items");jdbc.update("DELETE FROM torrent_bulk_jobs");jdbc.update("DELETE FROM torrent_downloads");jdbc.update("DELETE FROM calibre_books");jdbc.update("DELETE FROM catalog_books");accounts.clear();
+        doReturn(null).when(torrentService).exclusiveClient(any());
         owner=accounts.initialize("Owner","owner@example.org","password123","password123");when(sessions.current()).thenReturn(owner);
         calibre.save(new CalibreSettings.Input("http://calibre.test","","",true,"main"));
         when(client.check(any())).thenReturn(new CalibreClient.Check(true,List.of(new CalibreClient.Library("main","Main")),"main"));
@@ -186,5 +188,30 @@ class AutomaticUpdatesTests {
         var task=tasks.save(null,new ScheduledTasks.Input("Automation",ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,"0 5 * * *",owner.id(),true));
         assertThatThrownBy(()->automations.save(task,config(Map.of("limit",1001)))).hasMessageContaining("Configuración");
         assertThatThrownBy(()->automations.save(task,config(Map.of("interval","bad")))).hasMessageContaining("Intervalo");
+    }
+
+    @Test void failedReplacementReopensSameJobAndKeepsCleanupProtected() {
+        var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of("torrentCleanup","removeTorrentAndFiles"));execute(task);
+        String job=automations.latest(task.id()).jobs().getFirst().id();bulk.next();var item=bulk.claim(job,bulk.pending(job,1).getFirst());
+        bulk.finish(item.getId(),BulkItem.State.FAILED,"Rejected",false,false);
+        assertThat(bulk.view(job).status()).isEqualTo(BulkJob.State.PAUSED);
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_update_cleanup WHERE job_id=?",String.class,job)).isEqualTo("WAITING");
+        execute(task);
+        assertThat(bulk.view(job).status()).isEqualTo(BulkJob.State.QUEUED);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class)).isEqualTo(1);
+        assertThat(automations.latest(task.id()).attempts()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_update_cleanup WHERE job_id=?",String.class,job)).isEqualTo("WAITING");
+    }
+
+    @Test void calibreAutomationCreatesNewDownloadWhenEarlierAcceptedTorrentAndRecordAreGone() {
+        var download=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of());execute(download);
+        String old=automations.latest(download.id()).jobs().getFirst().id();
+        jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED' WHERE job_id=?",old);jdbc.update("UPDATE torrent_bulk_jobs SET state='COMPLETED' WHERE id=?",old);
+        var library=task(ScheduledTasks.Operation.CALIBRE_AUTO_UPDATE,Map.of());execute(library);
+        String calibreJob=automations.latest(library.id()).jobs().stream().filter(j->j.kind().equals("calibre")).findFirst().orElseThrow().id();
+        String replacement=jdbc.queryForObject("SELECT download_job_id FROM calibre_job_items WHERE job_id=?",String.class,calibreJob);
+        assertThat(replacement).isNotEqualTo(old);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE job_id=?",String.class,replacement)).isEqualTo("PENDING");
     }
 }

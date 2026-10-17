@@ -21,6 +21,7 @@ interface History {
   source: LinkInfo | null;
   retries: LinkInfo[];
   terminal: boolean;
+  settling?: boolean;
   failed: number;
   reason: string | null;
   attemptCount?: number;
@@ -58,6 +59,7 @@ export function useJobRetry(
     queryFn: ({ signal }) => get<History>(url, signal),
     enabled: !!id && manage,
     retry: false,
+    refetchInterval: (query) => (query.state.data?.settling ? 3000 : false),
   });
   const prepare = useMutation({
     mutationFn: (items: string[] | null) =>
@@ -107,7 +109,7 @@ export function useJobRetry(
     manage &&
     permitted &&
     !!history.data?.terminal &&
-    ["COMPLETED", "CANCELLED"].includes(state ?? "");
+    ["COMPLETED", "CANCELLED", "PAUSED"].includes(state ?? "");
   const count = prepare.data
     ? prepare.data.send +
       prepare.data.verify +

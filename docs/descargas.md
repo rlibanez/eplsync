@@ -157,3 +157,17 @@ que al resto del trabajo.
 Los enlaces entre trabajos de reintento creados con versiones anteriores se
 conservan. Los elementos ya transferidos a uno de esos trabajos quedan excluidos
 en el original; hay que continuar desde el trabajo enlazado.
+
+Si falla el envío de una revisión de sustitución, el trabajo de actualización
+queda pausado con un motivo explícito, conservando pendientes los borrados.
+**Reintentar fallidos** recupera el envío dentro del mismo trabajo, con historial,
+sin cancelar ni duplicar las solicitudes de limpieza. Las automatizaciones pueden
+hacer ese reintento dentro de su presupuesto configurado. La revisión antigua no
+se elimina hasta cumplir la condición de sustitución correspondiente.
+
+Los trabajos manuales con propietario identificado vuelven a comprobar su cuenta
+y permisos antes de nuevos envíos y borrados, igual que los reintentos y las tareas
+programadas. Desactivar la cuenta, eliminarla o retirar permisos impide nuevas
+operaciones; una petición ya iniciada puede terminar y se conserva su resultado.
+La interfaz sigue actualizando los trabajos cancelados mientras queden envíos en
+curso, y actualiza la disponibilidad de los reintentos cuando terminan.

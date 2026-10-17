@@ -40,7 +40,7 @@ public class JobRetries {
         this.settings=settings;this.calibre=calibre;this.files=files;this.events=events;
     }
     public record Link(String kind,String jobId,String parentId,String rootId) {}
-    public record History(Link source,List<Link> retries,boolean terminal,long failed,String reason,long attemptCount) {}
+    public record History(Link source,List<Link> retries,boolean terminal,long failed,String reason,long attemptCount,boolean settling) {}
     public record Issue(String id,String detail) {}
     public record Preview(String token,int send,int verify,int waiting,int cleanup,int excluded,List<Issue> issues,List<String> changes,String library) {}
     public record Work(String id,String phase,Map<String,Object> row,List<Map<String,Object>> cleanup) {}
@@ -55,7 +55,10 @@ public class JobRetries {
         if(rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Trabajo no encontrado");return rows.getFirst();
     }
     private boolean terminal(String kind,String id,Map<String,Object> job) {
-        if(!Set.of("COMPLETED","CANCELLED").contains(job.get("state"))) return false;
+        boolean replacementFailed=kind.equals("downloads") && "PAUSED".equals(job.get("state")) && "UPDATE".equals(job.get("type"))
+            && jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state='FAILED'",Long.class,id)>0
+            && jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state IN ('PENDING','IN_FLIGHT')",Long.class,id)==0;
+        if(!Set.of("COMPLETED","CANCELLED").contains(job.get("state")) && !replacementFailed) return false;
         if(jdbc.queryForObject("SELECT count(*) FROM "+items(kind)+" WHERE job_id=? AND state=?",Long.class,id,kind.equals("downloads")?"IN_FLIGHT":"SENDING")>0) return false;
         return !kind.equals("downloads") || jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id=? AND state='REQUESTED'",Long.class,id)==0;
     }
@@ -64,7 +67,9 @@ public class JobRetries {
         var source=jdbc.query("SELECT * FROM job_retry_jobs WHERE kind=? AND child_id=?",(r,n)->new Link(kind,id,r.getString("parent_id"),r.getString("root_id")),kind,id);
         var children=jdbc.query("SELECT * FROM job_retry_jobs WHERE kind=? AND parent_id=? ORDER BY created_at,child_id",(r,n)->new Link(kind,r.getString("child_id"),id,r.getString("root_id")),kind,id);
         long failed=jdbc.queryForObject("SELECT count(*) FROM "+items(kind)+" i WHERE job_id=? AND state='FAILED' AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind=? AND r.parent_id=? AND r.source_item_id=i.id)",Long.class,id,kind,id);
-        return new History(source.isEmpty()?null:source.getFirst(),children,terminal,failed,terminal?null:"Para reintentar, termina o cancela el trabajo y espera a que finalicen las operaciones en curso. Los trabajos pausados se reanudan.",jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE kind=? AND job_id=?",Long.class,kind,id));
+        boolean settling=jdbc.queryForObject("SELECT count(*) FROM "+items(kind)+" WHERE job_id=? AND state=?",Long.class,id,kind.equals("downloads")?"IN_FLIGHT":"SENDING")>0
+            || kind.equals("downloads") && jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id=? AND state='REQUESTED'",Long.class,id)>0;
+        return new History(source.isEmpty()?null:source.getFirst(),children,terminal,failed,terminal?null:"Para reintentar, termina o cancela el trabajo y espera a que finalicen las operaciones en curso. Los trabajos pausados se reanudan.",jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE kind=? AND job_id=?",Long.class,kind,id),settling);
     }
     private String configuration(String kind) {
         if(kind.equals("downloads")) return digest(torrent.getClient()+"\n"+torrent.getBaseUrl().replaceAll("/+$",""));
@@ -118,7 +123,7 @@ public class JobRetries {
             if(Thread.currentThread().isInterrupted() || System.nanoTime()>deadline) throw conflict("La preparación ha tardado demasiado; selecciona menos elementos");
             var row=new LinkedHashMap<>(original);String item=(String)row.get("id"),state=(String)row.get("state");
             if(jdbc.queryForObject("SELECT count(*) FROM job_retry_items WHERE kind=? AND parent_id=? AND source_item_id=?",Long.class,kind,id,item)>0) {issues.add(new Issue(item,"Este elemento ya tiene un reintento; continúa desde ese trabajo."));continue;}
-            var cleanup=kind.equals("downloads")?jdbc.queryForList("SELECT * FROM torrent_update_cleanup WHERE job_id=? AND epl_id=? AND state='CANCELLED' AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='downloads' AND r.parent_id=? AND r.source_item_id=torrent_update_cleanup.id) ORDER BY id",id,row.get("epl_id"),id):new ArrayList<Map<String,Object>>();
+            var cleanup=kind.equals("downloads")?jdbc.queryForList("SELECT * FROM torrent_update_cleanup WHERE job_id=? AND epl_id=? AND state IN ('CANCELLED','WAITING','BLOCKED') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='downloads' AND r.parent_id=? AND r.source_item_id=torrent_update_cleanup.id) ORDER BY id",id,row.get("epl_id"),id):new ArrayList<Map<String,Object>>();
             String phase;
             if(kind.equals("downloads")) {
                 if(Set.of("FAILED","CANCELLED").contains(state) && row.get("command_json")!=null && row.get("hash")!=null) phase="SEND";
@@ -247,7 +252,7 @@ public class JobRetries {
             work.cleanup().forEach(c->cleanups.put(c.get("id").toString(),c));
         }
         for(var entry:cleanups.values()) {
-            jdbc.update("UPDATE torrent_update_cleanup SET state='WAITING',message=NULL,replacement_accepted=?,actor_id=?,actor_username=?,updated_at=? WHERE id=? AND job_id=? AND state='CANCELLED'",plan.work().stream().noneMatch(w->Objects.equals(w.row().get("epl_id"),entry.get("epl_id")) && w.phase().equals("SEND")),actor.id(),actor.username(),java.sql.Timestamp.from(Instant.now()),entry.get("id"),id);
+            jdbc.update("UPDATE torrent_update_cleanup SET state='WAITING',message=NULL,replacement_accepted=?,actor_id=?,actor_username=?,updated_at=? WHERE id=? AND job_id=? AND state IN ('CANCELLED','WAITING','BLOCKED')",plan.work().stream().noneMatch(w->Objects.equals(w.row().get("epl_id"),entry.get("epl_id")) && w.phase().equals("SEND")),actor.id(),actor.username(),java.sql.Timestamp.from(Instant.now()),entry.get("id"),id);
         }
         jdbc.update("UPDATE torrent_bulk_jobs SET state='QUEUED',message=NULL,retry_at=NULL,updated_at=?,event_actor_id=?,event_actor_username=?,event_actor_kind='USER',event_origin=? WHERE id=?",java.sql.Timestamp.from(Instant.now()),actor.id(),actor.username(),EventContext.origin().name(),id);
     }
@@ -255,7 +260,7 @@ public class JobRetries {
         for(var work:plan.work()) {
             var row=work.row();
             String state=switch(work.phase()) {case "VERIFY"->"UNCERTAIN";case "WAIT"->"WAITING_DOWNLOAD";case "CLEANUP"->"CLEANUP_PENDING";default->"PENDING";};
-            jdbc.update("UPDATE calibre_job_items SET state=?,name=?,size=?,calibre_id=?,next_check=0,wait_until=?,completion_state=?,cleanup_policy=?,cleanup_ids=?,cleanup_cancelled=0,message=? WHERE id=? AND job_id=?",state,row.get("name"),row.get("size"),work.phase().equals("SEND")?null:row.get("calibre_id"),Instant.now().plus(Duration.ofDays(30)).toEpochMilli(),row.get("completion_state"),row.get("retry_policy"),row.get("retry_cleanup_ids"),bool(row.get("retry_size_warning"))?CalibreTransfers.SIZE_WARNING:null,work.id(),id);
+            jdbc.update("UPDATE calibre_job_items SET state=?,name=?,size=?,calibre_id=?,next_check=0,transient_attempts=0,wait_until=?,completion_state=?,cleanup_policy=?,cleanup_ids=?,cleanup_cancelled=0,message=? WHERE id=? AND job_id=?",state,row.get("name"),row.get("size"),work.phase().equals("SEND")?null:row.get("calibre_id"),Instant.now().plus(Duration.ofDays(30)).toEpochMilli(),row.get("completion_state"),row.get("retry_policy"),row.get("retry_cleanup_ids"),bool(row.get("retry_size_warning"))?CalibreTransfers.SIZE_WARNING:null,work.id(),id);
         }
         jdbc.update("UPDATE calibre_jobs SET state='QUEUED',message=NULL,next_check=0,next_probe=0,updated_at=? WHERE id=?",Instant.now().toString(),id);
     }

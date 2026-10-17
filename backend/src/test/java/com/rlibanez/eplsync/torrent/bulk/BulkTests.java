@@ -42,6 +42,7 @@ class BulkTests {
 
     @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired BulkStore store;
+    @Autowired com.rlibanez.eplsync.security.AccountStore accounts;
     @Autowired com.rlibanez.eplsync.settings.WorkListings listings;
     @Autowired BulkJobRepository jobs;
     @Autowired BulkItemRepository items;
@@ -150,7 +151,8 @@ class BulkTests {
     }
 
     @Test void persistsInitiatorAndAttributesBackgroundCompletion() throws Exception {
-        var actor = new com.rlibanez.eplsync.events.EventContext.Actor("creator-id", "alice", "USER");
+        accounts.clear();var owner=accounts.initialize("alice","alice@example.org","password123","password123");
+        var actor = new com.rlibanez.eplsync.events.EventContext.Actor(owner.id(), "alice", "USER");
         long cursor = events.cursor();
         var job = com.rlibanez.eplsync.events.EventContext.withActor(actor, () -> create(null));
         assertThat(jobs.findById(job.jobId()).orElseThrow().eventActor()).isEqualTo(actor);
@@ -768,5 +770,13 @@ class BulkTests {
         } finally { release.countDown(); }
         until(() -> store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
         assertThat(store.view(job.jobId()).accepted()).isEqualTo(5);
+    }
+
+    @Test void originalJobsStopBeforeDispatchWhenTheirOwnerIsDisabled() {
+        accounts.clear();var owner=accounts.initialize("alice","alice@example.org","password123","password123");
+        var job=com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor(owner.id(),owner.username(),"USER"),()->create(null));
+        accounts.create("otheradmin","other@example.org","ADMIN",owner.id());accounts.update(owner.id(),"ADMIN","DISABLED",java.util.Map.of(),owner.id());
+        store.next();assertThat(store.claim(job.jobId(),store.pending(job.jobId(),1).getFirst())).isNull();
+        assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);verify(client,never()).addTorrent(any());
     }
 }

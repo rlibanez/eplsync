@@ -164,7 +164,7 @@ public class AutomaticUpdates {
                 boolean attention=jobs.stream().anyMatch(j->j.state().equals("PAUSED") || j.state().equals("MISSING"));
                 if(attempts<c.maxRetries()) {
                     boolean retried=false;
-                    for(var job:jobs) if(Set.of("COMPLETED","CANCELLED").contains(job.state()) && failed(job)) {
+                    for(var job:jobs) if((Set.of("COMPLETED","CANCELLED").contains(job.state()) || job.kind().equals("downloads") && job.state().equals("PAUSED") && retries.history(job.kind(),job.id()).terminal()) && failed(job)) {
                         var preview=retries.preview(job.kind(),job.id(),new com.rlibanez.eplsync.jobs.JobRetryController.Selection(null,true));
                         if(!preview.changes().isEmpty() || preview.send()+preview.verify()+preview.waiting()+preview.cleanup()==0) attention=true;
                         if(preview.send()+preview.verify()+preview.waiting()+preview.cleanup()>0 && preview.changes().isEmpty()) {
@@ -172,7 +172,7 @@ public class AutomaticUpdates {
                             tx.executeWithoutResult(s->link(run,child.kind(),child.jobId()));retried=true;
                         }
                     }
-                    if(retried) jdbc.update("UPDATE scheduled_automation_runs SET attempts=attempts+1,state='WAITING' WHERE id=?",run);
+                    if(retried) {jdbc.update("UPDATE scheduled_automation_runs SET attempts=attempts+1,state='WAITING',message=NULL WHERE id=?",run);attention=false;}
                 } else if(jobs.stream().anyMatch(this::failed)) attention=true;
                 if(attention) attention(run);
                 return Map.of("cycle",run,"pending",1);

@@ -74,14 +74,24 @@ public class CalibreClient {
         return new Check(true, list, info.path("default_library").asString(""));
     }
     private <T> T limited(java.util.function.Supplier<T> action) {
-        if (!permits.tryAcquire()) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Hay dos consultas a Calibre en curso; inténtalo de nuevo");
+        if (!permits.tryAcquire()) throw new Busy();
         try { return action.get(); } finally { permits.release(); }
     }
     private JsonNode get(CalibreSettings.Connection c, String path) {
         return request(c,new HttpGet(URI.create(c.url()+path)),false);
     }
+    public static final class PermanentFailure extends ResponseStatusException {
+        public PermanentFailure(String reason) {super(HttpStatus.BAD_GATEWAY,reason);}
+    }
+    public static class TransientFailure extends ResponseStatusException {
+        public TransientFailure(HttpStatus status,String reason,Throwable cause) {super(status,reason,cause);}
+    }
+    public static final class Busy extends TransientFailure {
+        public Busy() {super(HttpStatus.TOO_MANY_REQUESTS,"La capacidad de consultas de Calibre está ocupada; se reintentará automáticamente",null);}
+    }
     public static class UnconfirmedUpload extends RuntimeException {
-        public UnconfirmedUpload() { super("No se ha confirmado el envío; comprueba Calibre antes de repetirlo"); }
+        public UnconfirmedUpload() {this(null);}
+        public UnconfirmedUpload(Throwable cause) { super("No se ha confirmado el envío; comprueba Calibre antes de repetirlo",cause); }
     }
     private JsonNode request(CalibreSettings.Connection c,org.apache.hc.client5.http.classic.methods.HttpUriRequestBase request,boolean upload) {
         var uri = URI.create(c.url());
@@ -99,7 +109,8 @@ public class CalibreClient {
                 int status = response.getCode();
                 if (status == 401 || status == 403) throw failure("Calibre ha rechazado el acceso; revisa el usuario, la contraseña y los permisos de biblioteca");
                 if (status >= 300 && status < 400) throw failure("Calibre ha respondido con una redirección; configura la URL final del servidor de contenido");
-                if(upload && (status>=500 || status==200 && response.getEntity()==null)) throw new UnconfirmedUpload();
+                if(upload && (status>=500 || status==200 && response.getEntity()==null)) throw new UnconfirmedUpload(new ResponseStatusException(org.springframework.http.HttpStatusCode.valueOf(status),"Respuesta de envío no confirmada"));
+                if (!upload && (status==429 || status>=500)) throw new TransientFailure(HttpStatus.valueOf(status),"Calibre no está disponible temporalmente (HTTP "+status+")",null);
                 if (!upload && status==404) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"El libro ya no existe en Calibre");
                 if (status != 200 || response.getEntity() == null) throw failure("Calibre no ha devuelto una respuesta válida (HTTP " + status + ")");
                 var type = response.getFirstHeader("Content-Type");
@@ -114,7 +125,7 @@ public class CalibreClient {
                 }
             } finally { deadline.cancel(false); }
         } catch (ResponseStatusException | UnconfirmedUpload ex) { throw ex; }
-        catch (Exception ex) { if(upload) throw new UnconfirmedUpload(); throw failure("No se puede consultar Calibre; revisa la URL, que el servidor de contenido esté activo y la conexión de red"); }
+        catch (Exception ex) { if(upload) throw new UnconfirmedUpload(ex); throw new TransientFailure(HttpStatus.BAD_GATEWAY,"No se puede consultar Calibre; revisa la URL, que el servidor de contenido esté activo y la conexión de red",ex); }
     }
     /** Search live identifiers and EPUB format, including later matches with the same revision. */
     public Long findRevision(CalibreSettings.Connection c,long eplId,BigDecimal revision) {
@@ -244,5 +255,5 @@ public class CalibreClient {
     private static String segment(String value) {
         return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
     }
-    private static ResponseStatusException failure(String text) { return new ResponseStatusException(HttpStatus.BAD_GATEWAY, text); }
+    private static ResponseStatusException failure(String text) { return new PermanentFailure(text); }
 }

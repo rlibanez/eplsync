@@ -25,6 +25,7 @@ public class CalibreUpdateFlow {
     }
     public record Result(String downloadJobId,String calibreJobId) {}
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(CalibreUpdateFlow.class);
+    @org.springframework.beans.factory.annotation.Autowired private DownloadDependencies dependencies;
     private final JdbcTemplate jdbc;
     private final CalibreSettings settings;
     private final CalibreClient client;
@@ -49,6 +50,14 @@ public class CalibreUpdateFlow {
     public List<Book> prepare(List<Long> ids) {
         require();
         if(ids==null || ids.isEmpty() || ids.stream().anyMatch(i -> i==null || i<=0) || new HashSet<>(ids).size()!=ids.size()) throw new UserInputException("Selecciona libros únicos");
+        if(Permission.has(Permission.TORRENT_SYNC)) {
+            var epls=new HashSet<Long>();
+            for(int offset=0;offset<ids.size();offset+=500) {
+                var batch=ids.subList(offset,Math.min(offset+500,ids.size()));
+                epls.addAll(jdbc.queryForList("SELECT DISTINCT epl_id FROM calibre_books WHERE active=true AND calibre_id IN ("+String.join(",",Collections.nCopies(batch.size(),"?"))+")",Long.class,batch.toArray()));
+            }
+            dependencies.refresh(epls);
+        }
         var c=settings.connection();client.check(c);
         var result=new ArrayList<Book>();var seenBooks=new HashSet<Long>();long deadline=System.nanoTime()+Duration.ofMinutes(2).toNanos();
         for(long id:ids) {
@@ -138,11 +147,8 @@ public class CalibreUpdateFlow {
             }
             String downloadId=null;
             var dependencies=new HashMap<Long,String>();
-            // Reuse the exact requested revision, including accepted jobs still downloading.
-            if(request.downloadOptions()!=null) for(var b:waits) {
-                var active=jdbc.queryForList("SELECT i.job_id FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND i.revision=? AND j.target_fingerprint=? AND j.state<>'CANCELLED' AND i.state IN ('PENDING','IN_FLIGHT','ACCEPTED','ALREADY_EXISTS') AND NOT EXISTS(SELECT 1 FROM torrent_downloads d WHERE d.client_instance_id=? AND d.hash=i.hash AND d.status IN ('ERROR','NOT_FOUND')) ORDER BY j.created_at DESC LIMIT 1",String.class,b.eplId(),b.revision(),tracking.instanceId(),tracking.instanceId());
-                if(!active.isEmpty()) dependencies.put(b.eplId(),active.getFirst());
-            }
+            var wanted=new HashMap<Long,Double>();waits.forEach(book->wanted.put(book.eplId(),book.revision()));
+            dependencies.putAll(this.dependencies.reusable(wanted));
             missing.removeAll(dependencies.keySet());
             if(!missing.isEmpty()) {
                 var filter=new CatalogBookFilter();filter.setSelectedIds(missing.toArray(Long[]::new));
@@ -195,15 +201,18 @@ public class CalibreUpdateFlow {
             if(hashRows.isEmpty() || hashRows.stream().allMatch(r -> Set.of("FAILED","CANCELLED","SKIPPED").contains(r.get("state")))) throw new UserInputException("El envío al cliente torrent falló, se canceló o ya no existe");
             for(var r:hashRows) if(Set.of("ACCEPTED","ALREADY_EXISTS").contains(r.get("state"))) hashes.add((String)r.get("hash"));
         }
+        boolean recordFound=false;
         for(var d:downloads.findByEplIdIn(List.of(item.eplId()))) {
             if(!d.getClientInstanceId().equals(tracking.instanceId()) || (downloadId==null?!d.getId().equals(item.recordId()):!hashes.contains(d.getHash())) || Double.compare(d.getRevision(),Double.parseDouble(item.revision()))!=0) continue;
+            recordFound=true;
             if(d.getStatus()==DownloadStatus.NOT_FOUND || d.getStatus()==DownloadStatus.ERROR) throw new UserInputException("El torrent no está disponible o tiene un error; revisa Estado de las descargas");
             if(d.getStatus()!=DownloadStatus.DOWNLOADED) continue;
             var available=files.list(d.getId());
             if(available.size()!=1) throw new UserInputException("La descarga no contiene un único EPUB; selecciona el archivo manualmente en Estado de las descargas");
             var f=available.getFirst();if(f.size()>268435456) throw new UserInputException("El EPUB supera 256 MiB");
-            jdbc.update("UPDATE calibre_job_items SET state='PENDING',record_id=?,file_index=?,name=?,size=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",d.getId(),f.index(),f.name(),f.size(),f.size()!=f.expectedSize()?CalibreTransfers.SIZE_WARNING:null,item.id());return true;
+            jdbc.update("UPDATE calibre_job_items SET state='PENDING',transient_attempts=0,next_check=0,record_id=?,file_index=?,name=?,size=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",d.getId(),f.index(),f.name(),f.size(),f.size()!=f.expectedSize()?CalibreTransfers.SIZE_WARNING:null,item.id());return true;
         }
+        if(!hashes.isEmpty() && !recordFound) throw new UserInputException("El registro de la descarga aceptada ya no existe; prepara un nuevo envío desde el Catálogo");
         jdbc.update("UPDATE calibre_job_items SET next_check=? WHERE id=?",Instant.now().plus(internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE)).toEpochMilli(),item.id());return false;
     }
     void cleanup(String job,CalibreSettings.Connection c,CalibreTransfers.Item item) {

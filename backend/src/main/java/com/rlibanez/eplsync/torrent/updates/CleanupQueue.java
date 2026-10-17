@@ -154,6 +154,9 @@ public class CleanupQueue {
             }
             touch(entry);
             try {
+                if(entry.getState()!=UpdateCleanup.State.REQUESTED && retryAuthorization!=null && !retryAuthorization.torrent(entry.getJobId(),entry.getPreviousVersions()!=PreviousVersions.KEEP,entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES,Boolean.TRUE.equals(entry.getDeleteHistory()))) {
+                    save(entry,UpdateCleanup.State.BLOCKED,"El usuario del trabajo ya no tiene permisos para eliminar estas revisiones");continue;
+                }
                 var old=byHash.get(entry.getHash());
                 if (old==null && entry.getPreviousVersions()!=PreviousVersions.KEEP) { resolve(Set.of(entry.getHash())); continue; }
                 var job=entry.getJobId()==null ? null : em.find(com.rlibanez.eplsync.torrent.bulk.BulkJob.class,entry.getJobId());
@@ -318,7 +321,7 @@ public class CleanupQueue {
             var blocker=blockingCalibre(entry.getHash(),entry.getClientInstanceId());
             if(blocker!=null) {save(entry,UpdateCleanup.State.WAITING,blocker.message());return false;}
             if(retryAuthorization!=null && !retryAuthorization.torrent(entry.getJobId(),entry.getPreviousVersions()!=PreviousVersions.KEEP,entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES,Boolean.TRUE.equals(entry.getDeleteHistory()))) {
-                save(entry,UpdateCleanup.State.BLOCKED,"El usuario del reintento ya no tiene permisos para eliminar estas revisiones");return false;
+                save(entry,UpdateCleanup.State.BLOCKED,"El usuario del trabajo ya no tiene permisos para eliminar estas revisiones");return false;
             }
             save(entry,UpdateCleanup.State.REQUESTED,message);return true;
         }));}

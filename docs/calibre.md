@@ -357,3 +357,36 @@ deben incluirse en la recuperación para no procesarlas implícitamente.
 
 Los enlaces históricos a otros trabajos se mantienen y los elementos transferidos
 a ellos no se vuelven a ejecutar desde el original.
+
+### Recuperación y coordinación de trabajos
+
+El envío desde Catálogo y las actualizaciones de Calibre comparten la comprobación
+de descargas. Las descargas en cola o en curso pueden reutilizarse; un trabajo
+histórico aceptado requiere además un registro actual disponible. Cuando se dispone
+del permiso de sincronización, la preparación consulta el cliente para detectar
+los torrents eliminados fuera de EPL Sync. Si la consulta falla, no se interpreta
+como ausencia ni se crea una descarga a ciegas.
+
+Las solicitudes del asistente de envío directo tienen un identificador estable:
+repetir una petición cuya respuesta se perdió recupera el mismo trabajo. Un envío
+nuevo intencionado utiliza otra solicitud. Esto también protege EPUB sin
+identificadores internos.
+
+Las consultas ocupadas se aplazan sin consumir intentos. Los errores temporales de
+conexión tienen tres reintentos automáticos, con espera creciente y persistida;
+al agotarlos se muestra el motivo y se solicita revisión. Reanudar reinicia ese
+presupuesto. Una escritura incierta se verifica antes de volver a enviar.
+
+En los elementos sin confirmar de un trabajo pausado o cancelado, **Resolver envío
+sin confirmar** permite indicar el ID de una entrada existente de Calibre y
+verificarla sin repetir el envío. También permite solicitar un reintento explícito
+tras confirmar que el envío no se recibió. Antes de repetirlo, EPL Sync busca
+coincidencias por los identificadores disponibles. Cuando faltan, la comprobación
+manual es necesaria: no se puede deducir su ausencia solo a partir del título.
+Las decisiones quedan registradas en el historial de intentos del trabajo y en
+Eventos, sin eliminar las protecciones de limpieza.
+
+El trabajador sigue enviando un solo EPUB a la vez. Reparte turnos entre trabajos
+y procesa hasta cinco ciclos por activación, con un presupuesto de un segundo;
+un ciclo de red ya iniciado conserva sus propios plazos. Los resúmenes completos
+se calculan al consultar o finalizar un trabajo, evitando repetirlos por archivo.

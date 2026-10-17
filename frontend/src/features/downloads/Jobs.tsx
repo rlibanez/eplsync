@@ -426,7 +426,8 @@ export function JobDetail() {
     queryFn: ({ signal }) =>
       get<Job>(`/torrent/jobs/${encodeURIComponent(id!)}`, signal),
     refetchInterval: (q) =>
-      ["COMPLETED", "CANCELLED"].includes(q.state.data?.status ?? "")
+      ["COMPLETED", "CANCELLED"].includes(q.state.data?.status ?? "") &&
+      !(q.state.data?.inFlight ?? 0)
         ? q.state.data?.cleanup &&
           q.state.data.cleanup.waiting +
             q.state.data.cleanup.blocked +
@@ -443,9 +444,11 @@ export function JobDetail() {
         `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&${sortQuery(sort)}${filter ? `&status=${filter}${excluded ? "&statusOperator=ne" : ""}` : ""}`,
         signal,
       ),
-    refetchInterval: ["COMPLETED", "CANCELLED"].includes(job.data?.status ?? "")
-      ? false
-      : 3000,
+    refetchInterval:
+      ["COMPLETED", "CANCELLED"].includes(job.data?.status ?? "") &&
+      !(job.data?.inFlight ?? 0)
+        ? false
+        : 3000,
   });
   const retry = useJobRetry("downloads", id, job.data?.status, selected, () =>
     setSelected([]),
@@ -524,14 +527,20 @@ export function JobDetail() {
                     {t("downloads.pause")}
                   </Button>
                 )}
-                {["PAUSED", "RETRY_WAIT"].includes(data.status) && (
-                  <Button
-                    disabled={control.isPending}
-                    onClick={() => control.mutate("resume")}
-                  >
-                    {t("downloads.resume")}
-                  </Button>
-                )}
+                {["PAUSED", "RETRY_WAIT"].includes(data.status) &&
+                  !(
+                    data.type === "UPDATE" &&
+                    data.failed > 0 &&
+                    data.pending === 0 &&
+                    data.inFlight === 0
+                  ) && (
+                    <Button
+                      disabled={control.isPending}
+                      onClick={() => control.mutate("resume")}
+                    >
+                      {t("downloads.resume")}
+                    </Button>
+                  )}
                 {!["COMPLETED", "CANCELLED"].includes(data.status) && (
                   <Button
                     color="red"
