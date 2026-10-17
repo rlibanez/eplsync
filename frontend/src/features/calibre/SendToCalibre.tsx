@@ -169,6 +169,70 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                     {file.name}: {t("epubDownload.sizeWarning")}
                   </Alert>
                 ))}
+              {!!(
+                (prepare.data.deferred?.length ?? 0) ||
+                (prepare.data.deferredRecords?.length ?? 0)
+              ) && (
+                <Alert>
+                  {t("calibreSend.deferred", {
+                    count:
+                      prepare.data.deferred?.length ||
+                      prepare.data.deferredRecords?.length,
+                  })}
+                </Alert>
+              )}
+              {!!prepare.data.files.length && (
+                <fieldset className="send-options-group">
+                  <legend>{t("calibreSend.files")}</legend>
+                  <Stack gap="sm">
+                    {prepare.data.files
+                      .slice(filePage * 100, (filePage + 1) * 100)
+                      .map((file) => (
+                        <Checkbox
+                          key={key(file)}
+                          label={`${file.name} · EPL ID ${file.eplId} · ${t("downloads.revision")} ${revision(file.revision)}`}
+                          checked={chosenSet.has(key(file))}
+                          disabled={send.isPending}
+                          onChange={(e) => {
+                            const checked = e.currentTarget.checked;
+                            setRequestId(requestIdentifier());
+                            setChosen((previous) =>
+                              checked
+                                ? [...previous, key(file)]
+                                : previous.filter(
+                                    (value) => value !== key(file),
+                                  ),
+                            );
+                          }}
+                        />
+                      ))}
+                  </Stack>
+                  {prepare.data.files.length > 100 && (
+                    <div className="pagination">
+                      <Button
+                        variant="subtle"
+                        disabled={!filePage}
+                        onClick={() => setFilePage((page) => page - 1)}
+                      >
+                        {t("catalog.previous")}
+                      </Button>
+                      <span>
+                        {filePage + 1} /{" "}
+                        {Math.ceil(prepare.data.files.length / 100)}
+                      </span>
+                      <Button
+                        variant="subtle"
+                        disabled={
+                          (filePage + 1) * 100 >= prepare.data.files.length
+                        }
+                        onClick={() => setFilePage((page) => page + 1)}
+                      >
+                        {t("catalog.next")}
+                      </Button>
+                    </div>
+                  )}
+                </fieldset>
+              )}
               {!!prepare.data.missing?.length && (
                 <>
                   <Alert color="yellow">
@@ -191,66 +255,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                   />
                 </>
               )}
-              {!!(
-                (prepare.data.deferred?.length ?? 0) ||
-                (prepare.data.deferredRecords?.length ?? 0)
-              ) && (
-                <Alert>
-                  {t("calibreSend.deferred", {
-                    count:
-                      prepare.data.deferred?.length ||
-                      prepare.data.deferredRecords?.length,
-                  })}
-                </Alert>
-              )}
-              <fieldset className="send-options-group">
-                <legend>{t("calibreSend.files")}</legend>
-                <Stack gap="sm">
-                  {prepare.data.files
-                    .slice(filePage * 100, (filePage + 1) * 100)
-                    .map((file) => (
-                      <Checkbox
-                        key={key(file)}
-                        label={`${file.name} · EPL ID ${file.eplId} · ${t("downloads.revision")} ${revision(file.revision)}`}
-                        checked={chosenSet.has(key(file))}
-                        disabled={send.isPending}
-                        onChange={(e) => {
-                          const checked = e.currentTarget.checked;
-                          setRequestId(requestIdentifier());
-                          setChosen((previous) =>
-                            checked
-                              ? [...previous, key(file)]
-                              : previous.filter((value) => value !== key(file)),
-                          );
-                        }}
-                      />
-                    ))}
-                </Stack>
-                {prepare.data.files.length > 100 && (
-                  <div className="pagination">
-                    <Button
-                      variant="subtle"
-                      disabled={!filePage}
-                      onClick={() => setFilePage((page) => page - 1)}
-                    >
-                      {t("catalog.previous")}
-                    </Button>
-                    <span>
-                      {filePage + 1} /{" "}
-                      {Math.ceil(prepare.data.files.length / 100)}
-                    </span>
-                    <Button
-                      variant="subtle"
-                      disabled={
-                        (filePage + 1) * 100 >= prepare.data.files.length
-                      }
-                      onClick={() => setFilePage((page) => page + 1)}
-                    >
-                      {t("catalog.next")}
-                    </Button>
-                  </div>
-                )}
-              </fieldset>
+
               <p className="muted">{t("calibreSend.duplicates")}</p>
               {send.isError && (
                 <Alert color="red">

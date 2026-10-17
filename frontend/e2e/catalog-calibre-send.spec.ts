@@ -43,6 +43,7 @@ test("select all retains library filters and exclusions and requires opt-in for 
   await page.getByRole("button",{name:"Siguiente",exact:true}).click();
   await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
   const dialog=page.getByRole("dialog");
+  await expect(dialog.locator("fieldset").filter({has: dialog.locator("legend", {hasText:"Archivos EPUB"})})).toHaveCount(0);
   await expect(dialog.getByRole("button",{name:"Enviar a Calibre",exact:true})).toBeDisabled();
   await dialog.getByRole("checkbox",{name:"Descargar los EPUB no disponibles y enviarlos a Calibre cuando terminen",exact:true}).check();
   await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
@@ -100,4 +101,19 @@ test("large file previews are paged without losing selected or excluded EPUBs",a
   await dialog.getByRole("checkbox",{name:/File 1000.epub/}).uncheck();
   await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
   await expect(page).toHaveURL(/\/calibre\/jobs\/catalog-job$/);
+});
+
+test("available EPUBs appear before the missing download option", async ({page}) => {
+  await page.route("**/api/calibre/transfers/catalog/prepare", route=>route.fulfill({json:{library:"main",libraries:[{id:"main",name:"Main"}],files:[file],books:[book],missing:[{eplId:1,revision:1,title:"Pending book"}]}}));
+  await page.goto("/catalog");
+  await page.getByRole("button",{name:"Seleccionar todo (40)",exact:true}).click();
+  await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
+  const dialog=page.getByRole("dialog");
+  const files=dialog.locator("fieldset").filter({hasText:"Archivos EPUB"});
+  const pending=dialog.getByRole("checkbox",{name:/Descargar los EPUB no disponibles/});
+  await expect(files).toBeVisible();
+  await expect(pending).toBeVisible();
+  const fileBounds=await files.boundingBox();
+  const pendingBounds=await pending.boundingBox();
+  expect(pendingBounds!.y).toBeGreaterThan(fileBounds!.y+fileBounds!.height);
 });
