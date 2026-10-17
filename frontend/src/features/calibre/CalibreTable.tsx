@@ -1,3 +1,4 @@
+import { CalibreRemovalLauncher } from "../cleanup/RevisionCleanup";
 import { TableAction } from "../../components/TableAction";
 import { Checkbox, Group } from "@mantine/core";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
@@ -72,7 +73,9 @@ export function CalibreTable({
   const auth = useAuth();
   const { revision } = useLocale();
   const selectable =
-    (auth.can("CALIBRE_FILES_READ") || auth.can("CALIBRE_SEND")) &&
+    (auth.can("CALIBRE_FILES_READ") ||
+      auth.can("CALIBRE_SEND") ||
+      auth.can("CALIBRE_DELETE")) &&
     selected !== undefined &&
     !!onSelection;
   return (
@@ -222,6 +225,10 @@ export function CalibreTable({
                           inline
                         />
                       )}
+                      <CalibreRemovalLauncher
+                        selected={[book.calibreId]}
+                        inline
+                      />
                       <TableAction
                         label={t("calibre.open")}
                         href={`/api/calibre/books/${book.calibreId}/open`}
@@ -238,7 +245,8 @@ export function CalibreTable({
                 ].filter(
                   (_, index) =>
                     !excludedFields.includes(calibreColumns[index].field),
-                ), offset + rowIndex + 1
+                ),
+                offset + rowIndex + 1,
               )}
             </tr>
           ))}

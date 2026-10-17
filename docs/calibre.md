@@ -316,3 +316,21 @@ resultados. Vaciar el campo o pulsar **Limpiar** restablece el operador inicial.
 ## Limpieza manual de revisiones antiguas
 
 Consulta [Limpiar revisiones antiguas](limpieza-revisiones.md) para preparar una limpieza con previsualización, selección y seguimiento por trabajo.
+
+### Eliminar entradas de la biblioteca
+
+En **Calibre > Biblioteca**, **Eliminar** está disponible en las acciones de
+selección y como papelera en **Acciones** de cada fila, con permiso de borrado de
+Calibre. La selección puede abarcar todos los resultados filtrados. El asistente
+previsualiza las entradas y sus formatos, permite desmarcar elementos y requiere
+confirmar el borrado de las entradas completas y todos sus formatos.
+
+El resultado se sigue en **Calibre > Trabajos**, dentro de los trabajos de
+limpieza. Se admiten libros sin EPL ID y no es necesario disponer de una revisión
+superior. No se borran torrents, archivos del cliente torrent ni registros de
+Estado de las descargas.
+
+Se excluyen las entradas implicadas en envíos o borrados pendientes. Antes de
+cada borrado se vuelven a comprobar permisos, conexión, biblioteca, metadatos y
+formatos. Si cambiaron, el elemento queda bloqueado. Tras una interrupción se
+comprueban las operaciones ya solicitadas sin repetir automáticamente su borrado.

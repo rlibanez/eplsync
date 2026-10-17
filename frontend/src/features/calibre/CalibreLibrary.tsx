@@ -1,5 +1,8 @@
 import { textOperatorProps } from "../../components/StateOperator";
-import { CleanupLauncher } from "../cleanup/RevisionCleanup";
+import {
+  CalibreRemovalLauncher,
+  CleanupLauncher,
+} from "../cleanup/RevisionCleanup";
 import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import {
@@ -54,7 +57,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     ? auth.can("CALIBRE_SEND") &&
       auth.can("DOWNLOADS_FILES_READ") &&
       auth.can("CATALOG_READ")
-    : auth.can("CALIBRE_FILES_READ");
+    : auth.can("CALIBRE_FILES_READ") || auth.can("CALIBRE_DELETE");
   const [textExcluded, setTextExcluded] = useState({
     title: false,
     author: false,
@@ -426,13 +429,16 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             updates ? (
               <CalibreUpdateSend selected={selected} />
             ) : (
-              selectable && (
-                <EpubBatchDownload
-                  selected={selected}
-                  endpoint="/calibre/epub-downloads"
-                  toolbar={false}
-                />
-              )
+              <>
+                {auth.can("CALIBRE_FILES_READ") && (
+                  <EpubBatchDownload
+                    selected={selected}
+                    endpoint="/calibre/epub-downloads"
+                    toolbar={false}
+                  />
+                )}
+                <CalibreRemovalLauncher selected={selected} />
+              </>
             )
           }
         />

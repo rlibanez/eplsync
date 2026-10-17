@@ -10,6 +10,7 @@ import com.rlibanez.eplsync.dto.PageResponse;
 public class RevisionCleanupController {
     private final RevisionCleanup cleanup;
     public RevisionCleanupController(RevisionCleanup cleanup) {this.cleanup=cleanup;}
+    @PostMapping("/calibre-removals/preview") public RevisionCleanup.Job calibreRemovals(@RequestBody RevisionCleanup.CalibreRemoval input) {return cleanup.previewCalibreRemoval(input);}
     @PostMapping("/removals") public RevisionCleanup.Job removals(@RequestBody RevisionCleanup.RemovalInput input) {return cleanup.removeSelected(input);}
     @PostMapping("/preview") public RevisionCleanup.Job preview(@RequestBody RevisionCleanup.PreviewInput input) {return cleanup.preview(input);}
     @GetMapping public PageResponse<RevisionCleanup.Job> jobs(@RequestParam String source,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {return cleanup.jobs(source,page,size);}

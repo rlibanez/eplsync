@@ -37,15 +37,15 @@ public class RevisionCleanup {
     public record Confirmation(List<String> ids,boolean confirm,boolean confirmDestructive) {}
     public record Job(String id,String source,String action,String state,String result,String message,String username,String library,
         boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain) {}
-    public record Item(String id,long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,
+    public record Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,
         List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId) {
-        public Item(String id,long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,null);}
+        public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,null);}
     }
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(RevisionCleanup.class);
     private static final int LIMIT=1000;
     private static final String SELECT="""
         SELECT j.*,count(i.id) total,
-        CASE WHEN j.direct_removal=1 THEN count(i.id) ELSE coalesce(json_array_length(j.confirmation),0) END selected,
+        CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) ELSE coalesce(json_array_length(j.confirmation),0) END selected,
         coalesce(sum(i.state='READY'),0) ready,coalesce(sum(i.state='EXCLUDED'),0) excluded,
         coalesce(sum(i.state IN ('PENDING','RUNNING','VERIFYING')),0) pending,
         coalesce(sum(i.state='SUCCEEDED'),0) succeeded,coalesce(sum(i.state='BLOCKED'),0) blocked,
@@ -150,7 +150,7 @@ public class RevisionCleanup {
     private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"));}
     private Item item(ResultSet r,int n) throws SQLException {
         var formats=new ArrayList<String>();for(var format:json.readTree(r.getString("formats"))) formats.add(format.asString());
-        return new Item(r.getString("id"),r.getLong("epl_id"),r.getString("title"),r.getString("revision"),r.getString("old_id"),r.getString("replacement_id"),r.getString("replacement_revision"),List.copyOf(formats),r.getString("state"),r.getString("message"),r.getBoolean("dispatched"),r.getString("old_hash"),r.getString("replacement_hash"));
+        return new Item(r.getString("id"),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title"),r.getString("revision"),r.getString("old_id"),r.getString("replacement_id"),r.getString("replacement_revision"),List.copyOf(formats),r.getString("state"),r.getString("message"),r.getBoolean("dispatched"),r.getString("old_hash"),r.getString("replacement_hash"));
     }
     private Item withBlocker(Item row) {
         if(!"BLOCKED".equals(row.state()) || row.oldHash()==null || row.message()==null || !row.message().contains("Calibre")) return row;
@@ -181,7 +181,7 @@ public class RevisionCleanup {
                 """;
         if(!ids.isEmpty()) {sql+=" AND "+(source.equals("downloads")?"o.id":"cast(o.calibre_id AS TEXT)")+" IN ("+String.join(",",Collections.nCopies(ids.size(),"?"))+")";args.addAll(ids);}
         sql+=" ORDER BY o.epl_id,o.revision,old_id LIMIT 1001";
-        var result=jdbc.query(sql,(r,n)->new Item(UUID.randomUUID().toString(),r.getLong("epl_id"),r.getString("title").substring(0,Math.min(4096,r.getString("title").length())),revision(r.getObject("revision")),r.getString("old_id"),r.getString("replacement_id"),revision(r.getObject("replacement_revision")),List.of(),"READY",null,false,r.getString("old_hash"),r.getString("replacement_hash")),args.toArray());
+        var result=jdbc.query(sql,(r,n)->new Item(UUID.randomUUID().toString(),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title").substring(0,Math.min(4096,r.getString("title").length())),revision(r.getObject("revision")),r.getString("old_id"),r.getString("replacement_id"),revision(r.getObject("replacement_revision")),List.of(),"READY",null,false,r.getString("old_hash"),r.getString("replacement_hash")),args.toArray());
         if(result.size()>LIMIT) throw new UserInputException("Hay más de 1000 revisiones antiguas; selecciona un grupo de registros en la tabla y vuelve a preparar la limpieza");
         return result;
     }
@@ -309,7 +309,7 @@ public class RevisionCleanup {
     }
     public Job start(String id,Confirmation confirmation) {
         var job=get(id);requireCurrentAction(job.source(),job.action());var owner=authorize(sessions.current().id(),job.source(),job.action(),job.directRemoval(),job.deleteHistory());
-        if(confirmation==null || !confirmation.confirm() || confirmation.ids()==null || confirmation.ids().isEmpty() || confirmation.ids().size()>LIMIT
+        if(confirmation==null || !confirmation.confirm() || confirmation.ids()==null || confirmation.ids().isEmpty() || (!job.directRemoval() && confirmation.ids().size()>LIMIT)
             || confirmation.ids().stream().anyMatch(value->value==null || value.length()!=36) || new HashSet<>(confirmation.ids()).size()!=confirmation.ids().size()) throw new UserInputException("Selecciona las revisiones y confirma la limpieza");
         if(Set.of("FILES","BOOK").contains(job.action()) && !confirmation.confirmDestructive()) throw new UserInputException("Confirma explícitamente la eliminación irreversible de archivos o de entradas completas");
         String signature=json.writeValueAsString(confirmation.ids().stream().sorted().toList());
@@ -322,9 +322,9 @@ public class RevisionCleanup {
             }
             if(((Number)stored.get("expires_at")).longValue()<Instant.now().toEpochMilli() || !stored.get("context").equals(current)) throw new UserInputException("La previsualización caducó o cambió la conexión; vuelve a preparar la limpieza");
             if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE owner_id=? AND state IN ('QUEUED','RUNNING','PAUSED')",Long.class,owner.id())>=5) throw new UserInputException("Hay cinco limpiezas pendientes; termina o cancela alguna antes de crear otra");
-            for(String item:confirmation.ids()) if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items WHERE id=? AND job_id=? AND state='READY'",Long.class,item,id)!=1) throw new UserInputException("La selección contiene una revisión que no puede eliminarse");
+            if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items WHERE id IN (SELECT value FROM json_each(?)) AND job_id=? AND state='READY'",Long.class,signature,id)!=confirmation.ids().size()) throw new UserInputException("La selección contiene una revisión que no puede eliminarse");
             jdbc.update("UPDATE revision_cleanup_items SET state='SKIPPED' WHERE job_id=? AND state='READY'",id);
-            for(String item:confirmation.ids()) jdbc.update("UPDATE revision_cleanup_items SET state='PENDING' WHERE id=? AND job_id=?",item,id);
+            jdbc.update("UPDATE revision_cleanup_items SET state='PENDING' WHERE id IN (SELECT value FROM json_each(?)) AND job_id=?",signature,id);
             jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',confirmation=?,updated_at=? WHERE id=?",signature,Instant.now().toEpochMilli(),id);return true;
         }));
         if(created) events.live(new EventContext.Actor(owner.id(),owner.username(),"USER"),EventJournal.Category.JOB,"REVISION_CLEANUP",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,id,Map.of("selected",confirmation.ids().size(),"source",job.source()));
@@ -419,6 +419,53 @@ public class RevisionCleanup {
             }
         }
     }
+    public record CalibreRemoval(List<Long> ids) {}
+    public Job previewCalibreRemoval(CalibreRemoval input) {return exclusive(()->transfers.exclusive(()->{
+        var owner=authorize(sessions.current().id(),"calibre","BOOK");
+        if(input==null || input.ids()==null || input.ids().isEmpty() || input.ids().stream().anyMatch(v->v==null || v<1) || new HashSet<>(input.ids()).size()!=input.ids().size()) throw new UserInputException("Selecciona entradas de Calibre sin duplicados");
+        String id=UUID.randomUUID().toString();long now=Instant.now().toEpochMilli();
+        String frozenContext=context("calibre");var connection=settings.connection();
+        var prepared=new ArrayList<Object[]>();int position=0;
+        for(long bookId:input.ids()) {
+            var observed=jdbc.queryForList("SELECT * FROM calibre_books WHERE active=1 AND calibre_id=?",bookId);
+            if(observed.size()!=1) throw new UserInputException("La biblioteca ha cambiado; sincroniza y vuelve a seleccionar las entradas");
+            var row=observed.getFirst();
+            String itemId=UUID.randomUUID().toString(),state="READY",message=null,identity=null;
+            List<String> formats=List.of();
+            Long epl=row.get("epl_id")==null?null:((Number)row.get("epl_id")).longValue();
+            var candidate=new Item(itemId,epl,Objects.toString(row.get("title"),""),Objects.toString(row.get("revision"),""),Long.toString(bookId),"","",List.of(),"READY",null,false,null,null);
+            try {
+                checkDirectCalibrePending(candidate,id);
+                var remote=client.book(connection,bookId);
+                if(remote.calibreId()!=bookId || !Objects.equals(remote.eplId(),epl) || !sameRevision(remote.revision(),row.get("revision")) || !Objects.equals(remote.title(),row.get("title")) || !Objects.equals(String.join(", ",remote.authors()),row.get("authors"))) throw new UserInputException("Los metadatos cambiaron; sincroniza Calibre antes de borrar");
+                identity=json.writeValueAsString(remote);
+                formats=client.formats(connection,bookId);
+            } catch(RuntimeException ex) {state="EXCLUDED";message=reason(ex);}
+            prepared.add(new Object[]{itemId,id,position++,Long.toString(bookId),epl,candidate.title(),candidate.revision(),json.writeValueAsString(formats),state,message,identity});
+        }
+        if(!frozenContext.equals(context("calibre"))) throw new UserInputException("La conexión o biblioteca cambió");
+        tx.executeWithoutResult(status->{
+            jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,library,state,direct_removal,created_at,updated_at,expires_at) VALUES(?,'calibre','BOOK',?,?,?,?,'PREVIEW',1,?,?,?)",id,owner.id(),owner.username(),frozenContext,connection.library(),now,now,now+Duration.ofMinutes(30).toMillis());
+            for(int offset=0;offset<prepared.size();offset+=500) jdbc.batchUpdate("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,formats,state,message,calibre_identity) VALUES(?,?,?,?,'',?,?,?,'',?,?,?,?)",prepared.subList(offset,Math.min(offset+500,prepared.size())));
+        });
+        return get(id);
+    }));}
+    private static boolean sameRevision(BigDecimal revision,Object stored) {
+        return revision==null?stored==null:stored!=null && revision.compareTo(new BigDecimal(stored.toString()))==0;
+    }
+    private void checkDirectCalibrePending(Item item,String job) {
+        long active=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE (i.calibre_id=? OR i.epl_id=? OR EXISTS (SELECT 1 FROM json_each(i.cleanup_ids) previous WHERE CAST(previous.value AS TEXT)=?)) AND (j.state IN ('QUEUED','RUNNING','PAUSED') OR i.state IN ('SENDING','UNCERTAIN','CLEANUP_PENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD'))",Long.class,Long.parseLong(item.oldId()),item.eplId(),item.oldId());
+        active+=jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE j.source='calibre' AND i.job_id<>? AND (i.old_id=? OR i.replacement_id=? OR i.epl_id=?) AND (i.state='UNCERTAIN' OR j.state IN ('QUEUED','RUNNING','PAUSED') AND i.state IN ('PENDING','RUNNING','VERIFYING','BLOCKED','FAILED'))",Long.class,job,item.oldId(),item.oldId(),item.eplId());
+        if(active>0) throw new UserInputException("Esta entrada tiene envíos o borrados pendientes en Calibre; resuélvelos antes de eliminarla");
+    }
+    private void checkDirectCalibre(Item item,CalibreSettings.Connection connection,boolean allowAbsent) {
+        var current=bookOrNull(connection,Long.parseLong(item.oldId()));
+        if(current==null) {if(allowAbsent) return;throw new UserInputException("La entrada ya no existe en Calibre");}
+        String frozen=jdbc.queryForObject("SELECT calibre_identity FROM revision_cleanup_items WHERE id=?",String.class,item.id());
+        if(frozen==null || !frozen.equals(json.writeValueAsString(current))) throw new UserInputException("La entrada de Calibre cambió desde la previsualización; no se borrará");
+        var expected=new HashSet<>(item.formats());var actual=new HashSet<>(client.formats(connection,current.calibreId()));
+        if(!expected.equals(actual)) throw new UserInputException("Los formatos de Calibre cambiaron desde la previsualización; no se borrará");
+    }
     private void checkCalibre(Item item,CalibreSettings.Connection c,boolean allowAbsentOld) {
         checkRetainedCalibre(item,c);
         var old=bookOrNull(c,Long.parseLong(item.oldId()));
@@ -474,7 +521,7 @@ public class RevisionCleanup {
             var owner=authorize((String)stored.get("owner_id"),job.source(),job.action(),job.directRemoval(),job.deleteHistory());
             var security=SecurityContextHolder.createEmptyContext();var authorities=new ArrayList<SimpleGrantedAuthority>();owner.permissions().forEach(p->authorities.add(new SimpleGrantedAuthority(p.name())));authorities.add(new SimpleGrantedAuthority("ROLE_"+owner.role()));security.setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,authorities));SecurityContextHolder.setContext(security);
             EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(EventContext.Origin.MANUAL,()->transfers.exclusive(()->{
-                Runnable guard=()->{authorize(owner.id(),job.source(),job.action(),job.directRemoval(),job.deleteHistory());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión o biblioteca cambió; prepara una nueva limpieza");if(job.directRemoval()) checkDirectPending(item,id,job,!verify && item.dispatched());else noPending(item,id,job.allowUndownloaded(),job.action(),!verify && item.dispatched(),job.deleteHistory());};
+                Runnable guard=()->{authorize(owner.id(),job.source(),job.action(),job.directRemoval(),job.deleteHistory());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión o biblioteca cambió; prepara una nueva limpieza");if(job.directRemoval() && job.source().equals("calibre")) checkDirectCalibrePending(item,id);else if(job.directRemoval()) checkDirectPending(item,id,job,!verify && item.dispatched());else noPending(item,id,job.allowUndownloaded(),job.action(),!verify && item.dispatched(),job.deleteHistory());};
                 guard.run();
                 if(!verify) requireCurrentAction(job.source(),job.action());
                 if(jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',message=NULL WHERE id=? AND state=?",item.id(),item.state())!=1) return null;
@@ -523,21 +570,21 @@ public class RevisionCleanup {
     private void executeCalibre(String id,Job job,Item item,boolean verify,Runnable guard) {
         var c=settings.connection();long old=Long.parseLong(item.oldId());
         catalog.exclusive(()->{
-            guard.run();checkCalibre(item,c,true);
+            guard.run();if(job.directRemoval()) checkDirectCalibre(item,c,true);else checkCalibre(item,c,true);
             if(verify) {if(!removed(c,old,job.action())) throw new UserInputException("Calibre no confirma el borrado; no se ha repetido la orden");return null;}
             var current=bookOrNull(c,old);
             if(current==null) return null;
-            checkOldCalibre(item,current);
+            if(job.directRemoval()) checkDirectCalibre(item,c,false);else checkOldCalibre(item,current);
             requireCurrentAction(job.source(),job.action());
             // Never discard a changed observation; revalidate the retained EPUB immediately before dispatch.
-            checkRetainedCalibre(item,c);
+            if(!job.directRemoval()) checkRetainedCalibre(item,c);
             guard.run();dispatched(item.id());
             try {client.remove(c,old,true);}catch(RuntimeException ex) {if(!removed(c,old,job.action())) throw ex;}
             if(!removed(c,old,job.action())) throw new UserInputException("Calibre no confirmó el borrado; comprueba su resultado sin reenviar la orden");
             return null;
         });
         if(job.action().equals("BOOK")) catalog.removeObserved(c,old);
-        update(item.id(),"SUCCEEDED",job.action().equals("BOOK")?"Entrada antigua eliminada y ausencia verificada":"Borrado anterior del EPUB verificado; no se ha eliminado la entrada completa");
+        update(item.id(),"SUCCEEDED",job.action().equals("BOOK")?"Entrada de Calibre eliminada y ausencia verificada":"Borrado anterior del EPUB verificado; no se ha eliminado la entrada completa");
     }
     private boolean removed(CalibreSettings.Connection c,long id,String action) {return action.equals("BOOK")?bookOrNull(c,id)==null:bookOrNull(c,id)==null || !client.hasEpub(c,id);}
     private void update(String id,String state,String message) {jdbc.update("UPDATE revision_cleanup_items SET state=?,message=? WHERE id=?",state,message==null?null:message.substring(0,Math.min(1024,message.length())),id);}

@@ -1826,5 +1826,11 @@
     "acceptedOrRemoved": "Accepted / Removed",
     "progressColumn": "Progress",
     "sentOrRemoved": "Sent / Removed"
+  },
+  "calibreRemoval": {
+    "delete": "Delete",
+    "description": "The selected Calibre entries and all their formats will be deleted. Torrents, files and download records will be preserved.",
+    "jobTitle": "Calibre deletion job",
+    "action": "Delete complete Calibre entries and all their formats"
   }
 }

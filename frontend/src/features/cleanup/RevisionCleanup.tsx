@@ -1,3 +1,4 @@
+import { TableAction } from "../../components/TableAction";
 import { RowNumberHeading, RowNumberCell } from "../../components/RowNumber";
 import { WorkNavigation } from "../jobs/WorkNavigation";
 import { useEffect, useRef, useState } from "react";
@@ -12,7 +13,7 @@ import {
   Select,
   Stepper,
 } from "@mantine/core";
-import { Eraser } from "lucide-react";
+import { Eraser, Trash2 } from "lucide-react";
 import {
   Link,
   Navigate,
@@ -53,7 +54,7 @@ interface Job {
 }
 interface Item {
   id: string;
-  eplId: number;
+  eplId: number | null;
   title: string;
   revision: string;
   oldId: string;
@@ -127,15 +128,60 @@ export function CleanupLauncher({
     </>
   );
 }
+export function CalibreRemovalLauncher({
+  selected,
+  inline = false,
+}: {
+  selected: number[];
+  inline?: boolean;
+}) {
+  const { t } = useTranslation();
+  const actions = useActions("calibre");
+  const [opened, setOpened] = useState(false);
+  if (!actions.length) return null;
+  return (
+    <>
+      {inline ? (
+        <TableAction
+          label={t("calibreRemoval.delete")}
+          onClick={() => setOpened(true)}
+        >
+          <Trash2 size={16} />
+        </TableAction>
+      ) : (
+        <Button
+          color="red"
+          variant="light"
+          leftSection={<Trash2 size={16} />}
+          disabled={!selected.length}
+          onClick={() => setOpened(true)}
+        >
+          {t("calibreRemoval.delete")}
+        </Button>
+      )}
+      {opened && (
+        <CleanupWizard
+          source="calibre"
+          selected={selected.map(String)}
+          actions={actions}
+          direct
+          close={() => setOpened(false)}
+        />
+      )}
+    </>
+  );
+}
 function CleanupWizard({
   source,
   selected,
   actions,
+  direct = false,
   close,
 }: {
   source: Source;
   selected: string[];
   actions: string[];
+  direct?: boolean;
   close: () => void;
 }) {
   const { t } = useTranslation();
@@ -155,16 +201,28 @@ function CleanupWizard({
   const [destructive, setDestructive] = useState(false);
   const prepare = useMutation({
     mutationFn: async () => {
-      const job = await post<Job>("/revision-cleanups/preview", {
-        source,
-        action: action === "RECORD" ? "KEEP" : action,
-        allowUndownloaded,
-        deleteHistory,
-        ids: scope === "selected" ? selected : [],
-      });
-      const items = await get<Page<Item>>(
-        `/revision-cleanups/${job.id}/items?size=1000`,
+      const job = await post<Job>(
+        direct
+          ? "/revision-cleanups/calibre-removals/preview"
+          : "/revision-cleanups/preview",
+        direct
+          ? { ids: selected.map(Number) }
+          : {
+              source,
+              action: action === "RECORD" ? "KEEP" : action,
+              allowUndownloaded,
+              deleteHistory,
+              ids: scope === "selected" ? selected : [],
+            },
       );
+      const items: { items: Item[] } = { items: [] };
+      for (let page = 0; ; page++) {
+        const result = await get<Page<Item>>(
+          `/revision-cleanups/${job.id}/items?size=1000&page=${page}`,
+        );
+        items.items.push(...result.items);
+        if (!result.meta.hasNext) break;
+      }
       setPreview(job);
       setRows(items.items);
       setChecked(
@@ -199,7 +257,7 @@ function CleanupWizard({
       onClose={busy ? () => {} : close}
       closeOnClickOutside={!busy}
       closeOnEscape={!busy}
-      title={t("revisionCleanup.title")}
+      title={t(direct ? "calibreRemoval.delete" : "revisionCleanup.title")}
       icon={Eraser}
       width="wide"
     >
@@ -210,11 +268,23 @@ function CleanupWizard({
       </Stepper>
       {step === 0 && (
         <>
-          <p>{t("revisionCleanup.protection")}</p>
+          <p>
+            {t(
+              direct
+                ? "calibreRemoval.description"
+                : "revisionCleanup.protection",
+            )}
+          </p>
           <p className="muted">{t("revisionCleanup.syncFirst")}</p>
           {source === "calibre" ? (
             <p>
-              <strong>{t("revisionCleanup.actions.BOOK")}</strong>
+              <strong>
+                {t(
+                  direct
+                    ? "calibreRemoval.action"
+                    : "revisionCleanup.actions.BOOK",
+                )}
+              </strong>
             </p>
           ) : (
             <>
@@ -254,7 +324,7 @@ function CleanupWizard({
               />
             </>
           )}
-          {!!selected.length && (
+          {!direct && !!selected.length && (
             <Select
               label={t("revisionCleanup.scope")}
               value={scope}
@@ -298,7 +368,12 @@ function CleanupWizard({
               {t("revisionCleanup.clear", { count: checked.length })}
             </Button>
           </Group>
-          <CleanupItems rows={rows} selected={checked} onSelect={setChecked} />
+          <CleanupItems
+            rows={rows}
+            selected={checked}
+            onSelect={setChecked}
+            direct={direct}
+          />
         </>
       )}
       {step === 2 && (
@@ -310,9 +385,11 @@ function CleanupWizard({
           </p>
           <p>
             {t(
-              action === "RECORD"
-                ? "send.keepPrevious"
-                : `revisionCleanup.actions.${action}`,
+              direct
+                ? "calibreRemoval.action"
+                : action === "RECORD"
+                  ? "send.keepPrevious"
+                  : `revisionCleanup.actions.${action}`,
             )}
           </p>
           {source === "downloads" && (
@@ -320,13 +397,15 @@ function CleanupWizard({
               {t(deleteHistory ? "send.deleteHistory" : "send.keepHistory")}
             </p>
           )}
-          <p>
-            {t(
-              allowUndownloaded
-                ? "revisionCleanup.allowUndownloaded"
-                : "revisionCleanup.protection",
-            )}
-          </p>
+          {!direct && (
+            <p>
+              {t(
+                allowUndownloaded
+                  ? "revisionCleanup.allowUndownloaded"
+                  : "revisionCleanup.protection",
+              )}
+            </p>
+          )}
           <Checkbox
             label={t("revisionCleanup.confirmSelection")}
             checked={confirm}
@@ -451,16 +530,16 @@ function CleanupItems({
                 </td>
               )}
               <RowNumberCell value={offset + rowIndex + 1} />
-              <td>{item.eplId}</td>
+              <td>{item.eplId ?? "—"}</td>
               <td>
-                {auth.can("CATALOG_READ") ? (
+                {item.eplId && auth.can("CATALOG_READ") ? (
                   <Link to={`/catalog/${item.eplId}`}>{item.title}</Link>
                 ) : (
                   item.title
                 )}
               </td>
               <td>
-                r{item.revision}
+                {item.revision ? `r${item.revision}` : "—"}
                 <br />
                 <small>ID: {item.oldId}</small>
                 {!!item.formats.length && (
@@ -642,12 +721,16 @@ export function CleanupJob() {
       <PageTitle
         title={t(
           data.directRemoval
-            ? "revisionCleanup.removalJobTitle"
+            ? data.source === "calibre"
+              ? "calibreRemoval.jobTitle"
+              : "revisionCleanup.removalJobTitle"
             : "revisionCleanup.jobTitle",
         )}
         description={t(
           data.directRemoval
-            ? "revisionCleanup.removalHelp"
+            ? data.source === "calibre"
+              ? "calibreRemoval.description"
+              : "revisionCleanup.removalHelp"
             : "revisionCleanup.protection",
         )}
       />
@@ -746,9 +829,11 @@ export function CleanupJob() {
                     <dt>{t("revisionCleanup.action")}</dt>
                     <dd>
                       {t(
-                        data.action === "RECORD"
-                          ? "send.keepPrevious"
-                          : `revisionCleanup.actions.${data.action}`,
+                        data.directRemoval && data.source === "calibre"
+                          ? "calibreRemoval.action"
+                          : data.action === "RECORD"
+                            ? "send.keepPrevious"
+                            : `revisionCleanup.actions.${data.action}`,
                       )}
                     </dd>
                   </div>

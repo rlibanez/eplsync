@@ -67,6 +67,110 @@ class RevisionCleanupTests {
     RevisionCleanup.RemovalInput removal(String action,boolean deleteHistory) {
         return new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(1L,List.of(old),deleteHistory,action,true,true));
     }
+    RevisionCleanup.Job calibreRemoval(long id) {return cleanup.previewCalibreRemoval(new RevisionCleanup.CalibreRemoval(List.of(id)));}
+    void removeRemoteBook() {
+        doAnswer(call->{long id=call.getArgument(1);when(client.book(any(),eq(id))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));return null;}).when(client).remove(any(),anyLong(),eq(true));
+    }
+    @Test void directCalibreDeletionNeedsNoHigherRevisionAndNeverTouchesTorrents() {
+        var job=calibreRemoval(20);assertThat(job.ready()).isEqualTo(1);assertThat(job.directRemoval()).isTrue();
+        assertThat(item(job).formats()).containsExactly("EPUB","PDF");
+        removeRemoteBook();start(job);cleanup.cycle();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(client,times(1)).remove(any(),eq(20L),eq(true));
+        verify(client,never()).remove(any(),eq(10L),anyBoolean());
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(downloads.count()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE calibre_id=20",Long.class)).isZero();
+        assertThat(listings.list("calibre",0,20,List.of(),"CLEANUP",null,null,null,"createdAt,desc").items()).anySatisfy(row->assertThat(row.get("id")).isEqualTo(job.id()));
+    }
+    @Test void unidentifiedCalibreEntryCanBeDeletedWithoutInventingAnEplId() {
+        jdbc.update("UPDATE calibre_books SET epl_id=NULL,revision=NULL,title='Unidentified',authors='' WHERE calibre_id=10");
+        when(client.book(any(),eq(10L))).thenReturn(new CalibreClient.Book(10,"Unidentified",List.of(),null,null,false));
+        var job=calibreRemoval(10);assertThat(item(job).eplId()).isNull();assertThat(job.ready()).isEqualTo(1);
+        removeRemoteBook();start(job);cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+    }
+    @Test void changedMetadataOrFormatsBlockDirectCalibreDeletion() {
+        var job=start(calibreRemoval(10));
+        when(client.formats(any(),eq(10L))).thenReturn(List.of("EPUB","PDF","AZW3"));
+        cleanup.cycle();assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void changedIdentityBlocksDirectCalibreDeletion() {
+        var job=start(calibreRemoval(10));
+        when(client.book(any(),eq(10L))).thenReturn(new CalibreClient.Book(10,"Changed",List.of(),2L,BigDecimal.ONE,true));
+        cleanup.cycle();assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void directCalibrePreviewExcludesActiveTransfersAndOtherCleanupJobs() {
+        var first=start(calibreRemoval(10));
+        var second=calibreRemoval(10);
+        assertThat(second.excluded()).isEqualTo(1);assertThat(second.ready()).isZero();
+        assertThatThrownBy(()->start(second)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        cleanup.control(first.id(),"cancel");
+        assertThat(calibreRemoval(10).ready()).isEqualTo(1);
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"WAITING_DOWNLOAD","SENDING","UNCERTAIN","CLEANUP_PENDING"})
+    void directCalibreDeletionProtectsPendingAndUncertainTransfers(String state) {
+        var job=calibreRemoval(10);
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('dependency','now','now','Owner','destination','main','source','PAUSED')");
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,calibre_id,cleanup_ids) VALUES('dependency-item','dependency',0,'record',0,'book.epub',20,1,'1',?,10,'[10]')",state);
+        assertThat(calibreRemoval(10).excluded()).isEqualTo(1);
+        start(job);cleanup.cycle();
+        assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void directCalibreDeletionRechecksOperationsCreatedAfterPreview() {
+        var preview=calibreRemoval(10);var other=start(calibreRemoval(10));
+        start(preview);cleanup.cycle();
+        assertThat(cleanup.get(preview.id()).blocked()+cleanup.get(other.id()).blocked()).isGreaterThan(0);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void directCalibreRestartOnlyVerifiesDispatchedDeletion() {
+        var job=start(calibreRemoval(10));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=1 WHERE job_id=?",job.id());
+        cleanup.recover();cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        when(client.book(any(),eq(10L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        cleanup.control(job.id(),"verify");cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void largeCalibreRemovalKeepsTheFullSelectionAndHonorsDeselectedItems() {
+        var ids=new ArrayList<Long>();var batch=new ArrayList<Object[]>();
+        for(long id=1000;id<2001;id++) {ids.add(id);batch.add(new Object[]{UUID.randomUUID().toString(),id});}
+        jdbc.batchUpdate("INSERT INTO calibre_books(id,generation,active,calibre_id,title,authors) VALUES(?,'generation',1,?,'Book','Author')",batch);
+        when(client.book(any(),anyLong())).thenAnswer(call->new CalibreClient.Book(call.getArgument(1),"Book",List.of("Author"),null,null,false));
+        var job=cleanup.previewCalibreRemoval(new RevisionCleanup.CalibreRemoval(ids));
+        assertThat(job.total()).isEqualTo(1001);assertThat(job.ready()).isEqualTo(1001);assertThat(job.selected()).isZero();
+        var selected=new ArrayList<>(cleanup.items(job.id(),0,1000).items().stream().map(row->row.id()).toList());
+        var skipped=cleanup.items(job.id(),1,1000).items().getFirst();
+        var confirmed=cleanup.start(job.id(),new RevisionCleanup.Confirmation(selected,true,true));
+        assertThat(confirmed.selected()).isEqualTo(1000);assertThat(confirmed.pending()).isEqualTo(1000);
+        assertThat(cleanup.start(job.id(),new RevisionCleanup.Confirmation(selected,true,true)).id()).isEqualTo(job.id());
+        assertThat(jdbc.queryForObject("SELECT state FROM revision_cleanup_items WHERE id=?",String.class,skipped.id())).isEqualTo("SKIPPED");
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void directCalibreDeletionRequiresDeletePermissionAndRechecksIt() {
+        var job=start(calibreRemoval(10));
+        jdbc.update("UPDATE users SET role='USER' WHERE id=?",owner.id());
+        jdbc.update("INSERT INTO user_permission_overrides(user_id,permission,effect) VALUES(?,'CALIBRE_DELETE','DENY')",owner.id());
+        assertThatThrownBy(()->calibreRemoval(20)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        cleanup.cycle();assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void directCalibreDeletionRequiresPermissionAndAnUnchangedDestination() {
+        var job=start(calibreRemoval(10));
+        settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"other"));
+        cleanup.cycle();assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void directCalibrePreviewRejectsMissingAndDuplicateIds() {
+        assertThatThrownBy(()->cleanup.previewCalibreRemoval(new RevisionCleanup.CalibreRemoval(List.of(10L,10L)))).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        assertThatThrownBy(()->calibreRemoval(99)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+    }
     @Test void largeRemovalPreviewAndJobKeepAllRecordsAndReplayWithoutDuplicates() {
         var ids=new ArrayList<String>();
         var batch=new ArrayList<Object[]>();
