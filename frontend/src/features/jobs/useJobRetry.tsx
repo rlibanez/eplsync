@@ -8,6 +8,8 @@ import { useAuth } from "../auth/Auth";
 import { get } from "../../api/catalog";
 import { post } from "../downloads/shared";
 import { AppModal, ModalActions } from "../../components/AppModal";
+import { useLocale } from "../../locales/useLocale";
+import type { Page } from "../downloads/shared";
 import { Failure, Loading } from "../../components/Feedback";
 interface LinkInfo {
   kind: string;
@@ -21,6 +23,7 @@ interface History {
   terminal: boolean;
   failed: number;
   reason: string | null;
+  attemptCount?: number;
 }
 interface Preview {
   token: string;
@@ -71,9 +74,18 @@ export function useJobRetry(
     onSuccess: (result) => {
       clear();
       setOpened(false);
-      for (const key of ["jobs", "calibre-jobs", "job-retries"])
+      for (const key of [
+        "jobs",
+        "job",
+        "job-items",
+        "calibre-jobs",
+        "calibre-job",
+        "calibre-job-items",
+        "job-retries",
+        "job-retry-attempts",
+      ])
         void cache.invalidateQueries({ queryKey: [key] });
-      navigate(`/${kind}/jobs/${result.jobId}`);
+      if (result.jobId !== id) navigate(`/${kind}/jobs/${result.jobId}`);
     },
   });
   useEffect(() => {
@@ -154,6 +166,14 @@ export function useJobRetry(
               </span>
             ))}
           </p>
+        )}
+        {!!history.data?.attemptCount && (
+          <RetryAttempts
+            kind={kind}
+            id={id!}
+            count={history.data.attemptCount}
+            state={state}
+          />
         )}
         <AppModal
           width="normal"
@@ -249,4 +269,212 @@ export function useJobRetry(
       </>
     ),
   };
+}
+
+interface Attempt {
+  id: string;
+  createdAt: number;
+  finishedAt: number | null;
+  username: string;
+  state: string;
+  total: number;
+}
+interface AttemptItem {
+  id: string;
+  eplId: number | null;
+  name: string;
+  phase: string;
+  beforeState: string;
+  state: string;
+  beforeMessage: string;
+  message: string;
+  cleanup?: { id: string; state: string; message: string }[];
+}
+function RetryAttempts({
+  kind,
+  id,
+  count,
+  state,
+}: {
+  kind: string;
+  id: string;
+  count: number;
+  state?: string;
+}) {
+  const { t } = useTranslation();
+  const [opened, setOpened] = useState(false);
+  const [page, setPage] = useState(0);
+  const result = useQuery({
+    queryKey: ["job-retry-attempts", kind, id, state, page],
+    queryFn: ({ signal }) =>
+      get<Page<Attempt>>(
+        `/job-retries/${kind}/${id}/attempts?page=${page}&size=10`,
+        signal,
+      ),
+    enabled: opened,
+    retry: false,
+  });
+  return (
+    <details
+      className="panel report-collapse"
+      onToggle={(event) => setOpened(event.currentTarget.open)}
+    >
+      <summary>{t("jobRetry.history", { count })}</summary>
+      <div className="report-collapse-body">
+        {opened &&
+          (result.isPending ? (
+            <Loading />
+          ) : result.isError ? (
+            <Failure error={result.error} retry={() => result.refetch()} />
+          ) : (
+            <>
+              {result.data.items.map((attempt) => (
+                <RetryAttempt
+                  key={attempt.id}
+                  kind={kind}
+                  job={id}
+                  attempt={attempt}
+                  state={state}
+                />
+              ))}
+              <div className="action-row">
+                <Button
+                  variant="subtle"
+                  disabled={page === 0}
+                  onClick={() => setPage(page - 1)}
+                >
+                  {t("jobRetry.previous")}
+                </Button>
+                <Button
+                  variant="subtle"
+                  disabled={!result.data.meta.hasNext}
+                  onClick={() => setPage(page + 1)}
+                >
+                  {t("jobRetry.next")}
+                </Button>
+              </div>
+            </>
+          ))}
+      </div>
+    </details>
+  );
+}
+function RetryAttempt({
+  kind,
+  job,
+  attempt,
+  state,
+}: {
+  kind: string;
+  job: string;
+  attempt: Attempt;
+  state?: string;
+}) {
+  const { t } = useTranslation();
+  const { date } = useLocale();
+  const [opened, setOpened] = useState(false);
+  return (
+    <details onToggle={(event) => setOpened(event.currentTarget.open)}>
+      <summary>
+        {date(new Date(attempt.createdAt).toISOString())} · {attempt.username} ·{" "}
+        {t(
+          kind === "downloads"
+            ? `statuses.${attempt.state}`
+            : `calibreSend.states.${attempt.state}`,
+          { defaultValue: attempt.state },
+        )}{" "}
+        · {t("jobRetry.attemptItems", { count: attempt.total })}
+      </summary>
+      {opened && (
+        <RetryAttemptItems
+          kind={kind}
+          job={job}
+          attempt={attempt.id}
+          state={state}
+        />
+      )}
+    </details>
+  );
+}
+function RetryAttemptItems({
+  kind,
+  job,
+  attempt,
+  state,
+}: {
+  kind: string;
+  job: string;
+  attempt: string;
+  state?: string;
+}) {
+  const { t } = useTranslation();
+  const [page, setPage] = useState(0);
+  const result = useQuery({
+    queryKey: ["job-retry-attempts", kind, job, attempt, state, page],
+    queryFn: ({ signal }) =>
+      get<Page<AttemptItem>>(
+        `/job-retries/${kind}/${job}/attempts/${attempt}/items?page=${page}&size=20`,
+        signal,
+      ),
+    retry: false,
+  });
+  const label = (value: string) =>
+    t(
+      kind === "downloads"
+        ? `statuses.${value}`
+        : `calibreSend.states.${value}`,
+      { defaultValue: value },
+    );
+  return result.isPending ? (
+    <Loading />
+  ) : result.isError ? (
+    <Failure error={result.error} retry={() => result.refetch()} />
+  ) : (
+    <>
+      <ul>
+        {result.data.items.map((item) => (
+          <li key={item.id}>
+            <strong>{item.name}</strong> · {t(`jobRetry.phase.${item.phase}`)}
+            <br />
+            {label(item.beforeState)} → {label(item.state)}
+            {item.beforeMessage && (
+              <p>
+                {t("jobRetry.previousDetail")}: {item.beforeMessage}
+              </p>
+            )}
+            {item.cleanup?.map((entry) => (
+              <p key={entry.id}>
+                {t("jobRetry.cleanup")}:{" "}
+                {t(`jobRetry.cleanupStates.${entry.state}`, {
+                  defaultValue: entry.state,
+                })}
+                {entry.message ? ` · ${entry.message}` : ""}
+              </p>
+            ))}
+            {item.message && (
+              <p>
+                {t("jobRetry.currentDetail")}: {item.message}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div className="action-row">
+        <Button
+          variant="subtle"
+          disabled={page === 0}
+          onClick={() => setPage(page - 1)}
+        >
+          {t("jobRetry.previous")}
+        </Button>
+        <Button
+          variant="subtle"
+          disabled={!result.data.meta.hasNext}
+          onClick={() => setPage(page + 1)}
+        >
+          {t("jobRetry.next")}
+        </Button>
+      </div>
+    </>
+  );
 }

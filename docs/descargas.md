@@ -136,3 +136,24 @@ Consulta [Limpiar revisiones antiguas](limpieza-revisiones.md) para preparar una
 La limpieza manual permite marcar «Permitir la limpieza aunque la revisión superior no esté descargada» (desmarcado por defecto). La opción queda guardada en el trabajo y advierte de que se puede perder la única copia descargada. Siempre se conserva el torrent de la revisión superior y se comprueban las identidades, las rutas compartidas y los trabajos incompatibles antes de borrar.
 
 Si un trabajo de actualización ya espera el mismo borrado automático, con la misma política y revisión de sustitución, la limpieza manual puede adelantarlo. Al confirmar la ausencia del torrent antiguo, también se resuelve la solicitud del trabajo original; no se repite el borrado. Los envíos activos, las eliminaciones sin confirmar y las dependencias de Calibre siguen impidiendo la limpieza.
+
+## Reintentar elementos de un trabajo
+
+**Reintentar fallidos** y **Reintentar seleccionados** reabren el mismo trabajo;
+no crean otro trabajo ni aumentan su número de elementos. Solo se ponen de nuevo
+en cola los elementos recuperables elegidos. Los ya aceptados no se vuelven a
+enviar; una limpieza cancelada puede recuperarse sin reenviar los torrents.
+
+El informe muestra los resultados actuales. El **Historial de reintentos**
+conserva la fecha, el usuario y los estados y detalles anteriores y posteriores
+de cada intento, incluida la limpieza. Sus listados están paginados.
+
+La previsualización y la confirmación se comprueban de nuevo antes de reabrir el
+trabajo. Una confirmación repetida no programa otra ejecución. Para reintentar
+hay que esperar a que terminen las operaciones en curso y conservar la conexión
+original. Tras un reinicio se aplican las mismas comprobaciones de recuperación
+que al resto del trabajo.
+
+Los enlaces entre trabajos de reintento creados con versiones anteriores se
+conservan. Los elementos ya transferidos a uno de esos trabajos quedan excluidos
+en el original; hay que continuar desde el trabajo enlazado.

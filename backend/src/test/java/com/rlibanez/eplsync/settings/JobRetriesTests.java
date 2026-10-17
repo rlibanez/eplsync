@@ -39,7 +39,7 @@ class JobRetriesTests {
     byte[] epub;
     JsonMapper json=JsonMapper.builder().build();
     @BeforeEach void setup() throws Exception {
-        jdbc.update("DELETE FROM job_retry_items");jdbc.update("DELETE FROM job_retry_jobs");jdbc.update("DELETE FROM job_retry_previews");
+        jdbc.update("DELETE FROM job_retry_attempts");jdbc.update("DELETE FROM job_retry_items");jdbc.update("DELETE FROM job_retry_jobs");jdbc.update("DELETE FROM job_retry_previews");
         jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM torrent_update_cleanup");jdbc.update("DELETE FROM torrent_update_plans");jdbc.update("DELETE FROM torrent_bulk_items");jdbc.update("DELETE FROM torrent_bulk_jobs");jdbc.update("DELETE FROM torrent_downloads");
         accounts.clear();owner=accounts.initialize("RetryOwner","retry@example.org","password123","password123");
         when(sessions.current()).thenReturn(owner);
@@ -74,17 +74,20 @@ class JobRetriesTests {
     JobRetries.Preview selected(String kind,String parent,String... ids) {return retries.preview(kind,parent,new JobRetryController.Selection(List.of(ids),false));}
     JobRetries.Link create(String kind,String parent,JobRetries.Preview p) {return retries.create(kind,parent,new JobRetryController.Confirmation(p.token(),false));}
 
-    @Test void torrentRetryFreezesCommandsKeepsHistoryAndIsIdempotent() throws Exception {
+    @Test void torrentRetryReusesOriginalItemsKeepsHistoryAndIsIdempotent() throws Exception {
         var parent=torrentJob("COMPLETED","FAILED","ACCEPTED","CANCELLED");
         var preview=failed("downloads",parent);assertThat(preview.send()).isEqualTo(1);
-        var child=create("downloads",parent,preview);assertThat(create("downloads",parent,preview)).isEqualTo(child);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=?",Long.class,child.jobId())).isEqualTo(1);
-        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE id=?",String.class,parent+"-0")).isEqualTo("FAILED");
-        assertThat(jdbc.queryForObject("SELECT command_json FROM torrent_bulk_items WHERE job_id=?",String.class,child.jobId())).isEqualTo(jdbc.queryForObject("SELECT command_json FROM torrent_bulk_items WHERE id=?",String.class,parent+"-0"));
-        assertThat(bulk.view(child.jobId()).interval()).isEqualTo("500ms");
-        assertThat(retries.history("downloads",child.jobId()).source().parentId()).isEqualTo(parent);
-        assertThat(retries.history("downloads",parent).retries()).contains(child);
-        assertThat(failed("downloads",parent).send()).isZero();
+        var retry=create("downloads",parent,preview);assertThat(retry.jobId()).isEqualTo(parent);assertThat(create("downloads",parent,preview)).isEqualTo(retry);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=?",Long.class,parent)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE id=?",String.class,parent+"-0")).isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE id=?",String.class,parent+"-1")).isEqualTo("ACCEPTED");
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE id=?",String.class,parent+"-2")).isEqualTo("CANCELLED");
+        assertThat(bulk.view(parent).interval()).isEqualTo("500ms");
+        assertThat(retries.history("downloads",parent).source()).isNull();
+        assertThat(retries.history("downloads",parent).retries()).isEmpty();
+        assertThat(retries.history("downloads",parent).attemptCount()).isEqualTo(1);
+        assertThat(retries.attemptItems("downloads",parent,preview.token(),0,20).items().getFirst().beforeState()).isEqualTo("FAILED");
+        assertThatThrownBy(()->failed("downloads",parent)).hasMessageContaining("terminado");
     }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value=com.rlibanez.eplsync.events.EventContext.Origin.class,names={"MANUAL","SCHEDULED"})
@@ -108,14 +111,12 @@ class JobRetriesTests {
         jdbc.update("UPDATE torrent_bulk_jobs SET state='CANCELLED' WHERE id=?",parent);jdbc.update("UPDATE torrent_bulk_items SET state='IN_FLIGHT' WHERE id=?",parent+"-0");
         assertThat(retries.history("downloads",parent).terminal()).isFalse();
     }
-    @Test void changedDestinationRequiresConfirmationAndStalePreviewsNeverCreateAJob() throws Exception {
+    @Test void changedDestinationAndStalePreviewsCannotReopenAJob() throws Exception {
         var parent=torrentJob("COMPLETED","FAILED");jdbc.update("UPDATE torrent_bulk_jobs SET target_fingerprint='old-destination' WHERE id=?",parent);
-        var p=failed("downloads",parent);assertThat(p.changes()).isNotEmpty();
-        assertThatThrownBy(()->create("downloads",parent,p)).hasMessageContaining("Confirma");
-        var child=retries.create("downloads",parent,new JobRetryController.Confirmation(p.token(),true));assertThat(child.jobId()).isNotEqualTo(parent);
-        var second=torrentJob("COMPLETED","FAILED");var old=failed("downloads",second);
+        assertThatThrownBy(()->failed("downloads",parent)).hasMessageContaining("restaura");
+        var second=torrentJob("COMPLETED","FAILED");var preview=failed("downloads",second);
         jdbc.update("UPDATE torrent_bulk_items SET message='changed' WHERE job_id=?",second);
-        assertThatThrownBy(()->create("downloads",second,old)).hasMessageContaining("cambiaron");
+        assertThatThrownBy(()->create("downloads",second,preview)).hasMessageContaining("cambiaron");
     }
     @Test void previewsAreUserBoundExpireAndSurviveServiceCalls() throws Exception {
         var parent=torrentJob("COMPLETED","FAILED");var p=failed("downloads",parent);
@@ -124,18 +125,89 @@ class JobRetriesTests {
         when(sessions.current()).thenReturn(owner);jdbc.update("UPDATE job_retry_previews SET expires_at=0 WHERE id=?",p.token());
         assertThatThrownBy(()->create("downloads",parent,p)).hasMessageContaining("caducado");
     }
-    @Test void calibreFailuresProduceANewJobAndCanBeRetriedAgainWithTheSameRoot() throws Exception {
-        var parent=calibreJob("COMPLETED","FAILED","ACCEPTED");var p=failed("calibre",parent);
-        var child=create("calibre",parent,p);assertThat(transfers.job(child.jobId()).total()).isEqualTo(1);
-        jdbc.update("UPDATE calibre_job_items SET state='FAILED' WHERE job_id=?",child.jobId());jdbc.update("UPDATE calibre_jobs SET state='COMPLETED' WHERE id=?",child.jobId());
-        var next=create("calibre",child.jobId(),failed("calibre",child.jobId()));assertThat(next.rootId()).isEqualTo(parent);assertThat(next.parentId()).isEqualTo(child.jobId());
+    @Test void calibreRetryKeepsObservedRevisionForUncertainVerification() throws Exception {
+        var parent=calibreJob("CANCELLED","UNCERTAIN");
+        jdbc.update("UPDATE calibre_job_items SET epub_identity=? WHERE job_id=?","{\"eplId\":1,\"revision\":1.2}",parent);
+        var child=create("calibre",parent,selected("calibre",parent,parent+"-0"));
+        var item=transfers.items(child.jobId(),0,20,List.of("position,asc")).items().getFirst();
+        assertThat(transfers.expectedIdentity(item.id()).revision()).isEqualByComparingTo("1.2");
+        when(client.findRevision(any(),eq(1L),eq(new BigDecimal("1.2")))).thenReturn(9L);
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.2"),true));
+        transfers.cycle();
+        assertThat(transfers.job(child.jobId()).accepted()).isEqualTo(1);
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).findRevision(any(),eq(1L),eq(new BigDecimal("1.1")));
+    }
+    @Test void successfulRetryUpdatesOriginalTotalsAndRetainsThePreviousFailure() throws Exception {
+        var parent=calibreJob("COMPLETED","FAILED","ACCEPTED");
+        var first=failed("calibre",parent);create("calibre",parent,first);
+        when(files.download(anyString(),eq(0))).thenThrow(new com.rlibanez.eplsync.exception.UserInputException("Archivo inaccesible"));
+        transfers.cycle();assertThat(transfers.job(parent).failed()).isEqualTo(1);
+        var second=failed("calibre",parent);create("calibre",parent,second);
+        doAnswer(c->new EpubFiles.Opened("book.epub",epub.length,new java.io.ByteArrayInputStream(epub))).when(files).download(anyString(),eq(0));
+        transfers.cycle();
+        assertThat(transfers.job(parent).total()).isEqualTo(2);
+        assertThat(transfers.job(parent).accepted()).isEqualTo(2);assertThat(transfers.job(parent).failed()).isZero();
+        assertThat(retries.attemptItems("calibre",parent,first.token(),0,20).items().getFirst().message()).isEqualTo("Archivo inaccesible");
+        assertThat(retries.attemptItems("calibre",parent,second.token(),0,20).items().getFirst().state()).isEqualTo("ACCEPTED");
+        assertThat(retries.attempts("calibre",parent,0,1).meta().hasNext()).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Long.class)).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        var other=calibreJob("COMPLETED","FAILED");
+        assertThatThrownBy(()->retries.attemptItems("calibre",other,first.token(),0,20)).hasMessageContaining("no pertenece");
+    }
+    @Test void cancelledCalibrePreparationMustFinishBeforeTheSameItemsCanBeReused() throws Exception {
+        var parent=calibreJob("COMPLETED","FAILED");create("calibre",parent,failed("calibre",parent));
+        var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
+        when(files.download(anyString(),eq(0))).thenAnswer(c->{entered.countDown();if(!release.await(5,java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("timeout");return new EpubFiles.Opened("book.epub",epub.length,new java.io.ByteArrayInputStream(epub));});
+        try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var running=executor.submit(()->transfers.cycle());
+            try {
+                assertThat(entered.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                transfers.control(parent,"cancel");
+                var preview=selected("calibre",parent,parent+"-0");
+                assertThatThrownBy(()->create("calibre",parent,preview)).hasMessageContaining("operación de Calibre en curso");
+                assertThat(retries.history("calibre",parent).attemptCount()).isEqualTo(1);
+            } finally {release.countDown();}
+            running.get(5,java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertThat(transfers.job(parent).state()).isEqualTo("CANCELLED");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void concurrentPreparedRequestsReopenTheOriginalOnlyOnce() throws Exception {
+        var parent=torrentJob("COMPLETED","FAILED");var first=failed("downloads",parent);var second=failed("downloads",parent);
+        var security=org.springframework.security.core.context.SecurityContextHolder.getContext();var start=new java.util.concurrent.CountDownLatch(1);
+        try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var futures=new ArrayList<java.util.concurrent.Future<Boolean>>();
+            for(var preview:List.of(first,second)) futures.add(executor.submit(()->{
+                org.springframework.security.core.context.SecurityContextHolder.setContext(security);
+                try {start.await();create("downloads",parent,preview);return true;}
+                catch(org.springframework.web.server.ResponseStatusException ex) {return false;}
+                finally {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
+            }));
+            start.countDown();int accepted=0;for(var future:futures) if(future.get(5,java.util.concurrent.TimeUnit.SECONDS)) accepted++;
+            assertThat(accepted).isEqualTo(1);
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE job_id=?",Long.class,parent)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Long.class)).isEqualTo(1);
+        assertThat(retries.history("downloads",parent).terminal()).isFalse();
+    }
+    @Test void calibreFailuresStayInTheOriginalJobAndPreserveEachAttempt() throws Exception {
+        var parent=calibreJob("COMPLETED","FAILED","ACCEPTED");var first=failed("calibre",parent);
+        var retry=create("calibre",parent,first);assertThat(retry.jobId()).isEqualTo(parent);assertThat(transfers.job(parent).total()).isEqualTo(2);
+        jdbc.update("UPDATE calibre_job_items SET state='FAILED',message='second failure' WHERE id=?",parent+"-0");jdbc.update("UPDATE calibre_jobs SET state='COMPLETED' WHERE id=?",parent);
+        var second=failed("calibre",parent);assertThat(create("calibre",parent,second).jobId()).isEqualTo(parent);
+        assertThat(retries.attempts("calibre",parent,0,20).items()).hasSize(2);
+        assertThat(retries.attemptItems("calibre",parent,first.token(),0,20).items().getFirst().message()).isEqualTo("second failure");
+        assertThat(retries.attemptItems("calibre",parent,second.token(),0,20).items().getFirst().beforeMessage()).isEqualTo("second failure");
+        assertThat(jdbc.queryForObject("SELECT state FROM calibre_job_items WHERE id=?",String.class,parent+"-1")).isEqualTo("ACCEPTED");
     }
     @Test void uncertainCalibreTransfersAreVerifiedWithoutAnUpload() throws Exception {
         var parent=calibreJob("CANCELLED","UNCERTAIN");jdbc.update("UPDATE calibre_job_items SET calibre_id=9 WHERE job_id=?",parent);
         var p=selected("calibre",parent,parent+"-0");assertThat(p.verify()).isEqualTo(1);
         var child=create("calibre",parent,p);transfers.cycle();
         assertThat(transfers.job(child.jobId()).accepted()).isEqualTo(1);verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
-        assertThatThrownBy(()->transfers.control(parent,"resume")).hasMessageContaining("transferidos");
+        assertThat(retries.history("calibre",parent).attemptCount()).isEqualTo(1);
     }
     @Test void unconfirmedCalibreRetryPausesWithoutResending() throws Exception {
         var parent=calibreJob("CANCELLED","UNCERTAIN");var child=create("calibre",parent,selected("calibre",parent,parent+"-0"));
@@ -185,7 +257,7 @@ class JobRetriesTests {
         assertThat(jdbc.queryForObject("SELECT replacement_accepted FROM torrent_update_cleanup WHERE job_id=?",Integer.class,child.jobId())).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT delete_history FROM torrent_update_plans WHERE job_id=?",Boolean.class,child.jobId())).isEqualTo(deleteHistory);
         assertThat(jdbc.queryForObject("SELECT delete_history FROM torrent_update_cleanup WHERE job_id=?",Boolean.class,child.jobId())).isEqualTo(deleteHistory);
-        assertThat(jdbc.queryForObject("SELECT state FROM torrent_update_cleanup WHERE id='cleanup'",String.class)).isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_update_cleanup WHERE id='cleanup'",String.class)).isEqualTo("WAITING");
         jdbc.update("UPDATE torrent_update_cleanup SET state='REQUESTED' WHERE job_id=?",parent);
         assertThat(retries.history("downloads",parent).terminal()).isFalse();
     }
@@ -208,7 +280,7 @@ class JobRetriesTests {
         jdbc.update("UPDATE torrent_update_cleanup SET state='REMOVED' WHERE job_id=?",child.jobId());
         bulk.cleanupChanged(child.jobId());
         assertThat(bulk.view(child.jobId()).status().name()).isEqualTo("COMPLETED");
-        assertThat(jdbc.queryForObject("SELECT state FROM torrent_update_cleanup WHERE id='cleanup'",String.class)).isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_update_cleanup WHERE id='cleanup'",String.class)).isEqualTo("REMOVED");
     }
     @Test void waitingCalibreRetryKeepsItsDownloadDependencyAndFollowsTorrentRetryDescendants() throws Exception {
         var download=torrentJob("CANCELLED","CANCELLED");
@@ -227,8 +299,8 @@ class JobRetriesTests {
         assertThat(transfers.job(child.jobId()).state()).isEqualTo("COMPLETED");
         assertThat(transfers.job(child.jobId()).accepted()).isEqualTo(1);
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
-        assertThat(transfers.job(parent).state()).isEqualTo("CANCELLED");
-        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_jobs WHERE id=?",String.class,download)).isEqualTo("CANCELLED");
+        assertThat(transfers.job(parent).state()).isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_jobs WHERE id=?",String.class,download)).isEqualTo("QUEUED");
     }
     @Test void retryRecoveryKeepsProvenanceAndVerifiesInterruptedCalibreUploadWithoutResending() throws Exception {
         var parent=calibreJob("COMPLETED","FAILED");
@@ -242,7 +314,7 @@ class JobRetriesTests {
         assertThat(create("calibre",parent,preview)).isEqualTo(child);
         transfers.cycle();
         assertThat(transfers.job(child.jobId()).state()).isEqualTo("COMPLETED");
-        assertThat(retries.history("calibre",child.jobId()).source().rootId()).isEqualTo(parent);
+        assertThat(retries.history("calibre",parent).attemptCount()).isEqualTo(1);
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
     @Test void retryRecoveryRequeuesInterruptedTorrentSendWithoutLosingItsFrozenCommand() throws Exception {
@@ -256,13 +328,13 @@ class JobRetriesTests {
         assertThat(bulk.view(child.jobId()).pending()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT command_json FROM torrent_bulk_items WHERE job_id=?",String.class,child.jobId())).isEqualTo(command);
         assertThat(create("downloads",parent,preview)).isEqualTo(child);
-        assertThat(retries.history("downloads",child.jobId()).source().parentId()).isEqualTo(parent);
-        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE id=?",String.class,parent+"-0")).isEqualTo("FAILED");
+        assertThat(retries.history("downloads",parent).attemptCount()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE id=?",String.class,parent+"-0")).isEqualTo("PENDING");
     }
     @Test void destructiveRetryCannotMoveToAnotherConnection() throws Exception {
         var parent=calibreJob("CANCELLED","UNCERTAIN");
         jdbc.update("UPDATE calibre_jobs SET destination='other' WHERE id=?",parent);
-        var p=selected("calibre",parent,parent+"-0");assertThat(p.verify()).isZero();assertThat(p.excluded()).isEqualTo(1);
+        assertThatThrownBy(()->selected("calibre",parent,parent+"-0")).hasMessageContaining("restaura");
         verify(client,never()).findRevision(any(),anyLong(),any());
     }
     @Test void revokedTorrentPermissionsPauseTheRetryBeforeSending() throws Exception {
@@ -275,8 +347,9 @@ class JobRetriesTests {
     @Test void differentPreviewTokensCannotCreateTwoRetriesForTheSameSourceItem() throws Exception {
         var parent=torrentJob("COMPLETED","FAILED");var first=failed("downloads",parent);var second=failed("downloads",parent);
         create("downloads",parent,first);
-        assertThatThrownBy(()->create("downloads",parent,second)).hasMessageContaining("cambiaron");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM job_retry_jobs WHERE parent_id=?",Long.class,parent)).isEqualTo(1);
+        assertThatThrownBy(()->create("downloads",parent,second)).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE job_id=?",Long.class,parent)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM job_retry_jobs WHERE parent_id=?",Long.class,parent)).isZero();
     }
     @Test void oversizedPreviewsAreRejectedBeforeTheyArePersisted() throws Exception {
         var parent=torrentJob("COMPLETED","FAILED");
@@ -284,21 +357,36 @@ class JobRetriesTests {
         assertThatThrownBy(()->failed("downloads",parent)).hasMessageContaining("8 MiB");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM job_retry_previews",Long.class)).isZero();
     }
-    @Test void retentionKeepsTorrentParentsUntilTheirChildrenHaveExpired() throws Exception {
-        var parent=torrentJob("COMPLETED","FAILED");var child=create("downloads",parent,failed("downloads",parent));
+    void legacy(String kind,String parent,String child) {
+        jdbc.update("INSERT INTO job_retry_jobs VALUES(?,?,?,?,?,?,?)",kind,child,parent,parent,UUID.randomUUID().toString(),owner.id(),Instant.now().toEpochMilli());
+        jdbc.update("INSERT INTO job_retry_items VALUES(?,?,?,?,?,'SEND')",kind,child,parent,parent+"-0",child+"-0");
+    }
+    @Test void legacyLinksRemainVisibleAndPreventRetryingTransferredItemsAgain() throws Exception {
+        for(String kind:List.of("downloads","calibre")) {
+            String parent=kind.equals("downloads")?torrentJob("COMPLETED","FAILED"):calibreJob("COMPLETED","FAILED");
+            String child=kind.equals("downloads")?torrentJob("COMPLETED","FAILED"):calibreJob("COMPLETED","FAILED");
+            legacy(kind,parent,child);
+            assertThat(retries.history(kind,child).source().parentId()).isEqualTo(parent);
+            assertThat(retries.history(kind,parent).retries().getFirst().jobId()).isEqualTo(child);
+            assertThat(retries.history(kind,parent).failed()).isZero();
+            assertThat(failed(kind,parent).excluded()).isEqualTo(1);
+            assertThat(create(kind,child,failed(kind,child)).jobId()).isEqualTo(child);
+            assertThat(retries.history(kind,child).source().parentId()).isEqualTo(parent);
+        }
+    }
+    @Test void retentionKeepsTorrentParentsUntilTheirHistoricalChildrenHaveExpired() throws Exception {
+        var parent=torrentJob("COMPLETED","FAILED");var child=torrentJob("COMPLETED","FAILED");legacy("downloads",parent,child);
         var cutoff=Instant.now().minus(java.time.Duration.ofDays(90));
-        assertThat(retention.purgeOne(cutoff).jobs()).isZero();
-        jdbc.update("UPDATE torrent_bulk_items SET state='FAILED' WHERE job_id=?",child.jobId());
-        jdbc.update("UPDATE torrent_bulk_jobs SET state='COMPLETED',updated_at=0 WHERE id=?",child.jobId());
         assertThat(retention.purgeOne(cutoff).jobs()).isEqualTo(1);
         assertThat(retention.purgeOne(cutoff).jobs()).isEqualTo(1);
     }
     @Test void retentionKeepsCalibreParentsAndDatabaseResetClearsTheRetryInventory() throws Exception {
-        var parent=calibreJob("COMPLETED","FAILED");create("calibre",parent,failed("calibre",parent));
+        var parent=calibreJob("COMPLETED","FAILED");var child=calibreJob("QUEUED","PENDING");legacy("calibre",parent,child);
+        var other=calibreJob("COMPLETED","FAILED");create("calibre",other,failed("calibre",other));
         jdbc.update("UPDATE calibre_jobs SET updated_at='2020-01-01T00:00:00Z' WHERE id=?",parent);
         transfers.retention();assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs WHERE id=?",Long.class,parent)).isEqualTo(1);
         reset.reset();
-        for(String table:List.of("job_retry_items","job_retry_jobs","job_retry_previews")) assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table,Long.class)).isZero();
+        for(String table:List.of("job_retry_attempts","job_retry_attempt_items","job_retry_items","job_retry_jobs","job_retry_previews")) assertThat(jdbc.queryForObject("SELECT count(*) FROM "+table,Long.class)).isZero();
     }
     @Test @WithMockUser(authorities={"TORRENT_JOBS_MANAGE","CALIBRE_JOBS_MANAGE"}) void retriesRespectSendPermissions() throws Exception {
         var parent=torrentJob("COMPLETED","FAILED");assertThatThrownBy(()->failed("downloads",parent)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);

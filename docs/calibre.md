@@ -180,11 +180,15 @@ Se utilizan las carpetas configuradas en **Ajustes → Torrent**, igual que para
 **Descargar EPUB**. EPL Sync consulta los archivos completados del hash y lee el
 EPUB desde el montaje local seguro. El original no se borra ni se modifica.
 
-Antes de enviar, EPL Sync valida el EPUB y comprueba que los identificadores `epl` y
-`revision` presentes coincidan con el registro de descarga. También permite enviarlo
-si falta alguno o ambos; el detalle del resultado indica qué identificadores faltan.
-Solo cuando están ambos se busca esa revisión en Calibre usando sus identificadores
-reales, no el título ni una copia local antigua:
+Antes de enviar, EPL Sync valida el EPUB y comprueba que su EPL ID, si existe,
+coincida con el registro de descarga. Con el mismo EPL ID se permite una revisión
+interna distinta: se conserva el EPUB y se muestra la discrepancia en el detalle,
+sin cambiar la revisión del Catálogo ni del registro torrent. La verificación en
+Calibre utiliza la revisión real leída del EPUB, también tras reinicios y reintentos.
+Si falta alguno o ambos identificadores, se mantiene el envío con el aviso
+correspondiente; una discrepancia de revisión sin EPL ID que confirme el libro
+sigue bloqueada. Solo cuando están ambos se busca esa revisión en Calibre usando
+sus identificadores reales, no el título ni una copia local antigua:
 
 - Si ya existe el mismo EPL ID y revisión, el resultado es **Ya existe**.
 - Si existe otra revisión, se añade una copia independiente y se conserva la anterior.
@@ -290,7 +294,9 @@ La limpieza empieza después de verificar el EPUB y los identificadores de la nu
 copia. Un fallo deja **Limpieza pendiente** y pausa el trabajo; al reanudar se
 comprueba el resultado sin volver a subir el EPUB. Si falta un identificador,
 se permite el envío pero se mantiene la limpieza pendiente hasta poder verificarlo.
-Los metadatos se comprueban de nuevo antes de cada borrado.
+Los metadatos se comprueban de nuevo antes de cada borrado. Si la revisión real
+del EPUB difiere de la prevista por el trabajo, el envío puede completarse, pero
+la limpieza permanece pendiente sin borrar las revisiones anteriores.
 
 Las descargas pendientes se consultan en conjunto cada 30 segundos. Los fallos,
 cancelaciones, archivos inaccesibles o esperas superiores a 30 días quedan visibles
@@ -334,3 +340,20 @@ Se excluyen las entradas implicadas en envíos o borrados pendientes. Antes de
 cada borrado se vuelven a comprobar permisos, conexión, biblioteca, metadatos y
 formatos. Si cambiaron, el elemento queda bloqueado. Tras una interrupción se
 comprueban las operaciones ya solicitadas sin repetir automáticamente su borrado.
+
+### Reintentos dentro del trabajo original
+
+**Reintentar fallidos** y **Reintentar seleccionados** reutilizan el trabajo y sus
+elementos. El informe muestra los resultados actuales: por ejemplo, 99 enviados
+y un fallo pasan a 100 enviados y ningún fallo cuando se resuelve ese elemento.
+El historial conserva cada intento con sus detalles previos y posteriores.
+
+Los envíos inciertos solo se verifican; no se vuelven a subir automáticamente.
+Una limpieza pendiente se retoma sin repetir el envío del EPUB. Se mantienen
+las comprobaciones de identidad, permisos, conexión y biblioteca, también después
+de reiniciar. No se puede reabrir el trabajo mientras una operación anterior
+sobre él siga en curso. Si quedan operaciones inciertas ajenas a la selección,
+deben incluirse en la recuperación para no procesarlas implícitamente.
+
+Los enlaces históricos a otros trabajos se mantienen y los elementos transferidos
+a ellos no se vuelven a ejecutar desde el original.

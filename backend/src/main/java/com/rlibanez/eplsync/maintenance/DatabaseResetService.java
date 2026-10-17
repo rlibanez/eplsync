@@ -71,6 +71,8 @@ public class DatabaseResetService {
                     em.createNativeQuery("DELETE FROM revision_cleanup_jobs").executeUpdate();
                     em.createNativeQuery("DELETE FROM telegram_deliveries").executeUpdate();
                     em.createNativeQuery("DELETE FROM scheduled_automation_runs").executeUpdate();
+                    em.createNativeQuery("DELETE FROM job_retry_attempt_items").executeUpdate();
+                    em.createNativeQuery("DELETE FROM job_retry_attempts").executeUpdate();
                     em.createNativeQuery("DELETE FROM job_retry_items").executeUpdate();
                     em.createNativeQuery("DELETE FROM job_retry_jobs").executeUpdate();
                     em.createNativeQuery("DELETE FROM job_retry_previews").executeUpdate();

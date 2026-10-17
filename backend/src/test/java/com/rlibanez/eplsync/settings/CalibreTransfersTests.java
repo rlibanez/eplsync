@@ -157,6 +157,34 @@ class CalibreTransfersTests {
         } finally {torrentProperties.effective().setEnabled(false);}
     }
     @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SEND","TORRENT_SYNC"})
+    void catalogRedownloadsDeletedBooksInsteadOfReusingCompletedHistory() throws Exception {
+        seedCatalog();torrentProperties.effective().setEnabled(true);
+        try {
+            var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+            var first=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(catalogSelection(2L),true)));
+            String original=transfers.items(first.id(),0,20,List.of("position,asc")).items().getFirst().downloadJobId();
+            jdbc.update("UPDATE calibre_jobs SET next_probe=?",Long.MAX_VALUE);
+            jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED' WHERE job_id=?",original);
+            jdbc.update("UPDATE torrent_bulk_jobs SET state='COMPLETED' WHERE id=?",original);
+            String hash=jdbc.queryForObject("SELECT hash FROM torrent_bulk_items WHERE job_id=?",String.class,original);
+            String record=completedCatalogDownload(2,hash);
+            transfers.cycle();transfers.cycle();
+            assertThat(transfers.job(first.id()).accepted()).isEqualTo(1);
+            // Both external copies and the local download record were deleted; history remains.
+            downloads.deleteById(record);downloads.flush();
+            var second=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(catalogSelection(2L,3L),true)));
+            var rows=transfers.items(second.id(),0,20,List.of("position,asc")).items();
+            assertThat(rows).hasSize(2);
+            String replacement=rows.getFirst().downloadJobId();
+            assertThat(replacement).isNotEqualTo(original);
+            assertThat(rows).allSatisfy(item -> {assertThat(item.downloadJobId()).isEqualTo(replacement);assertThat(item.state()).isEqualTo("WAITING_DOWNLOAD");});
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=?",Integer.class,replacement)).isEqualTo(2);
+            // Repeating the request while the new sends are pending must reuse them.
+            var third=EventContext.withActor(actor,()->catalogTransfers.create(catalogRequest(catalogSelection(2L,3L),true)));
+            assertThat(transfers.items(third.id(),0,20,List.of("position,asc")).items()).allSatisfy(item -> assertThat(item.downloadJobId()).isEqualTo(replacement));
+        } finally {torrentProperties.effective().setEnabled(false);}
+    }
+    @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SEND","TORRENT_SYNC"})
     void catalogFailedDownloadPausesWithoutUploadingOrUsingAnotherRevision() throws Exception {
         seedCatalog();torrentProperties.effective().setEnabled(true);
         try {
@@ -368,8 +396,96 @@ class CalibreTransfersTests {
         var job=create();transfers.cycle();assertThat(transfers.job(job.id()).skipped()).isEqualTo(1);
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
+    @Test void preparationFailureExposesSafeReasonAndLogsTechnicalCause() {
+        var job=create();
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CalibreTransfers.class);
+        var captured=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        captured.start();logger.addAppender(captured);
+        try {
+            when(files.download(record,0)).thenThrow(new IllegalStateException("token=secret",new java.nio.file.AccessDeniedException("/private/password")));
+            transfers.cycle();
+            assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).contains("permisos").doesNotContain("secret","/private");
+            assertThat(captured.list.stream().filter(e -> e.getLevel()==ch.qos.logback.classic.Level.WARN).map(e -> e.getFormattedMessage()).toList())
+                .anySatisfy(message -> assertThat(message).contains(job.id(),"AccessDeniedException","EPL ID=1").doesNotContain("secret","/private"));
+            verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        } finally {logger.detachAppender(captured);captured.stop();}
+    }
     @Test void refusesMismatchedEpubIdentity() throws Exception {
         bytes=epub(2,"1.10");when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        var job=create();transfers.cycle();assertThat(transfers.job(job.id()).failed()).isEqualTo(1);
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void acceptsMatchingRealWorldIdAndEquivalentRevision() throws Exception {
+        var row=downloads.findById(record).orElseThrow();row.setEplId(85481L);row.setRevision(1.0);downloads.saveAndFlush(row);
+        bytes=epub(85481,"1.0");when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),85481L,BigDecimal.ONE,true));
+        var job=create();transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.CsvSource({"2,1.1","2,1.2"})
+    void identityMismatchExplainsExpectedAndFoundValuesWithoutUploading(long epl,String revision) throws Exception {
+        bytes=epub(epl,revision);when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        var job=create();transfers.cycle();
+        var item=transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst();
+        assertThat(item.state()).isEqualTo("FAILED");
+        assertThat(item.message()).contains("Esperado: EPL ID 1, revisión 1.1","Encontrado: EPL ID "+epl+", revisión "+revision,"No se ha enviado a Calibre");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"1.0","1.2"})
+    void acceptsDifferentRevisionAndVerifiesTheActualEpubRevision(String revision) throws Exception {
+        bytes=epub(1,revision);when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal(revision),true));
+        var job=create();transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        var item=transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst();
+        assertThat(item.revision()).isEqualTo("1.1");assertThat(item.message()).contains("revisión del EPUB (r"+new BigDecimal(revision).stripTrailingZeros().toPlainString()+")","registro de descarga (r1.1)");
+        verify(client).findRevision(any(),eq(1L),eq(new BigDecimal(revision)));
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        assertThat(downloads.findById(record).orElseThrow().getRevision()).isEqualTo(1.1);
+    }
+    @Test void alreadyPresentActualRevisionIsSkippedWithoutUploading() throws Exception {
+        bytes=epub(1,"1.2");when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        when(client.findRevision(any(),eq(1L),eq(new BigDecimal("1.2")))).thenReturn(9L);
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.2"),true));
+        var job=create();transfers.cycle();
+        assertThat(transfers.job(job.id()).skipped()).isEqualTo(1);
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void uncertainActualRevisionBlocksASecondJobWithADifferentRecordedRevision() throws Exception {
+        bytes=epub(1,"1.2");when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());
+        var first=create();transfers.cycle();assertThat(transfers.job(first.id()).uncertain()).isEqualTo(1);
+        var row=downloads.findById(record).orElseThrow();row.setRevision(1.2);downloads.saveAndFlush(row);
+        var second=create();transfers.cycle();
+        assertThat(transfers.job(second.id()).state()).isEqualTo("PAUSED");
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void mismatchedRevisionStillBlocksAutomaticCleanup() throws Exception {
+        bytes=epub(1,"1.2");when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.2"),true));
+        var job=create();jdbc.update("UPDATE calibre_job_items SET cleanup_policy='BOOK',cleanup_ids='[8]' WHERE job_id=?",job.id());
+        transfers.cycle();transfers.cycle();
+        var item=transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst();
+        assertThat(item.state()).isEqualTo("CLEANUP_PENDING");assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(item.message()).contains("no se eliminará");
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void uncertainDifferentRevisionUsesPersistedIdentityWithoutUploadingAgain() throws Exception {
+        bytes=epub(1,"1.2");when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());
+        var job=create();transfers.cycle();assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        when(client.findRevision(any(),eq(1L),eq(new BigDecimal("1.2")))).thenReturn(9L);
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.2"),true));
+        transfers.recoverInterrupted();transfers.control(job.id(),"resume");transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).findRevision(any(),eq(1L),eq(new BigDecimal("1.1")));
+    }
+    @Test void differingRevisionDoesNotSkipAnUnrelatedRemoteRevision() throws Exception {
+        bytes=epub(1,"1.2");when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        when(client.findRevision(any(),eq(1L),eq(new BigDecimal("1.2")))).thenReturn(9L);
         var job=create();transfers.cycle();assertThat(transfers.job(job.id()).failed()).isEqualTo(1);
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
     }

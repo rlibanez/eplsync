@@ -223,7 +223,8 @@ class BulkTests {
                     .map(e -> e.getFormattedMessage()).toList();
             assertThat(warnings).hasSize(5).allMatch(message -> message.contains("jobId=" + job.jobId())
                     && message.contains("eplId=") && message.contains("hash=")
-                    && message.contains("La categoría configurada no existe en qBittorrent"));
+                    && message.contains("La categoría configurada no existe en qBittorrent")
+                    && message.contains("causa=com.rlibanez.eplsync.exception.TorrentOperationException"));
             assertThat(appender.list.stream().filter(e -> e.getFormattedMessage().startsWith("Envío bulk:")
                     || e.getFormattedMessage().startsWith("Resultado bulk:")))
                     .hasSize(10).allMatch(e -> e.getLevel() == ch.qos.logback.classic.Level.TRACE);

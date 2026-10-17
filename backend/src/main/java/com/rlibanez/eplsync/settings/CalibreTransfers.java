@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.settings;
 
+import com.rlibanez.eplsync.exception.OperationDiagnostics;
+
 import com.rlibanez.eplsync.events.*;
 import com.rlibanez.eplsync.security.*;
 import com.rlibanez.eplsync.exception.UserInputException;
@@ -58,6 +60,7 @@ public class CalibreTransfers {
     private final AtomicBoolean busy=new AtomicBoolean();
     private final ExecutorService executor=Executors.newSingleThreadExecutor(r -> { var thread=new Thread(r,"calibre-transfers");thread.setDaemon(true);return thread; });
     @org.springframework.beans.factory.annotation.Value("${eplsync.calibre.transfers.worker-enabled:true}") private boolean enabled;
+    private static final tools.jackson.databind.json.JsonMapper EPUB_IDENTITIES=tools.jackson.databind.json.JsonMapper.builder().build();
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(CalibreTransfers.class);
     public CalibreTransfers(JdbcTemplate jdbc,org.springframework.transaction.PlatformTransactionManager manager,CalibreSettings settings,
             CalibreClient client,CalibreCatalogService catalog,EpubFiles files,DownloadRepository downloads,DownloadTrackingService tracking,
@@ -320,6 +323,10 @@ public class CalibreTransfers {
         if(!lifecycle.writeLock().tryLock()) throw new UserInputException("Hay un envío a Calibre en curso; espera antes de reiniciar la base de datos");
         try { return work.get(); } finally { lifecycle.writeLock().unlock(); }
     }
+    <T> T retryExclusive(java.util.function.Supplier<T> work) {
+        if(!lifecycle.writeLock().tryLock()) throw new UserInputException("Hay una operación de Calibre en curso; espera a que termine antes de reintentar");
+        try {return work.get();} finally {lifecycle.writeLock().unlock();}
+    }
     private void postponeDownloads(String job) {
         updates.postponeDownloadCheck(job);
         log.debug("Comprobación de descargas de Calibre aplazada: trabajo={}, cliente torrent ocupado; se comprobará en el siguiente intervalo",job);
@@ -336,7 +343,7 @@ public class CalibreTransfers {
             jdbc.update("UPDATE calibre_job_items SET state='UNCERTAIN',next_check=0 WHERE state='SENDING'");
             var queued=jdbc.queryForList("SELECT * FROM calibre_jobs WHERE state IN ('QUEUED','RUNNING') AND next_check<=? ORDER BY created_at,id LIMIT 1",Instant.now().toEpochMilli());
             if(queued.isEmpty()) return;var j=queued.getFirst();String id=(String)j.get("id");
-            var actor=new EventContext.Actor((String)j.get("owner_id"),(String)j.get("owner_username"),"USER");
+            var actor=retryActor(id,(String)j.get("owner_id"),(String)j.get("owner_username"));
             var owner=actor.id()==null ? null : accounts.find(actor.id());
             if(owner==null || !owner.status().equals("ACTIVE") || owner.temporaryExpiresAt()!=null && !owner.temporaryExpiresAt().isAfter(Instant.now()) || owner.mustChangePassword() || !owner.permissions().containsAll(Set.of(Permission.CALIBRE_SEND,Permission.DOWNLOADS_FILES_READ))) {pause(id,actor,"El usuario ya no está autorizado para enviar archivos a Calibre");return;}
             CalibreSettings.Connection connection;
@@ -361,7 +368,7 @@ public class CalibreTransfers {
                         try {if(w.downloadJobId()!=null && !owner.permissions().contains(Permission.TORRENT_SYNC)) throw new UserInputException("El usuario ya no puede consultar el cliente torrent");updates.waiting(id,w);} catch(RuntimeException ex) {
                             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
                             if(ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) {postponeDownloads(id);break;}
-                            log.debug("No se pudo comprobar la descarga pendiente de Calibre: trabajo={}, EPL ID={}, tipo={}",id,w.eplId(),ex.getClass().getSimpleName());
+                            log.warn("No se pudo comprobar la descarga pendiente de Calibre: trabajo={}, EPL ID={}, tipo={}",id,w.eplId(),OperationDiagnostics.technical(ex));
                             jdbc.update("UPDATE calibre_job_items SET state='BLOCKED_DOWNLOAD',message=? WHERE id=? AND state='WAITING_DOWNLOAD'",safeMessage(ex,"No se puede comprobar o leer la descarga; revisa conexión y carpetas"),w.id());
                             pause(id,actor,"Hay una descarga pendiente que requiere revisión");break;
                         }
@@ -369,7 +376,7 @@ public class CalibreTransfers {
                 } catch(RuntimeException ex) {
                     if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
                     if(ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) {postponeDownloads(id);return;}
-                    log.debug("No se pudo comprobar la descarga pendiente de Calibre: trabajo={}, EPL ID={}, tipo={}",id,item.eplId(),ex.getClass().getSimpleName());
+                    log.warn("No se pudo comprobar la descarga pendiente de Calibre: trabajo={}, EPL ID={}, tipo={}",id,item.eplId(),OperationDiagnostics.technical(ex));
                     jdbc.update("UPDATE calibre_job_items SET state='BLOCKED_DOWNLOAD',message=? WHERE id=? AND state='WAITING_DOWNLOAD'",safeMessage(ex,"No se puede comprobar o leer la descarga; revisa conexión y carpetas"),item.id());
                     pause(id,actor,"Hay una descarga pendiente que requiere revisión");
                 }
@@ -381,6 +388,7 @@ public class CalibreTransfers {
                     updates.cleanup(id,connection,item);finish(id,actor,item,jdbc.queryForObject("SELECT completion_state FROM calibre_job_items WHERE id=?",String.class,item.id()),item.calibreId(),"EPUB verificado; limpieza de revisiones anteriores completada");
                 } catch(RuntimeException ex) {
                     if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
+                    log.warn("Limpieza de Calibre pendiente: trabajo={}, elemento={}, causa={}",id,item.id(),OperationDiagnostics.technical(ex));
                     jdbc.update("UPDATE calibre_job_items SET message=? WHERE id=?",safeMessage(ex,"No se pudo confirmar la limpieza de las revisiones anteriores"),item.id());
                     pause(id,actor,"Limpieza pendiente; reanuda para comprobarla sin repetir el envío");
                 }
@@ -391,15 +399,19 @@ public class CalibreTransfers {
             log.debug("Ciclo de Calibre aplazado por contención SQLite; se verificará sin repetir envíos");
         } finally { lifecycle.readLock().unlock();cycleLock.unlock(); }
     }
+    private EventContext.Actor retryActor(String job,String owner,String username) {
+        var rows=jdbc.queryForList("SELECT owner_id,username FROM job_retry_attempts WHERE kind='calibre' AND job_id=? ORDER BY created_at DESC,id DESC LIMIT 1",job);
+        return rows.isEmpty()?new EventContext.Actor(owner,username,"USER"):new EventContext.Actor((String)rows.getFirst().get("owner_id"),(String)rows.getFirst().get("username"),"USER");
+    }
     void requireCleanupAllowed(String job,CalibreSettings.Connection c) {
         var row=jdbc.queryForMap("SELECT * FROM calibre_jobs WHERE id=?",job);
-        var owner=accounts.find((String)row.get("owner_id"));
+        var owner=accounts.find(retryActor(job,(String)row.get("owner_id"),(String)row.get("owner_username")).id());
         var current=settings.connection();
         if(!"RUNNING".equals(row.get("state")) || owner==null || !owner.status().equals("ACTIVE") || owner.mustChangePassword() || owner.temporaryExpiresAt()!=null && !owner.temporaryExpiresAt().isAfter(Instant.now()) || !owner.permissions().contains(Permission.CALIBRE_DELETE) || !destination(current).equals(row.get("destination")) || !current.equals(new CalibreSettings.Connection(c.url(),c.username(),c.password(),current.library()))) throw new UserInputException("El trabajo, la conexión o los permisos cambiaron antes del borrado");
     }
     void removeObserved(CalibreSettings.Connection connection,long id) {catalog.removeObserved(connection,id);}
     private static String safeMessage(RuntimeException ex,String fallback) {
-        String message=ex instanceof UserInputException?ex.getMessage():fallback;
+        String message=ex instanceof UserInputException?ex.getMessage():OperationDiagnostics.reason(ex,fallback);
         return message==null?fallback:message.substring(0,Math.min(1024,message.length()));
     }
     private void complete(String id,EventContext.Actor actor) {
@@ -409,9 +421,10 @@ public class CalibreTransfers {
         Path temp=null;boolean sending=false;Long remoteId=item.calibreId()==null?acceptedRemoteIds.get(item.id()):item.calibreId();String metadataNotice="";
         try {
             if(item.state().equals("UNCERTAIN")) {
-                remoteId=remoteId==null && item.identityComplete() ? client.findRevision(connection,item.eplId(),new BigDecimal(item.revision())) : remoteId;
+                var observed=expectedIdentity(item.id());
+                remoteId=remoteId==null && item.identityComplete() && observed.eplId()!=null && observed.revision()!=null ? client.findRevision(connection,observed.eplId(),observed.revision()) : remoteId;
                 if(remoteId==null) {pause(job,actor,"El envío anterior no está confirmado. Comprueba Calibre; no se repetirá automáticamente");return;}
-                publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"ACCEPTED",remoteId,"Envío anterior verificado");return;
+                publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"ACCEPTED",remoteId,"Envío anterior verificado"+revisionNotice(item,observed));return;
             }
             temp=Files.createTempFile("eplsync-calibre-send-",".epub");
             try(var input=files.download(item.recordId(),item.index());var output=Files.newOutputStream(temp)) {
@@ -421,12 +434,19 @@ public class CalibreTransfers {
                 if(total!=item.size()) throw new UserInputException("El archivo de origen cambió durante la lectura");
             }
             var identity=CalibreEpubMetadata.read(temp);
-            if(identity.eplId()!=null && identity.eplId()!=item.eplId() || identity.revision()!=null && identity.revision().compareTo(new BigDecimal(item.revision()))!=0) throw new UserInputException("El EPL ID o la revisión del EPUB no coinciden con el registro de descarga");
+            if(identity.eplId()!=null && identity.eplId()!=item.eplId() || identity.eplId()==null && identity.revision()!=null && identity.revision().compareTo(new BigDecimal(item.revision()))!=0) {
+                String expected="EPL ID "+item.eplId()+", revisión "+item.revision();
+                String found="EPL ID "+Objects.toString(identity.eplId(),"ausente")+", revisión "+(identity.revision()==null?"ausente":identity.revision().stripTrailingZeros().toPlainString());
+                log.warn("Identidad del EPUB no coincidente; no se ha enviado a Calibre: trabajo={}, elemento={}, registro={}, esperado=[{}], encontrado=[{}]",job,item.id(),item.recordId(),expected,found);
+                throw new UserInputException("Los identificadores internos del EPUB no coinciden. Esperado: "+expected+". Encontrado: "+found+". No se ha enviado a Calibre; comprueba los identificadores antes de reintentar.");
+            }
             metadataNotice=identity.eplId()==null && identity.revision()==null ? "EPUB enviado sin EPL ID ni revisión" : identity.eplId()==null ? "EPUB enviado sin EPL ID" : identity.revision()==null ? "EPUB enviado sin revisión" : "";
+            if(!revisionNotice(item,identity).isEmpty()) metadataNotice=(metadataNotice.isEmpty()?"EPUB enviado y verificado":metadataNotice)+revisionNotice(item,identity);
+            jdbc.update("UPDATE calibre_job_items SET epub_identity=? WHERE id=? AND state='PENDING'",EPUB_IDENTITIES.writeValueAsString(identity),item.id());
             remoteId=identity.eplId()!=null && identity.revision()!=null ? client.findRevision(connection,identity.eplId(),identity.revision()) : null;
-            if(remoteId!=null && client.hasEpub(connection,remoteId)) {publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"SKIPPED",remoteId,"Esta revisión ya está en Calibre");return;}
+            if(remoteId!=null && client.hasEpub(connection,remoteId)) {publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"SKIPPED",remoteId,"Esta revisión ya está en Calibre"+revisionNotice(item,identity));return;}
             remoteId=null;
-            if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE j.destination=? AND j.library=? AND i.epl_id=? AND i.revision=? AND i.state IN ('SENDING','UNCERTAIN') AND i.id<>? AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class,config.get("destination"),connection.library(),item.eplId(),item.revision(),item.id())>0) {pause(job,actor,"Existe un envío de esta revisión pendiente de confirmación");return;}
+            if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE j.destination=? AND j.library=? AND i.epl_id=? AND CAST(coalesce(json_extract(i.epub_identity,'$.revision'),i.revision) AS REAL)=? AND i.state IN ('SENDING','UNCERTAIN') AND i.id<>? AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class,config.get("destination"),connection.library(),item.eplId(),identity.revision()==null?Double.parseDouble(item.revision()):identity.revision().doubleValue(),item.id())>0) {pause(job,actor,"Existe un envío de esta revisión pendiente de confirmación");return;}
             var current=settings.connection();var owner=accounts.find(actor.id());
             if(!destination(current).equals(config.get("destination")) || !source().equals(config.get("source")) || owner==null || !owner.status().equals("ACTIVE") || owner.temporaryExpiresAt()!=null && !owner.temporaryExpiresAt().isAfter(Instant.now()) || owner.mustChangePassword() || !owner.permissions().containsAll(Set.of(Permission.CALIBRE_SEND,Permission.DOWNLOADS_FILES_READ))) {pause(job,actor,"La configuración o los permisos cambiaron antes del envío");return;}
             connection=new CalibreSettings.Connection(current.url(),current.username(),current.password(),connection.library());
@@ -446,18 +466,36 @@ public class CalibreTransfers {
             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) {
                 log.debug("Resultado de Calibre pendiente de persistencia: elemento={}",item.id());return;
             }
+            log.warn("Operación de Calibre fallida: trabajo={}, elemento={}, EPL ID={}, fase={}, causa={}",job,item.id(),item.eplId(),sending?"ENVIO_O_VERIFICACION":item.state(),OperationDiagnostics.technical(ex));
             if((sending && !(ex instanceof org.springframework.web.server.ResponseStatusException)) || ex instanceof CalibreClient.UnconfirmedUpload) {
                 finish(job,actor,item,"UNCERTAIN",remoteId,"No se ha confirmado el envío; no se repetirá automáticamente"+(metadataNotice.isEmpty()?"":". "+metadataNotice));pause(job,actor,"Hay un envío pendiente de verificación");
             } else if(sending && remoteId!=null || item.state().equals("UNCERTAIN")) {
                 finish(job,actor,item,"UNCERTAIN",remoteId,"No se pudieron verificar los metadatos o el EPUB de Calibre");pause(job,actor,"Hay un envío pendiente de verificación");
             } else if(ex instanceof org.springframework.web.server.ResponseStatusException status && status.getStatusCode().value()!=404) {
+                jdbc.update("UPDATE calibre_job_items SET message=? WHERE id=?", "Calibre respondió con HTTP "+status.getStatusCode().value()+"; revisa conexión y permisos",item.id());
                 pause(job,actor,sending ? "Calibre rechazó el envío; revisa permisos de escritura y conexión" : "No se puede consultar Calibre; revisa la conexión");
                 if(sending) jdbc.update("UPDATE calibre_job_items SET state=CASE WHEN (SELECT state FROM calibre_jobs WHERE id=?)='CANCELLED' THEN 'CANCELLED' ELSE 'PENDING' END WHERE id=?",job,item.id());
-            } else finish(job,actor,item,"FAILED",remoteId,ex instanceof UserInputException || ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException ? ex.getMessage() : "No se pudo preparar o enviar el EPUB");
+            } else finish(job,actor,item,"FAILED",remoteId,ex instanceof UserInputException || ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException ? ex.getMessage() : OperationDiagnostics.reason(ex,"No se pudo preparar o enviar el EPUB; consulta el diagnóstico del servidor con el ID de este trabajo"));
         } finally {if(temp!=null) try { Files.deleteIfExists(temp); }catch(java.io.IOException ex) {log.warn("No se pudo eliminar un archivo temporal de envío a Calibre");}}
     }
+    CalibreEpubMetadata.Identity expectedIdentity(String item) {
+        var row=jdbc.queryForMap("SELECT epl_id,revision,epub_identity FROM calibre_job_items WHERE id=?",item);
+        return storedIdentity(row);
+    }
+    static CalibreEpubMetadata.Identity storedIdentity(Map<String,Object> row) {
+        var stored=row.get("epub_identity");
+        if(stored!=null) return EPUB_IDENTITIES.readValue(stored.toString(),CalibreEpubMetadata.Identity.class);
+        // Previously persisted uncertain uploads retain the original, stricter identity.
+        return new CalibreEpubMetadata.Identity(((Number)row.get("epl_id")).longValue(),new BigDecimal(row.get("revision").toString()));
+    }
+    private static String revisionNotice(Item item,CalibreEpubMetadata.Identity identity) {
+        return identity.revision()!=null && identity.revision().compareTo(new BigDecimal(item.revision()))!=0
+            ? ". La revisión del EPUB (r"+identity.revision().stripTrailingZeros().toPlainString()+") difiere de la del registro de descarga (r"+item.revision()+")" : "";
+    }
     private void publish(CalibreSettings.Connection connection,CalibreClient.Book book,Item item) {
-        if(book.eplId()!=null && !java.util.Objects.equals(book.eplId(),item.eplId()) || book.revision()!=null && book.revision().compareTo(new BigDecimal(item.revision()))!=0) throw new UserInputException("Los identificadores del libro recibido por Calibre no coinciden; comprueba sus metadatos");
+        var observed=expectedIdentity(item.id());
+        var revision=observed.revision()==null?new BigDecimal(item.revision()):observed.revision();
+        if(book.eplId()!=null && !java.util.Objects.equals(book.eplId(),item.eplId()) || book.revision()!=null && book.revision().compareTo(revision)!=0) throw new UserInputException("Los identificadores del libro recibido por Calibre no coinciden; comprueba sus metadatos");
         if(!client.hasEpub(connection,book.calibreId())) throw new UserInputException("Calibre no confirma el formato EPUB del libro; el envío queda pendiente de verificación");
         catalog.observe(connection,book);
     }

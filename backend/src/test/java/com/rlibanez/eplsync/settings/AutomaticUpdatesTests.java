@@ -123,11 +123,11 @@ class AutomaticUpdatesTests {
         String original=automations.latest(task.id()).jobs().getFirst().id();
         bulk.next();var item=bulk.claim(original,bulk.pending(original,1).getFirst());bulk.finish(item.getId(),BulkItem.State.FAILED,"test",false,false);
         execute(task);var cycle=automations.latest(task.id());assertThat(cycle.attempts()).isEqualTo(1);
-        String child=cycle.jobs().getFirst().id();assertThat(child).isNotEqualTo(original);
-        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE job_id=?",String.class,original)).isEqualTo("FAILED");
+        String child=cycle.jobs().getFirst().id();assertThat(child).isEqualTo(original);
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_items WHERE job_id=?",String.class,original)).isEqualTo("PENDING");
         bulk.next();var retried=bulk.claim(child,bulk.pending(child,1).getFirst());bulk.finish(retried.getId(),BulkItem.State.FAILED,"test",false,false);
         execute(task);assertThat(automations.latest(task.id()).state()).isEqualTo("ATTENTION");
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Long.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Long.class)).isEqualTo(1);
         automations.close(task.id());assertThat(automations.latest(task.id()).state()).isEqualTo("COMPLETED");
     }
     @Test @WithMockUser(authorities={"TORRENT_SYNC","TORRENT_SEND","TORRENT_JOBS_MANAGE","CATALOG_READ"})

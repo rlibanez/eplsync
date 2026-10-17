@@ -13,7 +13,8 @@ public class RetryAuthorization {
     public RetryAuthorization(JdbcTemplate jdbc,AccountStore accounts) {this.jdbc=jdbc;this.accounts=accounts;}
     public boolean torrent(String id,boolean cleanup,boolean deleteFiles) {return torrent(id,cleanup,deleteFiles,false);}
     public boolean torrent(String id,boolean cleanup,boolean deleteFiles,boolean deleteHistory) {
-        var owners=jdbc.queryForList("SELECT owner_id FROM job_retry_jobs WHERE kind='downloads' AND child_id=?",String.class,id);
+        var owners=jdbc.queryForList("SELECT owner_id FROM job_retry_attempts WHERE kind='downloads' AND job_id=? ORDER BY created_at DESC,id DESC LIMIT 1",String.class,id);
+        if(owners.isEmpty()) owners=jdbc.queryForList("SELECT owner_id FROM job_retry_jobs WHERE kind='downloads' AND child_id=?",String.class,id);
         if(owners.isEmpty()) owners=jdbc.queryForList("SELECT r.owner_id FROM scheduled_automation_runs r JOIN scheduled_automation_jobs j ON j.run_id=r.id WHERE j.kind='downloads' AND j.job_id=?",String.class,id);
         if(owners.isEmpty()) return true; // Existing jobs retain their established authorization policy.
         String owner=owners.getFirst();var account=owner==null?null:accounts.find(owner);

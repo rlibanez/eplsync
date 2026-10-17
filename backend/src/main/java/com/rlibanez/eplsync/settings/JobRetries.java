@@ -17,7 +17,7 @@ import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.torrent.downloads.*;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Immutable source history, durable previews and atomic, single-use item claims. Remote I/O is outside write transactions. */
+/** Same-job retries with immutable attempt snapshots, durable previews and atomic single-use requests. */
 @Service
 public class JobRetries {
     private final java.util.concurrent.Semaphore preparing=new java.util.concurrent.Semaphore(2),creating=new java.util.concurrent.Semaphore(1);
@@ -30,6 +30,9 @@ public class JobRetries {
     private final CalibreClient calibre;
     private final EpubFiles files;
     private final EventJournal events;
+    @org.springframework.beans.factory.annotation.Autowired private JobRetryHistory audit;
+    @org.springframework.beans.factory.annotation.Autowired private CalibreTransfers transfers;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.torrent.bulk.BulkStore bulk;
     private final JsonMapper json=JsonMapper.builder().build();
     public JobRetries(JdbcTemplate jdbc,org.springframework.transaction.PlatformTransactionManager manager,SessionAccess sessions,
             TorrentProperties torrent,DownloadTrackingService tracking,CalibreSettings settings,CalibreClient calibre,EpubFiles files,EventJournal events) {
@@ -37,7 +40,7 @@ public class JobRetries {
         this.settings=settings;this.calibre=calibre;this.files=files;this.events=events;
     }
     public record Link(String kind,String jobId,String parentId,String rootId) {}
-    public record History(Link source,List<Link> retries,boolean terminal,long failed,String reason) {}
+    public record History(Link source,List<Link> retries,boolean terminal,long failed,String reason,long attemptCount) {}
     public record Issue(String id,String detail) {}
     public record Preview(String token,int send,int verify,int waiting,int cleanup,int excluded,List<Issue> issues,List<String> changes,String library) {}
     public record Work(String id,String phase,Map<String,Object> row,List<Map<String,Object>> cleanup) {}
@@ -61,7 +64,7 @@ public class JobRetries {
         var source=jdbc.query("SELECT * FROM job_retry_jobs WHERE kind=? AND child_id=?",(r,n)->new Link(kind,id,r.getString("parent_id"),r.getString("root_id")),kind,id);
         var children=jdbc.query("SELECT * FROM job_retry_jobs WHERE kind=? AND parent_id=? ORDER BY created_at,child_id",(r,n)->new Link(kind,r.getString("child_id"),id,r.getString("root_id")),kind,id);
         long failed=jdbc.queryForObject("SELECT count(*) FROM "+items(kind)+" i WHERE job_id=? AND state='FAILED' AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind=? AND r.parent_id=? AND r.source_item_id=i.id)",Long.class,id,kind,id);
-        return new History(source.isEmpty()?null:source.getFirst(),children,terminal,failed,terminal?null:"Para reintentar, termina o cancela el trabajo y espera a que finalicen las operaciones en curso. Los trabajos pausados se reanudan.");
+        return new History(source.isEmpty()?null:source.getFirst(),children,terminal,failed,terminal?null:"Para reintentar, termina o cancela el trabajo y espera a que finalicen las operaciones en curso. Los trabajos pausados se reanudan.",jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE kind=? AND job_id=?",Long.class,kind,id));
     }
     private String configuration(String kind) {
         if(kind.equals("downloads")) return digest(torrent.getClient()+"\n"+torrent.getBaseUrl().replaceAll("/+$",""));
@@ -81,7 +84,7 @@ public class JobRetries {
         if(rows.size()>1000) throw new UserInputException("Hay más de 1000 elementos; selecciona un grupo menor");
         if(!failedOnly && rows.size()!=selection.size()) throw new UserInputException("Algún elemento no pertenece a este trabajo o ya no existe");return rows;
     }
-    private String signature(Map<String,Object> job,List<Map<String,Object>> rows) {return digest(bounded(List.of(job,rows)));}
+    private String signature(String kind,String id,Map<String,Object> job,List<Map<String,Object>> rows) {return digest(bounded(List.of(job,rows,jdbc.queryForList("SELECT id FROM job_retry_attempts WHERE kind=? AND job_id=? ORDER BY created_at,id",String.class,kind,id))));}
     public Preview preview(String kind,String id,JobRetryController.Selection selection) {
         permission(kind);
         if(!preparing.tryAcquire()) throw conflict("Hay dos reintentos en preparación; inténtalo de nuevo en unos segundos");
@@ -93,12 +96,13 @@ public class JobRetries {
         var plan=plan(kind,id,selection.failedOnly(),selection.items());
         String token=UUID.randomUUID().toString();long now=Instant.now().toEpochMilli();
         jdbc.update("DELETE FROM job_retry_previews WHERE id IN (SELECT id FROM job_retry_previews WHERE expires_at<? LIMIT 100)",now);
-        if(jdbc.queryForObject("SELECT count(*) FROM job_retry_previews WHERE owner_id=? AND expires_at>? AND NOT EXISTS(SELECT 1 FROM job_retry_jobs WHERE request_id=job_retry_previews.id)",Long.class,sessions.current().id(),now)>=20) throw conflict("Hay demasiados reintentos preparados; espera unos minutos");
+        if(jdbc.queryForObject("SELECT count(*) FROM job_retry_previews WHERE owner_id=? AND expires_at>? AND NOT EXISTS(SELECT 1 FROM job_retry_jobs WHERE request_id=job_retry_previews.id) AND NOT EXISTS(SELECT 1 FROM job_retry_attempts WHERE id=job_retry_previews.id)",Long.class,sessions.current().id(),now)>=20) throw conflict("Hay demasiados reintentos preparados; espera unos minutos");
         jdbc.update("INSERT INTO job_retry_previews VALUES(?,?,?,?,?,?,?)",token,sessions.current().id(),kind,id,bounded(plan),now,now+900000);
         return new Preview(token,(int)plan.work().stream().filter(w->w.phase().equals("SEND")).count(),(int)plan.work().stream().filter(w->w.phase().equals("VERIFY")).count(),(int)plan.work().stream().filter(w->w.phase().equals("WAIT")).count(),(int)plan.work().stream().filter(w->w.phase().equals("CLEANUP") || !w.cleanup().isEmpty() || "calibre".equals(kind) && !"KEEP".equals(w.row().get("retry_policy"))).count(),plan.issues().size(),plan.issues().stream().limit(30).toList(),plan.changes(),plan.library());
     }
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=3600000)
     public void expirePreviews() {
+        jdbc.update("DELETE FROM job_retry_attempts WHERE id IN (SELECT a.id FROM job_retry_attempts a WHERE (a.kind='downloads' AND NOT EXISTS(SELECT 1 FROM torrent_bulk_jobs j WHERE j.id=a.job_id) OR a.kind='calibre' AND NOT EXISTS(SELECT 1 FROM calibre_jobs j WHERE j.id=a.job_id)) LIMIT 1000)");
         jdbc.update("DELETE FROM job_retry_previews WHERE id IN (SELECT id FROM job_retry_previews WHERE expires_at<? LIMIT 1000)",Instant.now().toEpochMilli());
     }
     private Plan plan(String kind,String id,boolean failedOnly,List<String> selection) {
@@ -106,8 +110,7 @@ public class JobRetries {
         String config=configuration(kind);var rows=selected(kind,id,failedOnly,selection);
         var work=new ArrayList<Work>();var issues=new ArrayList<Issue>();var changes=new LinkedHashSet<String>();
         boolean changed=kind.equals("downloads")?!Objects.equals(job.get("target_fingerprint"),config):!Objects.equals(job.get("destination"),destination());
-        if(changed) changes.add("La conexión de destino ha cambiado. El reintento utilizará la conexión configurada actualmente.");
-        if(kind.equals("calibre") && !Objects.equals(job.get("source"),source())) changes.add("El cliente torrent o las carpetas de origen han cambiado; se comprobará de nuevo el archivo.");
+        if(changed || kind.equals("calibre") && !Objects.equals(job.get("source"),source())) throw conflict("La conexión o las carpetas cambiaron; restaura la configuración original antes de reintentar este trabajo");
         var connection=kind.equals("calibre")?settings.connection():null;
         if(connection!=null) connection=new CalibreSettings.Connection(connection.url(),connection.username(),connection.password(),(String)job.get("library"));
         long deadline=System.nanoTime()+Duration.ofMinutes(2).toNanos();
@@ -131,7 +134,8 @@ public class JobRetries {
                 else {issues.add(new Issue(item,"El envío ya terminó correctamente o no se puede reintentar."));continue;}
                 if(changed && (phase.equals("VERIFY") || phase.equals("CLEANUP") || !policy.equals("KEEP"))) {issues.add(new Issue(item,"Restaura la conexión original antes de verificar un envío incierto o reintentar borrados."));continue;}
                 if(phase.equals("SEND") && !changed && bool(row.get("identity_complete"))) {
-                    Long remote=row.get("calibre_id")==null?calibre.findRevision(connection,number(row,"epl_id"),new BigDecimal((String)row.get("revision"))):number(row,"calibre_id");
+                    var identity=CalibreTransfers.storedIdentity(row);
+                    Long remote=row.get("calibre_id")==null && identity.eplId()!=null && identity.revision()!=null?calibre.findRevision(connection,identity.eplId(),identity.revision()):row.get("calibre_id")==null?null:number(row,"calibre_id");
                     if(remote!=null && calibre.hasEpub(connection,remote)) {row.put("calibre_id",remote);phase="VERIFY";}
                 }
                 if(phase.equals("SEND")) {
@@ -148,9 +152,14 @@ public class JobRetries {
             }
             work.add(new Work(item,phase,row,cleanup));
         }
+        if(kind.equals("calibre") && !work.isEmpty()) {
+            var chosen=new HashSet<>(work.stream().map(Work::id).toList());
+            for(var unresolved:jdbc.queryForList("SELECT id FROM calibre_job_items WHERE job_id=? AND state IN ('UNCERTAIN','WAITING_DOWNLOAD','CLEANUP_PENDING','PENDING','SENDING')",String.class,id))
+                if(!chosen.contains(unresolved)) throw conflict("Selecciona también las operaciones pendientes de verificación antes de reabrir el trabajo");
+        }
         if(!work.isEmpty()) authorize(kind,work);
         if(!config.equals(configuration(kind))) throw conflict("La configuración cambió durante la preparación; vuelve a preparar el reintento");
-        return new Plan(kind,id,signature(job,rows),config,work,issues,List.copyOf(changes),Objects.toString(job.get("library"),""),failedOnly,selection==null?List.of():List.copyOf(selection));
+        return new Plan(kind,id,signature(kind,id,job,rows),config,work,issues,List.copyOf(changes),Objects.toString(job.get("library"),""),failedOnly,selection==null?List.of():List.copyOf(selection));
     }
     private String bounded(Object value) {
         var output=new java.io.ByteArrayOutputStream() {
@@ -196,54 +205,60 @@ public class JobRetries {
         if(!json.writeValueAsString(plan).equals(json.writeValueAsString(fresh))) throw conflict("El trabajo, los archivos o la configuración cambiaron; vuelve a preparar el reintento");
         if(!plan.changes().isEmpty() && !confirmation.confirmChanges()) throw new UserInputException("Confirma los cambios de conexión o archivo antes de continuar");
         authorize(kind,plan.work());
-        return tx.execute(s->{
+        java.util.function.Supplier<Link> reopen=()->tx.execute(s->{
             var existing=existing(kind,id,confirmation.token(),actor.id());if(existing!=null) return existing;
             var parent=job(kind,id);
-            if(!terminal(kind,id,parent) || !plan.signature().equals(signature(parent,selected(kind,id,plan.failedOnly(),plan.selection()))) || !plan.configuration().equals(configuration(kind))) throw conflict("El trabajo o la configuración cambiaron; vuelve a preparar el reintento");
-            String child=UUID.randomUUID().toString();
+            if(!terminal(kind,id,parent) || !plan.signature().equals(signature(kind,id,parent,selected(kind,id,plan.failedOnly(),plan.selection()))) || !plan.configuration().equals(configuration(kind))) throw conflict("El trabajo o la configuración cambiaron; vuelve a preparar el reintento");
+            // Freeze every prior attempt before changing any of its original items.
+            audit.freeze(kind,id);
+            long created=Math.max(Instant.now().toEpochMilli(),jdbc.queryForObject("SELECT coalesce(max(created_at),0)+1 FROM job_retry_attempts WHERE kind=? AND job_id=?",Long.class,kind,id));
+            jdbc.update("INSERT INTO job_retry_attempts(id,kind,job_id,owner_id,username,created_at,before_job) VALUES(?,?,?,?,?,?,?)",confirmation.token(),kind,id,actor.id(),actor.username(),created,json.writeValueAsString(parent));
+            int position=0;
+            for(var work:plan.work()) {
+                if(jdbc.queryForObject("SELECT count(*) FROM job_retry_items WHERE kind=? AND parent_id=? AND source_item_id=?",Long.class,kind,id,work.id())>0) throw conflict("El elemento tiene un reintento histórico en otro trabajo; continúa desde ese trabajo");
+                var before=jdbc.queryForMap("SELECT * FROM "+items(kind)+" WHERE id=? AND job_id=?",work.id(),id);
+                if(kind.equals("downloads")) before.put("cleanup",jdbc.queryForList("SELECT id,state,message FROM torrent_update_cleanup WHERE job_id=? AND epl_id=? ORDER BY id",id,before.get("epl_id")));
+                jdbc.update("INSERT INTO job_retry_attempt_items(attempt_id,item_id,position,phase,before_item) VALUES(?,?,?,?,?)",confirmation.token(),work.id(),position++,work.phase(),json.writeValueAsString(before));
+            }
+            if(kind.equals("downloads")) retryDownloads(id,plan,actor);else retryCalibre(id,plan);
             String root=jdbc.queryForList("SELECT root_id FROM job_retry_jobs WHERE kind=? AND child_id=?",String.class,kind,id).stream().findFirst().orElse(id);
-            jdbc.update("INSERT INTO job_retry_jobs VALUES(?,?,?,?,?,?,?)",kind,child,id,root,confirmation.token(),actor.id(),Instant.now().toEpochMilli());
-            if(kind.equals("downloads")) cloneDownloads(child,parent,plan,actor);else cloneCalibre(child,parent,plan,actor);
-            events.live(EventContext.actor(),EventJournal.Category.JOB,kind.equals("downloads")?"DOWNLOAD":"CALIBRE_SEND",EventJournal.Outcome.STARTED,EventContext.origin(),child,Map.of("parentJobId",id,"rootJobId",root,"kind",kind,"selected",plan.work().size()));
-            return new Link(kind,child,id,root);
+            events.live(EventContext.actor(),EventJournal.Category.JOB,kind.equals("downloads")?"DOWNLOAD":"CALIBRE_SEND",EventJournal.Outcome.STARTED,EventContext.origin(),id,Map.of("attemptId",confirmation.token(),"kind",kind,"selected",plan.work().size()));
+            return new Link(kind,id,id,root);
         });
+        if(kind.equals("calibre")) return transfers.retryExclusive(reopen);
+        synchronized(bulk) {return reopen.get();}
     }
     private Link existing(String kind,String parent,String token,String owner) {
+        var attempts=jdbc.queryForList("SELECT * FROM job_retry_attempts WHERE id=?",token);
+        if(!attempts.isEmpty()) {
+            var attempt=attempts.getFirst();
+            if(!Objects.equals(attempt.get("kind"),kind) || !Objects.equals(attempt.get("job_id"),parent) || !Objects.equals(attempt.get("owner_id"),owner)) throw conflict("La solicitud pertenece a otro reintento");
+            String root=jdbc.queryForList("SELECT root_id FROM job_retry_jobs WHERE kind=? AND child_id=?",String.class,kind,parent).stream().findFirst().orElse(parent);
+            return new Link(kind,parent,parent,root);
+        }
         var rows=jdbc.queryForList("SELECT * FROM job_retry_jobs WHERE request_id=?",token);if(rows.isEmpty()) return null;
         var row=rows.getFirst();if(!Objects.equals(row.get("kind"),kind) || !Objects.equals(row.get("parent_id"),parent) || !Objects.equals(row.get("owner_id"),owner)) throw conflict("La solicitud pertenece a otro reintento");
         return new Link(kind,(String)row.get("child_id"),parent,(String)row.get("root_id"));
     }
-    private void claim(String child,Plan plan,Work work,String item) {
-        if(jdbc.queryForObject("SELECT count(*) FROM job_retry_items WHERE kind=? AND parent_id=? AND source_item_id=?",Long.class,plan.kind(),plan.parent(),work.id())>0) throw conflict("Este elemento ya tiene un reintento; continúa desde ese trabajo");
-        jdbc.update("INSERT INTO job_retry_items VALUES(?,?,?,?,?,?)",plan.kind(),child,plan.parent(),work.id(),item,work.phase());
-    }
-    private void cloneDownloads(String child,Map<String,Object> parent,Plan plan,Account actor) {
-        var now=java.sql.Timestamp.from(Instant.now());
-        jdbc.update("INSERT INTO torrent_bulk_jobs(id,state,type,previous_versions,client,target_fingerprint,multiple_hashes,batch_size,concurrency,interval_millis,selected_books,created_at,updated_at,event_actor_id,event_actor_username,event_actor_kind,event_origin) VALUES(?,'QUEUED',?,?,?,?,?,?,?,?,?,?,?,?,?,'USER',?)",child,parent.get("type"),parent.get("previous_versions"),torrent.getClient(),plan.configuration(),parent.get("multiple_hashes"),parent.get("batch_size"),parent.get("concurrency"),parent.get("interval_millis"),plan.work().stream().map(w->w.row().get("epl_id")).distinct().count(),now,now,actor.id(),actor.username(),EventContext.origin().name());
-        var cleanups=new LinkedHashMap<String,Map<String,Object>>();int position=0;
+    private void retryDownloads(String id,Plan plan,Account actor) {
+        var cleanups=new LinkedHashMap<String,Map<String,Object>>();
         for(var work:plan.work()) {
-            String item=UUID.randomUUID().toString();var row=work.row();claim(child,plan,work,item);
-            jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,epl_id,hash,revision,state,attempts,message,command_json) VALUES(?,?,?,?,?,?,?,0,NULL,?)",item,child,position++,row.get("epl_id"),row.get("hash"),row.get("revision"),work.phase().equals("CLEANUP")?row.get("state"):"PENDING",row.get("command_json"));
-            work.cleanup().forEach(c->cleanups.put((String)c.get("id"),c));
+            if(work.phase().equals("SEND")) jdbc.update("UPDATE torrent_bulk_items SET state='PENDING',attempts=0,message=NULL WHERE id=? AND job_id=?",work.id(),id);
+            work.cleanup().forEach(c->cleanups.put(c.get("id").toString(),c));
         }
-        if("UPDATE".equals(parent.get("type"))) {
-            jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,cleanup_timing,created_at,snapshot,automatic_cleanup,delete_history) SELECT ?,client_instance_id,previous_versions,cleanup_timing,?,'{\"items\":[]}',1,delete_history FROM torrent_update_plans WHERE job_id=?",child,now,plan.parent());
-            for(var c:cleanups.values()) {
-                String childItem=jdbc.queryForObject("SELECT id FROM torrent_bulk_items WHERE job_id=? AND epl_id=? ORDER BY position LIMIT 1",String.class,child,c.get("epl_id"));
-                claim(child,plan,new Work((String)c.get("id"),"CLEANUP",c,List.of()),childItem);
-                jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state,message,created_at,updated_at,client_instance_id,previous_versions,target_hashes,actor_id,actor_username,actor_kind,automatic,immediate,replacement_accepted,delete_history) VALUES(?,?,?,?,?,'WAITING',NULL,?,?,?,?,?,?,?,'USER',1,?,?,?)",UUID.randomUUID().toString(),child,c.get("download_id"),c.get("epl_id"),c.get("hash"),now,now,c.get("client_instance_id"),c.get("previous_versions"),c.get("target_hashes"),actor.id(),actor.username(),c.get("immediate"),plan.work().stream().noneMatch(w->Objects.equals(w.row().get("epl_id"),c.get("epl_id")) && w.phase().equals("SEND")),c.get("delete_history"));
-            }
+        for(var entry:cleanups.values()) {
+            jdbc.update("UPDATE torrent_update_cleanup SET state='WAITING',message=NULL,replacement_accepted=?,actor_id=?,actor_username=?,updated_at=? WHERE id=? AND job_id=? AND state='CANCELLED'",plan.work().stream().noneMatch(w->Objects.equals(w.row().get("epl_id"),entry.get("epl_id")) && w.phase().equals("SEND")),actor.id(),actor.username(),java.sql.Timestamp.from(Instant.now()),entry.get("id"),id);
         }
+        jdbc.update("UPDATE torrent_bulk_jobs SET state='QUEUED',message=NULL,retry_at=NULL,updated_at=?,event_actor_id=?,event_actor_username=?,event_actor_kind='USER',event_origin=? WHERE id=?",java.sql.Timestamp.from(Instant.now()),actor.id(),actor.username(),EventContext.origin().name(),id);
     }
-    private void cloneCalibre(String child,Map<String,Object> parent,Plan plan,Account actor) {
-        String now=Instant.now().toString();
-        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",child,now,now,actor.id(),actor.username(),destination(),parent.get("library"),source());
-        int position=0;
+    private void retryCalibre(String id,Plan plan) {
         for(var work:plan.work()) {
-            var row=work.row();String item=UUID.randomUUID().toString();claim(child,plan,work,item);
+            var row=work.row();
             String state=switch(work.phase()) {case "VERIFY"->"UNCERTAIN";case "WAIT"->"WAITING_DOWNLOAD";case "CLEANUP"->"CLEANUP_PENDING";default->"PENDING";};
-            String message=bool(row.get("retry_size_warning"))?CalibreTransfers.SIZE_WARNING:null;
-            jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,calibre_id,identity_complete,download_job_id,wait_until,completion_state,cleanup_policy,cleanup_ids,requested_cleanup_policy,requested_cleanup_ids,message) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",item,child,position++,row.get("record_id"),row.get("file_index"),row.get("name"),row.get("size"),row.get("epl_id"),row.get("revision"),state,work.phase().equals("SEND")?null:row.get("calibre_id"),row.get("identity_complete"),row.get("download_job_id"),Instant.now().plus(Duration.ofDays(30)).toEpochMilli(),row.get("completion_state"),row.get("retry_policy"),row.get("retry_cleanup_ids"),row.get("retry_policy"),row.get("retry_cleanup_ids"),message);
+            jdbc.update("UPDATE calibre_job_items SET state=?,name=?,size=?,calibre_id=?,next_check=0,wait_until=?,completion_state=?,cleanup_policy=?,cleanup_ids=?,cleanup_cancelled=0,message=? WHERE id=? AND job_id=?",state,row.get("name"),row.get("size"),work.phase().equals("SEND")?null:row.get("calibre_id"),Instant.now().plus(Duration.ofDays(30)).toEpochMilli(),row.get("completion_state"),row.get("retry_policy"),row.get("retry_cleanup_ids"),bool(row.get("retry_size_warning"))?CalibreTransfers.SIZE_WARNING:null,work.id(),id);
         }
+        jdbc.update("UPDATE calibre_jobs SET state='QUEUED',message=NULL,next_check=0,next_probe=0,updated_at=? WHERE id=?",Instant.now().toString(),id);
     }
+    public com.rlibanez.eplsync.dto.PageResponse<JobRetryHistory.Attempt> attempts(String kind,String id,int page,int size) {permission(kind);job(kind,id);return audit.attempts(kind,id,page,size);}
+    public com.rlibanez.eplsync.dto.PageResponse<JobRetryHistory.Detail> attemptItems(String kind,String id,String attempt,int page,int size) {permission(kind);job(kind,id);return audit.details(kind,id,attempt,page,size);}
 }

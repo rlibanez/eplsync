@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 for (const kind of ["downloads", "calibre"] as const) {
-  test(`${kind} retries failed items with confirmation, idempotent recovery and parent links`, async ({
+  test(`${kind} retries failed items in place with confirmation, idempotent recovery and history`, async ({
     page,
   }) => {
     const meta = {
@@ -75,6 +75,40 @@ for (const kind of ["downloads", "calibre"] as const) {
     });
     await page.route(`**/api/job-retries/${kind}/**`, (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (route.request().method() === "GET" && path.endsWith("/attempts"))
+        return route.fulfill({
+          json: {
+            items: [
+              {
+                id: "same-token",
+                createdAt: 1792248000000,
+                finishedAt: 1792248001000,
+                username: "Owner",
+                state: "COMPLETED",
+                total: 1,
+              },
+            ],
+            meta,
+          },
+        });
+      if (route.request().method() === "GET" && path.endsWith("/items"))
+        return route.fulfill({
+          json: {
+            items: [
+              {
+                id: "item",
+                eplId: 1,
+                name: "Libro.epub",
+                phase: "SEND",
+                beforeState: "FAILED",
+                state: "ACCEPTED",
+                beforeMessage: "Fallo de prueba",
+                message: "Envío verificado",
+              },
+            ],
+            meta,
+          },
+        });
       if (route.request().method() === "GET")
         return route.fulfill({
           json: {
@@ -85,6 +119,7 @@ for (const kind of ["downloads", "calibre"] as const) {
             terminal: true,
             failed: path.endsWith("child") ? 0 : 1,
             reason: null,
+            attemptCount: attempts > 1 ? 1 : 0,
           },
         });
       if (path.endsWith("/preview")) {
@@ -117,7 +152,7 @@ for (const kind of ["downloads", "calibre"] as const) {
           json: { details: "Respuesta perdida; vuelve a intentarlo" },
         });
       return route.fulfill({
-        json: { kind, jobId: "child", parentId: "parent", rootId: "parent" },
+        json: { kind, jobId: "parent", parentId: "parent", rootId: "parent" },
       });
     });
     await page.goto(`/${kind}/jobs/parent`);
@@ -140,20 +175,25 @@ for (const kind of ["downloads", "calibre"] as const) {
       "Este elemento ya terminó correctamente",
     );
     await expect(
-      dialog.getByRole("button", { name: "Crear reintento", exact: true }),
+      dialog.getByRole("button", { name: "Iniciar reintento", exact: true }),
     ).toBeDisabled();
     await dialog.getByRole("checkbox").check();
     await dialog
-      .getByRole("button", { name: "Crear reintento", exact: true })
+      .getByRole("button", { name: "Iniciar reintento", exact: true })
       .click();
     await expect(dialog).toContainText("Respuesta perdida");
     await dialog
       .getByRole("button", { name: "Reintentar", exact: true })
       .click();
-    await expect(page).toHaveURL(new RegExp(`/${kind}/jobs/child$`));
+    await expect(page).toHaveURL(new RegExp(`/${kind}/jobs/parent$`));
+    await page
+      .getByText("Historial de reintentos (1)", { exact: true })
+      .click();
+    await page.locator("details details > summary").click();
     await expect(
-      page.getByRole("link", { name: "parent", exact: true }),
+      page.getByText("Detalle anterior: Fallo de prueba"),
     ).toBeVisible();
+    await expect(page.getByText("Resultado: Envío verificado")).toBeVisible();
     expect(tokens).toEqual(["same-token", "same-token"]);
     await page.locator("tbody").getByRole("checkbox").first().check();
     await expect(
@@ -168,5 +208,9 @@ for (const kind of ["downloads", "calibre"] as const) {
     await expect(
       page.getByRole("button", { name: /Reintentar seleccionados/ }),
     ).toHaveCount(0);
+    await page.goto(`/${kind}/jobs/child`);
+    await expect(
+      page.getByRole("link", { name: "parent", exact: true }),
+    ).toBeVisible();
   });
 }

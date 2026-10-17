@@ -3,6 +3,7 @@ package com.rlibanez.eplsync.torrent.bulk;
 import com.rlibanez.eplsync.config.TorrentProperties;
 import com.rlibanez.eplsync.dto.TorrentDownloadResult;
 import com.rlibanez.eplsync.exception.TorrentConnectionException;
+import com.rlibanez.eplsync.exception.OperationDiagnostics;
 import com.rlibanez.eplsync.exception.TorrentOperationException;
 import com.rlibanez.eplsync.service.TorrentClientService;
 import jakarta.annotation.PreDestroy;
@@ -42,7 +43,9 @@ public class BulkWorker {
 
     private record PendingSend(BulkItem item, Future<Outcome> future) {}
 
-    record Outcome(BulkItem.State state, String message, boolean pause, boolean retry) {}
+    record Outcome(BulkItem.State state, String message, boolean pause, boolean retry, String cause) {
+        Outcome(BulkItem.State state, String message, boolean pause, boolean retry) {this(state,message,pause,retry,"");}
+    }
 
     public BulkWorker(BulkStore store, TorrentClientService client, TorrentProperties properties) {
         this.store = store; this.client = client; this.properties = properties;
@@ -102,7 +105,7 @@ public class BulkWorker {
         try { return dispatch(); }
         catch (RuntimeException ex) {
             // No registrar snapshots, credenciales ni respuestas HTTP remotas.
-            log.error("No se pudo actualizar la cola torrent: jobId={}, tipo={}", activeId, ex.getClass().getSimpleName());
+            log.error("No se pudo actualizar la cola torrent: jobId={}, tipo={}", activeId, OperationDiagnostics.technical(ex));
             return TimeUnit.SECONDS.toNanos(1);
         }
     }
@@ -114,19 +117,18 @@ public class BulkWorker {
             if (!entry.getValue().future().isDone()) continue;
             Outcome outcome;
             try { outcome = entry.getValue().future().get(); }
-            catch (Exception ex) { outcome = new Outcome(BulkItem.State.FAILED, "Ejecución interrumpida; revisar antes de reanudar", true, false); }
+            catch (Exception ex) { outcome = new Outcome(BulkItem.State.FAILED, "Ejecución interrumpida; revisar antes de reanudar", true, false, OperationDiagnostics.technical(ex)); }
             store.finish(entry.getKey(), outcome.state(), outcome.message(), outcome.pause(), outcome.retry());
             recordProgress(outcome);
             log.trace("Resultado bulk: jobId={}, itemId={}, estado={}, pausa={}, reintento={}",
                     activeId, entry.getKey(), outcome.state(), outcome.pause(), outcome.retry());
-            if (outcome.state() == BulkItem.State.FAILED || outcome.pause() || outcome.retry()) {
+            if (outcome.state() == BulkItem.State.FAILED || outcome.pause()) {
                 var item = entry.getValue().item();
-                log.warn("Fallo de envío bulk: jobId={}, itemId={}, eplId={}, hash={}, intento={}, motivo={}",
+                log.warn("Fallo de envío bulk: jobId={}, itemId={}, eplId={}, hash={}, intento={}, motivo={}, causa={}",
                         activeId, item.getId(), item.getEplId(), item.getHash(), item.getAttempts(),
-                        safeLog(outcome.message()));
+                        safeLog(outcome.message()), outcome.cause());
             }
-            if (outcome.pause() || outcome.retry()) log.warn("Trabajo bulk interrumpido: jobId={}, reintento={}, motivo={}",
-                    activeId, outcome.retry(), safeLog(outcome.message()));
+            if (outcome.retry() && !outcome.pause()) log.debug("Envío torrent aplazado: elemento={}, motivo={}, causa={}",entry.getKey(),safeLog(outcome.message()),outcome.cause());
             iterator.remove();
         }
         if (!properties.isEnabled() && activeId == null) return IDLE_WAIT;
@@ -218,16 +220,16 @@ public class BulkWorker {
         } catch (TorrentConnectionException ex) {
             boolean retry = ex.getReason() == TorrentConnectionException.Reason.UPSTREAM
                     || ex.getReason() == TorrentConnectionException.Reason.TIMEOUT;
-            return new Outcome(null, ex.getMessage(), !retry, retry);
+            return new Outcome(null, ex.getMessage(), !retry, retry, OperationDiagnostics.technical(ex));
         } catch (TorrentOperationException ex) {
             boolean pause = ex.getStatus().value() == 503;
-            return new Outcome(BulkItem.State.FAILED, BulkStore.safeMessage(ex), pause, false);
+            return new Outcome(BulkItem.State.FAILED, BulkStore.safeMessage(ex), pause, false, OperationDiagnostics.technical(ex));
         } catch (IllegalArgumentException ex) {
-            return new Outcome(BulkItem.State.FAILED, "Opciones del torrent inválidas", false, false);
+            return new Outcome(BulkItem.State.FAILED, "Opciones del torrent inválidas", false, false, OperationDiagnostics.technical(ex));
         } catch (RuntimeException ex) {
             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex))
                 return new Outcome(null,"SQLite ocupado; se comprobará el hash antes de continuar",false,true);
-            return new Outcome(null, "Error inesperado; revisar antes de reanudar", true, false);
+            return new Outcome(null, OperationDiagnostics.reason(ex, "No se pudo confirmar el envío al cliente torrent; revisa el elemento antes de reanudar"), true, false, OperationDiagnostics.technical(ex));
         }
     }
 
