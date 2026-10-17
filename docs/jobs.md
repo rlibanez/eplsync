@@ -9,11 +9,16 @@ Un envío aceptado no implica una descarga terminada.
 
 En **Descargas → Trabajos** puedes filtrar por tipo, estado, usuario y fechas.
 La tabla muestra quién inició cada trabajo. Utiliza **Ordenar** y **Columnas**
-para adaptar su presentación.
+para adaptar su presentación. El botón **= / ≠** de Tipo y Estado permite incluir
+o excluir valores; vaciar un campo o pulsar **Limpiar** restablece la inclusión.
 
 Abre un trabajo para consultar su informe, opciones de envío, progreso, resultados
 por libro y política de versiones anteriores. La tabla de elementos permite
-filtrar por estado, ordenar, ajustar columnas y consultar los errores.
+filtrar por estado, ordenar, ajustar columnas y consultar los errores. En el
+trabajo de Calibre, **Detalle contiene** busca cualquier fragmento del mensaje
+en todo el trabajo y se combina con Estado. Pulsar un Estado o Detalle de una fila
+aplica su filtro. La columna opcional **Orden de envío** conserva la posición
+original, mientras **#** numera las filas según el orden y filtro actuales.
 
 ## Fases de una actualización
 
@@ -39,6 +44,21 @@ Pausar o cancelar un trabajo no detiene ni elimina los torrents ya enviados.
 Si se desactiva la integración o cambia el destino o la autenticación del cliente,
 los trabajos activos pueden pausarse antes del siguiente envío; revisa su informe
 antes de reanudarlos.
+
+## Recuperación tras reiniciar
+
+Los trabajos que estaban activos vuelven a la cola automáticamente al arrancar.
+En Torrent se comprueban los hashes antes de enviar. En Calibre, un envío en curso
+queda sin confirmar y se consulta su resultado antes de continuar, sin repetir
+la subida. Los trabajos que esperaban descargas conservan sus dependencias.
+
+Las limpiezas comprueban los borrados que ya se habían solicitado y continúan con
+los elementos que todavía no se habían enviado. No repiten automáticamente un
+borrado incierto ni eliminan la revisión que debe conservarse. Si no se puede
+verificar una operación, sigue requiriendo revisión.
+
+Los trabajos pausados y cancelados permanecen así. Los que ya quedaron pausados
+por un reinicio con una versión anterior deben reanudarse manualmente una vez.
 
 ## Conservación
 

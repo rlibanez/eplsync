@@ -22,6 +22,26 @@ class DatabaseMigrationTests {
         return Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()))).locations(locations)
                 .ignoreMigrationPatterns(new String[0]).baselineOnMigrate(false).validateOnMigrate(true).cleanDisabled(true).load();
     }
+    @Test void release150Preserves142DataWithoutNewMigrations() {
+        var previous=flyway("classpath:db/migration");
+        previous.migrate();
+        assertEquals("1.5.0.6",previous.info().current().getVersion().toString());
+        var jdbc=jdbc();
+        jdbc.update("INSERT INTO app_settings VALUES('release-marker','preserved')");
+        jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(123,1.2,'Preserved book','Author')");
+        jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('user','alice','alice','alice@example.org','hash','USER','ACTIVE','now','now')");
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('history',123,1,'hash','qbittorrent','client','DOWNLOADED','EPLSYNC',0)");
+        jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('book','generation',1,9,123,1.2,'Preserved Calibre book','Author')");
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('job','now','now','alice','destination','main','source','PAUSED')");
+        var tables=java.util.List.of("app_settings","catalog_books","users","torrent_downloads","calibre_books","calibre_jobs","flyway_schema_history");
+        var before=new java.util.LinkedHashMap<String,java.util.List<java.util.Map<String,Object>>>();
+        for(var table:tables) before.put(table,jdbc.queryForList("SELECT * FROM "+table));
+        var current=flyway("classpath:db/migration");
+        current.validate();
+        assertEquals(0,current.migrate().migrationsExecuted);
+        for(var table:tables) assertEquals(before.get(table),jdbc.queryForList("SELECT * FROM "+table),table);
+        assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
+    }
     @Test void telegramLinkMigrationPreservesCredentialsAndPreferences() {
         var source=new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()));
         var jdbc=jdbc();

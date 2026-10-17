@@ -27,7 +27,24 @@ Los anchos de las columnas se ajustan arrastrando sus separadores.
 
 Las vistas de tabla, cuadrícula y mosaico presentan los mismos resultados.
 Abre un libro para consultar su ficha, enlaces y, si tienes permiso, el historial
-asociado. Selecciona libros para enviarlos al cliente o exportar sus enlaces magnet.
+asociado. Selecciona libros para enviarlos al cliente torrent, enviarlos a Calibre
+o exportar sus enlaces magnet.
+
+La columna **#** muestra la posición de cada fila, con numeración continua entre
+páginas. Se recalcula al ordenar o filtrar; no es un identificador del libro.
+En las tablas con selector **Columnas** puede ocultarse y reordenarse.
+
+### Incluir y excluir valores
+
+El botón **= / ≠** dentro de Estado, Estado de publicación e Idioma incluye o
+excluye los valores seleccionados. En Título y Autor significa **Contiene** o
+**No contiene**: con varios textos, la negación excluye los libros que contengan
+cualquiera de ellos. Los campos vacíos no restringen resultados.
+
+Los distintos campos se combinan con **Y**. Los operadores se conservan en la URL,
+la paginación, la selección de todos los resultados y sus exclusiones. **Limpiar**
+restablece la inclusión. Pulsar un valor en la tabla aplica inclusión; si ese campo
+estaba en modo negativo, sustituye su selección anterior por el valor pulsado.
 
 **Biblioteca → Directorio** agrupa autores, colecciones, idiomas, géneros y años.
 Utiliza su búsqueda e iniciales para encontrar una entrada y acceder al catálogo
@@ -51,27 +68,12 @@ limpia Revisión. Ambos bloques se combinan con los demás criterios y se conser
 en la URL, la paginación, la selección de todos los resultados y la exportación.
 Se utilizan datos locales: la búsqueda no sincroniza ni consulta servicios remotos.
 
-## Portadas
-
-En **Ajustes → Catálogo** están los apartados de comprobación y configuración de
-portadas. La comprobación revisa la disponibilidad de las URL y muestra un informe.
-No descarga imágenes para guardarlas en EPL Sync.
-
-La ficha de un libro ofrece **Reparar portada** cuando procede. Si ya utiliza
-la alternativa, el botón permanece deshabilitado y su tooltip explica el motivo.
-
-## Limpieza del catálogo
-
-**Ajustes → Catálogo → Limpieza del catálogo** permite revisar los libros ausentes
-de un archivo e indicar cuáles eliminar. Revisa la previsualización y confirma
-la selección antes de borrar.
-
-Para el reinicio completo, utiliza el apartado correspondiente de
-**Ajustes → Base de datos**. La confirmación permite elegir si también se eliminan
-usuarios y configuraciones; esa opción vuelve a abrir el asistente de primer
-administrador. Es una operación distinta de actualizar el catálogo.
-
-El filtro **Estado** de Torrent permite seleccionar varios estados (cualquiera de ellos), vacío por defecto. Seleccionarlo implica presencia; elegir «Ausentes» lo limpia y desactiva. Se consulta el estado registrado de las revisiones del cliente actual: basta con que alguna tenga un estado seleccionado. El criterio de revisión sigue comparando la mayor revisión presente con el catálogo.
+El filtro **Estado** de Torrent permite seleccionar varios estados, vacío por
+defecto. Con **=** basta con que alguna revisión tenga un estado seleccionado;
+con **≠** se excluye el libro si alguna revisión tiene uno de esos estados.
+Seleccionarlo implica presencia; elegir **Ausentes** lo limpia y desactiva.
+Se consulta el estado registrado de las revisiones del cliente actual. El criterio
+de revisión sigue comparando la mayor revisión presente con el Catálogo.
 
 ### Enviar la selección a Calibre
 
@@ -92,3 +94,23 @@ es necesario volver a preparar la selección.
 Si un EPUB pendiente termina de descargarse mientras el asistente sigue abierto,
 al confirmar se utiliza el archivo disponible sin repetir la descarga. Los archivos
 que se hayan desmarcado permanecen excluidos.
+
+## Portadas
+
+En **Ajustes → Catálogo** están los apartados de comprobación y configuración de
+portadas. La comprobación revisa la disponibilidad de las URL y muestra un informe.
+No descarga imágenes para guardarlas en EPL Sync.
+
+La ficha de un libro ofrece **Reparar portada** cuando procede. Si ya utiliza
+la alternativa, el botón permanece deshabilitado y su tooltip explica el motivo.
+
+## Limpieza del catálogo
+
+**Ajustes → Catálogo → Limpieza del catálogo** permite revisar los libros ausentes
+de un archivo e indicar cuáles eliminar. Revisa la previsualización y confirma
+la selección antes de borrar.
+
+Para el reinicio completo, utiliza el apartado correspondiente de
+**Ajustes → Base de datos**. La confirmación permite elegir si también se eliminan
+usuarios y configuraciones; esa opción vuelve a abrir el asistente de primer
+administrador. Es una operación distinta de actualizar el catálogo.

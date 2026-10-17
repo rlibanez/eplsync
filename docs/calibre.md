@@ -74,8 +74,8 @@ La biblioteca y la fecha de la última sincronización se muestran en
 Los datos de la biblioteca requieren el permiso `CALIBRE_READ`;
 la URL y las credenciales siguen restringidas al administrador.
 
-Las columnas y los filtros de Calibre en la tabla Catálogo quedan para una fase
-posterior.
+La búsqueda avanzada del Catálogo permite filtrar por presencia y revisión en
+Calibre utilizando la biblioteca sincronizada, sin consultar el servidor remoto.
 
 La sincronización procesa páginas de 100 libros, con un máximo de 500000 libros y
 10 minutos. Solo puede ejecutarse una a la vez. Los datos se publican juntos al
@@ -294,7 +294,9 @@ Las descargas pendientes se consultan en conjunto cada 30 segundos. Los fallos,
 cancelaciones, archivos inaccesibles o esperas superiores a 30 días quedan visibles
 y pausan el trabajo. Reanudar vuelve a comprobar la descarga. Cancelar un trabajo
 de Calibre no cancela los torrents ya enviados ni deshace envíos o borrados completados.
-Los reinicios conservan las esperas; un envío interrumpido se verifica antes de continuar.
+Al reiniciar, los trabajos activos continúan automáticamente y conservan las
+esperas. Los envíos interrumpidos se verifican sin repetirlos; si no se pueden
+confirmar, requieren revisión. Los trabajos ya pausados o cancelados no se reanudan.
 Reintentar el mismo envío del diálogo reutiliza sus trabajos durante 90 días.
 
 Las vistas de actualizaciones conservan el resultado y la fecha de la última
@@ -303,6 +305,11 @@ vista no consulta al servidor ni recalcula la comparación. La primera vez se
 muestra la tabla vacía. **Buscar actualizaciones** renueva el resultado; si
 falla, se conserva la búsqueda anterior. Borrar los datos del sitio elimina
 estas búsquedas guardadas; no se comparten entre dispositivos.
+
+En Biblioteca y Actualizaciones de Calibre, los botones **= / ≠** de Título y Autor
+permiten buscar textos que se contengan o que no se contengan. Se combinan con los
+demás filtros y se aplican a toda la búsqueda, también al seleccionar todos los
+resultados. Vaciar el campo o pulsar **Limpiar** restablece el operador inicial.
 
 ## Limpieza manual de revisiones antiguas
 

@@ -125,3 +125,8 @@ Flyway ejecuta todas las migraciones versionadas, en orden, al inicializar una b
 Los números de migración identifican la evolución del **esquema**, no necesariamente la versión del programa. La versión 1.4.1 ya publicó las migraciones `V1_5_0`, `V1_5_0_1` y `V1_5_0_2`; se mantienen sus nombres y contenidos para conservar la compatibilidad. La versión 1.4.2 añade las migraciones `V1_5_0_3` a `V1_5_0_6` para la limpieza manual, sus reintentos y la elección independiente del borrado del registro de EPL Sync, sin modificar las anteriores. Se mantienen también estos nombres para instalaciones de pruebas que ya las hayan aplicado.
 
 Una instalación limpia no utiliza automáticamente una instantánea consolidada. Ese comportamiento exigiría preparar y mantener expresamente una migración de base o un mecanismo de baseline apropiado. No hay que renombrar, consolidar ni modificar las migraciones publicadas, ni reparar checksums para ocultar una modificación.
+
+
+La versión 1.5.0 de la aplicación utiliza el mismo esquema `1.5.0.6` que la 1.4.2.
+No añade migraciones ni renumera las anteriores. Al actualizar desde 1.4.2, Flyway
+valida el historial existente y conserva los datos sin ejecutar migraciones nuevas.
