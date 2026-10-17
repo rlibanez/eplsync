@@ -1415,6 +1415,8 @@
     "setupTitle": "Create the first administrator",
     "initialAdminKey": "Initial setup key",
     "initialAdminKeyHelp": "Enter the EPLSYNC_INITIAL_ADMIN_KEY value configured for this installation.",
+    "showInitialKey": "Show initial setup key",
+    "hideInitialKey": "Hide initial setup key",
     "setupAction": "Create administrator",
     "passwordRules": "{{minimum}} to 256 characters.",
     "passwordMatch": "Passwords match",

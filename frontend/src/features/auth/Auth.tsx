@@ -7,16 +7,24 @@ import {
   useRef,
   type ReactNode,
   type FormEvent,
+  type ClipboardEvent,
 } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Alert, Button, PasswordInput, Stack, TextInput } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  PasswordInput,
+  Stack,
+  TextInput,
+} from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { BrandLogo } from "../../components/BrandLogo";
 import { AppModal, ModalActions } from "../../components/AppModal";
 import { OptionLabel } from "../downloads/SendOptions";
 import { ValidationTip } from "./ValidationTip";
-import { validEmail, validUsername } from "./validation";
-import { Check, Copy, KeyRound, WifiOff } from "lucide-react";
+import { validUsername } from "./validation";
+import { Check, Copy, Eye, EyeOff, KeyRound, WifiOff } from "lucide-react";
 import {
   announceSessionChange,
   subscribeSessionChanges,
@@ -292,9 +300,25 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
     passwordMinimumLength?: number;
   }>();
   const [initialAdminKey, setInitialAdminKey] = useState("");
+  const [initialKeyVisible, setInitialKeyVisible] = useState(false);
+  function copyInitialKey(
+    event: ClipboardEvent<HTMLInputElement>,
+    cut = false,
+  ) {
+    const input = event.currentTarget;
+    const start = input.selectionStart ?? 0;
+    const end = input.selectionEnd ?? start;
+    if (start === end) return;
+    // CSS text security otherwise copies the masking glyphs in Chromium.
+    event.clipboardData.setData("text/plain", input.value.slice(start, end));
+    event.preventDefault();
+    if (cut) {
+      setInitialAdminKey(input.value.slice(0, start) + input.value.slice(end));
+      requestAnimationFrame(() => input.setSelectionRange(start, start));
+    }
+  }
   const [register, setRegister] = useState(false);
   const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [capsLock, setCapsLock] = useState(false);
   const [passwordConfirmation, setConfirmation] = useState("");
@@ -305,8 +329,6 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   const minimum = status?.passwordMinimumLength ?? 8;
   const usernameInvalid =
     (setup || register) && username !== "" && !validUsername(username);
-  const emailInvalid =
-    (setup || register) && email !== "" && !validEmail(email);
   const passwordInvalid =
     (setup || register) && password !== "" && password.length < minimum;
   const mismatch =
@@ -337,7 +359,6 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
       if (setup) {
         await authRequest("/auth/setup", "POST", {
           username,
-          email,
           password,
           passwordConfirmation,
           initialAdminKey: status.initialAdminKeyRequired
@@ -349,7 +370,7 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
         const result = await authRequest<{ status: string }>(
           "/auth/register",
           "POST",
-          { username, email, password },
+          { username, password },
         );
         setMessage(
           t(
@@ -397,7 +418,7 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
           {!setup && <h2>{t(register ? "auth.register" : "auth.login")}</h2>}
           {setup && <p>{t("auth.setupRequired")}</p>}
           {message && <Alert color="green">{message}</Alert>}
-          <form onSubmit={submit}>
+          <form id="auth-account" onSubmit={submit}>
             <Stack>
               <ValidationTip
                 message={usernameInvalid ? t("auth.usernameHelp") : undefined}
@@ -426,25 +447,6 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                   onChange={(e) => setUsername(e.currentTarget.value)}
                 />
               </ValidationTip>
-              {(setup || register) && (
-                <ValidationTip
-                  message={emailInvalid ? t("auth.emailInvalid") : undefined}
-                >
-                  <TextInput
-                    type="email"
-                    label={t("auth.email")}
-                    error={emailInvalid}
-                    required
-                    maxLength={254}
-                    id="auth-email"
-                    name="email"
-                    value={email}
-                    autoComplete="email"
-                    disabled={pending}
-                    onChange={(e) => setEmail(e.currentTarget.value)}
-                  />
-                </ValidationTip>
-              )}
               <ValidationTip
                 message={
                   passwordInvalid
@@ -480,7 +482,9 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                   onKeyUp={(e) => setCapsLock(e.getModifierState("CapsLock"))}
                   onBlur={() => setCapsLock(false)}
                   description={
-                    capsLock ? <span role="status">⇧ {t("auth.capsLock")}</span> : undefined
+                    capsLock ? (
+                      <span role="status">⇧ {t("auth.capsLock")}</span>
+                    ) : undefined
                   }
                   inputWrapperOrder={["label", "input", "description", "error"]}
                   error={passwordInvalid}
@@ -513,7 +517,10 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                 </ValidationTip>
               )}
               {setup && status.initialAdminKeyRequired && (
-                <PasswordInput
+                <TextInput
+                  type="text"
+                  id="auth-initial-setup-key"
+                  name="initialAdminKey"
                   label={
                     <OptionLabel
                       text={t("auth.initialAdminKey")}
@@ -521,13 +528,50 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                     />
                   }
                   required
-                  id="auth-initial-setup-key"
-                  name="initialAdminKey"
-                  autoComplete="off"
-                  data-bwignore="true"
                   value={initialAdminKey}
+                  onChange={(event) =>
+                    setInitialAdminKey(event.currentTarget.value)
+                  }
+                  autoComplete="off"
+                  onCopy={(event) => copyInitialKey(event)}
+                  onCut={(event) => copyInitialKey(event, true)}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  data-bwignore="true"
                   disabled={pending}
-                  onChange={(e) => setInitialAdminKey(e.currentTarget.value)}
+                  classNames={{
+                    input: initialKeyVisible
+                      ? undefined
+                      : "auth-initial-key-masked",
+                  }}
+                  rightSectionPointerEvents="all"
+                  rightSection={
+                    <ActionIcon
+                      type="button"
+                      variant="subtle"
+                      color="gray"
+                      size="sm"
+                      disabled={pending}
+                      aria-label={t(
+                        initialKeyVisible
+                          ? "auth.hideInitialKey"
+                          : "auth.showInitialKey",
+                      )}
+                      aria-pressed={initialKeyVisible}
+                      aria-controls="auth-initial-setup-key"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() =>
+                        setInitialKeyVisible((visible) => !visible)
+                      }
+                    >
+                      {initialKeyVisible ? (
+                        <EyeOff size={16} />
+                      ) : (
+                        <Eye size={16} />
+                      )}
+                    </ActionIcon>
+                  }
                 />
               )}
               <Button
@@ -536,7 +580,6 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                 loading={pending}
                 disabled={
                   usernameInvalid ||
-                  emailInvalid ||
                   passwordInvalid ||
                   ((setup || register) && password !== passwordConfirmation)
                 }

@@ -34,9 +34,11 @@ public class AuthController {
     @GetMapping("/csrf") public Map<String,String> csrf(CsrfToken token) { return Map.of("token",token.getToken(),"headerName",token.getHeaderName()); }
     @GetMapping("/status") public Map<String,Object> status() {var p=accounts.policy();return Map.of("initialized",accounts.initialized(),"registrationEnabled",accounts.initialized()&&p.registrationEnabled(),"approvalRequired",p.approvalRequired(),"passwordMinimumLength",p.passwordMinimumLength(),"initialAdminKeyRequired",!accounts.initialized()&&initialKeyRequired());}
     public record Setup(@NotBlank @Size(min=3,max=64) String username,
-            @NotBlank @jakarta.validation.constraints.Email @Size(max=254) String email,
+            @jakarta.validation.constraints.Email @Size(max=254) String email,
             @NotBlank @Size(max=256) String password,
-            @NotBlank @Size(max=256) String passwordConfirmation, String initialAdminKey) {}
+            @NotBlank @Size(max=256) String passwordConfirmation, String initialAdminKey) {
+        public Setup {email=Objects.requireNonNullElse(email,"");}
+    }
     @PostMapping("/setup") public Account setup(@Valid @RequestBody Setup input,HttpServletRequest request,HttpServletResponse response) {
         throttle.check("setup:"+request.getRemoteAddr(),5);
         if(accounts.initialized()) throw new ResponseStatusException(HttpStatus.CONFLICT,"La instalación ya está inicializada");
@@ -64,7 +66,9 @@ public class AuthController {
         }
         sessions.login(request,response,account);return account;
     }
-    public record Register(@NotBlank String username,@NotBlank @jakarta.validation.constraints.Email String email,@NotBlank @Size(max=256) String password) {}
+    public record Register(@NotBlank String username,@jakarta.validation.constraints.Email @Size(max=254) String email,@NotBlank @Size(max=256) String password) {
+        public Register {email=Objects.requireNonNullElse(email,"");}
+    }
     @PostMapping("/register") public Map<String,String> register(@Valid @RequestBody Register input,HttpServletRequest request) {
         throttle.check("register:"+request.getRemoteAddr(),5);
         String status=accounts.register(input.username(),input.email(),input.password());

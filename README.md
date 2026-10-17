@@ -244,8 +244,9 @@ guardados desde la interfaz tienen prioridad.
 ## Primer uso
 
 1. Abre `http://localhost:8088` o la dirección y puerto que hayas configurado.
-2. Crea la primera cuenta de administrador con nombre de usuario, correo
-   electrónico, contraseña y, si está configurada, la clave de configuración inicial `EPLSYNC_INITIAL_ADMIN_KEY`.
+2. Crea el administrador con nombre de usuario, contraseña y confirmación.
+   Si está configurada, introduce también la clave `EPLSYNC_INITIAL_ADMIN_KEY`
+   en el mismo formulario; no se solicita correo electrónico.
 3. Sigue el asistente para importar el Catálogo, configurar y sincronizar
    qBittorrent y conectar la biblioteca de Calibre. Torrent y Calibre son
    opcionales: puedes omitirlos.

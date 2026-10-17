@@ -23,7 +23,7 @@ class InitialAdminKeyIntegrationTests {
         var response=mvc.perform(get("/api/auth/status")).andExpect(status().isOk())
             .andExpect(jsonPath("$.initialAdminKeyRequired").value(true)).andReturn();
         assertThat(response.getResponse().getContentAsString()).doesNotContain("initial-test-secret");
-        String base="\"username\":\"admin\",\"email\":\"admin@example.org\",\"password\":\"password12345\",\"passwordConfirmation\":\"password12345\"";
+        String base="\"username\":\"admin\",\"password\":\"password12345\",\"passwordConfirmation\":\"password12345\"";
         mvc.perform(post("/api/auth/setup").with(csrf()).contentType("application/json").content("{"+base+"}"))
             .andExpect(status().isForbidden());
         assertThat(accounts.initialized()).isFalse();

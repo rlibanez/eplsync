@@ -72,6 +72,7 @@ public class AccountStore {
     private static void identity(String username, String email) {
         if (username == null || !username.matches("[A-Za-z0-9][A-Za-z0-9_.-]{2,63}"))
             throw new com.rlibanez.eplsync.exception.UserInputException("El usuario debe tener entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo");
+        if (email != null && email.isEmpty()) return; // Email is optional when creating an account.
         if (email == null || email.length() > 254 || !email.equals(email.strip()) || email.chars().anyMatch(Character::isISOControl)
                 || !email.matches("[^\\s@]+@[^\\s@]+\\.[^\\s@]+")) throw new com.rlibanez.eplsync.exception.UserInputException("Email inválido");
     }

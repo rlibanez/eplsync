@@ -57,11 +57,23 @@ test("login sends CSRF and enforces restricted navigation", async ({
   await page.getByLabel("Nombre de usuario").fill(" reader ");
   const password = page.getByLabel(/^Contraseña/);
   await password.evaluate((input) => {
-    input.dispatchEvent(new KeyboardEvent("keydown", { key: "A", modifierCapsLock: true, bubbles: true }));
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "A",
+        modifierCapsLock: true,
+        bubbles: true,
+      }),
+    );
   });
   await expect(page.getByRole("status")).toHaveText("⇧ Bloq Mayús activado");
   await password.evaluate((input) => {
-    input.dispatchEvent(new KeyboardEvent("keyup", { key: "CapsLock", modifierCapsLock: false, bubbles: true }));
+    input.dispatchEvent(
+      new KeyboardEvent("keyup", {
+        key: "CapsLock",
+        modifierCapsLock: false,
+        bubbles: true,
+      }),
+    );
   });
   await expect(page.getByText("⇧ Bloq Mayús activado")).toHaveCount(0);
   await password.fill("reader-password");
@@ -253,7 +265,6 @@ test("first web load creates an administrator only after password confirmation",
       expect(route.request().headers()["x-csrf-token"]).toBe("setup-token");
       expect(route.request().postDataJSON()).toEqual({
         username: "webadmin",
-        email: "owner@example.org",
         password: "permanent admin password",
         passwordConfirmation: "permanent admin password",
       });
@@ -306,16 +317,9 @@ test("first web load creates an administrator only after password confirmation",
       })
       .first(),
   ).toBeVisible();
-  await page.getByLabel("Correo electrónico").fill("owner@invalid");
-  await expect(page.getByText("Email inválido", { exact: true })).toBeVisible();
-  expect(
-    Math.abs((await setupButton.boundingBox())!.y - initialButtonY),
-  ).toBeLessThan(1);
-  await page.getByLabel("Correo electrónico").fill("owner@example.org");
-  await expect(page.getByText("Email inválido", { exact: true })).toBeHidden();
-  expect(
-    Math.abs((await setupButton.boundingBox())!.y - initialButtonY),
-  ).toBeLessThan(1);
+  await expect(
+    page.getByLabel("Correo electrónico", { exact: true }),
+  ).toHaveCount(0);
   await page.mouse.move(0, 0);
   await page.getByLabel(/^Contraseña/).fill("short");
   await expect(
@@ -409,6 +413,7 @@ test("legacy sync route redirects to State with download history and synchroniza
 test("registration and return to login use full width buttons", async ({
   page,
 }) => {
+  let registrations = 0;
   await page.route("http://127.0.0.1:5178/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/auth/me")
@@ -422,6 +427,18 @@ test("registration and return to login use full width buttons", async ({
           passwordMinimumLength: 8,
         },
       });
+    if (path === "/api/auth/csrf")
+      return route.fulfill({
+        json: { token: "register-token", headerName: "X-CSRF-TOKEN" },
+      });
+    if (path === "/api/auth/register") {
+      expect(route.request().postDataJSON()).toEqual({
+        username: "newreader",
+        password: "account-password",
+      });
+      registrations++;
+      return route.fulfill({ json: { status: "PENDING" } });
+    }
     return route.fulfill({ json: {} });
   });
   await page.goto("/catalog");
@@ -438,6 +455,9 @@ test("registration and return to login use full width buttons", async ({
     (await login.boundingBox())!.width,
   );
   await register.click();
+  await expect(
+    page.getByLabel("Correo electrónico", { exact: true }),
+  ).toHaveCount(0);
   const back = page.getByRole("button", {
     name: "Volver al inicio de sesión",
     exact: true,
@@ -447,6 +467,13 @@ test("registration and return to login use full width buttons", async ({
     (await register.boundingBox())!.width,
   );
   await back.click();
+  await expect(login).toBeVisible();
+  await register.click();
+  await page.getByLabel(/^Nombre de usuario/).fill("newreader");
+  await page.locator("#auth-password").fill("account-password");
+  await page.locator("#auth-password-confirmation").fill("account-password");
+  await register.click();
+  await expect.poll(() => registrations).toBe(1);
   await expect(login).toBeVisible();
 });
 
@@ -490,43 +517,95 @@ test("connection failure shows a clear page and retry restores access", async ({
   ).toBeVisible();
 });
 
-test("initial setup key stays masked and is excluded from Bitwarden credential fields", async ({ page }) => {
+test("one administrator form masks its text setup key without exposing a third password field", async ({
+  page,
+}) => {
   let submissions = 0;
-  await page.route("http://127.0.0.1:5178/api/**", route => {
+  await page.route("http://127.0.0.1:5178/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/auth/me") return route.fulfill({ status: 401, json: {} });
-    if (path === "/api/auth/status") return route.fulfill({ json: { initialized: false, initialAdminKeyRequired: true, passwordMinimumLength: 8 } });
-    if (path === "/api/auth/csrf") return route.fulfill({ json: { token: "setup-token", headerName: "X-CSRF-TOKEN" } });
+    if (path === "/api/auth/me")
+      return route.fulfill({ status: 401, json: {} });
+    if (path === "/api/auth/status")
+      return route.fulfill({
+        json: {
+          initialized: false,
+          initialAdminKeyRequired: true,
+          passwordMinimumLength: 8,
+        },
+      });
+    if (path === "/api/auth/csrf")
+      return route.fulfill({
+        json: { token: "setup-token", headerName: "X-CSRF-TOKEN" },
+      });
     if (path === "/api/auth/setup") {
-      expect(route.request().postDataJSON()).toEqual({ username: "webadmin", email: "owner@example.org", password: "account-password", passwordConfirmation: "account-password", initialAdminKey: "installation-secret" });
+      expect(route.request().postDataJSON()).toEqual({
+        username: "webadmin",
+        password: "account-password",
+        passwordConfirmation: "account-password",
+        initialAdminKey: "installation-secret",
+      });
       submissions++;
       return route.fulfill({ status: 403, json: { details: "Test response" } });
     }
     return route.fulfill({ json: {} });
   });
   await page.goto("/settings/account");
-  const username = page.locator("input#auth-username");
-  const password = page.locator("input#auth-password");
-  const confirmation = page.locator("input#auth-password-confirmation");
-  const key = page.locator("input#auth-initial-setup-key");
-  await expect(username).toHaveAttribute("name", "username");
-  await expect(username).toHaveAttribute("autocomplete", "username");
-  await expect(password).toHaveAttribute("name", "password");
-  await expect(confirmation).toHaveAttribute("name", "passwordConfirmation");
-  for (const field of [password, confirmation]) {
-    await expect(field).toHaveAttribute("type", "password");
-    await expect(field).toHaveAttribute("autocomplete", "new-password");
-    await expect(field).not.toHaveAttribute("data-bwignore");
-  }
-  await expect(key).toHaveAttribute("type", "password");
-  await expect(key).toHaveAttribute("name", "initialAdminKey");
-  await expect(key).toHaveAttribute("autocomplete", "off");
-  await expect(key).toHaveAttribute("data-bwignore", "true");
-  await username.fill("webadmin");
-  await page.locator("input#auth-email").fill("owner@example.org");
-  await password.fill("account-password");
-  await confirmation.fill("account-password");
+  const key = page.locator("#auth-initial-setup-key");
+  await expect(page.locator("form")).toHaveCount(1);
+  await expect(page.locator("input[type=password]")).toHaveCount(2);
+  await expect(page.locator("#auth-username")).toBeVisible();
+  await expect(key).toHaveAttribute("type", "text");
+  await expect(key).toHaveCSS("-webkit-text-security", "disc");
+  await expect(page.locator("#auth-email")).toHaveCount(0);
+  await page.locator("#auth-username").fill("webadmin");
+  await page.locator("#auth-password").fill("account-password");
+  await page.locator("#auth-password-confirmation").fill("account-password");
+  await page
+    .getByRole("button", { name: "Crear administrador", exact: true })
+    .click();
+  expect(submissions).toBe(0);
+  await expect(key).toBeFocused();
   await key.fill("installation-secret");
-  await page.getByRole("button", { name: "Crear administrador", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: "Mostrar clave de configuración inicial",
+      exact: true,
+    })
+    .click();
+  await expect(key).toHaveCSS("-webkit-text-security", "none");
+  await expect(key).toHaveValue("installation-secret");
+  await expect(key).toHaveAttribute("type", "text");
+  await page
+    .getByRole("button", {
+      name: "Ocultar clave de configuración inicial",
+      exact: true,
+    })
+    .click();
+  await expect(key).toHaveCSS("-webkit-text-security", "disc");
+  // Native selection, copy and paste must preserve the actual text, not the masking glyphs.
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await key.press("ControlOrMeta+A");
+  await key.press("ControlOrMeta+C");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "installation-secret",
+  );
+  await key.press("ControlOrMeta+X");
+  await expect(key).toHaveValue("");
+  await key.press("ControlOrMeta+V");
+  await expect(key).toHaveValue("installation-secret");
+  // The field remains text even if password-manager ignore flags are not honored.
+  await page.evaluate(() =>
+    document
+      .querySelectorAll("[data-bwignore]")
+      .forEach((element) => element.removeAttribute("data-bwignore")),
+  );
+  await expect(page.locator("input[type=password]")).toHaveCount(2);
+  await key.press("Enter");
   await expect.poll(() => submissions).toBe(1);
+  await expect(page.getByRole("alert")).toContainText("Test response");
+  await expect(key).toHaveValue("installation-secret");
+  await page
+    .getByRole("button", { name: "Crear administrador", exact: true })
+    .click();
+  await expect.poll(() => submissions).toBe(2);
 });

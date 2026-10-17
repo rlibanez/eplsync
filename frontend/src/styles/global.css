@@ -1893,6 +1893,8 @@ summary {
 
 /* Give submit buttons the same visual breathing room as field labels. */
 .auth-panel .auth-submit { margin-top: 8px; }
+/* Conceal the installation key without classifying it as an account password. */
+.auth-initial-key-masked { -webkit-text-security: disc; }
 
 .account-password-grid > * { grid-column: 1; }
 .settings-fields-grid > .mantine-Button-root { width: auto; justify-self: start; align-self: end; }

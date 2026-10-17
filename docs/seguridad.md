@@ -8,8 +8,8 @@ No hay una cuenta ni contraseña predeterminadas.
 ## Primer administrador
 
 En el primer acceso, crea la cuenta de administrador indicando nombre de usuario,
-correo electrónico, contraseña y confirmación. El asistente se cierra después
-de crear la primera cuenta.
+contraseña y confirmación. No se solicita correo electrónico. El asistente se cierra
+después de crear la primera cuenta.
 
 Completa este paso antes de hacer accesible la instalación a otras personas.
 Para proteger también el asistente inicial, configura `EPLSYNC_INITIAL_ADMIN_KEY` en `.env` antes de arrancar. Puedes generar
@@ -63,6 +63,9 @@ predeterminados de su rol.
 Al crear una cuenta desde Ajustes se muestra una contraseña temporal, válida
 24 horas, que debe sustituirse en el primer acceso. El correo es obligatorio,
 pero no está verificado y no permite recuperar contraseñas mediante email.
+
+El registro público no solicita correo electrónico; los correos de cuentas existentes
+se conservan y pueden gestionarse desde el perfil.
 
 El registro público está desactivado por defecto. Si lo habilitas, puedes exigir
 aprobación administrativa, activada por defecto. El usuario registrado elige su

@@ -481,6 +481,30 @@ class SecurityIntegrationTests {
         assertThat(accounts.users().stream().filter(u->u.username().equals("public-user")).findFirst().orElseThrow().role()).isEqualTo("USER");
     }
 
+    @Test void webSetupWithoutEmailCreatesUsableAdministrator() throws Exception {
+        accounts.clear();
+        var result=mvc.perform(post("/api/auth/setup").with(csrf()).contentType("application/json")
+            .content(json(Map.of("username","noemailadmin","password",PASSWORD,"passwordConfirmation",PASSWORD))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.email").value(""))
+            .andExpect(jsonPath("$.role").value("ADMIN")).andReturn();
+        var session=(MockHttpSession)result.getRequest().getSession(false);
+        mvc.perform(get("/api/auth/me").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.username").value("noemailadmin"));
+        assertThat(accounts.authenticate("noemailadmin",PASSWORD)).isNotNull();
+        assertThat(jdbc.queryForObject("SELECT email FROM users WHERE username='noemailadmin'",String.class)).isEmpty();
+    }
+    @Test void registrationWithoutEmailPreservesExistingEmailsAndValidatesProvidedEmail() throws Exception {
+        admin();accounts.policy(new AccountStore.Policy(true,false,30,12));
+        for(String username:List.of("noemailone","noemailtwo")) {
+            mvc.perform(post("/api/auth/register").with(csrf()).contentType("application/json")
+                .content(json(Map.of("username",username,"password",PASSWORD))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ACTIVE"));
+            assertThat(Objects.requireNonNull(accounts.authenticate(username,PASSWORD)).email()).isEmpty();
+        }
+        assertThat(Objects.requireNonNull(accounts.find(initial.user().id())).email()).isEqualTo("admin@example.org");
+        mvc.perform(post("/api/auth/register").with(csrf()).contentType("application/json")
+            .content(json(Map.of("username","bademail","email","not-an-email","password",PASSWORD))))
+            .andExpect(status().isBadRequest());
+    }
     @Test void webSetupRequiresCsrfMatchingPasswordsAndOnlyWorksOnEmptyInstallations() throws Exception {
         accounts.clear();
         mvc.perform(get("/api/auth/status")).andExpect(status().isOk()).andExpect(jsonPath("$.initialized").value(false));
