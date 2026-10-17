@@ -1,4 +1,7 @@
-import { textOperatorProps } from "../../components/StateOperator";
+import {
+  textOperatorProps,
+  stateOperatorProps,
+} from "../../components/StateOperator";
 import {
   CalibreRemovalLauncher,
   CleanupLauncher,
@@ -18,7 +21,13 @@ import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { CalibreTable, calibreColumns, type CalibreBook } from "./CalibreTable";
 import { Link, useSearchParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { Button, MultiSelect, Select, TextInput } from "@mantine/core";
+import {
+  Button,
+  CloseButton,
+  MultiSelect,
+  Select,
+  TextInput,
+} from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
@@ -58,15 +67,18 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       auth.can("DOWNLOADS_FILES_READ") &&
       auth.can("CATALOG_READ")
     : auth.can("CALIBRE_FILES_READ") || auth.can("CALIBRE_DELETE");
-  const [textExcluded, setTextExcluded] = useState({
+  const [excluded, setExcluded] = useState({
     title: false,
     author: false,
+    eplId: false,
+    comparison: false,
+    presence: false,
   });
   const [selected, setSelected] = useState<number[]>([]);
   const [searching, setSearching] = useState(false);
   useEffect(
     () => setSelected([]),
-    [title, author, textExcluded, eplId, comparison, presence, sort],
+    [title, author, excluded, eplId, comparison, presence, sort],
   );
   const pageSizeChoice = usePageSizeChoice(size);
   const params = new URLSearchParams({
@@ -74,9 +86,16 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     size: String(size),
     title,
     author,
-    ...(title.trim() && textExcluded.title ? { titleOperator: "ne" } : {}),
-    ...(author.trim() && textExcluded.author ? { authorOperator: "ne" } : {}),
+    ...(title.trim() && excluded.title ? { titleOperator: "ne" } : {}),
+    ...(author.trim() && excluded.author ? { authorOperator: "ne" } : {}),
     ...(eplId ? { eplId } : {}),
+    ...(!updates && eplId && excluded.eplId ? { eplIdOperator: "ne" } : {}),
+    ...(!updates && comparison && excluded.comparison
+      ? { comparisonOperator: "ne" }
+      : {}),
+    ...(!updates && presence && excluded.presence
+      ? { presenceOperator: "ne" }
+      : {}),
     comparison,
     presence,
     ...(updates ? { updatesOnly: "true" } : {}),
@@ -111,8 +130,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     {
       title,
       author,
-      titleOperator: title.trim() && textExcluded.title ? "ne" : "",
-      authorOperator: author.trim() && textExcluded.author ? "ne" : "",
+      titleOperator: title.trim() && excluded.title ? "ne" : "",
+      authorOperator: author.trim() && excluded.author ? "ne" : "",
       eplId,
       availability: availability ?? "",
     },
@@ -294,17 +313,56 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         <TextInput
           label={t("filters.eplId")}
           value={eplId}
+          {...(!updates
+            ? stateOperatorProps(excluded.eplId, () => {
+                setExcluded((current) => ({
+                  ...current,
+                  eplId: !current.eplId,
+                }));
+                setPage(0);
+              })
+            : {})}
+          rightSectionPointerEvents="auto"
+          rightSection={
+            eplId ? (
+              <CloseButton
+                size="sm"
+                aria-label={`${t("catalog.clear")}: ${t("filters.eplId")}`}
+                onClick={() => {
+                  setEplId("");
+                  setExcluded((current) => ({ ...current, eplId: false }));
+                  setPage(0);
+                }}
+              />
+            ) : undefined
+          }
           inputMode="numeric"
           onChange={(e) => {
             setEplId(e.currentTarget.value.replace(/\D/g, ""));
+            if (!e.currentTarget.value.replace(/\D/g, ""))
+              setExcluded((current) => ({ ...current, eplId: false }));
             setPage(0);
           }}
         />
         <TextInput
           label={t("downloads.book")}
           value={title}
-          {...textOperatorProps(textExcluded.title, () => {
-            setTextExcluded((current) => ({
+          rightSectionPointerEvents="auto"
+          rightSection={
+            title ? (
+              <CloseButton
+                size="sm"
+                aria-label={`${t("catalog.clear")}: ${t("downloads.book")}`}
+                onClick={() => {
+                  setTitle("");
+                  setExcluded((current) => ({ ...current, title: false }));
+                  setPage(0);
+                }}
+              />
+            ) : undefined
+          }
+          {...textOperatorProps(excluded.title, () => {
+            setExcluded((current) => ({
               ...current,
               title: !current.title,
             }));
@@ -314,15 +372,29 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
           onChange={(e) => {
             setTitle(e.currentTarget.value);
             if (!e.currentTarget.value.trim())
-              setTextExcluded((current) => ({ ...current, title: false }));
+              setExcluded((current) => ({ ...current, title: false }));
             setPage(0);
           }}
         />
         <TextInput
           label={t("filters.author")}
           value={author}
-          {...textOperatorProps(textExcluded.author, () => {
-            setTextExcluded((current) => ({
+          rightSectionPointerEvents="auto"
+          rightSection={
+            author ? (
+              <CloseButton
+                size="sm"
+                aria-label={`${t("catalog.clear")}: ${t("filters.author")}`}
+                onClick={() => {
+                  setAuthor("");
+                  setExcluded((current) => ({ ...current, author: false }));
+                  setPage(0);
+                }}
+              />
+            ) : undefined
+          }
+          {...textOperatorProps(excluded.author, () => {
+            setExcluded((current) => ({
               ...current,
               author: !current.author,
             }));
@@ -332,7 +404,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
           onChange={(e) => {
             setAuthor(e.currentTarget.value);
             if (!e.currentTarget.value.trim())
-              setTextExcluded((current) => ({ ...current, author: false }));
+              setExcluded((current) => ({ ...current, author: false }));
             setPage(0);
           }}
         />
@@ -360,6 +432,18 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               searchable
               styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
               label={t("calibre.comparison")}
+              {...stateOperatorProps(excluded.comparison, () => {
+                setExcluded((current) => ({
+                  ...current,
+                  comparison: !current.comparison,
+                }));
+                setPage(0);
+              })}
+              clearButtonProps={{
+                "aria-hidden": false,
+                tabIndex: 0,
+                "aria-label": `${t("catalog.clear")}: ${t("calibre.comparison")}`,
+              }}
               clearable
               value={comparison ? comparison.split(",") : []}
               data={["CURRENT", "OUTDATED", "NEWER", "UNKNOWN"].map(
@@ -370,6 +454,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               )}
               onChange={(v) => {
                 setComparison(v.join(","));
+                if (!v.length)
+                  setExcluded((current) => ({ ...current, comparison: false }));
                 setPage(0);
               }}
             />
@@ -377,6 +463,18 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               searchable
               styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
               label={t("calibre.presence")}
+              {...stateOperatorProps(excluded.presence, () => {
+                setExcluded((current) => ({
+                  ...current,
+                  presence: !current.presence,
+                }));
+                setPage(0);
+              })}
+              clearButtonProps={{
+                "aria-hidden": false,
+                tabIndex: 0,
+                "aria-label": `${t("catalog.clear")}: ${t("calibre.presence")}`,
+              }}
               clearable
               value={presence ? presence.split(",") : []}
               data={["PRESENT", "MISSING", "UNIDENTIFIED"].map((value) => ({
@@ -385,6 +483,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               }))}
               onChange={(v) => {
                 setPresence(v.join(","));
+                if (!v.length)
+                  setExcluded((current) => ({ ...current, presence: false }));
                 setPage(0);
               }}
             />
@@ -394,7 +494,13 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
           variant="subtle"
           onClick={() => {
             setTitle("");
-            setTextExcluded({ title: false, author: false });
+            setExcluded({
+              title: false,
+              author: false,
+              eplId: false,
+              comparison: false,
+              presence: false,
+            });
             setAuthor("");
             setEplId("");
             setComparison("");

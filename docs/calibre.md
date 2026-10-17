@@ -94,7 +94,11 @@ una fila por registro de Calibre, incluidos los libros con el mismo EPL ID y
 revisiones distintas. Incluye EPL ID, libro con portada del catálogo, autor, revisión en Calibre,
 revisión del catálogo, comparación y presencia en el catálogo. El ID de Calibre es la primera columna por defecto; no dispone de filtro propio.
 
-Puedes buscar por EPL ID, título o autor y filtrar por comparación y presencia. Las
+Puedes buscar por EPL ID, título o autor y filtrar por comparación y presencia.
+EPL ID, Comparación y En el catálogo incorporan **= / ≠** para incluir o excluir
+los valores indicados. Al excluir un EPL ID se incluyen también los libros sin
+identificador. La X borra cada filtro y restablece su operador; «Limpiar» borra
+todos. Los filtros se mantienen al paginar y seleccionar todos los resultados. Las
 columnas se pueden ordenar, ocultar, reordenar y redimensionar. La consulta está
 paginada, con un máximo de 1000 registros por página.
 

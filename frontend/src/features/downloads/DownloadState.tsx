@@ -23,6 +23,7 @@ import {
 } from "@tanstack/react-query";
 import {
   Button,
+  CloseButton,
   Checkbox,
   Group,
   Select,
@@ -57,7 +58,6 @@ const initialFilters = {
   status: "",
   statusOperator: "eq",
   origin: "",
-  originOperator: "eq",
   completed: "",
   sort: "createdAt,desc",
 };
@@ -236,6 +236,20 @@ function DownloadHistory() {
             type="number"
             min={1}
             value={draftEplId}
+            rightSectionPointerEvents="auto"
+            rightSection={
+              draftEplId ? (
+                <CloseButton
+                  size="sm"
+                  aria-label={`${t("catalog.clear")}: ${t("filters.eplId")}`}
+                  onClick={() => {
+                    setDraftEplId("");
+                    setFilters((current) => ({ ...current, eplId: "" }));
+                    setPage(0);
+                  }}
+                />
+              ) : undefined
+            }
             onChange={(e) => setDraftEplId(e.currentTarget.value)}
           />
           <MultiSelect
@@ -265,12 +279,6 @@ function DownloadHistory() {
           />
           <Select
             label={t("downloads.origin")}
-            {...stateOperatorProps(filters.originOperator === "ne", () =>
-              filter(
-                "originOperator",
-                filters.originOperator === "ne" ? "eq" : "ne",
-              ),
-            )}
             value={filters.origin || null}
             clearable
             data={[
@@ -281,7 +289,6 @@ function DownloadHistory() {
               setFilters((current) => ({
                 ...current,
                 origin: v ?? "",
-                originOperator: v ? current.originOperator : "eq",
               }));
               setPage(0);
             }}
@@ -457,7 +464,6 @@ function DownloadHistory() {
                                         setFilters((current) => ({
                                           ...current,
                                           origin: d.origin,
-                                          originOperator: "eq",
                                         }));
                                         setPage(0);
                                       }}

@@ -34,8 +34,10 @@ public class CalibreLibraryController {
     @Transactional(readOnly=true)
     public Page books(@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,
                       @RequestParam(defaultValue="eq") String titleOperator,@RequestParam(defaultValue="eq") String authorOperator,@RequestParam(defaultValue="") String title,@RequestParam(defaultValue="") String author,@RequestParam(required=false) Long eplId,@RequestParam(defaultValue="") String comparison,
-                      @RequestParam(defaultValue="") String presence,@RequestParam(defaultValue="false") boolean updatesOnly, jakarta.servlet.http.HttpServletRequest request) {
+                      @RequestParam(defaultValue="") String presence,@RequestParam(defaultValue="eq") String eplIdOperator,@RequestParam(defaultValue="eq") String comparisonOperator,@RequestParam(defaultValue="eq") String presenceOperator,@RequestParam(defaultValue="false") boolean updatesOnly, jakarta.servlet.http.HttpServletRequest request) {
         boolean excludeTitle=com.rlibanez.eplsync.ordering.StateOperator.excluded(titleOperator),excludeAuthor=com.rlibanez.eplsync.ordering.StateOperator.excluded(authorOperator);
+        boolean excludeId=com.rlibanez.eplsync.ordering.StateOperator.excluded(eplIdOperator);
+        var excluded=Map.of("comparison",com.rlibanez.eplsync.ordering.StateOperator.excluded(comparisonOperator),"presence",com.rlibanez.eplsync.ordering.StateOperator.excluded(presenceOperator));
         var sort=request.getParameterValues("sort")==null ? List.of("title,asc") : Arrays.asList(request.getParameterValues("sort"));
         if(page<0 || size<1 || size>1000 || title.length()>256 || author.length()>256 || (eplId!=null && eplId<=0) || sort.size()>8)
             throw new UserInputException("Paginación o búsqueda de Calibre inválida");
@@ -44,14 +46,14 @@ public class CalibreLibraryController {
         var args=new ArrayList<Object>();
         if(!title.isBlank()) { base+=" AND instr(lower(coalesce(title,'')),lower(?))"+(excludeTitle?"=0":">0"); args.add(title.trim()); }
         if(!author.isBlank()) { base+=" AND instr(lower(coalesce(authors,'')),lower(?))"+(excludeAuthor?"=0":">0"); args.add(author.trim()); }
-        if(eplId!=null) { base+=" AND epl_id=?"; args.add(eplId); }
+        if(eplId!=null) { base+=excludeId?" AND (epl_id IS NULL OR epl_id<>?)":" AND epl_id=?"; args.add(eplId); }
         for (var filter : Map.of("comparison", comparison, "presence", presence).entrySet()) {
             if (filter.getValue().isEmpty()) continue;
             var allowed = filter.getKey().equals("comparison") ? Set.of("UNKNOWN","OUTDATED","NEWER","CURRENT") : Set.of("UNIDENTIFIED","MISSING","PRESENT");
             var selected = Arrays.asList(filter.getValue().split(",", -1));
             if (selected.size() > allowed.size() || !allowed.containsAll(selected))
                 throw new UserInputException("Filtro de Calibre inválido: " + filter.getKey());
-            base += " AND " + filter.getKey() + " IN (" + String.join(",", Collections.nCopies(selected.size(), "?")) + ")";
+            base += " AND " + filter.getKey() + (excluded.get(filter.getKey()) ? " NOT IN (" : " IN (") + String.join(",", Collections.nCopies(selected.size(), "?")) + ")";
             args.addAll(selected);
         }
         var fields=Map.of("title","title COLLATE EPL_TEXT","authors","authors COLLATE EPL_TEXT","eplId","epl_id","revision","revision","catalogRevision","catalog_revision","comparison","comparison","presence","presence","calibreId","calibre_id");

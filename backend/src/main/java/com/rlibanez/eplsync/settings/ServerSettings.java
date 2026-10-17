@@ -130,7 +130,10 @@ public class ServerSettings {
             : value == null ? "" : value);
     }
     public Snapshot snapshot() { var value = pinned.get(); return value == null ? current : value; }
-    public synchronized String updateSearchContext() {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.config.SqliteWriteCoordinator writer;
+    private <T> T coordinated(java.util.function.Supplier<T> work) {return writer==null?work.get():writer.write(work);}
+    public String updateSearchContext() {return coordinated(this::updateSearchContextLocked);}
+    private synchronized String updateSearchContextLocked() {
         tx.executeWithoutResult(status -> refreshSearchContext(current));
         return com.rlibanez.eplsync.tasks.UpdateSearchContext.current(jdbc,"downloads");
     }
@@ -151,7 +154,8 @@ public class ServerSettings {
             return new Field(f.key(), f.type(), secret ? "" : value, overrides.containsKey(f.key()), secret && (!String.valueOf(value).isBlank() || unreadable.containsKey(f.key())));
         }).toList(), section.equals("torrent") ? credentialsError : null);
     }
-    public synchronized View save(String section, Map<String, Object> values) {
+    public View save(String section,Map<String,Object> values) {return coordinated(()->saveLocked(section,values));}
+    private synchronized View saveLocked(String section, Map<String, Object> values) {
         publish(prepare(section, values));
         return view(section);
     }
@@ -190,7 +194,8 @@ public class ServerSettings {
         }
         return next;
     }
-    public synchronized View restore(String section) {
+    public View restore(String section) {return coordinated(()->restoreLocked(section));}
+    private synchronized View restoreLocked(String section) {
         if(section.equals("torrent") && credentialsError != null) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,credentialsError);
         Map<String, Object> next = new LinkedHashMap<>(overrides);
         section(section).forEach(f -> next.remove(f.key()));

@@ -25,7 +25,7 @@ public class CalibreCatalogService {
     private final CalibreSettings settings;
     private final CalibreClient client;
     private final TransactionTemplate tx;
-    private final Semaphore gate = new Semaphore(1);
+    private final Semaphore gate = new Semaphore(1,true);
     private final JsonMapper json = JsonMapper.builder().build();
     public record Snapshot(String library, Instant syncedAt, long total, long identified,Boolean complete) {
         public Snapshot(String library,Instant syncedAt,long total,long identified) {this(library,syncedAt,total,identified,true);}
@@ -74,11 +74,15 @@ public class CalibreCatalogService {
         return rows.isEmpty() ? null : json.readValue(rows.getFirst(),Snapshot.class);
     }
     public <T> T exclusive(java.util.function.Supplier<T> action) {
-        if (!gate.tryAcquire()) throw new UserInputException("Hay una sincronización de Calibre en curso; espera antes de reiniciar la base de datos");
+        if (!gate.tryAcquire()) throw new UserInputException("Hay una sincronización de Calibre en curso; espera a que termine la operación actual");
         try { return action.get(); } finally { gate.release(); }
     }
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<CalibreTransfers> transfers;
     public Snapshot sync() {
+        return transfers==null ? synchronizedSnapshot() : transfers.getObject().synchronizeLibrary(this::synchronizedSnapshot);
+    }
+    private Snapshot synchronizedSnapshot() {
         if(events==null) return performSync();
         return events.runFailuresOnly(com.rlibanez.eplsync.events.EventJournal.Category.JOB,"CALIBRE_SYNC",Map.of(),this::performSync,
             result->Map.of("total",result.total(),"identified",result.identified()));

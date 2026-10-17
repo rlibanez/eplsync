@@ -22,6 +22,7 @@ class CalibreCatalogTests {
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired CalibreSettings settings;
     @Autowired CalibreCatalogService snapshots;
+    @Autowired CalibreTransfers transfers;
     @Autowired com.rlibanez.eplsync.maintenance.DatabaseResetService reset;
     @MockitoBean CalibreClient client;
     MockMvc mvc;
@@ -31,6 +32,22 @@ class CalibreCatalogTests {
         jdbc.update("DELETE FROM calibre_books");
         jdbc.update("DELETE FROM catalog_books");
         settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"main"));
+    }
+    @Test void syncsWaitForTransfersAndDoNotOverlapOrPauseThem() throws Exception {
+        var active=new java.util.concurrent.atomic.AtomicInteger();var maximum=new java.util.concurrent.atomic.AtomicInteger();
+        when(client.books(any(),eq(0),eq(100))).thenAnswer(call->{maximum.accumulateAndGet(active.incrementAndGet(),Math::max);try {Thread.sleep(20);return new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100);}finally {active.decrementAndGet();}});
+        var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
+        try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var transfer=executor.submit(()->transfers.preparing(()->{entered.countDown();try {assertThat(release.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();}catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}return null;}));
+            assertThat(entered.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            var first=executor.submit(()->snapshots.sync());var second=executor.submit(()->snapshots.sync());
+            try {assertThatThrownBy(()->first.get(100,java.util.concurrent.TimeUnit.MILLISECONDS)).isInstanceOf(java.util.concurrent.TimeoutException.class);verify(client,never()).books(any(),anyInt(),anyInt());}
+            finally {release.countDown();}
+            transfer.get(5,java.util.concurrent.TimeUnit.SECONDS);
+            assertThat(first.get(5,java.util.concurrent.TimeUnit.SECONDS).total()).isEqualTo(1);
+            assertThat(second.get(5,java.util.concurrent.TimeUnit.SECONDS).total()).isEqualTo(1);
+            assertThat(maximum.get()).isEqualTo(1);
+        }
     }
     @Test void syncFinalSummaryUsesInfoForBothOriginsAndDoesNotAnnounceFailures() {
         var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CalibreCatalogService.class);
@@ -184,6 +201,18 @@ class CalibreCatalogTests {
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
         mvc.perform(get("/api/calibre/books").param("presence","MISSING,UNIDENTIFIED"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(get("/api/calibre/books").param("eplId","1").param("eplIdOperator","ne").param("size","1").param("page","1").param("sort","calibreId,asc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2)).andExpect(jsonPath("$.items[0].calibreId").value(4));
+        mvc.perform(get("/api/calibre/books").param("comparison","OUTDATED,CURRENT").param("comparisonOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].calibreId",org.hamcrest.Matchers.containsInAnyOrder(3,4)));
+        mvc.perform(get("/api/calibre/books").param("presence","MISSING,UNIDENTIFIED").param("presenceOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].calibreId",org.hamcrest.Matchers.containsInAnyOrder(1,2)));
+        mvc.perform(get("/api/calibre/books").param("eplId","99").param("eplIdOperator","ne").param("comparison","CURRENT").param("comparisonOperator","ne").param("presence","PRESENT").param("presenceOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.items[0].calibreId").value(4));
+        mvc.perform(get("/api/calibre/books").param("eplIdOperator","ne").param("comparisonOperator","ne").param("presenceOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4));
+        for(String operator:java.util.List.of("eplIdOperator","comparisonOperator","presenceOperator"))
+            mvc.perform(get("/api/calibre/books").param(operator,"invalid")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/calibre/books").param("comparison","CURRENT,invalid")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/calibre/books").param("presence","PRESENT,")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/calibre/books").param("presence","MISSING"))

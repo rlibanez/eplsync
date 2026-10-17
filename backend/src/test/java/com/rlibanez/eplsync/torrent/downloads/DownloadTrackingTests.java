@@ -502,24 +502,30 @@ class DownloadTrackingTests {
         assertThat(downloads.count()).isEqualTo(2);
     }
 
-    @Test void rejectsOverlappingSyncAndSyncDuringSubmission() throws Exception {
+    @Test void overlappingSyncsAndSyncDuringSubmissionWaitTheirTurn() throws Exception {
         var command = command(1, HASH);
         var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
-        when(stubClient.listTorrents()).thenAnswer(inv -> { entered.countDown(); release.await(5, TimeUnit.SECONDS); return List.of(); });
+        when(stubClient.listTorrents()).thenAnswer(inv -> {entered.countDown();assertThat(release.await(5,TimeUnit.SECONDS)).isTrue();return List.of();});
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var future = executor.submit(() -> service.syncDownloads(false, true));
-            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThatThrownBy(() -> service.syncDownloads(false, true)).isInstanceOf(TorrentOperationException.class);
-            release.countDown(); future.get(5, TimeUnit.SECONDS);
+            var first = executor.submit(() -> service.syncDownloads(false, true));
+            assertThat(entered.await(5,TimeUnit.SECONDS)).isTrue();
+            var second = executor.submit(() -> service.syncDownloads(false,true));
+            try {assertThatThrownBy(()->second.get(100,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);}
+            finally {release.countDown();}
+            first.get(5,TimeUnit.SECONDS);second.get(5,TimeUnit.SECONDS);
         }
         var sending = new CountDownLatch(1); var finish = new CountDownLatch(1);
-        when(stubClient.addTorrent(any())).thenAnswer(inv -> { sending.countDown(); finish.await(5, TimeUnit.SECONDS); return TorrentDownloadResult.Status.ACCEPTED; });
+        when(stubClient.listTorrents()).thenReturn(List.of());
+        when(stubClient.addTorrent(any())).thenAnswer(inv -> {sending.countDown();assertThat(finish.await(5,TimeUnit.SECONDS)).isTrue();return TorrentDownloadResult.Status.ACCEPTED;});
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var future = executor.submit(() -> service.addTorrent(command));
-            assertThat(sending.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThatThrownBy(() -> service.syncDownloads(false, true)).isInstanceOf(TorrentOperationException.class);
-            finish.countDown(); future.get(5, TimeUnit.SECONDS);
+            var first = executor.submit(() -> service.addTorrent(command));
+            assertThat(sending.await(5,TimeUnit.SECONDS)).isTrue();
+            var second = executor.submit(() -> service.syncDownloads(false,true));
+            try {assertThatThrownBy(()->second.get(100,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);}
+            finally {finish.countDown();}
+            first.get(5,TimeUnit.SECONDS);second.get(5,TimeUnit.SECONDS);
         }
+        verify(stubClient,times(1)).addTorrent(any());
     }
 
     @Test void previewCalculatesSameChangesWithoutWritingAnyFields() {

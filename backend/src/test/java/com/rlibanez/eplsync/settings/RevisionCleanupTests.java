@@ -72,6 +72,23 @@ class RevisionCleanupTests {
     void removeRemoteBook() {
         doAnswer(call->{long id=call.getArgument(1);when(client.book(any(),eq(id))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));return null;}).when(client).remove(any(),anyLong(),eq(true));
     }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void transientTorrentLockRetriesAfterRestartWithoutRepeatingRequestedDeletes(boolean dispatched) {
+        var job=cleanup.removeSelected(removal("files",true));
+        if(dispatched) {
+            jdbc.update("UPDATE revision_cleanup_items SET state='VERIFYING',dispatched=1 WHERE job_id=?",job.id());
+            remote.removeIf(row->row.hash().equals("A".repeat(40)));
+        }
+        doThrow(new com.rlibanez.eplsync.exception.TorrentBusyException()).doAnswer(call->{Function<TorrentClient,?> work=call.getArgument(0);return work.apply(adapter);}).when(torrent).exclusiveClient(any());
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).pending()).isEqualTo(1);
+        assertThat(cleanup.get(job.id()).blocked()).isZero();
+        assertThat(cleanup.get(job.id()).message()).contains("reintentará automáticamente");
+        cleanup.recover();cleanup.cycle();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(adapter,times(dispatched?0:1)).deleteTorrent(anyString(),anyBoolean());
+        assertThat(downloads.findById(newer)).isPresent();
+    }
     @Test void transientCalibreLockDefersTorrentDeletionWithoutDuplicatingIt() throws Exception {
         var job=cleanup.removeSelected(removal("files",true));
         var acquired=new java.util.concurrent.CountDownLatch(1);

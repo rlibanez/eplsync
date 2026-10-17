@@ -45,13 +45,17 @@ public class InternalTaskSettings {
     public synchronized void resetAfterCommit() {periods=installation;}
     public List<Period> view() {return List.of(new Period(CLEANUP,format(interval(CLEANUP))),new Period(CALIBRE,format(interval(CALIBRE))));}
     private static String format(Duration value) {return value.toMillis()%1000==0 ? value.toSeconds()+"s" : value.toMillis()+"ms";}
-    public synchronized Period restore(String id) {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.config.SqliteWriteCoordinator writer;
+    private <T> T coordinated(java.util.function.Supplier<T> work) {return writer==null?work.get():writer.write(work);}
+    public Period restore(String id) {return coordinated(()->restoreLocked(id));}
+    private synchronized Period restoreLocked(String id) {
         interval(id);
         tx.executeWithoutResult(s -> jdbc.update("DELETE FROM app_settings WHERE setting_key=?",PREFIX+id));
         var copy=new HashMap<>(periods);copy.put(id,installation.get(id));periods=Map.copyOf(copy);
         return new Period(id,format(interval(id)));
     }
-    public synchronized Period save(String id,String text) {
+    public Period save(String id,String text) {return coordinated(()->saveLocked(id,text));}
+    private synchronized Period saveLocked(String id,String text) {
         interval(id); var value=parse(text);var stored=format(value);
         tx.executeWithoutResult(s -> jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value",PREFIX+id,stored));
         var copy=new HashMap<>(periods);copy.put(id,value);periods=Map.copyOf(copy);

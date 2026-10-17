@@ -508,8 +508,9 @@ public class RevisionCleanup {
                     var pending=jdbc.query("SELECT * FROM revision_cleanup_items WHERE job_id=? AND state IN ('PENDING','VERIFYING') ORDER BY position LIMIT 1",this::item,id);
                     if(pending.isEmpty()) break;
                     try {execute(id,pending.getFirst());}
-                    catch(CalibreTransfers.OperationBusy ex) {
-                        jdbc.update("UPDATE revision_cleanup_jobs SET message=?,updated_at=? WHERE id=?", "Esperando a que termine la operación de Calibre; la limpieza se reintentará automáticamente",Instant.now().toEpochMilli(),id);
+                    catch(CalibreTransfers.OperationBusy | com.rlibanez.eplsync.exception.TorrentBusyException ex) {
+                        String waiting=ex instanceof CalibreTransfers.OperationBusy ? "Esperando a que termine la operación de Calibre; la limpieza se reintentará automáticamente" : "Esperando a que termine la operación del cliente torrent; la limpieza se reintentará automáticamente";
+                        jdbc.update("UPDATE revision_cleanup_jobs SET message=?,updated_at=? WHERE id=?",waiting,Instant.now().toEpochMilli(),id);
                         break;
                     }
                 }
@@ -535,7 +536,7 @@ public class RevisionCleanup {
                 return null;
             })));
         } catch(RuntimeException ex) {
-            if(ex instanceof CalibreTransfers.OperationBusy || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
+            if(ex instanceof CalibreTransfers.OperationBusy || ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
             var fresh=jdbc.queryForList("SELECT dispatched FROM revision_cleanup_items WHERE id=?",Boolean.class,item.id());
             update(item.id(),verify || !fresh.isEmpty() && Boolean.TRUE.equals(fresh.getFirst())?"UNCERTAIN":ex instanceof UserInputException || ex instanceof org.springframework.security.access.AccessDeniedException?"BLOCKED":"FAILED",reason(ex));
         } finally {SecurityContextHolder.setContext(previous);}

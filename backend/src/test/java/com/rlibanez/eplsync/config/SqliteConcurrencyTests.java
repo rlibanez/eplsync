@@ -23,6 +23,7 @@ class SqliteConcurrencyTests {
     }
     @Autowired DataSource source;
     @Autowired PlatformTransactionManager manager;
+    @Autowired com.rlibanez.eplsync.settings.ServerSettings settings;
     @Autowired JdbcTemplate jdbc;
     @Autowired com.rlibanez.eplsync.importer.CatalogBookCsvImporter importer;
     @Autowired com.rlibanez.eplsync.repository.CatalogBookRepository books;
@@ -109,6 +110,38 @@ class SqliteConcurrencyTests {
             } finally {release.countDown();}
             torrent.get(5,TimeUnit.SECONDS);calibre.get(5,TimeUnit.SECONDS);
             assertThat(jdbc.queryForObject("SELECT value FROM concurrency_probe",Integer.class)).isEqualTo(2);
+        }
+    }
+    @Test void queuedAutocommitWritesDoNotTakeTheReadersConnection() throws Exception {
+        var written=new CountDownLatch(1);var release=new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var writer=executor.submit(()->transaction(false).executeWithoutResult(status->{jdbc.update("UPDATE concurrency_probe SET value=1");written.countDown();await(release);}));
+            await(written);
+            var waiting=new java.util.ArrayList<Future<?>>();
+            try {
+                for(int n=0;n<6;n++) waiting.add(executor.submit(()->jdbc.update("UPDATE concurrency_probe SET value=value+1")));
+                Thread.sleep(50);
+                for(int n=0;n<4;n++) {
+                    var reader=executor.submit(()->transaction(true).execute(status->jdbc.queryForObject("SELECT value FROM concurrency_probe",Integer.class)));
+                    assertThat(reader.get(1,TimeUnit.SECONDS)).isZero();
+                }
+                assertThat(waiting).noneMatch(Future::isDone);
+            } finally {release.countDown();}
+            writer.get(5,TimeUnit.SECONDS);for(var pending:waiting) pending.get(5,TimeUnit.SECONDS);
+            assertThat(jdbc.queryForObject("SELECT value FROM concurrency_probe",Integer.class)).isEqualTo(7);
+        }
+    }
+    @Test void settingsWaitForTheWriterBeforeTakingTheirMonitor() throws Exception {
+        var entered=new CountDownLatch(1);var queued=new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var first=executor.submit(()->transaction(false).executeWithoutResult(status->{
+                entered.countDown();await(queued);
+                try {Thread.sleep(50);}catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}
+                assertThat(settings.updateSearchContext()).isNotBlank();
+            }));
+            await(entered);
+            var second=executor.submit(()->{queued.countDown();return settings.updateSearchContext();});
+            first.get(3,TimeUnit.SECONDS);assertThat(second.get(3,TimeUnit.SECONDS)).isNotBlank();
         }
     }
     @Test void committedDataSurvivesReopeningAndRollbackDiscardsChanges() throws Exception {

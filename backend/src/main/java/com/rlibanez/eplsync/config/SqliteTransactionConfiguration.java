@@ -3,21 +3,31 @@ package com.rlibanez.eplsync.config;
 import jakarta.persistence.EntityManagerFactory;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.orm.jpa.JpaTransactionManager;
-import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.TransactionDefinition;
 
 /** SQLite has one writer. Acquire its turn before borrowing a pooled connection
  * or reading a snapshot that another writer could invalidate. */
 @Configuration
+@org.springframework.boot.context.properties.EnableConfigurationProperties(org.springframework.boot.jdbc.autoconfigure.JdbcProperties.class)
 public class SqliteTransactionConfiguration {
+    @Bean SqliteWriteCoordinator sqliteWriteCoordinator() {return new SqliteWriteCoordinator();}
+    @Bean org.springframework.jdbc.core.JdbcTemplate jdbcTemplate(javax.sql.DataSource source,SqliteWriteCoordinator writer,org.springframework.boot.jdbc.autoconfigure.JdbcProperties properties) {
+        var template=new CoordinatedJdbcTemplate(source,writer);
+        var options=properties.getTemplate();
+        template.setFetchSize(options.getFetchSize());template.setMaxRows(options.getMaxRows());
+        template.setIgnoreWarnings(options.isIgnoreWarnings());
+        template.setSkipResultsProcessing(options.isSkipResultsProcessing());
+        template.setSkipUndeclaredResults(options.isSkipUndeclaredResults());
+        template.setResultsMapCaseInsensitive(options.isResultsMapCaseInsensitive());
+        if(options.getQueryTimeout()!=null) template.setQueryTimeout(Math.toIntExact(options.getQueryTimeout().toSeconds()));
+        return template;
+    }
     @Bean
-    JpaTransactionManager transactionManager(EntityManagerFactory factory, javax.sql.DataSource source) {
-        return new SingleWriterTransactionManager(factory,source);
+    JpaTransactionManager transactionManager(EntityManagerFactory factory, javax.sql.DataSource source,SqliteWriteCoordinator writer) {
+        return new SingleWriterTransactionManager(factory,source,writer);
     }
 
     static final class SqliteJpaDialect extends org.springframework.orm.jpa.vendor.HibernateJpaDialect {
@@ -54,12 +64,13 @@ public class SqliteTransactionConfiguration {
     }
 
     static final class SingleWriterTransactionManager extends JpaTransactionManager {
-        private final ReentrantLock writer = new ReentrantLock(true);
+        private final SqliteWriteCoordinator writer;
         private final Set<Object> owners = ConcurrentHashMap.newKeySet();
         private final javax.sql.DataSource source;
-        SingleWriterTransactionManager(EntityManagerFactory factory, javax.sql.DataSource source) {
+        SingleWriterTransactionManager(EntityManagerFactory factory, javax.sql.DataSource source,SqliteWriteCoordinator writer) {
             super(factory);
             this.source=source;
+            this.writer=writer;
             // Keep framework transaction traces under Spring's logging category.
             logger = org.apache.commons.logging.LogFactory.getLog(JpaTransactionManager.class);
         }
@@ -74,13 +85,7 @@ public class SqliteTransactionConfiguration {
             if (!definition.isReadOnly()) {
                 int seconds = definition.getTimeout() == TransactionDefinition.TIMEOUT_DEFAULT
                         ? 30 : Math.min(30, definition.getTimeout());
-                try {
-                    if (!writer.tryLock(seconds, TimeUnit.SECONDS))
-                        throw new com.rlibanez.eplsync.ordering.SqliteContention.WriterBusy();
-                } catch (InterruptedException ex) {
-                    Thread.currentThread().interrupt();
-                    throw new CannotCreateTransactionException("Escritura SQLite interrumpida", ex);
-                }
+                writer.acquire(seconds);
                 owners.add(transaction);
             }
             try { super.doBegin(transaction, definition); }
@@ -91,7 +96,7 @@ public class SqliteTransactionConfiguration {
             finally { release(transaction); }
         }
         private void release(Object transaction) {
-            if (owners.remove(transaction)) writer.unlock();
+            if (owners.remove(transaction)) writer.release();
         }
     }
 }

@@ -139,3 +139,17 @@ se verifica con los scripts exactos de la 1.5.0 y datos de catálogo, usuarios,
 Torrent, Calibre, tareas, eventos y operaciones pendientes. Conserva los datos
 persistentes y la clave de cifrado, y realiza una copia de seguridad antes de
 actualizar.
+
+## Coordinación con SQLite
+
+Las transacciones de escritura y las actualizaciones JDBC comparten una cola
+ordenada antes de obtener una conexión. Las consultas de lectura no entran en
+esa cola. Las llamadas de red a Torrent y Calibre se realizan fuera de las
+transacciones SQL.
+
+Las sincronizaciones esperan su turno, con un máximo de 30 segundos para iniciar
+la operación. La sincronización de Calibre se coordina con los envíos y borrados
+para publicar una biblioteca completa. Una ocupación temporal del cliente Torrent
+o de Calibre aplaza los borrados y se reintenta automáticamente; los conflictos
+reales de identidad, archivos compartidos o trabajos dependientes mantienen sus
+protecciones. Los borrados ya enviados solo se verifican tras un reinicio.

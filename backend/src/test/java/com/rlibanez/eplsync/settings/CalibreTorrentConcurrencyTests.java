@@ -39,6 +39,7 @@ class CalibreTorrentConcurrencyTests {
     }
     @Autowired CalibreTransfers transfers;
     @Autowired CalibreSettings settings;
+    @Autowired CalibreCatalogService library;
     @Autowired AccountStore accounts;
     @Autowired CatalogBookRepository books;
     @Autowired DownloadRepository downloads;
@@ -55,7 +56,7 @@ class CalibreTorrentConcurrencyTests {
     @MockitoBean TorrentClientService torrent;
     @MockitoBean EpubFiles files;
 
-    @Test void hundredTorrentSendsAndHundredCalibreUploadsFinishWithoutPausesOrDuplicates() throws Exception {
+    @Test void thousandSendsAndUploadsWithFourReadersAndSyncsDoNotDuplicateOperations() throws Exception {
         var owner=accounts.initialize("Owner","owner@example.com","password123","password123");
         settings.save(new CalibreSettings.Input("http://localhost:8081","","",true,"main"));
         properties.effective().setEnabled(true);
@@ -63,7 +64,7 @@ class CalibreTorrentConcurrencyTests {
         var payloads=new HashMap<String,byte[]>();
         var identities=new HashMap<String,Long>();
         var commands=new ArrayList<TorrentDownload>();
-        for(long id=1;id<=100;id++) {
+        for(long id=1;id<=1000;id++) {
             books.save(CatalogBook.builder().eplId(id).revision(1.0).title("Book "+id).author("Author").build());
             var row=new DownloadRecord();row.setEplId(id);row.setRevision(1.0);row.setHash(String.format("%040X",id));
             row.setClient("qbittorrent");row.setClientInstanceId(tracking.instanceId());row.setStatus(DownloadStatus.DOWNLOADED);
@@ -114,43 +115,77 @@ class CalibreTorrentConcurrencyTests {
                 finally {inFlight.decrementAndGet();}
             });
         });
+        var sources=new ConcurrentHashMap<String,RemoteTorrent>();
+        for(long id=1;id<=1000;id++) sources.put(String.format("%040X",id),new RemoteTorrent(String.format("%040X",id),DownloadStatus.DOWNLOADED,Instant.now(),Set.of(),"/downloads/"+id+".epub","Book","/downloads",false));
+        java.util.function.Supplier<List<RemoteTorrent>> remoteSnapshot=()->{
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            var result=new ArrayList<>(sources.values());
+            for(var hash:added) result.add(new RemoteTorrent(hash,DownloadStatus.SUBMITTED,null,Set.of(),"/downloads/pending-"+hash+".epub","Pending","/downloads",false));
+            return result;
+        };
+        var syncActive=new AtomicInteger();var syncMaximum=new AtomicInteger();
+        when(calibre.books(any(),anyInt(),eq(100))).thenAnswer(call->{
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            syncMaximum.accumulateAndGet(syncActive.incrementAndGet(),Math::max);
+            try {
+                Thread.sleep(5);int offset=(int)call.getArgument(1)*100;
+                var ids=uploaded.stream().sorted().toList();
+                return new CalibreClient.Books(ids.stream().skip(offset).limit(100).map(id->new CalibreClient.Book(id,"Book "+id,List.of("Author"),id,BigDecimal.ONE,true)).toList(),ids.size(),offset/100,100);
+            }finally {syncActive.decrementAndGet();}
+        });
         var actor=new EventContext.Actor(owner.id(),owner.username(),"ADMIN");
         var calibreJob=EventContext.withActor(actor,()->transfers.create(new CalibreTransfers.Request("main",choices)));
         var torrentJob=EventContext.withActor(actor,()->store.createPrepared(commands,new BulkRequest(null,100,5,"0ms")));
         var worker=new BulkWorker(store,torrent,properties);
         try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
-            worker.recover();
             var start=new CountDownLatch(1);
-            var sending=executor.submit(()-> {start.await();for(int n=0;n<100;n++) transfers.cycle();return null;});
+            var stopReaders=new java.util.concurrent.atomic.AtomicBoolean();
+            var readerChecks=new AtomicInteger();
+            var readers=new ArrayList<Future<?>>();
+            for(int reader=0;reader<4;reader++) readers.add(executor.submit(()->{
+                start.await();
+                while(!stopReaders.get()) {
+                    var counts=jdbc.queryForMap("SELECT count(*) total,count(DISTINCT calibre_id) unique_ids FROM calibre_books WHERE active=true");
+                    assertThat(((Number)counts.get("total")).longValue()).isEqualTo(((Number)counts.get("unique_ids")).longValue()).isBetween(0L,1000L);
+                    jdbc.queryForObject("SELECT count(*) FROM torrent_downloads",Long.class);
+                    readerChecks.incrementAndGet();Thread.sleep(3);
+                }
+                return null;
+            }));
+            try {
+            worker.recover();
+            var torrentSync=executor.submit(()->{start.await();for(int n=0;n<3;n++) tracking.sync(remoteSnapshot,false,false);return null;});
+            var calibreSync=executor.submit(()->{start.await();for(int n=0;n<3;n++) library.sync();return null;});
+            var sending=executor.submit(()-> {start.await();for(int n=0;n<1000;n++) transfers.cycle();return null;});
             var maintenance=executor.submit(()-> {
                 start.await();
                 for(int n=0;n<20;n++) {transfers.retention();cleanup.retention();retries.expirePreviews();journal.retention();retention.tick();Thread.sleep(5);}
                 return null;
             });
-            start.countDown();long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(25);
+            start.countDown();long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(90);
             while(!store.view(torrentJob.jobId()).status().equals(BulkJob.State.COMPLETED) && System.nanoTime()<deadline) {worker.tick();Thread.sleep(2);}
-            sending.get(25,TimeUnit.SECONDS);maintenance.get(25,TimeUnit.SECONDS);
+            sending.get(90,TimeUnit.SECONDS);maintenance.get(90,TimeUnit.SECONDS);
+            torrentSync.get(90,TimeUnit.SECONDS);calibreSync.get(90,TimeUnit.SECONDS);
+            assertThat(syncMaximum.get()).isEqualTo(1);assertThat(readerChecks.get()).isGreaterThan(4);
             for(var held:contention) held.get(5,TimeUnit.SECONDS);
             assertThat(store.view(torrentJob.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
-            assertThat(store.view(torrentJob.jobId()).accepted()).isEqualTo(100);
+            assertThat(store.view(torrentJob.jobId()).accepted()).isEqualTo(1000);
             assertThat(transfers.job(calibreJob.id()).state()).isEqualTo("COMPLETED");
-            assertThat(transfers.job(calibreJob.id()).accepted()).isEqualTo(100);
-            assertThat(added).hasSize(100);assertThat(uploaded).hasSize(100);assertThat(overlap.get()).isPositive();
+            assertThat(transfers.job(calibreJob.id()).accepted()).isEqualTo(1000);
+            assertThat(added).hasSize(1000);assertThat(uploaded).hasSize(1000);assertThat(overlap.get()).isPositive();
             worker.tick();transfers.cycle();
-            verify(torrent,times(100)).addTorrent(any(),any());verify(calibre,times(100)).uploadEpub(any(),any(),anyString(),anyString());
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Integer.class)).isEqualTo(100);
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE status='SUBMITTED'",Integer.class)).isEqualTo(100);
+            verify(torrent,times(1000)).addTorrent(any(),any());verify(calibre,times(1000)).uploadEpub(any(),any(),anyString(),anyString());
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Integer.class)).isEqualTo(1000);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE status='SUBMITTED'",Integer.class)).isEqualTo(1000);
             assertThat(jdbc.queryForList("PRAGMA foreign_key_check")).isEmpty();
             // The same recovered pool must handle remote deletions too, including
             // loss of a connection after delete HTTP succeeded but before recording it.
-            var remote=new ArrayList<RemoteTorrent>();
-            for(long id=1;id<=6;id++) remote.add(new RemoteTorrent(String.format("%040X",id),DownloadStatus.DOWNLOADED,Instant.now(),Set.of(),"/downloads/"+id+".epub","Book","/downloads",false));
             var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);
-            when(adapter.listTorrents()).thenAnswer(call->List.copyOf(remote));
-            when(adapter.listTorrents(anySet())).thenAnswer(call->List.copyOf(remote));
+            when(adapter.listTorrents()).thenAnswer(call->remoteSnapshot.get());
+            when(adapter.listTorrents(anySet())).thenAnswer(call->remoteSnapshot.get());
             var deletions=new AtomicInteger();
-            doAnswer(call->{String hash=call.getArgument(0);assertThat(remote.removeIf(row->row.hash().equals(hash))).isTrue();if(deletions.incrementAndGet()==1) poisonReturnedConnection();return null;}).when(adapter).deleteTorrent(anyString(),eq(true));
-            when(torrent.exclusiveClient(any())).thenAnswer(call->{java.util.function.Function<com.rlibanez.eplsync.torrent.TorrentClient,?> work=call.getArgument(0);return work.apply(adapter);});
+            doAnswer(call->{String hash=call.getArgument(0);assertThat(sources.remove(hash)).isNotNull();if(deletions.incrementAndGet()==1) poisonReturnedConnection();return null;}).when(adapter).deleteTorrent(anyString(),eq(true));
+            when(torrent.exclusiveClient(any())).thenAnswer(call->{java.util.function.Function<com.rlibanez.eplsync.torrent.TorrentClient,?> work=call.getArgument(0);return tracking.exclusive(()->work.apply(adapter));});
             var previous=org.springframework.security.core.context.SecurityContextHolder.getContext();
             var security=org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
             security.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new org.springframework.security.core.authority.SimpleGrantedAuthority(p.name())).toList()));
@@ -158,15 +193,20 @@ class CalibreTorrentConcurrencyTests {
             try {
                 var ids=choices.subList(0,6).stream().map(CalibreTransfers.FileChoice::recordId).toList();
                 var removal=cleanup.removeSelected(new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(null,ids,true,"files",true,true)));
+                var syncWhileDeleting=executor.submit(()->library.sync());
+                var torrentWhileDeleting=executor.submit(()->tracking.sync(remoteSnapshot,false,false));
+                cleanup.cycle();
+                syncWhileDeleting.get(10,TimeUnit.SECONDS);torrentWhileDeleting.get(10,TimeUnit.SECONDS);
                 cleanup.cycle();cleanup.recover();cleanup.cycle();worker.tick();transfers.cycle();
-                assertThat(cleanup.get(removal.id()).succeeded()).isEqualTo(6);
+                assertThat(cleanup.get(removal.id()).succeeded()).as("%s",cleanup.items(removal.id(),0,20).items()).isEqualTo(6);
                 assertThat(cleanup.get(removal.id()).blocked()).isZero();
                 assertThat(deletions.get()).isEqualTo(6);
                 verify(adapter,times(6)).deleteTorrent(anyString(),eq(true));
-                verify(torrent,times(100)).addTorrent(any(),any());
-                verify(calibre,times(100)).uploadEpub(any(),any(),anyString(),anyString());
+                verify(torrent,times(1000)).addTorrent(any(),any());
+                verify(calibre,times(1000)).uploadEpub(any(),any(),anyString(),anyString());
             } finally {org.springframework.security.core.context.SecurityContextHolder.setContext(previous);}
             assertThat(jdbc.queryForObject("PRAGMA integrity_check",String.class)).isEqualTo("ok");
+            } finally {start.countDown();stopReaders.set(true);for(var reader:readers) reader.get(5,TimeUnit.SECONDS);}
         } finally {worker.close();properties.effective().setEnabled(false);}
     }
     private void poisonReturnedConnection() {

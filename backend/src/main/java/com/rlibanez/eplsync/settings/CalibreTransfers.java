@@ -55,7 +55,7 @@ public class CalibreTransfers {
     private final TorrentProperties torrent;
     private final AccountStore accounts;
     private final EventJournal events;
-    private final ReentrantReadWriteLock lifecycle=new ReentrantReadWriteLock();
+    private final ReentrantReadWriteLock lifecycle=new ReentrantReadWriteLock(true);
     private final java.util.concurrent.locks.ReentrantLock cycleLock=new java.util.concurrent.locks.ReentrantLock();
     // Keep an accepted remote ID if SQLite temporarily rejects the following local write.
     private final Map<String,Long> acceptedRemoteIds=new ConcurrentHashMap<>();
@@ -383,6 +383,15 @@ public class CalibreTransfers {
     }
     static final class OperationBusy extends UserInputException {
         OperationBusy() {super("Hay una operación de Calibre en curso; espera a que termine y vuelve a intentarlo");}
+    }
+    <T> T synchronizeLibrary(java.util.function.Supplier<T> work) {
+        try {
+            if(!lifecycle.writeLock().tryLock(30,TimeUnit.SECONDS)) throw new OperationBusy();
+        } catch(InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new UserInputException("Espera de sincronización de Calibre interrumpida");
+        }
+        try {return work.get();}finally {lifecycle.writeLock().unlock();}
     }
     public <T> T exclusive(java.util.function.Supplier<T> work) {
         if(!lifecycle.writeLock().tryLock()) throw new OperationBusy();
