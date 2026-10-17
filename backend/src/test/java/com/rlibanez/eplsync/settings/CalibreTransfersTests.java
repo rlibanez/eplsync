@@ -384,6 +384,20 @@ class CalibreTransfersTests {
         verify(client,never()).findRevision(any(),anyLong(),any());
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
     }
+    @Test void busyTorrentWhileOpeningAReadyEpubDefersWithoutFailingOrUploadingTwice() {
+        var job=create();
+        when(files.download(record,0)).thenThrow(new com.rlibanez.eplsync.exception.TorrentBusyException());
+        transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("RUNNING");
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().state()).isEqualTo("PENDING");
+        assertThat(transfers.job(job.id()).failed()).isZero();
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        doAnswer(call -> new EpubFiles.Opened("book.epub",bytes.length,new java.io.ByteArrayInputStream(bytes))).when(files).download(record,0);
+        jdbc.update("UPDATE calibre_jobs SET next_check=0 WHERE id=?",job.id());
+        transfers.cycle();transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
     @Test void restartContinuesActivePendingWorkWithoutResubmittingCompletedItems() {
         var job=create();
         jdbc.update("UPDATE calibre_jobs SET state='RUNNING',next_check=? WHERE id=?",Long.MAX_VALUE,job.id());

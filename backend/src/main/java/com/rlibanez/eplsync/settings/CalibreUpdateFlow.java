@@ -179,6 +179,12 @@ public class CalibreUpdateFlow {
         });
         jdbc.update("UPDATE calibre_jobs SET next_probe=? WHERE id=?",now+internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE).toMillis(),job);
     }
+    void postponeDownloadCheck(String job) {
+        long now=Instant.now().toEpochMilli();
+        long next=now+internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE).toMillis();
+        jdbc.update("UPDATE calibre_jobs SET next_check=? WHERE id=? AND state IN ('QUEUED','RUNNING')",next,job);
+        jdbc.update("UPDATE calibre_job_items SET next_check=? WHERE job_id=? AND state='WAITING_DOWNLOAD' AND next_check<=?",next,job,now);
+    }
     boolean waiting(String job,CalibreTransfers.Item item) {
         var row=jdbc.queryForMap("SELECT i.download_job_id,i.wait_until FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.id=?",item.id());
         if(((Number)row.get("wait_until")).longValue()<Instant.now().toEpochMilli()) throw new UserInputException("La espera superó 30 días; revisa la descarga y reanuda");

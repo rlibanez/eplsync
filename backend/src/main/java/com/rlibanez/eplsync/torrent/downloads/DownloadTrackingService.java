@@ -132,8 +132,7 @@ public class DownloadTrackingService {
     }
 
     public <T> T exclusive(Supplier<T> action) {
-        if (!coordination.writeLock().tryLock()) throw new TorrentOperationException(HttpStatus.CONFLICT,
-                "Hay envíos o una sincronización en curso; vuelve a intentarlo al terminar");
+        if (!coordination.writeLock().tryLock()) throw new TorrentBusyException();
         try { return action.get(); }
         finally { coordination.writeLock().unlock(); }
     }
@@ -146,8 +145,7 @@ public class DownloadTrackingService {
                 "updated", result.records().updated(), "ignored", result.remote().ignored()));
     }
     private SyncResult performSync(Supplier<List<RemoteTorrent>> remoteReader, boolean dryRun, boolean includeDetails) {
-        if (!coordination.writeLock().tryLock()) throw new TorrentOperationException(HttpStatus.CONFLICT,
-                "Hay envíos o una sincronización en curso; vuelve a intentarlo al terminar");
+        if (!coordination.writeLock().tryLock()) throw new TorrentBusyException();
         try {
             com.rlibanez.eplsync.events.EventContext.routineLog(log).log("Sincronización {} de descargas: client={}, dryRun={}", com.rlibanez.eplsync.events.EventContext.operationOriginLabel(), properties.getClient(), dryRun);
             // Sin transacción/connection SQL durante la consulta de red. Si falla no se modifica ningún registro.

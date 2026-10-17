@@ -25,6 +25,7 @@ class CalibreUpdateFlowTests {
     @Autowired DownloadRepository downloads;
     @Autowired DownloadTrackingService tracking;
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired org.springframework.transaction.PlatformTransactionManager manager;
     @Autowired AccountStore accounts;
     @MockitoBean CalibreClient client;
     @MockitoBean EpubFiles files;
@@ -105,6 +106,72 @@ class CalibreUpdateFlowTests {
         assertThat(com.rlibanez.eplsync.tasks.InternalTaskSettings.parse("1m").toMillis()).isEqualTo(60000);
         for(String invalid:List.of("0s","-1s","0ns","invalid"))
             assertThatThrownBy(()->com.rlibanez.eplsync.tasks.InternalTaskSettings.parse(invalid).toMillis()).isInstanceOf(IllegalArgumentException.class);
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(ints={1,10001})
+    void activeTorrentSendsDeferDownloadChecksWithoutPausingOrDuplicating(int count) throws Exception {
+        var result=submit(List.of(missing()),true,true);downloadItem("ACCEPTED");
+        new org.springframework.transaction.support.TransactionTemplate(manager).executeWithoutResult(status->{
+            var rows=new ArrayList<Object[]>();var linked=new ArrayList<Object[]>();var waiting=new ArrayList<Object[]>();
+            for(int n=1;n<count;n++) {
+                long epl=2L+n;String hash=String.format("%040X",epl);
+                rows.add(new Object[]{epl,"Book "+epl});
+                linked.add(new Object[]{"bulk-"+epl,n,epl,hash});
+                waiting.add(new Object[]{"waiting-"+epl,result.calibreJobId(),n,"Book "+epl,epl,Instant.now().plusSeconds(3600).toEpochMilli()});
+            }
+            jdbc.batchUpdate("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(?,1.1,?,'Author')",rows);
+            jdbc.batchUpdate("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,epl_id,revision,hash,state) VALUES(?,'download-job',?,0,?,1.1,?,'PENDING')",linked);
+            jdbc.batchUpdate("INSERT INTO calibre_job_items(id,job_id,position,name,epl_id,revision,state,download_job_id,wait_until) VALUES(?,?,?,?,?,'1.1','WAITING_DOWNLOAD','download-job',?)",waiting);
+        });
+        var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);
+        when(torrent.exclusiveClient(any())).thenAnswer(call->{java.util.function.Function<com.rlibanez.eplsync.torrent.TorrentClient,?> work=call.getArgument(0);return tracking.exclusive(()->work.apply(adapter));});
+        var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
+        var sent=new java.util.concurrent.atomic.AtomicInteger();
+        var command=new com.rlibanez.eplsync.torrent.TorrentDownload("B".repeat(40),"magnet:?xt=urn:btih:"+"B".repeat(40),true,null,null,null,com.rlibanez.eplsync.model.CatalogBook.builder().eplId(2L).revision(1.1).title("Book 2").build());
+        try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var submitting=executor.submit(()->tracking.submit(command,()->{
+                sent.incrementAndGet();entered.countDown();
+                try {if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("test timeout");}
+                catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}
+                return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;
+            }));
+            try {
+                assertThat(entered.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                transfers.cycle();
+                assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("RUNNING");
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items WHERE job_id=? AND state='WAITING_DOWNLOAD'",Long.class,result.calibreJobId())).isEqualTo(count);
+                assertThat(jdbc.queryForObject("SELECT next_check FROM calibre_jobs WHERE id=?",Long.class,result.calibreJobId())).isGreaterThan(Instant.now().toEpochMilli());
+                transfers.cycle();verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+            } finally {release.countDown();}
+            submitting.get(5,java.util.concurrent.TimeUnit.SECONDS);
+        }
+        var record2=downloads.findByEplIdIn(List.of(2L)).getFirst().getId();
+        byte[] payload=CalibreTransfersTests.epub(2,"1.1");
+        when(adapter.listTorrents(anySet())).thenReturn(List.of(new RemoteTorrent("B".repeat(40),DownloadStatus.DOWNLOADED,Instant.now(),Set.of(),"/books/book.epub","Book 2","/books",false)));
+        when(files.list(record2)).thenReturn(List.of(new EpubFiles.Item(0,"second.epub",payload.length)));
+        when(files.download(record2,0)).thenAnswer(call->new EpubFiles.Opened("second.epub",payload.length,new java.io.ByteArrayInputStream(payload)));
+        when(client.book(any(),eq(9L))).thenReturn(book(9,2,"1.1"));
+        jdbc.update("UPDATE calibre_jobs SET next_check=0,next_probe=0 WHERE id=?",result.calibreJobId());jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE job_id=?",result.calibreJobId());
+        transfers.cycle();transfers.cycle();transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).accepted()).isEqualTo(1);
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo(count==1?"COMPLETED":"RUNNING");
+        assertThat(sent.get()).isEqualTo(1);verify(client,times(1)).uploadEpub(any(),any(),eq("second.epub"),anyString());
+        verify(bulk,times(1)).create(any(),any(),anyBoolean(),anyBoolean(),any());
+    }
+    @Test void busyFileCheckIsDeferredWithoutBlockingTheDownload() {
+        var result=submit(List.of(missing()),true,true);downloadItem("ACCEPTED");
+        var d=new DownloadRecord();d.setEplId(2L);d.setRevision(1.1);d.setHash("B".repeat(40));d.setClient("qbittorrent");d.setClientInstanceId(tracking.instanceId());d.setStatus(DownloadStatus.DOWNLOADED);d.setOrigin(DownloadRecord.Origin.EPLSYNC);d.setCreatedAt(Instant.now());String second=downloads.save(d).getId();
+        when(files.list(second)).thenThrow(new com.rlibanez.eplsync.exception.TorrentBusyException());
+        transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("RUNNING");
+        assertThat(transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items().getFirst().state()).isEqualTo("WAITING_DOWNLOAD");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void aRealTorrentErrorStillRequiresReviewInsteadOfBeingTreatedAsContention() {
+        var result=submit(List.of(missing()),true,true);downloadItem("ACCEPTED");
+        var d=new DownloadRecord();d.setEplId(2L);d.setRevision(1.1);d.setHash("B".repeat(40));d.setClient("qbittorrent");d.setClientInstanceId(tracking.instanceId());d.setStatus(DownloadStatus.ERROR);d.setOrigin(DownloadRecord.Origin.EPLSYNC);d.setCreatedAt(Instant.now());downloads.save(d);
+        transfers.cycle();assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items().getFirst().state()).isEqualTo("BLOCKED_DOWNLOAD");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
     @Test void waitingTurnsIntoSendAfterDownloadAndPinsRevisionAndHash() throws Exception {
         var result=submit(List.of(missing()),true,true);downloadItem("PENDING");transfers.cycle();

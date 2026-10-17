@@ -320,6 +320,10 @@ public class CalibreTransfers {
         if(!lifecycle.writeLock().tryLock()) throw new UserInputException("Hay un envío a Calibre en curso; espera antes de reiniciar la base de datos");
         try { return work.get(); } finally { lifecycle.writeLock().unlock(); }
     }
+    private void postponeDownloads(String job) {
+        updates.postponeDownloadCheck(job);
+        log.debug("Comprobación de descargas de Calibre aplazada: trabajo={}, cliente torrent ocupado; se comprobará en el siguiente intervalo",job);
+    }
     private void pause(String id,EventContext.Actor actor,String message) {
         tx.executeWithoutResult(s -> { if(jdbc.update("UPDATE calibre_jobs SET state='PAUSED',message=?,updated_at=? WHERE id=? AND state IN ('QUEUED','RUNNING')",message,Instant.now().toString(),id)>0) event(actor,id,"CALIBRE_SEND",EventJournal.Outcome.PAUSED,Map.of("reason",message)); });
     }
@@ -356,12 +360,16 @@ public class CalibreTransfers {
                         if(System.nanoTime()>deadline || !job(id).state().equals("RUNNING")) break;
                         try {if(w.downloadJobId()!=null && !owner.permissions().contains(Permission.TORRENT_SYNC)) throw new UserInputException("El usuario ya no puede consultar el cliente torrent");updates.waiting(id,w);} catch(RuntimeException ex) {
                             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
+                            if(ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) {postponeDownloads(id);break;}
+                            log.debug("No se pudo comprobar la descarga pendiente de Calibre: trabajo={}, EPL ID={}, tipo={}",id,w.eplId(),ex.getClass().getSimpleName());
                             jdbc.update("UPDATE calibre_job_items SET state='BLOCKED_DOWNLOAD',message=? WHERE id=? AND state='WAITING_DOWNLOAD'",safeMessage(ex,"No se puede comprobar o leer la descarga; revisa conexión y carpetas"),w.id());
                             pause(id,actor,"Hay una descarga pendiente que requiere revisión");break;
                         }
                     }
                 } catch(RuntimeException ex) {
                     if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
+                    if(ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) {postponeDownloads(id);return;}
+                    log.debug("No se pudo comprobar la descarga pendiente de Calibre: trabajo={}, EPL ID={}, tipo={}",id,item.eplId(),ex.getClass().getSimpleName());
                     jdbc.update("UPDATE calibre_job_items SET state='BLOCKED_DOWNLOAD',message=? WHERE id=? AND state='WAITING_DOWNLOAD'",safeMessage(ex,"No se puede comprobar o leer la descarga; revisa conexión y carpetas"),item.id());
                     pause(id,actor,"Hay una descarga pendiente que requiere revisión");
                 }
@@ -434,6 +442,7 @@ public class CalibreTransfers {
             publish(connection,client.book(connection,remoteId),item);
             finish(job,actor,item,"ACCEPTED",remoteId,metadataNotice.isEmpty()?"EPUB enviado y verificado":metadataNotice);
         } catch(Exception ex) {
+            if(!sending && item.state().equals("PENDING") && ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) {postponeDownloads(job);return;}
             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) {
                 log.debug("Resultado de Calibre pendiente de persistencia: elemento={}",item.id());return;
             }
