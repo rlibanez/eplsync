@@ -161,6 +161,9 @@ class EventJournalTests {
                     java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("EVENTS_MANAGE"))));
             assertThat(journal.search(filter, 0, 20).total()).isZero();
             assertThat(operations.search(filter, 0, 20, null).total()).isZero();
+            var negative=new Filter(Category.TORRENT,null,null,null,null,null,null,Map.of("category","ne"));
+            assertThat(journal.search(negative,0,20).total()).isZero();
+            assertThat(operations.search(negative,0,20,null).total()).isZero();
         } finally { org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(previous); }
     }
 

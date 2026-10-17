@@ -382,6 +382,11 @@ public class BulkStore {
 
     @Transactional(readOnly = true)
     public PageResponse<ItemView> details(String id, int page, int size, List<BulkItem.State> states, String sort) {
+        return details(id,page,size,states,sort,"eq");
+    }
+    @Transactional(readOnly = true)
+    public PageResponse<ItemView> details(String id,int page,int size,List<BulkItem.State> states,String sort,String statusOperator) {
+        boolean exclude=com.rlibanez.eplsync.ordering.StateOperator.excluded(statusOperator);
         job(id);
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
         var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, Set.of("position", "title", "eplId", "revision", "hash", "status", "attempts", "message"));
@@ -389,7 +394,7 @@ public class BulkStore {
         if (orders.stream().noneMatch(order -> order.getProperty().equals("position"))) orders.add(Sort.Order.asc("position"));
         org.springframework.data.jpa.domain.Specification<BulkItem> filter=(root,query,cb)-> states==null
             ? cb.equal(root.get("jobId"),id)
-            : cb.and(cb.equal(root.get("jobId"),id),root.get("state").in(states));
+            : cb.and(cb.equal(root.get("jobId"),id),exclude?cb.not(root.get("state").in(states)):root.get("state").in(states));
         var result=items.findAll(com.rlibanez.eplsync.ordering.TextOrdering.sorted(filter,Sort.by(orders)),PageRequest.of(page,size));
         var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(em, result.getContent().stream().map((BulkItem entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).toList());
         result.forEach(row -> {

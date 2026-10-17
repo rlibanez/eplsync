@@ -76,6 +76,21 @@ class EventApiTests {
         assertThat(json.readTree(request("/operations?action=USER_CREATE%27%20OR%201%3D1--",null).body()).path("total").asInt()).isZero();
     }
 
+    void negativeEventFiltersUseLatestOutcomeAndRunningGroup() throws Exception {
+        journal.delete(new EventJournal.Filter(null,null,null,null));
+        journal.record(EventJournal.Category.TORRENT,"SYNC",EventJournal.Outcome.STARTED,EventContext.Origin.SCHEDULED,"done",Map.of());
+        journal.record(EventJournal.Category.TORRENT,"SYNC",EventJournal.Outcome.SUCCEEDED,EventContext.Origin.SCHEDULED,"done",Map.of());
+        journal.record(EventJournal.Category.CATALOG,"IMPORT",EventJournal.Outcome.FAILED,EventContext.Origin.MANUAL,"failed",Map.of());
+        journal.record(EventJournal.Category.CATALOG,"IMPORT",EventJournal.Outcome.RESUMED,EventContext.Origin.MANUAL,"running",Map.of());
+        var filtered=request("/operations?outcome=SUCCEEDED&outcomeOperator=ne&category=TORRENT&categoryOperator=ne&action=SYNC&actionOperator=ne&origin=SCHEDULED&originOperator=ne&size=1&page=1",null);
+        assertThat(filtered.statusCode()).isEqualTo(200);assertThat(json.readTree(filtered.body()).path("total").asInt()).isEqualTo(2);
+        var notRunning=json.readTree(request("/operations?outcome=STARTED&outcomeOperator=ne",null).body());
+        assertThat(notRunning.path("total").asInt()).isEqualTo(2);
+        assertThat(json.readTree(request("?action=SYNC&actionOperator=ne",null).body()).path("total").asInt()).isEqualTo(2);
+        assertThat(request("/operations?originOperator=invalid",null).statusCode()).isEqualTo(400);
+        assertThat(request("/operations?originOperator=ne&originOperator=eq",null).statusCode()).isEqualTo(400);
+    }
+
     @Test void disabledTorrentOperationsRecordReadableFailures() throws Exception {
         for (String path : List.of("/api/torrent/books/32", "/api/torrent/downloads/sync")) {
             var response = http.send(authenticatedRequest(URI.create("http://127.0.0.1:" + port + path))
@@ -155,6 +170,7 @@ class EventApiTests {
         assertThat(json.readTree(grouped.body()).path("items").get(0).path("latest").path("operationId").asString()).isEqualTo("api-operation");
         assertThat(request("/operations?snapshot=-1", null).statusCode()).isEqualTo(400);
         assertThat(request("/operations?origin=INVALID", null).statusCode()).isEqualTo(400);
+        negativeEventFiltersUseLatestOutcomeAndRunningGroup();
     }
     @Test @Timeout(15) void accountQuotaRejectsTheFifthHttpStreamAndLogoutClosesAllFour() throws Exception {
         var readers=new ArrayList<BufferedReader>();

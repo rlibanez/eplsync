@@ -92,6 +92,12 @@ public class CatalogBookFilter {
      * ?status=DISPONIBLE&status=VERIFICADO
      */
     private Set<BookStatus> status;
+    private String statusOperator;
+    private String titleOperator;
+    private String authorOperator;
+    private String languageOperator;
+    private String publicationStatusOperator;
+    private String torrentStatusOperator;
 
     // Explicit catalog selections; an empty selectedIds array deliberately matches nothing.
     private Long[] selectedIds;
@@ -135,6 +141,12 @@ public class CatalogBookFilter {
 
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(titleOperator);
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(authorOperator);
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(languageOperator);
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(statusOperator);
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(publicationStatusOperator);
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(torrentStatusOperator);
         torrentPresence=choice(torrentPresence,Set.of("PRESENT","ABSENT"),"torrentPresence");
         calibrePresence=choice(calibrePresence,Set.of("PRESENT","ABSENT"),"calibrePresence");
         torrentRevision=choice(torrentRevision,Set.of("UPDATED","OUTDATED"),"torrentRevision");

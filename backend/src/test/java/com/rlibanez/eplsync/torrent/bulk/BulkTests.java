@@ -485,6 +485,10 @@ class BulkTests {
                 .param("sort", "commandJson,asc"))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
         assertThat(store.details("table-job", 0, 1, List.of(BulkItem.State.FAILED), "attempts,desc").items().getFirst().eplId()).isEqualTo(2L);
+        var excluded=store.details("table-job",0,1,List.of(BulkItem.State.FAILED),"eplId,asc","ne");
+        assertThat(excluded.meta().totalItems()).isEqualTo(2);assertThat(excluded.items().getFirst().eplId()).isEqualTo(1L);
+        assertThat(store.details("table-job",1,1,List.of(BulkItem.State.FAILED),"eplId,asc","ne").items().getFirst().eplId()).isEqualTo(3L);
+        assertThatThrownBy(()->store.details("table-job",0,1,null,"eplId,asc","invalid")).hasMessageContaining("Operador");
         assertThatThrownBy(() -> store.details("table-job", 0, 20, null, "commandJson,asc"))
             .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
     }

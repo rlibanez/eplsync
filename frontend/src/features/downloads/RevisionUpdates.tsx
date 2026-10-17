@@ -1,3 +1,4 @@
+import { stateOperatorProps } from "../../components/StateOperator";
 import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import {
@@ -45,7 +46,7 @@ export function RevisionUpdates() {
   const [opened, setOpened] = useState(searchParams.get("search") === "1");
   const [options, setOptions] = useState<string[]>([]);
   const session = useUpdateSession();
-  const { search, page, size, sort, registeredStatus } = session;
+  const { search, page, size, sort, registeredStatus, excluded } = session;
   const setPage = (page: number) => session.setView({ page });
   const setSize = (size: number) => session.setView({ size });
   const pageSizeChoice = usePageSizeChoice(size);
@@ -98,6 +99,7 @@ export function RevisionUpdates() {
   }, [previousSearch.data, search, searching]);
   const savedUrl = savedSearchUrl("downloads", search?.generation ?? 0, sort, {
     status: registeredStatus ?? "",
+    statusOperator: registeredStatus && excluded ? "ne" : "",
   });
   const result = useQuery({
     queryKey: [
@@ -108,6 +110,7 @@ export function RevisionUpdates() {
       size,
       sort,
       registeredStatus,
+      excluded,
     ],
     queryFn: ({ signal }) =>
       savedSearchPage<Update>(savedUrl, page, size, signal),
@@ -163,6 +166,7 @@ export function RevisionUpdates() {
       });
       setPage(0);
       setRegisteredStatus(null);
+      session.setView({ excluded: false });
       setSelected([]);
       session.setView({ search: { states: [...options], generation } });
       setOpened(false);
@@ -203,7 +207,8 @@ export function RevisionUpdates() {
       setPage(0);
       setSelected([]);
     },
-    { defaults: "title,asc", selection: auth.can("TORRENT_SEND") }, (page + 1) * size,
+    { defaults: "title,asc", selection: auth.can("TORRENT_SEND") },
+    (page + 1) * size,
   );
   const rows = result.data?.items ?? [];
   const allChecked =
@@ -250,6 +255,14 @@ export function RevisionUpdates() {
           searchable
           styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("revisionUpdates.status")}
+          {...stateOperatorProps(
+            excluded,
+            () => {
+              session.setView({ excluded: !excluded, page: 0 });
+              setSelected([]);
+            },
+            !search || find.isPending,
+          )}
           clearable
           value={registeredStatus ? registeredStatus.split(",") : []}
           disabled={!search || find.isPending}
@@ -259,6 +272,7 @@ export function RevisionUpdates() {
           }))}
           onChange={(value) => {
             setRegisteredStatus(value.join(",") || null);
+            if (!value.length) session.setView({ excluded: false });
             setPage(0);
             setSelected([]);
           }}
@@ -353,23 +367,43 @@ export function RevisionUpdates() {
                           />
                         </td>
                       )}
-                      {columns.cells([
-                        <td>
-                          <Link to={`/catalog/${row.eplId}`}>{row.eplId}</Link>
-                        </td>,
-                        <td className="catalog-title-cell">
-                          <Link
-                            className="book-title"
-                            to={`/catalog/${row.eplId}`}
-                          >
-                            <BookCover book={row} />
-                            <span>{row.title}</span>
-                          </Link>
-                        </td>,
-                        <td>{status(row.status)}</td>,
-                        <td>{revision(row.registeredRevision)}</td>,
-                        <td>{revision(row.availableRevision)}</td>,
-                      ], page * size + rowIndex + 1)}
+                      {columns.cells(
+                        [
+                          <td>
+                            <Link to={`/catalog/${row.eplId}`}>
+                              {row.eplId}
+                            </Link>
+                          </td>,
+                          <td className="catalog-title-cell">
+                            <Link
+                              className="book-title"
+                              to={`/catalog/${row.eplId}`}
+                            >
+                              <BookCover book={row} />
+                              <span>{row.title}</span>
+                            </Link>
+                          </td>,
+                          <td>
+                            <button
+                              type="button"
+                              className="catalog-value-filter"
+                              onClick={() => {
+                                session.setView({
+                                  registeredStatus: row.status,
+                                  excluded: false,
+                                  page: 0,
+                                });
+                                setSelected([]);
+                              }}
+                            >
+                              {status(row.status)}
+                            </button>
+                          </td>,
+                          <td>{revision(row.registeredRevision)}</td>,
+                          <td>{revision(row.availableRevision)}</td>,
+                        ],
+                        page * size + rowIndex + 1,
+                      )}
                     </tr>
                   ))}
                 </tbody>

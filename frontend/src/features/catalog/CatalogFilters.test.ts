@@ -101,3 +101,28 @@ it("preserves multiple torrent states in selections and clears them for absent t
   });
   expect(filterRequest(new URLSearchParams("torrentPresence=ABSENT&torrentStatus=DOWNLOADED")).has("torrentStatus")).toBe(false);
 });
+
+it("preserves every state operator for select-all and omits operators without values", async () => {
+  const { catalogParams } = await import("../../api/catalog");
+  const { selectionQuery, selectionFilters } = await import("./CatalogSelection");
+  const params=catalogParams(new URLSearchParams("status=VERIFICADO&statusOperator=ne&publicationStatus=UPDATED&publicationStatusOperator=ne&torrentStatus=DOWNLOADED&torrentStatusOperator=ne"));
+  expect(selectionFilters(selectionQuery(params))).toMatchObject({status:["VERIFICADO"],statusOperator:"ne",publicationStatus:["UPDATED"],publicationStatusOperator:"ne",torrentStatus:["DOWNLOADED"],torrentStatusOperator:"ne"});
+  expect([...filterRequest(new URLSearchParams("statusOperator=ne&publicationStatusOperator=ne&torrentStatusOperator=ne")).keys()]).toEqual([]);
+  expect(filterRequest(new URLSearchParams("torrentPresence=ABSENT&torrentStatus=DOWNLOADED&torrentStatusOperator=ne")).has("torrentStatusOperator")).toBe(false);
+});
+
+it("keeps language and negative text criteria for every selected result", async () => {
+  const {catalogParams}=await import("../../api/catalog");
+  const {selectionQuery,selectionFilters}=await import("./CatalogSelection");
+  const params=catalogParams(new URLSearchParams("title=Dune&title=Foundation&titleOperator=ne&author=Herbert&authorOperator=ne&language=es&languageOperator=ne"));
+  expect(selectionFilters(selectionQuery(params))).toMatchObject({title:["Dune","Foundation"],titleOperator:"ne",author:["Herbert"],authorOperator:"ne",language:["es"],languageOperator:"ne"});
+  expect([...filterRequest(new URLSearchParams("titleOperator=ne&authorOperator=ne&languageOperator=ne")).keys()]).toEqual([]);
+});
+
+it("clicking a value replaces a negative field while preserving other filters", async () => {
+  const {quickFilter}=await import("./CatalogValue");
+  const params=quickFilter(new URLSearchParams("author=Asimov&authorOperator=ne&language=es&languageOperator=ne"),"author","Herbert");
+  expect(params.getAll("author")).toEqual(["Herbert"]);
+  expect(params.has("authorOperator")).toBe(false);
+  expect(params.get("languageOperator")).toBe("ne");
+});

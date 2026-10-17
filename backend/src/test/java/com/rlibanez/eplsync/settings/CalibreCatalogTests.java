@@ -172,6 +172,10 @@ class CalibreCatalogTests {
         jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,2,'Catalog title','Author')");
         when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(1,1L,1d),book(2,1L,2d),book(3,99L,1d),book(4,null,null)),4,0,100));
         snapshots.sync();
+        jdbc.update("UPDATE calibre_books SET title=CASE WHEN calibre_id=1 THEN '100%_ Libro' ELSE 'Otro' END,authors=CASE WHEN calibre_id=2 THEN 'Asimov' ELSE 'Herbert' END");
+        mvc.perform(get("/api/calibre/books").param("title","100%_").param("titleOperator","ne").param("author","Asimov").param("authorOperator","ne").param("size","1").param("page","1").param("sort","calibreId,asc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2)).andExpect(jsonPath("$.items[0].calibreId").value(4));
+        mvc.perform(get("/api/calibre/books").param("authorOperator","invalid")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/calibre/books").param("size","1").param("sort","calibreId,desc"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4)).andExpect(jsonPath("$.items[0].calibreId").value(4));
         mvc.perform(get("/api/calibre/books").param("comparison","OUTDATED"))

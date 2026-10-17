@@ -23,7 +23,9 @@ public class WorkListings {
     private record Listing(String base,String order,List<Object> args,boolean downloads) {}
     public record Neighbor(String id,boolean cleanup,long index) {}
     public record Neighbors(Neighbor previous,Neighbor next) {}
-    private Listing query(String source,List<String> states,String type,String username,Instant from,Instant before,String sort) {
+    private Listing query(String source,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator,String typeOperator) {
+        boolean exclude=com.rlibanez.eplsync.ordering.StateOperator.excluded(statusOperator);
+        boolean excludeType=com.rlibanez.eplsync.ordering.StateOperator.excluded(typeOperator);
         boolean downloads=source.equals("downloads");
         if(!downloads && !source.equals("calibre")) throw new UserInputException("Origen inválido");
         if(from!=null && before!=null && !from.isBefore(before)) throw new UserInputException("Intervalo de fechas inválido");
@@ -60,9 +62,9 @@ public class WorkListings {
         if(states!=null && !states.isEmpty()) {
             var valid=downloads?Set.of("QUEUED","RUNNING","PAUSED","COMPLETED","CANCELLED","RETRY_WAIT","CLEANUP_WAIT"):Set.of("QUEUED","RUNNING","PAUSED","COMPLETED","CANCELLED");
             if(!valid.containsAll(states)) throw new UserInputException("Estado de trabajo inválido");
-            base+=" AND state IN ("+String.join(",",Collections.nCopies(states.size(),"?"))+")";args.addAll(states);
+            base+=" AND state "+(exclude?"NOT IN (":"IN (")+String.join(",",Collections.nCopies(states.size(),"?"))+")";args.addAll(states);
         }
-        if(type!=null && !type.isEmpty()) {base+=" AND type=?";args.add(type);}
+        if(type!=null && !type.isEmpty()) {base+=" AND type"+(excludeType?"<>?":"=?");args.add(type);}
         if(username!=null && !username.isBlank()) {base+=" AND instr(lower(username),lower(?))>0";args.add(username.trim());}
         if(from!=null) {base+=" AND createdAt>=?";args.add(from.toEpochMilli());}
         if(before!=null) {base+=" AND createdAt<?";args.add(before.toEpochMilli());}
@@ -70,8 +72,14 @@ public class WorkListings {
         return new Listing(base,order+",createdAt DESC,id DESC",args,downloads);
     }
     public Neighbors neighbors(String source,String id,List<String> states,String type,String username,Instant from,Instant before,String sort) {
+        return neighbors(source,id,states,type,username,from,before,sort,"eq");
+    }
+    public Neighbors neighbors(String source,String id,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator) {
+        return neighbors(source,id,states,type,username,from,before,sort,statusOperator,"eq");
+    }
+    public Neighbors neighbors(String source,String id,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator,String typeOperator) {
         if(id==null || id.length()>64) throw new UserInputException("Identificador de trabajo inválido");
-        var query=query(source,states,type,username,from,before,sort);var args=new ArrayList<>(query.args());args.add(id);
+        var query=query(source,states,type,username,from,before,sort,statusOperator,typeOperator);var args=new ArrayList<>(query.args());args.add(id);
         String window=" OVER (ORDER BY "+query.order()+")";
         var rows=jdbc.queryForList("WITH scoped AS ("+query.base()+"), adjacent AS (SELECT id,row_number()"+window+" position,lag(id)"+window+" previousId,lag(kind)"+window+" previousKind,lead(id)"+window+" nextId,lead(kind)"+window+" nextKind FROM scoped) SELECT * FROM adjacent WHERE id=?",args.toArray());
         if(rows.isEmpty()) return new Neighbors(null,null);
@@ -79,8 +87,14 @@ public class WorkListings {
         return new Neighbors(row.get("previousId")==null?null:new Neighbor((String)row.get("previousId"),"cleanup".equals(row.get("previousKind")),((Number)row.get("position")).longValue()-2),row.get("nextId")==null?null:new Neighbor((String)row.get("nextId"),"cleanup".equals(row.get("nextKind")),((Number)row.get("position")).longValue()));
     }
     public PageResponse<Map<String,Object>> list(String source,int page,int size,List<String> states,String type,String username,Instant from,Instant before,String sort) {
+        return list(source,page,size,states,type,username,from,before,sort,"eq");
+    }
+    public PageResponse<Map<String,Object>> list(String source,int page,int size,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator) {
+        return list(source,page,size,states,type,username,from,before,sort,statusOperator,"eq");
+    }
+    public PageResponse<Map<String,Object>> list(String source,int page,int size,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator,String typeOperator) {
         QueryLimits.page(page,size);
-        var query=query(source,states,type,username,from,before,sort);var args=new ArrayList<>(query.args());boolean downloads=query.downloads();
+        var query=query(source,states,type,username,from,before,sort,statusOperator,typeOperator);var args=new ArrayList<>(query.args());boolean downloads=query.downloads();
         long total=jdbc.queryForObject("SELECT count(*) FROM ("+query.base()+")",Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
         var rows=jdbc.queryForList(query.base()+" ORDER BY "+query.order()+" LIMIT ? OFFSET ?",args.toArray());

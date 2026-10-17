@@ -355,6 +355,13 @@ class RevisionCleanupTests {
         var cleanupJob=start(preview("downloads","RECORD"));
         jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,type,state,created_at,event_actor_username) VALUES('normal',1,1,0,5,'DOWNLOAD','COMPLETED',?,'Owner')",Instant.now().minusSeconds(100).toEpochMilli());
         var first=listings.list("downloads",0,1,List.of(),"","",null,null,"createdAt,desc");
+        var excludedType=listings.list("downloads",0,1,List.of(),"CLEANUP","",null,null,"createdAt,desc","eq","ne");
+        assertThat(excludedType.meta().totalItems()).isEqualTo(1);assertThat(excludedType.items().getFirst()).containsEntry("jobId","normal");
+        assertThat(listings.neighbors("downloads","normal",List.of(),"CLEANUP","",null,null,"createdAt,desc","eq","ne")).isEqualTo(new WorkListings.Neighbors(null,null));
+        var excluded=listings.list("downloads",0,1,List.of("QUEUED"),"","",null,null,"createdAt,desc","ne");
+        assertThat(excluded.meta().totalItems()).isEqualTo(1);assertThat(excluded.items().getFirst()).containsEntry("jobId","normal");
+        assertThat(listings.neighbors("downloads","normal",List.of("QUEUED"),"","",null,null,"createdAt,desc","ne")).isEqualTo(new WorkListings.Neighbors(null,null));
+        assertThatThrownBy(()->listings.list("calibre",0,20,List.of(),"","",null,null,"createdAt,desc","invalid")).hasMessageContaining("Operador");
         assertThat(first.meta().totalItems()).isEqualTo(2);assertThat(first.items().getFirst()).containsEntry("jobId",cleanupJob.id()).containsEntry("type","CLEANUP");
         assertThat(listings.list("downloads",1,1,List.of(),"","",null,null,"createdAt,desc").items().getFirst()).containsEntry("jobId","normal");
         assertThat(listings.list("downloads",0,20,List.of("QUEUED"),"CLEANUP","own",null,null,"type,asc;createdAt,desc").meta().totalItems()).isEqualTo(1);

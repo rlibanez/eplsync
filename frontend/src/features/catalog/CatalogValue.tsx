@@ -12,7 +12,19 @@ export function quickFilter(
   value: string,
 ) {
   const next = new URLSearchParams(params);
-  if (column === "publicationYear" || column === "publicationDate" || column === "pages") {
+  if (
+    ["title", "author", "language", "status", "publicationStatus"].includes(
+      column,
+    )
+  ) {
+    if (next.get(`${column}Operator`) === "ne") next.delete(column);
+    next.delete(`${column}Operator`);
+  }
+  if (
+    column === "publicationYear" ||
+    column === "publicationDate" ||
+    column === "pages"
+  ) {
     next.delete(column);
     next.set(column + "From", value);
     next.set(column + "To", value);
@@ -44,11 +56,15 @@ export function CatalogValue({
   if (value === null || value === undefined || String(value).trim() === "")
     return <>—</>;
   const values =
-    (column === "genres" || column === "author")
-      ? [...new Set(String(value)
-          .split(column === "author" ? "&" : ",")
-          .map((v) => v.trim())
-          .filter(Boolean))]
+    column === "genres" || column === "author"
+      ? [
+          ...new Set(
+            String(value)
+              .split(column === "author" ? "&" : ",")
+              .map((v) => v.trim())
+              .filter(Boolean),
+          ),
+        ]
       : [String(value)];
   return (
     <>

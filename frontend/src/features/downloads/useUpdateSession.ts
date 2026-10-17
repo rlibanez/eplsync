@@ -6,6 +6,7 @@ interface Session {
   size: number;
   sort: string;
   registeredStatus: string | null;
+  excluded: boolean;
 }
 const empty = (): Session => ({
   search: null,
@@ -13,6 +14,7 @@ const empty = (): Session => ({
   size: 20,
   sort: "title,asc",
   registeredStatus: null,
+  excluded: false,
 });
 // Session-only memory: shared across routes and cleared with the authentication cache.
 export function useUpdateSession() {

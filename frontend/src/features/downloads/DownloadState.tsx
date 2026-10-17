@@ -1,3 +1,4 @@
+import { stateOperatorProps } from "../../components/StateOperator";
 import { CleanupLauncher } from "../cleanup/RevisionCleanup";
 import { PageTitle } from "../../components/PageTitle";
 import { SelectAllRows } from "../../components/SelectAllRows";
@@ -54,7 +55,9 @@ export interface Download {
 const initialFilters = {
   eplId: "",
   status: "",
+  statusOperator: "eq",
   origin: "",
+  originOperator: "eq",
   completed: "",
   sort: "createdAt,desc",
 };
@@ -97,7 +100,11 @@ function DownloadHistory() {
     if (value) {
       if (key === "sort")
         ordering(value).forEach((sort) => params.append("sort", sort));
-      else params.set(key, value);
+      else if (
+        !key.endsWith("Operator") ||
+        (filters[key.slice(0, -8) as "status" | "origin"] && value === "ne")
+      )
+        params.set(key, value);
     }
   params.set("page", String(page));
   params.set("size", String(size));
@@ -176,7 +183,8 @@ function DownloadHistory() {
       extraSort: [
         { field: "createdAt", label: "downloads.createdAt", width: 200 },
       ],
-    }, (page + 1) * size,
+    },
+    (page + 1) * size,
   );
   return (
     <CalibreSendProvider>
@@ -234,23 +242,49 @@ function DownloadHistory() {
             searchable
             styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
             label={t("downloads.status")}
+            {...stateOperatorProps(filters.statusOperator === "ne", () =>
+              filter(
+                "statusOperator",
+                filters.statusOperator === "ne" ? "eq" : "ne",
+              ),
+            )}
             clearable
             value={filters.status ? filters.status.split(",") : []}
             data={downloadStates.map((value) => ({
               value,
               label: status(value),
             }))}
-            onChange={(values) => filter("status", values.join(","))}
+            onChange={(values) => {
+              setFilters((current) => ({
+                ...current,
+                status: values.join(","),
+                statusOperator: values.length ? current.statusOperator : "eq",
+              }));
+              setPage(0);
+            }}
           />
           <Select
             label={t("downloads.origin")}
+            {...stateOperatorProps(filters.originOperator === "ne", () =>
+              filter(
+                "originOperator",
+                filters.originOperator === "ne" ? "eq" : "ne",
+              ),
+            )}
             value={filters.origin || null}
             clearable
             data={[
               { value: "EPLSYNC", label: "EPL Sync" },
               { value: "DISCOVERED", label: t("downloads.discovered") },
             ]}
-            onChange={(v) => filter("origin", v ?? "")}
+            onChange={(v) => {
+              setFilters((current) => ({
+                ...current,
+                origin: v ?? "",
+                originOperator: v ? current.originOperator : "eq",
+              }));
+              setPage(0);
+            }}
           />
           <Select
             label={t("downloads.completed")}
@@ -378,73 +412,97 @@ function DownloadHistory() {
                                   />
                                 </td>
                               )}
-                              {columns.cells([
-                                <td>
-                                  <Link to={`/catalog/${d.eplId}`}>
-                                    {d.eplId}
-                                  </Link>
-                                </td>,
-                                <td className="catalog-title-cell">
-                                  <DownloadBook book={d} />
-                                </td>,
-                                <td>
-                                  <small className="hash-text">{d.hash}</small>
-                                </td>,
-                                <td>{revision(d.revision)}</td>,
-                                <td>
-                                  <button
-                                    type="button"
-                                    className="catalog-value-filter"
-                                    onClick={() => filter("status", d.status)}
-                                  >
-                                    <span className="badge">
-                                      {status(d.status)}
-                                    </span>
-                                  </button>
-                                </td>,
-                                <td title={d.clientInstanceId}>{d.client}</td>,
-                                <td>
-                                  <button
-                                    type="button"
-                                    className="catalog-value-filter"
-                                    onClick={() => filter("origin", d.origin)}
-                                  >
-                                    {d.origin}
-                                  </button>
-                                </td>,
-                                <td>{date(d.lastCheckedAt)}</td>,
-                                <td>{date(d.completedAt)}</td>,
-                                <td>{d.lastError || "—"}</td>,
-                                <td>
-                                  <Group gap={4} wrap="nowrap">
-                                    <EpubDownload id={d.id} />
-                                    <SendToCalibre ids={[d.id]} inline />
-                                    {auth.can("TORRENT_SYNC") && (
-                                      <TableAction
-                                        label={t("historyActions.refresh")}
-                                        disabled={pending}
-                                        loading={refreshingIds.includes(d.id)}
-                                        onClick={() => refreshRow(d)}
-                                      >
-                                        <RefreshCw
-                                          size={16}
-                                          aria-hidden="true"
-                                        />
-                                      </TableAction>
-                                    )}
-                                    {(auth.can("DOWNLOADS_DELETE") ||
-                                      auth.can("TORRENT_CLEANUP")) && (
-                                      <TableAction
-                                        label={t("historyActions.delete")}
-                                        disabled={pending}
-                                        onClick={() => removeRow(d)}
-                                      >
-                                        <Trash2 size={16} aria-hidden="true" />
-                                      </TableAction>
-                                    )}
-                                  </Group>
-                                </td>,
-                              ], page * size + rowIndex + 1)}
+                              {columns.cells(
+                                [
+                                  <td>
+                                    <Link to={`/catalog/${d.eplId}`}>
+                                      {d.eplId}
+                                    </Link>
+                                  </td>,
+                                  <td className="catalog-title-cell">
+                                    <DownloadBook book={d} />
+                                  </td>,
+                                  <td>
+                                    <small className="hash-text">
+                                      {d.hash}
+                                    </small>
+                                  </td>,
+                                  <td>{revision(d.revision)}</td>,
+                                  <td>
+                                    <button
+                                      type="button"
+                                      className="catalog-value-filter"
+                                      onClick={() => {
+                                        setFilters((current) => ({
+                                          ...current,
+                                          status: d.status,
+                                          statusOperator: "eq",
+                                        }));
+                                        setPage(0);
+                                      }}
+                                    >
+                                      <span className="badge">
+                                        {status(d.status)}
+                                      </span>
+                                    </button>
+                                  </td>,
+                                  <td title={d.clientInstanceId}>
+                                    {d.client}
+                                  </td>,
+                                  <td>
+                                    <button
+                                      type="button"
+                                      className="catalog-value-filter"
+                                      onClick={() => {
+                                        setFilters((current) => ({
+                                          ...current,
+                                          origin: d.origin,
+                                          originOperator: "eq",
+                                        }));
+                                        setPage(0);
+                                      }}
+                                    >
+                                      {d.origin}
+                                    </button>
+                                  </td>,
+                                  <td>{date(d.lastCheckedAt)}</td>,
+                                  <td>{date(d.completedAt)}</td>,
+                                  <td>{d.lastError || "—"}</td>,
+                                  <td>
+                                    <Group gap={4} wrap="nowrap">
+                                      <EpubDownload id={d.id} />
+                                      <SendToCalibre ids={[d.id]} inline />
+                                      {auth.can("TORRENT_SYNC") && (
+                                        <TableAction
+                                          label={t("historyActions.refresh")}
+                                          disabled={pending}
+                                          loading={refreshingIds.includes(d.id)}
+                                          onClick={() => refreshRow(d)}
+                                        >
+                                          <RefreshCw
+                                            size={16}
+                                            aria-hidden="true"
+                                          />
+                                        </TableAction>
+                                      )}
+                                      {(auth.can("DOWNLOADS_DELETE") ||
+                                        auth.can("TORRENT_CLEANUP")) && (
+                                        <TableAction
+                                          label={t("historyActions.delete")}
+                                          disabled={pending}
+                                          onClick={() => removeRow(d)}
+                                        >
+                                          <Trash2
+                                            size={16}
+                                            aria-hidden="true"
+                                          />
+                                        </TableAction>
+                                      )}
+                                    </Group>
+                                  </td>,
+                                ],
+                                page * size + rowIndex + 1,
+                              )}
                             </tr>
                           ))}
                         </tbody>

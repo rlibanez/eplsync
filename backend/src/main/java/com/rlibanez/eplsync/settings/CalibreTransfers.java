@@ -178,11 +178,15 @@ public class CalibreTransfers {
         return items(id,page,size,state,"",sort);
     }
     public Page<Item> items(String id,int page,int size,String state,String detail,List<String> sort) {
+        return items(id,page,size,state,detail,sort,"eq");
+    }
+    public Page<Item> items(String id,int page,int size,String state,String detail,List<String> sort,String statusOperator) {
+        boolean exclude=com.rlibanez.eplsync.ordering.StateOperator.excluded(statusOperator);
         paging(page,size);job(id);
         if(detail==null || detail.length()>4096) throw new UserInputException("Filtro de detalle inválido");
         if(state==null || !state.isEmpty() && !Set.of("PENDING","SENDING","ACCEPTED","SKIPPED","FAILED","UNCERTAIN","CANCELLED","WAITING_DOWNLOAD","BLOCKED_DOWNLOAD","CLEANUP_PENDING").contains(state)) throw new UserInputException("Estado de envío inválido");
         String where=" WHERE job_id=?";var args=new ArrayList<Object>();args.add(id);
-        if(!state.isEmpty()) {where+=" AND state=?";args.add(state);}
+        if(!state.isEmpty()) {where+=" AND state"+(exclude?"<>?":"=?");args.add(state);}
         if(!detail.isBlank()) {where+=" AND instr(lower(coalesce(message,'')),lower(?))>0";args.add(detail.trim());}
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items"+where,Long.class,args.toArray());
         args.add(size);args.add((long)page*size);

@@ -36,7 +36,7 @@ public class CatalogLibraryFilters {
                     var matching=criteria.subquery(Integer.class);var item=matching.from(DownloadRecord.class);
                     matching.select(cb.literal(1)).where(cb.equal(item.get("eplId"),root.get("eplId")),
                         cb.equal(item.get("clientInstanceId"),instance),item.get("status").in((Object[])filter.getTorrentStatus()));
-                    predicates.add(cb.exists(matching));
+                    predicates.add(com.rlibanez.eplsync.ordering.StateOperator.excluded(filter.getTorrentStatusOperator())?cb.not(cb.exists(matching)):cb.exists(matching));
                 }
                 if(filter.getTorrentRevision()!=null) {
                     var known=criteria.subquery(Double.class);var copy=known.from(DownloadRecord.class);

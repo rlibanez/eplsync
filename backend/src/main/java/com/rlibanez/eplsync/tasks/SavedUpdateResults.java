@@ -65,6 +65,9 @@ final class SavedUpdateResults {
     @SuppressWarnings("unchecked")
     PageResponse<Map<String,Object>> page(String type,String user,long generation,int page,int size,String sort,Map<String,String> filters) {
         type(type);QueryLimits.page(page,size);
+        boolean exclude=com.rlibanez.eplsync.ordering.StateOperator.excluded(filters.get("statusOperator"));
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(filters.get("titleOperator"));
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(filters.get("authorOperator"));
         if(generation<0) throw new UserInputException("Fecha de búsqueda inválida");
         Set<String> fields=type.equals("downloads")?Set.of("eplId","title","status","registeredRevision","availableRevision")
             :Set.of("calibreId","eplId","title","authors","revision","catalogRevision","comparison","presence","downloadAvailability");
@@ -82,9 +85,10 @@ final class SavedUpdateResults {
             if(value==null || value.isBlank()) continue;
             if(value.length()>500) throw new UserInputException("Filtro demasiado largo");
             switch(field) {
+                case "statusOperator","titleOperator","authorOperator" -> { }
                 case "title","author" -> {
                     if(!type.equals("calibre")) throw new UserInputException("Filtro desconocido");
-                    where.append(" AND epl_saved_contains(json_extract(value,'$.").append(field.equals("author")?"authors":"title").append("'),?)=1");arguments.add(value);
+                    where.append(" AND epl_saved_contains(json_extract(value,'$.").append(field.equals("author")?"authors":"title").append("'),?)").append(com.rlibanez.eplsync.ordering.StateOperator.excluded(filters.get(field+"Operator"))?"=0":"=1");arguments.add(value);
                 }
                 case "eplId" -> {
                     if(!type.equals("calibre") || !value.matches("[0-9]{1,18}")) throw new UserInputException("EPL ID inválido");
@@ -95,7 +99,7 @@ final class SavedUpdateResults {
                     var statuses=value.split(",",-1);
                     for(var status:statuses) try {com.rlibanez.eplsync.torrent.downloads.DownloadStatus.valueOf(status);}
                     catch(IllegalArgumentException ex) {throw new UserInputException("Estado inválido");}
-                    where.append(" AND json_extract(value,'$.status') IN (").append(String.join(",",Collections.nCopies(statuses.length,"?"))).append(")");arguments.addAll(List.of(statuses));
+                    where.append(" AND json_extract(value,'$.status') ").append(exclude?"NOT IN (":"IN (").append(String.join(",",Collections.nCopies(statuses.length,"?"))).append(")");arguments.addAll(List.of(statuses));
                 }
                 case "availability" -> {
                     if(!type.equals("calibre") || !Set.of("READY","MISSING","UNAVAILABLE","UNKNOWN").contains(value)) throw new UserInputException("Disponibilidad inválida");

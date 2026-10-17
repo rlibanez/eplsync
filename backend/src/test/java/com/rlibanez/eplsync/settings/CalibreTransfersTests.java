@@ -25,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.calibre.transfers.worker-enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
 class CalibreTransfersTests {
     @Autowired CalibreTransfers transfers;
+    @Autowired WorkListings listings;
     @Autowired CalibreSettings settings;
     @Autowired CalibreCatalogService catalog;
     @Autowired DownloadRepository downloads;
@@ -238,10 +239,23 @@ class CalibreTransfersTests {
     CalibreTransfers.Job create() {
         return EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),() -> transfers.create(new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,0)))));
     }
+    @Test void jobListingAndNeighborsRespectExcludedStates() {
+        var job=create();
+        assertThat(listings.list("calibre",0,1,List.of("QUEUED"),"","",null,null,"createdAt,desc","ne").items()).isEmpty();
+        jdbc.update("UPDATE calibre_jobs SET state='PAUSED' WHERE id=?",job.id());
+        assertThat(listings.list("calibre",0,20,List.of(),"SEND","",null,null,"createdAt,desc","eq","ne").items()).isEmpty();
+        var result=listings.list("calibre",0,1,List.of("QUEUED"),"","",null,null,"createdAt,desc","ne");
+        assertThat(result.meta().totalItems()).isEqualTo(1);assertThat(result.items().getFirst()).containsEntry("id",job.id());
+        assertThat(listings.neighbors("calibre",job.id(),List.of("PAUSED"),"","",null,null,"createdAt,desc","ne")).isEqualTo(new WorkListings.Neighbors(null,null));
+    }
     @Test void detailFilterCombinesWithStateBeforePagination() throws Exception {
         var job=create();
         jdbc.update("UPDATE calibre_job_items SET state='ACCEPTED',message='EPUB enviado y verificado' WHERE job_id=?",job.id());
         for(int i=1;i<=3;i++) jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,message) VALUES(?,?,?,?,?,?,?,?,?,?,?)",UUID.randomUUID().toString(),job.id(),i,record,i,"book.epub",100,1,"1.1",i==3?"FAILED":"ACCEPTED",i==2?"Esperando 100%_ descarga":"EPUB enviado y verificado");
+        var excluded=transfers.items(job.id(),0,1,"ACCEPTED","verificado",List.of("position,asc"),"ne");
+        assertThat(excluded.meta().totalItems()).isEqualTo(1);
+        assertThat(excluded.items().getFirst().state()).isEqualTo("FAILED");
+        assertThatThrownBy(()->transfers.items(job.id(),0,20,"","",List.of("position,asc"),"invalid")).hasMessageContaining("Operador");
         var page=transfers.items(job.id(),1,1,"ACCEPTED"," ENVIADO Y VERIFICADO ",List.of("position,asc"));
         assertThat(page.meta().totalItems()).isEqualTo(2);
         assertThat(page.items()).hasSize(1);

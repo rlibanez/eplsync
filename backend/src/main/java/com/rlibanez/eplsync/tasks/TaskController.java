@@ -45,7 +45,7 @@ public class TaskController {
     @PreAuthorize("isAuthenticated()")
     public com.rlibanez.eplsync.dto.PageResponse<java.util.Map<String,Object>> rows(@PathVariable String type,
             @RequestParam long generation,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,
-            @RequestParam(defaultValue="") String status,@RequestParam(defaultValue="") String title,
+            @RequestParam(defaultValue="") String status,@RequestParam(defaultValue="eq") String statusOperator,@RequestParam(defaultValue="") String title,@RequestParam(defaultValue="eq") String titleOperator,@RequestParam(defaultValue="eq") String authorOperator,
             @RequestParam(defaultValue="") String author,@RequestParam(defaultValue="") String eplId,
             @RequestParam(defaultValue="") String availability,jakarta.servlet.http.HttpServletRequest request) {
         com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.CATALOG_READ);
@@ -54,7 +54,7 @@ public class TaskController {
         com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
         return searches.page(type,sessions.current().id(),generation,page,size,
                 com.rlibanez.eplsync.config.TableOrdering.request(request,"title,asc"),
-                java.util.Map.of("status",status,"title",title,"author",author,"eplId",eplId,"availability",availability));
+                java.util.Map.of("titleOperator",titleOperator,"authorOperator",authorOperator,"statusOperator",statusOperator,"status",status,"title",title,"author",author,"eplId",eplId,"availability",availability));
     }
     public record Input(String name,ScheduledTasks.Operation operation,String cron,boolean enabled,Boolean telegramNotifications,com.rlibanez.eplsync.settings.AutomaticUpdates.Configuration automation) {
         ScheduledTasks.Input ownedBy(String id) {return new ScheduledTasks.Input(name,operation,cron,id,enabled,telegramNotifications);}

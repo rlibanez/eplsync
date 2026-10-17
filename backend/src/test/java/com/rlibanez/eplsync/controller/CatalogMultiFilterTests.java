@@ -40,6 +40,25 @@ class CatalogMultiFilterTests {
   mvc.perform(get("/api/catalog/books").param("eplId","1","2","4").param("revision","1.4","3.0"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.items[0].eplId").value(1));
  }
+ @Test void excludesAnyMatchingTextAndLanguagesBeforePaging() throws Exception {
+  mvc.perform(get("/api/catalog/books").param("title","Book 0","Book 1").param("titleOperator","ne").param("size","1").param("page","1").param("sort","eplId,asc"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3)).andExpect(jsonPath("$.items[0].eplId").value(4));
+  mvc.perform(get("/api/catalog/books").param("author","Asimov","Herbert").param("authorOperator","ne"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].eplId",org.hamcrest.Matchers.containsInAnyOrder(2,5)));
+  mvc.perform(get("/api/catalog/books").param("author","Asimov").param("authorOperator","ne").param("language","es").param("languageOperator","ne"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].eplId").value(2)).andExpect(jsonPath("$.meta.totalItems").value(1));
+  mvc.perform(get("/api/catalog/books").param("title","100%_").param("titleOperator","ne"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(5));
+  mvc.perform(get("/api/catalog/books").param("titleOperator","ne").param("authorOperator","ne").param("languageOperator","ne"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(5));
+  mvc.perform(get("/api/catalog/books").param("authorOperator","invalid")).andExpect(status().isBadRequest());
+ }
+ @Test void excludesCatalogAndPublicationStatesBeforePaging() throws Exception {
+  mvc.perform(get("/api/catalog/books").param("status","VERIFICADO").param("statusOperator","ne").param("publicationStatus","UPDATED").param("publicationStatusOperator","ne").param("size","1").param("page","1").param("sort","eplId,asc"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4)).andExpect(jsonPath("$.items[0].eplId").value(3));
+  mvc.perform(get("/api/catalog/books").param("statusOperator","ne")).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(5));
+  mvc.perform(get("/api/catalog/books").param("statusOperator","invalid")).andExpect(status().isBadRequest());
+ }
  @Test void commaInSingleTextValueIsNotSplit() throws Exception {
   mvc.perform(get("/api/catalog/books").param("author","García Márquez, Gabriel"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.items[0].eplId").value(5));

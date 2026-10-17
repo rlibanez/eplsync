@@ -56,6 +56,20 @@ class CatalogLibraryFilterTests {
     @Autowired com.rlibanez.eplsync.torrent.bulk.BulkStore bulk;
     @Autowired com.rlibanez.eplsync.config.TorrentProperties torrentProperties;
 
+    @Test void excludesBooksWithAnyMatchingTorrentAndPreservesSelectAllFilters() throws Exception {
+        mvc.perform(get("/api/catalog/books").param("torrentStatus","DOWNLOADED").param("torrentStatusOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].eplId").value(4));
+        var f=new CatalogBookFilter();f.setTorrentStatus(new com.rlibanez.eplsync.torrent.downloads.DownloadStatus[]{com.rlibanez.eplsync.torrent.downloads.DownloadStatus.QUEUED});f.setTorrentStatusOperator("ne");
+        var result=service.search(f,org.springframework.data.domain.PageRequest.of(1,1,org.springframework.data.domain.Sort.by("eplId")));
+        assertThat(result.getTotalElements()).isEqualTo(3);assertThat(result.getContent()).extracting(CatalogBook::getEplId).containsExactly(4L);
+        torrentProperties.effective().setEnabled(true);
+        try {
+            var preview=bulk.preview(f,org.springframework.data.domain.PageRequest.of(0,20),false,true,null,true);
+            assertThat(preview.items()).extracting(com.rlibanez.eplsync.torrent.bulk.BulkStore.ItemView::eplId).containsExactlyInAnyOrder(2L,4L,5L);
+            f.setExcludedIds(new Long[]{4L});
+            assertThat(bulk.preview(f,org.springframework.data.domain.PageRequest.of(0,20),false,true,null,true).selectedBooks()).isEqualTo(2);
+        } finally {torrentProperties.effective().setEnabled(false);}
+    }
     @Test void combinationsIntersectLibrariesStatesAndHighestRevisions() {
         String[] choices={"", "PRESENT", "ABSENT"};
         String[] revisions={"", "UPDATED", "OUTDATED"};

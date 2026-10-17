@@ -17,12 +17,12 @@ public class BulkController {
     @GetMapping("/jobs")
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_JOBS_MANAGE') or (hasAuthority('TORRENT_SYNC') and hasAuthority('DOWNLOADS_DELETE'))")
     public PageResponse<?> list(@RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size, @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "20") int size, @RequestParam(defaultValue="eq") String statusOperator,@RequestParam(required = false) String status,
             @RequestParam(defaultValue = "createdAt,desc") String sort,
-            @RequestParam(required=false) String type, @RequestParam(required=false) String username,
+            @RequestParam(defaultValue="eq") String typeOperator,@RequestParam(required=false) String type, @RequestParam(required=false) String username,
             @RequestParam(required=false) java.time.Instant from, @RequestParam(required=false) java.time.Instant before,
             jakarta.servlet.http.HttpServletRequest request) {
-        var allowed = java.util.Set.of("page", "size", "status", "sort", "type", "username", "from", "before");
+        var allowed = java.util.Set.of("page", "size", "status", "statusOperator", "typeOperator", "sort", "type", "username", "from", "before");
         if (!allowed.containsAll(request.getParameterMap().keySet()))
             throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size, status, sort, type, username, from y before");
         com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
@@ -36,7 +36,7 @@ public class BulkController {
             }
         }
         sort = com.rlibanez.eplsync.config.TableOrdering.request(request, "createdAt,desc");
-        return listings.list("downloads",page,size,states==null?null:states.stream().map(state -> state.name()).toList(),type,username,from,before,sort);
+        return listings.list("downloads",page,size,states==null?null:states.stream().map(state -> state.name()).toList(),type,username,from,before,sort,statusOperator,typeOperator);
     }
 
     @GetMapping("/jobs/{id}")
@@ -47,8 +47,8 @@ public class BulkController {
     @GetMapping("/jobs/{id}/items")
     public PageResponse<BulkStore.ItemView> items(@PathVariable String id,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
-            @RequestParam(defaultValue = "position,asc") String sort, @RequestParam(required = false) String status, jakarta.servlet.http.HttpServletRequest request) {
-        if (!java.util.Set.of("page", "size", "status", "sort").containsAll(request.getParameterMap().keySet()))
+            @RequestParam(defaultValue = "position,asc") String sort, @RequestParam(defaultValue="eq") String statusOperator,@RequestParam(required = false) String status, jakarta.servlet.http.HttpServletRequest request) {
+        if (!java.util.Set.of("page", "size", "status", "statusOperator", "sort").containsAll(request.getParameterMap().keySet()))
             throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size, status y sort");
         com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
         java.util.List<BulkItem.State> states = null;
@@ -61,7 +61,7 @@ public class BulkController {
             }
         }
         sort = com.rlibanez.eplsync.config.TableOrdering.request(request, "position,asc");
-        synchronized (store) { return store.details(id, page, size, states, sort); }
+        synchronized (store) { return store.details(id, page, size, states, sort,statusOperator); }
     }
 
     @PostMapping("/jobs/{id}/pause")

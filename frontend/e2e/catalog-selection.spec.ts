@@ -197,7 +197,7 @@ test("select all uses filters and exclusions without fetching the full catalog",
     return r.fulfill({ status: 202, json: job });
   });
   await page.goto(
-    "/catalog?author=Asimov&author=Sanderson&language=es&language=en&torrentPresence=PRESENT&torrentRevision=UPDATED&torrentStatus=DOWNLOADED&torrentStatus=QUEUED&calibrePresence=PRESENT&calibreRevision=OUTDATED",
+    "/catalog?title=Not%20present&titleOperator=ne&author=Asimov&author=Sanderson&authorOperator=ne&language=es&language=en&torrentPresence=PRESENT&torrentRevision=UPDATED&torrentStatus=DOWNLOADED&torrentStatus=QUEUED&calibrePresence=PRESENT&calibreRevision=OUTDATED",
   );
   await page.getByRole("button", { name: "Seleccionar todo (40)" }).click();
   await page
@@ -219,6 +219,9 @@ test("select all uses filters and exclusions without fetching the full catalog",
     .toMatchObject({
       all: true,
       filters: {
+        title: ["Not present"],
+        titleOperator: "ne",
+        authorOperator: "ne",
         author: ["Asimov", "Sanderson"],
         language: ["es", "en"],
         torrentPresence: "PRESENT",

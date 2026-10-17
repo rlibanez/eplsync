@@ -71,7 +71,7 @@ public class DownloadQueryService {
     }
 
     private void validate(MultiValueMap<String, String> params, boolean listing) {
-        var allowed = new HashSet<>(Set.of("eplId", "hash", "revision", "status", "origin", "client", "clientInstanceId", "completed"));
+        var allowed = new HashSet<>(Set.of("eplId", "hash", "revision", "status", "statusOperator", "originOperator", "origin", "client", "clientInstanceId", "completed"));
         if (listing) allowed.addAll(Set.of("page", "size", "sort"));
         DATE_FIELDS.forEach(field -> { allowed.add(field + "From"); allowed.add(field + "To"); });
         if (!allowed.containsAll(params.keySet())) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro de descargas desconocido");
@@ -89,6 +89,7 @@ public class DownloadQueryService {
             try {
                 switch (key) {
                     case "page", "size", "sort" -> { }
+                    case "statusOperator", "originOperator" -> com.rlibanez.eplsync.ordering.StateOperator.excluded(text);
                     case "eplId" -> { long id = Long.parseLong(text); if (id < 1) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, id); }
                     case "revision" -> { double revision = Double.parseDouble(text); if (!Double.isFinite(revision) || revision < 0) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, revision); }
                     case "completed" -> { if (!text.equals("true") && !text.equals("false")) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, Boolean.valueOf(text)); }
@@ -107,7 +108,11 @@ public class DownloadQueryService {
             var predicates = new ArrayList<Predicate>();
             values.forEach((key, value) -> {
                 if (key.equals("completed")) predicates.add((Boolean) value ? cb.isNotNull(root.get("completedAt")) : cb.isNull(root.get("completedAt")));
-                else if (key.equals("status") || key.equals("origin")) predicates.add(root.get(key).in((List<?>) value));
+                else if (key.equals("status")) {
+                    var predicate = root.get(key).in((List<?>) value);
+                    predicates.add("ne".equals(params.getFirst("statusOperator")) ? cb.not(predicate) : predicate);
+                }
+                else if (key.equals("origin")) predicates.add("ne".equals(params.getFirst("originOperator"))?cb.not(root.get(key).in((List<?>) value)):root.get(key).in((List<?>) value));
                 else if (key.endsWith("From")) predicates.add(cb.greaterThanOrEqualTo(root.get(key.substring(0, key.length() - 4)), (Instant) value));
                 else if (key.endsWith("To")) predicates.add(cb.lessThanOrEqualTo(root.get(key.substring(0, key.length() - 2)), (Instant) value));
                 else predicates.add(cb.equal(root.get(key), value));

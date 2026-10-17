@@ -50,12 +50,12 @@ public class EventOperations {
             String where = " WHERE 1=1" + EventJournal.visibilitySql();
             if (operationId != null) { where += " AND operation_id=?"; args.add(operationId); }
             if (filter.username() != null && !filter.username().isBlank()) { where += " AND instr(lower(actor_username),lower(?))>0"; args.add(filter.username().strip()); }
-            if (filter.action() != null) { where += " AND action=?"; args.add(filter.action()); }
-            if (filter.category() != null) { where += " AND category=?"; args.add(filter.category().name()); }
-            if (filter.origin() != null) { where += " AND origin=?"; args.add(filter.origin().name()); }
+            if (filter.action() != null) { where += " AND action"+(filter.excluded("action")?"<>?":"=?"); args.add(filter.action()); }
+            if (filter.category() != null) { where += " AND category"+(filter.excluded("category")?"<>?":"=?"); args.add(filter.category().name()); }
+            if (filter.origin() != null) { where += " AND origin"+(filter.excluded("origin")?"<>?":"=?"); args.add(filter.origin().name()); }
             if (filter.outcome() == EventJournal.Outcome.STARTED)
-                where += " AND outcome IN ('STARTED','RESUMED','RECOVERED')";
-            else if (filter.outcome() != null) { where += " AND outcome=?"; args.add(filter.outcome().name()); }
+                where += " AND outcome "+(filter.excluded("outcome")?"NOT IN":"IN")+" ('STARTED','RESUMED','RECOVERED')";
+            else if (filter.outcome() != null) { where += " AND outcome"+(filter.excluded("outcome")?"<>?":"=?"); args.add(filter.outcome().name()); }
             if (filter.from() != null) { where += " AND sort_at>=?"; args.add(filter.from().toEpochMilli()); }
             if (filter.before() != null) { where += " AND sort_at<?"; args.add(filter.before().toEpochMilli()); }
             long total = jdbc.queryForObject(cte + "SELECT COUNT(*) FROM operations" + where, Long.class, args.toArray());

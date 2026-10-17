@@ -42,12 +42,17 @@ class SavedUpdateResultsTests {
         save("downloads",List.of(Map.of("eplId",3,"status","DOWNLOADED","registeredRevision",1.2),Map.of("eplId",1,"status","ERROR","registeredRevision",2.0),Map.of("eplId",2,"status","NOT_FOUND","registeredRevision",1.3)));
         var page=results.page("downloads","owner",123,0,1,"registeredRevision,desc",Map.of("status","DOWNLOADED,NOT_FOUND"));
         assertThat(page.meta().totalItems()).isEqualTo(2);assertThat(page.items().getFirst().get("eplId")).isEqualTo(2);
+        var excluded=results.page("downloads","owner",123,0,1,"eplId,asc",Map.of("status","DOWNLOADED,NOT_FOUND","statusOperator","ne"));
+        assertThat(excluded.meta().totalItems()).isEqualTo(1);assertThat(excluded.items().getFirst().get("eplId")).isEqualTo(1);
+        assertThatThrownBy(()->results.page("downloads","owner",123,0,20,"eplId,asc",Map.of("statusOperator","invalid"))).hasMessageContaining("Operador");
     }
     @Test void calibreFiltersPreserveUnicodeCaseAndLiteralSearchCharacters() {
         save("calibre",List.of(Map.of("calibreId",1,"eplId",5,"title","ÁRBOL 100%_","authors","Íñigo","downloadAvailability","READY"),Map.of("calibreId",2,"eplId",6,"title","Barco","authors","Autor","downloadAvailability","MISSING")));
         var page=results.page("calibre","owner",123,0,20,"title,asc",Map.of("title","árbol 100%_","author","ÍÑIGO","eplId","5","availability","READY"));
         assertThat(page.items()).hasSize(1);assertThat(page.items().getFirst().get("calibreId")).isEqualTo(1);
         assertThat(results.page("calibre","owner",123,0,20,"title,asc",Map.of("title","' OR 1=1 --")).items()).isEmpty();
+        var negative=results.page("calibre","owner",123,0,1,"title,asc",Map.of("title","árbol 100%_","titleOperator","ne","author","ÍÑIGO","authorOperator","ne"));
+        assertThat(negative.meta().totalItems()).isEqualTo(1);assertThat(negative.items().getFirst().get("eplId")).isEqualTo(6);
     }
     @Test void rejectsInvalidPagingOrderingFiltersAndChangedGenerations() {
         save("downloads",List.of());

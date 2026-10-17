@@ -1,3 +1,4 @@
+import { stateOperatorProps } from "../../components/StateOperator";
 import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
 import { useJobRetry } from "../jobs/useJobRetry";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
@@ -42,6 +43,8 @@ export function Jobs() {
   const [size, setSize] = useState(saved?.size ?? 20);
   const pageSizeChoice = usePageSizeChoice(size);
   const [filter, setFilter] = useState(saved?.filter ?? "");
+  const [excluded, setExcluded] = useState(saved?.excluded ?? false);
+  const [excludeType, setExcludeType] = useState(saved?.excludeType ?? false);
   const [type, setType] = useState(saved?.type ?? "");
   const [username, setUsername] = useState(saved?.username ?? "");
   const [from, setFrom] = useState(saved?.from ?? "");
@@ -57,13 +60,30 @@ export function Jobs() {
     return () => {
       refreshRequest.current++;
     };
-  }, [page, size, filter, sort, type, username, from, to]);
+  }, [
+    page,
+    size,
+    filter,
+    excluded,
+    excludeType,
+    sort,
+    type,
+    username,
+    from,
+    to,
+  ]);
   const params = new URLSearchParams({
     page: String(page),
     size: String(size),
   });
-  if (filter) params.set("status", filter);
-  if (type) params.set("type", type);
+  if (filter) {
+    params.set("status", filter);
+    if (excluded) params.set("statusOperator", "ne");
+  }
+  if (type) {
+    params.set("type", type);
+    if (excludeType) params.set("typeOperator", "ne");
+  }
   if (username.trim()) params.set("username", username.trim());
   const bounds = dateBounds(from, to);
   if (bounds.from) params.set("from", bounds.from);
@@ -133,7 +153,8 @@ export function Jobs() {
       setSort(value);
       setPage(0);
     },
-    { defaults: "createdAt,desc" }, (page + 1) * size,
+    { defaults: "createdAt,desc" },
+    (page + 1) * size,
   );
   return (
     <>
@@ -158,6 +179,10 @@ export function Jobs() {
       <div className="filters jobs-filters">
         <Select
           label={t("downloads.type")}
+          {...stateOperatorProps(excludeType, () => {
+            setExcludeType(!excludeType);
+            setPage(0);
+          })}
           clearable
           value={type || null}
           data={["DOWNLOAD", "UPDATE", "CLEANUP"].map((value) => ({
@@ -166,6 +191,7 @@ export function Jobs() {
           }))}
           onChange={(value) => {
             setType(value ?? "");
+            if (!value) setExcludeType(false);
             setPage(0);
           }}
         />
@@ -173,11 +199,16 @@ export function Jobs() {
           searchable
           styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("downloads.status")}
+          {...stateOperatorProps(excluded, () => {
+            setExcluded(!excluded);
+            setPage(0);
+          })}
           clearable
           value={filter ? filter.split(",") : []}
           data={jobStates.map((value) => ({ value, label: status(value) }))}
           onChange={(v) => {
             setFilter(v.join(","));
+            if (!v.length) setExcluded(false);
             setPage(0);
           }}
         />
@@ -214,7 +245,9 @@ export function Jobs() {
           variant="subtle"
           onClick={() => {
             setFilter("");
+            setExcluded(false);
             setType("");
+            setExcludeType(false);
             setUsername("");
             setFrom("");
             setTo("");
@@ -248,86 +281,95 @@ export function Jobs() {
                 <tbody>
                   {result.data.items.map((job, rowIndex) => (
                     <tr key={job.jobId}>
-                      {columns.cells([
-                        <td>
-                          <Link
-                            className="book-title"
-                            state={{
-                              workList: {
-                                source: "downloads",
-                                query: `${params}&${sortQuery(sort)}`,
-                                view: {
-                                  page,
-                                  size,
-                                  filter,
-                                  type,
-                                  username,
-                                  from,
-                                  to,
-                                  sort,
+                      {columns.cells(
+                        [
+                          <td>
+                            <Link
+                              className="book-title"
+                              state={{
+                                workList: {
+                                  source: "downloads",
+                                  query: `${params}&${sortQuery(sort)}`,
+                                  view: {
+                                    page,
+                                    size,
+                                    filter,
+                                    excluded,
+                                    excludeType,
+                                    type,
+                                    username,
+                                    from,
+                                    to,
+                                    sort,
+                                  },
                                 },
-                              },
-                            }}
-                            to={
-                              job.type === "CLEANUP"
-                                ? `/downloads/jobs/cleanup/${job.jobId}`
-                                : `/downloads/jobs/${job.jobId}`
-                            }
-                          >
-                            {job.jobId}
-                          </Link>
-                        </td>,
-                        <td>{date(job.createdAt)}</td>,
-                        <td>
-                          <button
-                            type="button"
-                            className="catalog-value-filter"
-                            onClick={() => {
-                              setType(job.type ?? "DOWNLOAD");
-                              setPage(0);
-                            }}
-                          >
-                            {t(
-                              `historyActions.jobTypes.${job.type ?? "DOWNLOAD"}`,
-                            )}
-                          </button>
-                        </td>,
-                        <td>
-                          <button
-                            type="button"
-                            className="catalog-value-filter"
-                            onClick={() => {
-                              setFilter(job.status);
-                              setPage(0);
-                            }}
-                          >
-                            <span className="badge">{status(job.status)}</span>
-                          </button>
-                        </td>,
-                        <td>
-                          {number(job.processedItems)} /{" "}
-                          {number(job.selectedItems)}
-                        </td>,
-                        <td>{number(job.selectedBooks)}</td>,
-                        <td>{number(job.accepted)}</td>,
-                        <td>{number(job.failed)}</td>,
-                        <td>
-                          {job.username ? (
+                              }}
+                              to={
+                                job.type === "CLEANUP"
+                                  ? `/downloads/jobs/cleanup/${job.jobId}`
+                                  : `/downloads/jobs/${job.jobId}`
+                              }
+                            >
+                              {job.jobId}
+                            </Link>
+                          </td>,
+                          <td>{date(job.createdAt)}</td>,
+                          <td>
                             <button
                               type="button"
                               className="catalog-value-filter"
                               onClick={() => {
-                                setUsername(job.username!);
+                                setType(job.type ?? "DOWNLOAD");
+                                setExcludeType(false);
                                 setPage(0);
                               }}
                             >
-                              {job.username}
+                              {t(
+                                `historyActions.jobTypes.${job.type ?? "DOWNLOAD"}`,
+                              )}
                             </button>
-                          ) : (
-                            "—"
-                          )}
-                        </td>,
-                      ], page * size + rowIndex + 1)}
+                          </td>,
+                          <td>
+                            <button
+                              type="button"
+                              className="catalog-value-filter"
+                              onClick={() => {
+                                setFilter(job.status);
+                                setExcluded(false);
+                                setPage(0);
+                              }}
+                            >
+                              <span className="badge">
+                                {status(job.status)}
+                              </span>
+                            </button>
+                          </td>,
+                          <td>
+                            {number(job.processedItems)} /{" "}
+                            {number(job.selectedItems)}
+                          </td>,
+                          <td>{number(job.selectedBooks)}</td>,
+                          <td>{number(job.accepted)}</td>,
+                          <td>{number(job.failed)}</td>,
+                          <td>
+                            {job.username ? (
+                              <button
+                                type="button"
+                                className="catalog-value-filter"
+                                onClick={() => {
+                                  setUsername(job.username!);
+                                  setPage(0);
+                                }}
+                              >
+                                {job.username}
+                              </button>
+                            ) : (
+                              "—"
+                            )}
+                          </td>,
+                        ],
+                        page * size + rowIndex + 1,
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -374,10 +416,11 @@ export function JobDetail() {
   const [size, setSize] = useState(20);
   const pageSizeChoice = usePageSizeChoice(size);
   const [filter, setFilter] = useState("");
+  const [excluded, setExcluded] = useState(false);
   const [sort, setSort] = useState("position,asc");
   const [cancel, setCancel] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
-  useEffect(() => setSelected([]), [id, filter, sort]);
+  useEffect(() => setSelected([]), [id, filter, excluded, sort]);
   const job = useQuery({
     queryKey: ["job", id],
     queryFn: ({ signal }) =>
@@ -394,10 +437,10 @@ export function JobDetail() {
         : 3000,
   });
   const items = useQuery({
-    queryKey: ["job-items", id, page, size, filter, sort],
+    queryKey: ["job-items", id, page, size, filter, excluded, sort],
     queryFn: ({ signal }) =>
       get<Page<Item>>(
-        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&${sortQuery(sort)}${filter ? `&status=${filter}` : ""}`,
+        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&${sortQuery(sort)}${filter ? `&status=${filter}${excluded ? "&statusOperator=ne" : ""}` : ""}`,
         signal,
       ),
     refetchInterval: ["COMPLETED", "CANCELLED"].includes(job.data?.status ?? "")
@@ -443,7 +486,8 @@ export function JobDetail() {
       extraSort: [
         { field: "position", label: "tableControls.position", width: 100 },
       ],
-    }, (page + 1) * size,
+    },
+    (page + 1) * size,
   );
   const data = job.data;
   return (
@@ -670,11 +714,16 @@ export function JobDetail() {
       <div className="filters jobs-filters">
         <Select
           label={t("downloads.itemStatus")}
+          {...stateOperatorProps(excluded, () => {
+            setExcluded(!excluded);
+            setPage(0);
+          })}
           value={filter || null}
           clearable
           data={itemStates.map((value) => ({ value, label: status(value) }))}
           onChange={(v) => {
             setFilter(v ?? "");
+            if (!v) setExcluded(false);
             setPage(0);
           }}
         />
@@ -758,25 +807,40 @@ export function JobDetail() {
                           />
                         </td>
                       )}
-                      {columns.cells([
-                        <td>
-                          <Link to={`/catalog/${item.eplId}`}>
-                            {item.eplId}
-                          </Link>
-                        </td>,
-                        <td className="catalog-title-cell">
-                          <DownloadBook book={item} />
-                        </td>,
-                        <td className="hash-text">{item.hash}</td>,
-                        <td>
-                          {item.revision == null
-                            ? "—"
-                            : revision(item.revision)}
-                        </td>,
-                        <td>{status(item.status)}</td>,
-                        <td>{item.attempts}</td>,
-                        <td>{item.message || "—"}</td>,
-                      ], page * size + rowIndex + 1)}
+                      {columns.cells(
+                        [
+                          <td>
+                            <Link to={`/catalog/${item.eplId}`}>
+                              {item.eplId}
+                            </Link>
+                          </td>,
+                          <td className="catalog-title-cell">
+                            <DownloadBook book={item} />
+                          </td>,
+                          <td className="hash-text">{item.hash}</td>,
+                          <td>
+                            {item.revision == null
+                              ? "—"
+                              : revision(item.revision)}
+                          </td>,
+                          <td>
+                            <button
+                              type="button"
+                              className="catalog-value-filter"
+                              onClick={() => {
+                                setFilter(item.status);
+                                setExcluded(false);
+                                setPage(0);
+                              }}
+                            >
+                              {status(item.status)}
+                            </button>
+                          </td>,
+                          <td>{item.attempts}</td>,
+                          <td>{item.message || "—"}</td>,
+                        ],
+                        page * size + rowIndex + 1,
+                      )}
                     </tr>
                   ))}
                 </tbody>

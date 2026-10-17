@@ -19,6 +19,8 @@ public class EventController {
     @GetMapping("/operations")
     public EventOperations.Page operations(@RequestParam(defaultValue="0") int page,
             @RequestParam(defaultValue="20") int size, @RequestParam(required=false) Long snapshot,
+            @RequestParam(defaultValue="eq") String actionOperator,@RequestParam(defaultValue="eq") String categoryOperator,
+            @RequestParam(defaultValue="eq") String originOperator,@RequestParam(defaultValue="eq") String outcomeOperator,
             @RequestParam(required=false) String action,
             @RequestParam(required=false) String username,
             @RequestParam(required=false) EventJournal.Category category,
@@ -28,16 +30,18 @@ public class EventController {
             @RequestParam(required=false) Instant from, @RequestParam(required=false) Instant before,
             jakarta.servlet.http.HttpServletRequest request) {
         com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
-        return operations.search(new EventJournal.Filter(category, outcome, origin, from, before, action, username), page, size, snapshot, operationId, com.rlibanez.eplsync.config.TableOrdering.request(request,"startedAt,desc"));
+        return operations.search(new EventJournal.Filter(category, outcome, origin, from, before, action, username,Map.of("action",actionOperator,"category",categoryOperator,"origin",originOperator,"outcome",outcomeOperator)), page, size, snapshot, operationId, com.rlibanez.eplsync.config.TableOrdering.request(request,"startedAt,desc"));
     }
     @GetMapping
     public EventJournal.Page search(@RequestParam(defaultValue="0") int page, @RequestParam(defaultValue="20") int size,
+            @RequestParam(defaultValue="eq") String actionOperator,@RequestParam(defaultValue="eq") String categoryOperator,
+            @RequestParam(defaultValue="eq") String originOperator,@RequestParam(defaultValue="eq") String outcomeOperator,
             @RequestParam(required=false) String action,
             @RequestParam(required=false) String username,
             @RequestParam(required=false) EventJournal.Category category, @RequestParam(required=false) EventJournal.Outcome outcome,
             @RequestParam(required=false) EventContext.Origin origin,
             @RequestParam(required=false) Instant from, @RequestParam(required=false) Instant before) {
-        return journal.search(new EventJournal.Filter(category, outcome, origin, from, before, action, username), page, size);
+        return journal.search(new EventJournal.Filter(category, outcome, origin, from, before, action, username,Map.of("action",actionOperator,"category",categoryOperator,"origin",originOperator,"outcome",outcomeOperator)), page, size);
     }
     public record UnreadRequest(long afterId, java.util.List<Long> readIds) {}
     /** Read-only query with browser-local read markers; no user state is stored on the server. */

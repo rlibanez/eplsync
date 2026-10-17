@@ -32,8 +32,8 @@ public final class CatalogBookSpecifications {
             spec = spec.and((root, q, cb) -> root.get("eplId").in((Object[]) f.getEplId()));
         }
 
-        spec = andIfNotNull(spec, authorContains(f.getAuthor()));
-        spec = andIfNotNull(spec, titleContains(f.getTitle()));
+        spec = andIfNotNull(spec, textFilter("author",f.getAuthor(),f.getAuthorOperator()));
+        spec = andIfNotNull(spec, textFilter("title",f.getTitle(),f.getTitleOperator()));
         spec = andIfNotNull(spec, genresContains(f.getGenres()));
         spec = andIfNotNull(spec, collectionContains(f.getCollection()));
         if (f.getRevision() != null) spec = spec.and((root, q, cb) -> root.get("revision").in((Object[]) f.getRevision()));
@@ -57,12 +57,14 @@ public final class CatalogBookSpecifications {
     private static Specification<CatalogBook> containsAny(String field, String[] values) {
         if (values == null) return null;
         return (root, q, cb) -> cb.or(java.util.Arrays.stream(values)
-            .map(value -> cb.like(cb.lower(root.get(field)), "%" + value.toLowerCase(java.util.Locale.ROOT)
+            .map(value -> cb.like(cb.lower(cb.coalesce(root.<String>get(field),"")), "%" + value.toLowerCase(java.util.Locale.ROOT)
                 .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%", '\\'))
             .toArray(jakarta.persistence.criteria.Predicate[]::new));
     }
-    private static Specification<CatalogBook> authorContains(String[] values) { return containsAny("author", values); }
-    private static Specification<CatalogBook> titleContains(String[] values) { return containsAny("title", values); }
+    private static Specification<CatalogBook> textFilter(String field,String[] values,String operator) {
+        var spec=containsAny(field,values);
+        return spec==null || !com.rlibanez.eplsync.ordering.StateOperator.excluded(operator)?spec:Specification.not(spec);
+    }
     private static Specification<CatalogBook> genresContains(String[] values) { return containsAny("genres", values); }
     private static Specification<CatalogBook> collectionContains(String[] values) { return containsAny("collection", values); }
 
@@ -90,13 +92,13 @@ public final class CatalogBookSpecifications {
     private static Specification<CatalogBook> languageEquals(CatalogBookFilter f) {
         if (f.getLanguage() == null)
             return null;
-        return (root, q, cb) -> root.get("language").in((Object[]) f.getLanguage());
+        return (root, q, cb) -> com.rlibanez.eplsync.ordering.StateOperator.excluded(f.getLanguageOperator()) ? cb.or(cb.isNull(root.get("language")),cb.not(root.get("language").in((Object[]) f.getLanguage()))) : root.get("language").in((Object[]) f.getLanguage());
     }
 
     private static Specification<CatalogBook> publicationStatusEquals(CatalogBookFilter f) {
         if (f.getPublicationStatus() == null)
             return null;
-        return (root, q, cb) -> root.get("publicationStatus").in((Object[]) f.getPublicationStatus());
+        return (root, q, cb) -> com.rlibanez.eplsync.ordering.StateOperator.excluded(f.getPublicationStatusOperator()) ? cb.not(root.get("publicationStatus").in((Object[]) f.getPublicationStatus())) : root.get("publicationStatus").in((Object[]) f.getPublicationStatus());
     }
 
     private static Specification<CatalogBook> publicationDateEqualsOrBetween(CatalogBookFilter f) {
@@ -123,7 +125,7 @@ public final class CatalogBookSpecifications {
     private static Specification<CatalogBook> statusIn(CatalogBookFilter f) {
         if (f.getStatus() == null || f.getStatus().isEmpty())
             return null;
-        return (root, q, cb) -> root.get("status").in(f.getStatus());
+        return (root, q, cb) -> com.rlibanez.eplsync.ordering.StateOperator.excluded(f.getStatusOperator()) ? cb.not(root.get("status").in(f.getStatus())) : root.get("status").in(f.getStatus());
     }
 
     private static Specification<CatalogBook> andIfNotNull(

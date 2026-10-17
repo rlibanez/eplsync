@@ -867,6 +867,10 @@
     "sourceZipSha256": "SHA-256 del ZIP"
   },
   "filters": {
+    "containsText": "Contiene alguno de los textos indicados",
+    "excludesText": "No contiene ninguno de los textos indicados",
+    "includeSelected": "Incluir valores seleccionados",
+    "excludeSelected": "Excluir valores seleccionados",
     "clearRange": "Limpiar intervalo",
     "pages": "Páginas",
     "minimum": "Mínimo",

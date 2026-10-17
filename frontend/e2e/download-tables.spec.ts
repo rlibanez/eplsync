@@ -267,3 +267,42 @@ test("download jobs filter by row type, state and user", async ({ page }) => {
     await request;
   }
 });
+
+test("state exclusion persists through pagination and selecting every result", async ({ page }) => {
+  const requests: URLSearchParams[] = [];
+  const entries = Array.from({length:1008}, (_, index) => ({...book,id:`row-${index}`,hash:index.toString(16).padStart(40,"0"),revision:1,client:"qbittorrent",origin:"EPLSYNC",status:index<5?"DOWNLOADED":"DOWNLOADING"}));
+  await page.route("**/api/torrent/downloads?**", route => {
+    const params = new URL(route.request().url()).searchParams;
+    requests.push(params);
+    const states = params.get("status")?.split(",") ?? [];
+    const filtered = entries.filter(row => !states.length || (params.get("statusOperator")==="ne" ? !states.includes(row.status) : states.includes(row.status)));
+    const current = Number(params.get("page") ?? 0), size = Number(params.get("size") ?? 20);
+    return route.fulfill({json:{items:filtered.slice(current*size,(current+1)*size),meta:{...meta,page:current,size,totalItems:filtered.length,totalPages:Math.ceil(filtered.length/size),hasNext:(current+1)*size<filtered.length,hasPrevious:current>0}}});
+  });
+  await page.goto("/downloads");
+  const stateControl=page.locator(".jobs-filters > div").filter({has:page.getByRole("textbox",{name:"Estado",exact:true})});
+  await page.locator("tbody").getByRole("button",{name:"Descargado",exact:true}).first().click();
+  await expect(page.getByRole("button",{name:"Seleccionar todo (5)",exact:true})).toBeVisible();
+  await stateControl.getByRole("button",{name:"Incluir valores seleccionados",exact:true}).click();
+  await expect(stateControl.getByRole("button",{name:"Excluir valores seleccionados",exact:true})).toHaveText("≠");
+  await expect(page.getByRole("button",{name:"Seleccionar todo (1003)",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Siguiente",exact:true}).click();
+  await expect.poll(() => requests.some(p=>p.get("page")==="1" && p.get("size")==="20" && p.get("statusOperator")==="ne")).toBe(true);
+  await page.getByRole("button",{name:"Seleccionar todo (1003)",exact:true}).click();
+  await expect(page.getByRole("button",{name:"Quitar selección (1003)",exact:true})).toBeVisible();
+  const allRequests = requests.filter(p=>p.get("size")==="1000");
+  expect(allRequests.map(p=>p.get("page"))).toEqual(["0","1"]);
+  expect(allRequests.every(p=>p.get("status")==="DOWNLOADED" && p.get("statusOperator")==="ne")).toBe(true);
+  await page.locator("tbody").getByRole("button",{name:"Descargando",exact:true}).first().click();
+  await expect(stateControl.getByRole("button",{name:"Incluir valores seleccionados",exact:true})).toHaveText("=");
+  await expect(page.getByRole("button",{name:"Quitar selección (1003)",exact:true})).toHaveCount(0);
+  await stateControl.getByRole("button",{name:"Incluir valores seleccionados",exact:true}).click();
+  await page.getByRole("textbox", {name:"Estado",exact:true}).click();
+  await page.getByRole("option", {name:"Descargando",exact:true}).click();
+  await expect(stateControl.getByRole("button",{name:"Incluir valores seleccionados",exact:true})).toHaveText("=");
+  await page.keyboard.press("Escape");
+  await stateControl.getByRole("button",{name:"Incluir valores seleccionados",exact:true}).click();
+  await page.getByRole("button",{name:"Limpiar",exact:true}).click();
+  await expect(stateControl.getByRole("button",{name:"Incluir valores seleccionados",exact:true})).toHaveText("=");
+  await expect(page.getByRole("button",{name:"Seleccionar todo (1008)",exact:true})).toBeVisible();
+});

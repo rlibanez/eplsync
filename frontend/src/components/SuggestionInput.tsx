@@ -28,6 +28,7 @@ export function SuggestionInput({
   excluded = [],
   name,
   maxLength,
+  operator,
 }: {
   kind?: SuggestionKind;
   label: string;
@@ -41,6 +42,7 @@ export function SuggestionInput({
   excluded?: string[];
   name?: string;
   maxLength?: number;
+  operator?: ReactNode;
 }) {
   const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
@@ -104,6 +106,8 @@ export function SuggestionInput({
     <Combobox store={combobox} onOptionSubmit={select} withinPortal>
       <Combobox.DropdownTarget>
         <PillsInput
+          leftSection={operator}
+          leftSectionPointerEvents="auto"
           label={label}
           error={error}
           onClick={() => {

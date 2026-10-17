@@ -371,7 +371,7 @@ export function operationResponse(
     })
     .filter((item) =>
       (["action", "category", "outcome", "origin"] as const).every(
-        (key) => !params.get(key) || params.get(key) === item.latest[key],
+        (key) => !params.get(key) || (params.get(`${key}Operator`) === "ne" ? params.get(key) !== item.latest[key] : params.get(key) === item.latest[key]),
       ),
     )
     .sort(

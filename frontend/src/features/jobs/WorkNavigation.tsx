@@ -9,6 +9,8 @@ export interface WorkListView {
   page?: number;
   size?: number;
   filter?: string;
+  excluded?: boolean;
+  excludeType?: boolean;
   type?: string;
   username?: string;
   from?: string;

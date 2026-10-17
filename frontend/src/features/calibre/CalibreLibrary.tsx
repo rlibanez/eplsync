@@ -1,3 +1,4 @@
+import { textOperatorProps } from "../../components/StateOperator";
 import { CleanupLauncher } from "../cleanup/RevisionCleanup";
 import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
@@ -54,11 +55,15 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       auth.can("DOWNLOADS_FILES_READ") &&
       auth.can("CATALOG_READ")
     : auth.can("CALIBRE_FILES_READ");
+  const [textExcluded, setTextExcluded] = useState({
+    title: false,
+    author: false,
+  });
   const [selected, setSelected] = useState<number[]>([]);
   const [searching, setSearching] = useState(false);
   useEffect(
     () => setSelected([]),
-    [title, author, eplId, comparison, presence, sort],
+    [title, author, textExcluded, eplId, comparison, presence, sort],
   );
   const pageSizeChoice = usePageSizeChoice(size);
   const params = new URLSearchParams({
@@ -66,6 +71,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     size: String(size),
     title,
     author,
+    ...(title.trim() && textExcluded.title ? { titleOperator: "ne" } : {}),
+    ...(author.trim() && textExcluded.author ? { authorOperator: "ne" } : {}),
     ...(eplId ? { eplId } : {}),
     comparison,
     presence,
@@ -98,7 +105,14 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     "calibre",
     previousSearch.data?.searchedAt ?? 0,
     sort,
-    { title, author, eplId, availability: availability ?? "" },
+    {
+      title,
+      author,
+      titleOperator: title.trim() && textExcluded.title ? "ne" : "",
+      authorOperator: author.trim() && textExcluded.author ? "ne" : "",
+      eplId,
+      availability: availability ?? "",
+    },
   );
   const result = useQuery({
     queryKey: [
@@ -197,7 +211,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     {
       defaults: "title,asc",
       selection: selectable,
-    }, (page + 1) * size,
+    },
+    (page + 1) * size,
   );
   return (
     <>
@@ -285,18 +300,36 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         <TextInput
           label={t("downloads.book")}
           value={title}
+          {...textOperatorProps(textExcluded.title, () => {
+            setTextExcluded((current) => ({
+              ...current,
+              title: !current.title,
+            }));
+            setPage(0);
+          })}
           maxLength={256}
           onChange={(e) => {
             setTitle(e.currentTarget.value);
+            if (!e.currentTarget.value.trim())
+              setTextExcluded((current) => ({ ...current, title: false }));
             setPage(0);
           }}
         />
         <TextInput
           label={t("filters.author")}
           value={author}
+          {...textOperatorProps(textExcluded.author, () => {
+            setTextExcluded((current) => ({
+              ...current,
+              author: !current.author,
+            }));
+            setPage(0);
+          })}
           maxLength={256}
           onChange={(e) => {
             setAuthor(e.currentTarget.value);
+            if (!e.currentTarget.value.trim())
+              setTextExcluded((current) => ({ ...current, author: false }));
             setPage(0);
           }}
         />
@@ -358,6 +391,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
           variant="subtle"
           onClick={() => {
             setTitle("");
+            setTextExcluded({ title: false, author: false });
             setAuthor("");
             setEplId("");
             setComparison("");

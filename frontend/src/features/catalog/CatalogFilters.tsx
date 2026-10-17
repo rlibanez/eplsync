@@ -1,3 +1,7 @@
+import {
+  stateOperatorProps,
+  textOperatorProps,
+} from "../../components/StateOperator";
 import { X } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Button, TextInput, MultiSelect, Select } from "@mantine/core";
@@ -24,6 +28,12 @@ export const multiKeys = [
   "torrentStatus",
 ];
 export const filterKeys = [
+  "titleOperator",
+  "authorOperator",
+  "languageOperator",
+  "statusOperator",
+  "publicationStatusOperator",
+  "torrentStatusOperator",
   "title",
   "author",
   "language",
@@ -60,8 +70,24 @@ export function filterRequest(params: URLSearchParams) {
     else if (result.get(`${library}Revision`))
       result.set(`${library}Presence`, "PRESENT");
   }
-  if (result.get("torrentPresence") === "ABSENT") result.delete("torrentStatus");
-  else if (result.getAll("torrentStatus").some(Boolean)) result.set("torrentPresence", "PRESENT");
+  if (result.get("torrentPresence") === "ABSENT")
+    result.delete("torrentStatus");
+  else if (result.getAll("torrentStatus").some(Boolean))
+    result.set("torrentPresence", "PRESENT");
+  for (const key of [
+    "title",
+    "author",
+    "language",
+    "status",
+    "publicationStatus",
+    "torrentStatus",
+  ]) {
+    if (
+      !result.getAll(key).some(Boolean) ||
+      (key === "torrentStatus" && result.get("torrentPresence") === "ABSENT")
+    )
+      result.delete(`${key}Operator`);
+  }
   const revisions = result.getAll("revision");
   result.delete("revision");
   revisions.forEach((value) =>
@@ -115,7 +141,10 @@ export function CatalogFilters({
     for (const library of ["torrent", "calibre"]) {
       if (initial[`${library}Presence`] === "ABSENT")
         initial[`${library}Revision`] = "";
-      else if (initial[`${library}Revision`] || (library === "torrent" && params.getAll("torrentStatus").some(Boolean)))
+      else if (
+        initial[`${library}Revision`] ||
+        (library === "torrent" && params.getAll("torrentStatus").some(Boolean))
+      )
         initial[`${library}Presence`] = "PRESENT";
     }
     return initial;
@@ -126,7 +155,11 @@ export function CatalogFilters({
         key,
         [
           ...new Set(
-            (key === "torrentStatus" && params.get("torrentPresence") === "ABSENT" ? [] : params.getAll(key)).map((v) => normalizeFilterValue(key, v) ?? v),
+            (key === "torrentStatus" &&
+            params.get("torrentPresence") === "ABSENT"
+              ? []
+              : params.getAll(key)
+            ).map((v) => normalizeFilterValue(key, v) ?? v),
           ),
         ],
       ]),
@@ -134,8 +167,11 @@ export function CatalogFilters({
   );
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const setMultiValue = (key: string, values: string[]) =>
-    setMulti((previous) => ({ ...previous, [key]: values }));
+  const setMultiValue = (key: string, selected: string[]) => {
+    setMulti((previous) => ({ ...previous, [key]: selected }));
+    if (!selected.length)
+      setValues((previous) => ({ ...previous, [`${key}Operator`]: "" }));
+  };
   function commit(key: string) {
     const values = normalizeFilterValues(key, drafts[key] || "");
     setErrors((previous) => ({
@@ -164,6 +200,16 @@ export function CatalogFilters({
                 : key === "genres"
                   ? "genres"
                   : undefined
+        }
+        operator={
+          key === "title" || key === "author"
+            ? textOperatorProps(values[`${key}Operator`] === "ne", () =>
+                set(
+                  `${key}Operator`,
+                  values[`${key}Operator`] === "ne" ? "" : "ne",
+                ),
+              ).leftSection
+            : undefined
         }
         allowList={key === "eplId"}
         label={t(key === "revision" ? "catalog.revision" : `filters.${key}`)}
@@ -266,7 +312,11 @@ export function CatalogFilters({
           const next = new URLSearchParams(params);
           filterKeys.forEach((key) => {
             next.delete(key);
-            if (values[key] && !multiKeys.includes(key))
+            if (
+              values[key] &&
+              !multiKeys.includes(key) &&
+              (!key.endsWith("Operator") || merged[key.slice(0, -8)]?.length)
+            )
               next.set(key, values[key]);
           });
           multiKeys.forEach((key) =>
@@ -290,6 +340,12 @@ export function CatalogFilters({
           <MultiSelect
             searchable
             label={t("catalog.language")}
+            {...stateOperatorProps(values.languageOperator === "ne", () =>
+              set(
+                "languageOperator",
+                values.languageOperator === "ne" ? "" : "ne",
+              ),
+            )}
             value={multi.language}
             onChange={(v) => setMultiValue("language", v)}
             clearable
@@ -299,6 +355,9 @@ export function CatalogFilters({
             searchable
             label={t("filters.status")}
             value={multi.status}
+            {...stateOperatorProps(values.statusOperator === "ne", () =>
+              set("statusOperator", values.statusOperator === "ne" ? "" : "ne"),
+            )}
             onChange={(v) => setMultiValue("status", v)}
             clearable
             data={["DISPONIBLE", "VERIFICADO", "DESCONOCIDO"].map((value) => ({
@@ -310,6 +369,14 @@ export function CatalogFilters({
             searchable
             label={t("filters.publicationStatus")}
             value={multi.publicationStatus}
+            {...stateOperatorProps(
+              values.publicationStatusOperator === "ne",
+              () =>
+                set(
+                  "publicationStatusOperator",
+                  values.publicationStatusOperator === "ne" ? "" : "ne",
+                ),
+            )}
             onChange={(v) => setMultiValue("publicationStatus", v)}
             clearable
             data={["PUBLISHED", "UPDATED", "UNKNOWN"].map((value) => ({
@@ -456,7 +523,8 @@ export function CatalogFilters({
                     { value: "ABSENT", label: t("filters.libraryAbsent") },
                   ]}
                   onChange={(value) => {
-                    if (library === "torrent" && (!value || value === "ABSENT")) setMultiValue("torrentStatus", []);
+                    if (library === "torrent" && (!value || value === "ABSENT"))
+                      setMultiValue("torrentStatus", []);
                     setValues((previous) => ({
                       ...previous,
                       [`${library}Presence`]: value || "",
@@ -491,18 +559,39 @@ export function CatalogFilters({
                     }))
                   }
                 />
-                {library === "torrent" && <MultiSelect
-                  searchable
-                  label={t("filters.status")}
-                  value={multi.torrentStatus}
-                  clearable
-                  disabled={values.torrentPresence === "ABSENT"}
-                  data={["SUBMITTED", "ALREADY_EXISTS", "UNKNOWN", "QUEUED", "DOWNLOADING", "PAUSED", "CHECKING", "DOWNLOADED", "ERROR"].map(value => ({value, label: status(value)}))}
-                  onChange={selected => {
-                    setMultiValue("torrentStatus", selected);
-                    if (selected.length) set("torrentPresence", "PRESENT");
-                  }}
-                />}
+                {library === "torrent" && (
+                  <MultiSelect
+                    searchable
+                    label={t("filters.status")}
+                    value={multi.torrentStatus}
+                    {...stateOperatorProps(
+                      values.torrentStatusOperator === "ne",
+                      () =>
+                        set(
+                          "torrentStatusOperator",
+                          values.torrentStatusOperator === "ne" ? "" : "ne",
+                        ),
+                      values.torrentPresence === "ABSENT",
+                    )}
+                    clearable
+                    disabled={values.torrentPresence === "ABSENT"}
+                    data={[
+                      "SUBMITTED",
+                      "ALREADY_EXISTS",
+                      "UNKNOWN",
+                      "QUEUED",
+                      "DOWNLOADING",
+                      "PAUSED",
+                      "CHECKING",
+                      "DOWNLOADED",
+                      "ERROR",
+                    ].map((value) => ({ value, label: status(value) }))}
+                    onChange={(selected) => {
+                      setMultiValue("torrentStatus", selected);
+                      if (selected.length) set("torrentPresence", "PRESENT");
+                    }}
+                  />
+                )}
               </fieldset>
             ))}
         </div>

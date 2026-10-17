@@ -22,7 +22,12 @@ public class EventJournal {
             this(id, createdAt, category, action, outcome, origin, operationId, details, EventContext.Actor.unknown());
         }
     }
-    public record Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before, String action, String username) {
+    public record Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before, String action, String username, Map<String,String> operators) {
+        public Filter(Category category,Outcome outcome,EventContext.Origin origin,Instant from,Instant before,String action,String username) {
+            this(category,outcome,origin,from,before,action,username,Map.of());
+        }
+        public boolean excluded(String field) {return com.rlibanez.eplsync.ordering.StateOperator.excluded(operators.get(field));}
+
         public Filter(Category category, Outcome outcome, EventContext.Origin origin, Instant from, Instant before, String action) {
             this(category, outcome, origin, from, before, action, null);
         }
@@ -33,6 +38,9 @@ public class EventJournal {
             this(category, outcome, null, from, before);
         }
         public Filter {
+            operators=operators==null?Map.of():Map.copyOf(operators);
+            if(!Set.of("action","category","outcome","origin").containsAll(operators.keySet())) throw new com.rlibanez.eplsync.exception.UserInputException("Operador desconocido");
+            operators.values().forEach(com.rlibanez.eplsync.ordering.StateOperator::excluded);
             if (from != null && before != null && !from.isBefore(before))
                 throw new com.rlibanez.eplsync.exception.UserInputException("from debe ser anterior a before (límite exclusivo)");
         }
@@ -277,10 +285,10 @@ public class EventJournal {
     private String where(Filter filter, List<Object> args) {
         String sql = " WHERE 1=1" + visibilitySql();
         if (filter.username() != null && !filter.username().isBlank()) { sql += " AND instr(lower(actor_username),lower(?))>0"; args.add(filter.username().strip()); }
-        if (filter.action() != null) { sql += " AND action=?"; args.add(filter.action()); }
-        if (filter.category() != null) { sql += " AND category=?"; args.add(filter.category().name()); }
-        if (filter.origin() != null) { sql += " AND origin=?"; args.add(filter.origin().name()); }
-        if (filter.outcome() != null) { sql += " AND outcome=?"; args.add(filter.outcome().name()); }
+        if (filter.action() != null) { sql += " AND action"+(filter.excluded("action")?"<>?":"=?"); args.add(filter.action()); }
+        if (filter.category() != null) { sql += " AND category"+(filter.excluded("category")?"<>?":"=?"); args.add(filter.category().name()); }
+        if (filter.origin() != null) { sql += " AND origin"+(filter.excluded("origin")?"<>?":"=?"); args.add(filter.origin().name()); }
+        if (filter.outcome() != null) { sql += " AND outcome"+(filter.excluded("outcome")?"<>?":"=?"); args.add(filter.outcome().name()); }
         if (filter.from() != null) { sql += " AND created_at>=?"; args.add(filter.from().toEpochMilli()); }
         if (filter.before() != null) { sql += " AND created_at<?"; args.add(filter.before().toEpochMilli()); }
         return sql;

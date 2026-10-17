@@ -1,3 +1,4 @@
+import { stateOperatorProps } from "../../components/StateOperator";
 import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
 import { useJobRetry } from "../jobs/useJobRetry";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
@@ -156,6 +157,8 @@ export function CalibreJobs() {
   const { t } = useTranslation();
   const { date, number } = useLocale();
   const saved = useWorkContext("calibre")?.view;
+  const [excluded, setExcluded] = useState(saved?.excluded ?? false);
+  const [excludeType, setExcludeType] = useState(saved?.excludeType ?? false);
   const [page, setPage] = useState(saved?.page ?? 0),
     [size, setSize] = useState(saved?.size ?? 20),
     [state, setState] = useState<string | null>(saved?.filter ?? null),
@@ -175,6 +178,8 @@ export function CalibreJobs() {
       page,
       size,
       state,
+      excluded,
+      excludeType,
       type,
       username,
       from,
@@ -183,7 +188,7 @@ export function CalibreJobs() {
     ],
     queryFn: ({ signal }) =>
       get<Page<Job>>(
-        `/calibre/transfers?page=${page}&size=${size}&state=${state ?? ""}&type=${type ?? ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
+        `/calibre/transfers?page=${page}&size=${size}&state=${state ?? ""}${state && excluded ? "&statusOperator=ne" : ""}&type=${type ?? ""}${type && excludeType ? "&typeOperator=ne" : ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
         signal,
       ),
     retry: false,
@@ -239,6 +244,10 @@ export function CalibreJobs() {
       <div className="filters jobs-filters">
         <Select
           label={t("downloads.type")}
+          {...stateOperatorProps(excludeType, () => {
+            setExcludeType(!excludeType);
+            setPage(0);
+          })}
           value={type}
           clearable
           data={["SEND", "CLEANUP"].map((value) => ({
@@ -247,14 +256,20 @@ export function CalibreJobs() {
           }))}
           onChange={(value) => {
             setType(value);
+            if (!value) setExcludeType(false);
             setPage(0);
           }}
         />
         <Select
           label={t("downloads.status")}
+          {...stateOperatorProps(excluded, () => {
+            setExcluded(!excluded);
+            setPage(0);
+          })}
           value={state}
           onChange={(value) => {
             setState(value);
+            if (!value) setExcluded(false);
             setPage(0);
           }}
           clearable
@@ -296,7 +311,9 @@ export function CalibreJobs() {
           variant="subtle"
           onClick={() => {
             setState(null);
+            setExcluded(false);
             setType(null);
+            setExcludeType(false);
             setUsername("");
             setFrom("");
             setTo("");
@@ -334,11 +351,13 @@ export function CalibreJobs() {
                               state={{
                                 workList: {
                                   source: "calibre",
-                                  query: `state=${state ?? ""}&type=${type ?? ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
+                                  query: `state=${state ?? ""}${state && excluded ? "&statusOperator=ne" : ""}&type=${type ?? ""}${type && excludeType ? "&typeOperator=ne" : ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
                                   view: {
                                     page,
                                     size,
                                     filter: state ?? "",
+                                    excluded,
+                                    excludeType,
                                     type: type ?? "",
                                     username,
                                     from,
@@ -363,6 +382,7 @@ export function CalibreJobs() {
                               className="catalog-value-filter"
                               onClick={() => {
                                 setType(job.type ?? "SEND");
+                                setExcludeType(false);
                                 setPage(0);
                               }}
                             >
@@ -378,6 +398,7 @@ export function CalibreJobs() {
                               className="catalog-value-filter"
                               onClick={() => {
                                 setState(job.state);
+                                setExcluded(false);
                                 setPage(0);
                               }}
                             >
@@ -435,11 +456,12 @@ export function CalibreJobDetail() {
   const [page, setPage] = useState(0),
     [size, setSize] = useState(20),
     [sort, setSort] = useState("position,asc");
+  const [excluded, setExcluded] = useState(false);
   const [itemState, setItemState] = useState<string | null>(null);
   const [itemDetail, setItemDetail] = useState("");
   const choice = usePageSizeChoice(size);
   const [selected, setSelected] = useState<string[]>([]);
-  useEffect(() => setSelected([]), [id, itemState, itemDetail, sort]);
+  useEffect(() => setSelected([]), [id, itemState, excluded, itemDetail, sort]);
   const job = useQuery({
     queryKey: ["calibre-job", id],
     queryFn: ({ signal }) => get<Job>(`/calibre/transfers/${id}`, signal),
@@ -457,11 +479,12 @@ export function CalibreJobDetail() {
       size,
       sort,
       itemState,
+      excluded,
       itemDetail.trim(),
     ],
     queryFn: ({ signal }) =>
       get<Page<Item>>(
-        `/calibre/transfers/${id}/items?page=${page}&size=${size}&state=${itemState ?? ""}&detail=${encodeURIComponent(itemDetail.trim())}&${sortQuery(sort)}`,
+        `/calibre/transfers/${id}/items?page=${page}&size=${size}&state=${itemState ?? ""}${itemState && excluded ? "&statusOperator=ne" : ""}&detail=${encodeURIComponent(itemDetail.trim())}&${sortQuery(sort)}`,
         signal,
       ),
     retry: false,
@@ -595,6 +618,10 @@ export function CalibreJobDetail() {
       <div className="filters jobs-filters">
         <Select
           label={t("downloads.status")}
+          {...stateOperatorProps(excluded, () => {
+            setExcluded(!excluded);
+            setPage(0);
+          })}
           clearable
           value={itemState}
           data={[
@@ -614,6 +641,7 @@ export function CalibreJobDetail() {
           }))}
           onChange={(value) => {
             setItemState(value);
+            if (!value) setExcluded(false);
             setPage(0);
           }}
         />
@@ -642,6 +670,7 @@ export function CalibreJobDetail() {
           variant="subtle"
           onClick={() => {
             setItemState(null);
+            setExcluded(false);
             setItemDetail("");
             setPage(0);
           }}
@@ -764,6 +793,7 @@ export function CalibreJobDetail() {
                               className="catalog-value-filter"
                               onClick={() => {
                                 setItemState(item.state);
+                                setExcluded(false);
                                 setPage(0);
                               }}
                             >

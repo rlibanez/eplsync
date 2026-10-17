@@ -1,3 +1,4 @@
+import { stateOperatorProps } from "../../components/StateOperator";
 import { PageTitle } from "../../components/PageTitle";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { Paging } from "../downloads/shared";
@@ -38,6 +39,7 @@ function EventsView({ operationId }: { operationId?: string }) {
   const [saved] = useState(() =>
     operationId
       ? {
+          operators: {},
           action: null,
           username: "",
           category: null,
@@ -67,6 +69,9 @@ function EventsView({ operationId }: { operationId?: string }) {
     return () => document.removeEventListener("visibilitychange", update);
   }, []);
   const { t, i18n } = useTranslation();
+  const [operators, setOperators] = useState<Record<string, string>>(
+    saved.operators ?? {},
+  );
   const [action, setAction] = useState<string | null>(saved.action);
   const [category, setCategory] = useState<string | null>(saved.category);
   const [outcome, setOutcome] = useState<string | null>(saved.outcome);
@@ -101,11 +106,13 @@ function EventsView({ operationId }: { operationId?: string }) {
       setSort(value);
       setPage(0);
     },
-    { defaults: "startedAt,desc" }, (page + 1) * size,
+    { defaults: "startedAt,desc" },
+    (page + 1) * size,
   );
   const [expanded, setExpanded] = useState(saved.expanded);
   const navigation = useRef(saved);
   navigation.current = {
+    operators,
     action,
     category,
     outcome,
@@ -122,6 +129,7 @@ function EventsView({ operationId }: { operationId?: string }) {
   useEffect(() => {
     if (!operationId) saveEventNavigation(navigation.current);
   }, [
+    operators,
     action,
     category,
     outcome,
@@ -159,6 +167,14 @@ function EventsView({ operationId }: { operationId?: string }) {
   if (category) params.set("category", category);
   if (outcome) params.set("outcome", outcome);
   if (origin) params.set("origin", origin);
+  for (const [field, value] of Object.entries({
+    action,
+    category,
+    outcome,
+    origin,
+  }))
+    if (value && operators[field] === "ne")
+      params.set(`${field}Operator`, "ne");
   if (username.trim()) params.set("username", username.trim());
   const bounds = dateBounds(from, to);
   if (bounds.from) params.set("from", bounds.from);
@@ -247,6 +263,7 @@ function EventsView({ operationId }: { operationId?: string }) {
               outcome: setOutcome,
               origin: setOrigin,
             })[field](value);
+            setOperators((previous) => ({ ...previous, [field]: "eq" }));
             setPage(0);
           }}
         >
@@ -302,6 +319,13 @@ function EventsView({ operationId }: { operationId?: string }) {
           />
           <Select
             label={t("events.category")}
+            {...stateOperatorProps(operators.category === "ne", () => {
+              setOperators((previous) => ({
+                ...previous,
+                category: previous.category === "ne" ? "eq" : "ne",
+              }));
+              setPage(0);
+            })}
             clearable
             value={category}
             data={[
@@ -320,11 +344,20 @@ function EventsView({ operationId }: { operationId?: string }) {
               )}
             onChange={(value) => {
               setCategory(value);
+              if (!value)
+                setOperators((previous) => ({ ...previous, category: "eq" }));
               setPage(0);
             }}
           />
           <Select
             label={t("events.event")}
+            {...stateOperatorProps(operators.action === "ne", () => {
+              setOperators((previous) => ({
+                ...previous,
+                action: previous.action === "ne" ? "eq" : "ne",
+              }));
+              setPage(0);
+            })}
             clearable
             searchable
             value={action}
@@ -344,12 +377,21 @@ function EventsView({ operationId }: { operationId?: string }) {
               )}
             onChange={(value) => {
               setAction(value);
+              if (!value)
+                setOperators((previous) => ({ ...previous, action: "eq" }));
               setPage(0);
             }}
           />
 
           <Select
             label={t("events.outcome")}
+            {...stateOperatorProps(operators.outcome === "ne", () => {
+              setOperators((previous) => ({
+                ...previous,
+                outcome: previous.outcome === "ne" ? "eq" : "ne",
+              }));
+              setPage(0);
+            })}
             clearable
             value={outcome}
             data={[
@@ -373,11 +415,20 @@ function EventsView({ operationId }: { operationId?: string }) {
               )}
             onChange={(value) => {
               setOutcome(value);
+              if (!value)
+                setOperators((previous) => ({ ...previous, outcome: "eq" }));
               setPage(0);
             }}
           />
           <Select
             label={t("events.origin")}
+            {...stateOperatorProps(operators.origin === "ne", () => {
+              setOperators((previous) => ({
+                ...previous,
+                origin: previous.origin === "ne" ? "eq" : "ne",
+              }));
+              setPage(0);
+            })}
             clearable
             value={origin}
             data={["MANUAL", "SCHEDULED", "SYSTEM"]
@@ -390,6 +441,8 @@ function EventsView({ operationId }: { operationId?: string }) {
               )}
             onChange={(value) => {
               setOrigin(value);
+              if (!value)
+                setOperators((previous) => ({ ...previous, origin: "eq" }));
               setPage(0);
             }}
           />
@@ -405,6 +458,7 @@ function EventsView({ operationId }: { operationId?: string }) {
             variant="subtle"
             onClick={() => {
               setAction(null);
+              setOperators({});
               setCategory(null);
               setOutcome(null);
               setOrigin(null);
@@ -457,79 +511,82 @@ function EventsView({ operationId }: { operationId?: string }) {
                         : "—";
                     return (
                       <tr key={event.id}>
-                        {columns.cells([
-                          <td>{date(operation.startedAt)}</td>,
-                          <td>{date(operation.finishedAt)}</td>,
-                          <td>
-                            {operation.durationMs === null
-                              ? "—"
-                              : formatDuration(
-                                  operation.durationMs,
-                                  i18n.resolvedLanguage,
-                                )}
-                          </td>,
-                          <td>
-                            {filterValue(
-                              "category",
-                              event.category,
-                              t("events.categories." + event.category),
-                            )}
-                          </td>,
-                          <td>
-                            {filterValue(
-                              "action",
-                              event.action,
-                              t("events.actions." + event.action),
-                            )}
-                          </td>,
-                          <td>
-                            {filterValue(
-                              "outcome",
-                              outcome,
-                              outcomeLabel,
-                              <Badge
-                                variant="light"
-                                color={
-                                  event.outcome === "FAILED"
-                                    ? "red"
-                                    : event.outcome === "PARTIAL"
-                                      ? "orange"
-                                      : undefined
-                                }
+                        {columns.cells(
+                          [
+                            <td>{date(operation.startedAt)}</td>,
+                            <td>{date(operation.finishedAt)}</td>,
+                            <td>
+                              {operation.durationMs === null
+                                ? "—"
+                                : formatDuration(
+                                    operation.durationMs,
+                                    i18n.resolvedLanguage,
+                                  )}
+                            </td>,
+                            <td>
+                              {filterValue(
+                                "category",
+                                event.category,
+                                t("events.categories." + event.category),
+                              )}
+                            </td>,
+                            <td>
+                              {filterValue(
+                                "action",
+                                event.action,
+                                t("events.actions." + event.action),
+                              )}
+                            </td>,
+                            <td>
+                              {filterValue(
+                                "outcome",
+                                outcome,
+                                outcomeLabel,
+                                <Badge
+                                  variant="light"
+                                  color={
+                                    event.outcome === "FAILED"
+                                      ? "red"
+                                      : event.outcome === "PARTIAL"
+                                        ? "orange"
+                                        : undefined
+                                  }
+                                >
+                                  {outcomeLabel}
+                                </Badge>,
+                              )}
+                            </td>,
+                            <td>
+                              {filterValue(
+                                "origin",
+                                event.origin,
+                                t("events.origins." + event.origin),
+                              )}
+                            </td>,
+                            <td>{eventActorLabel(event, t)}</td>,
+                            <td>
+                              <details
+                                open={expanded.includes(event.operationId)}
+                                onToggle={(e) => {
+                                  const open = e.currentTarget.open;
+                                  setExpanded((current) =>
+                                    open
+                                      ? current.includes(event.operationId)
+                                        ? current
+                                        : [...current, event.operationId]
+                                      : current.filter(
+                                          (id) => id !== event.operationId,
+                                        ),
+                                  );
+                                }}
                               >
-                                {outcomeLabel}
-                              </Badge>,
-                            )}
-                          </td>,
-                          <td>
-                            {filterValue(
-                              "origin",
-                              event.origin,
-                              t("events.origins." + event.origin),
-                            )}
-                          </td>,
-                          <td>{eventActorLabel(event, t)}</td>,
-                          <td>
-                            <details
-                              open={expanded.includes(event.operationId)}
-                              onToggle={(e) => {
-                                const open = e.currentTarget.open;
-                                setExpanded((current) =>
-                                  open
-                                    ? current.includes(event.operationId)
-                                      ? current
-                                      : [...current, event.operationId]
-                                    : current.filter(
-                                        (id) => id !== event.operationId,
-                                      ),
-                                );
-                              }}
-                            >
-                              <summary>{t("events.details")}</summary>
-                              <EventSummary operation={operation} />
-                            </details>
-                          </td>,
-                        ], page * size + rowIndex + 1)}
+                                <summary>{t("events.details")}</summary>
+                                <EventSummary operation={operation} />
+                              </details>
+                            </td>,
+                          ],
+                          page * size + rowIndex + 1,
+                        )}
                       </tr>
                     );
                   })}

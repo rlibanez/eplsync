@@ -308,6 +308,30 @@ class DownloadTrackingTests {
         verifyNoInteractions(stubClient);
     }
 
+    @Test void stateExclusionAppliesBeforePagingAndToAllResults() throws Exception {
+        for(int i=0;i<5;i++) {
+            var row=new DownloadRecord();row.setEplId(32L);row.setRevision(1.0+i);row.setHash(String.format("%040X",i+1));
+            row.setClient("stub");row.setClientInstanceId(tracking.instanceId());row.setOrigin(i==0?DownloadRecord.Origin.DISCOVERED:DownloadRecord.Origin.EPLSYNC);
+            row.setStatus(i==0?DownloadStatus.DOWNLOADED:i==1?DownloadStatus.ERROR:DownloadStatus.DOWNLOADING);
+            row.setCreatedAt(Instant.now());downloads.save(row);
+        }
+        mvc.perform(get("/api/torrent/downloads").param("status","DOWNLOADED,ERROR").param("statusOperator","ne").param("page","1").param("size","1").param("sort","revision,asc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3)).andExpect(jsonPath("$.items[0].revision").value(4.0));
+        mvc.perform(get("/api/torrent/downloads").param("status","DOWNLOADED,ERROR").param("statusOperator","ne").param("size","1000").param("eplId","32"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(3)).andExpect(jsonPath("$.items[*].status").value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.is("DOWNLOADING"))));
+        mvc.perform(get("/api/torrent/downloads/summary").param("status","DOWNLOADED,ERROR").param("statusOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(3));
+        mvc.perform(get("/api/torrent/downloads").param("statusOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(5));
+        mvc.perform(get("/api/torrent/downloads").param("status","DOWNLOADED").param("statusOperator","eq"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1));
+        mvc.perform(get("/api/torrent/downloads").param("origin","EPLSYNC").param("originOperator","ne").param("size","1"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].origin").value("DISCOVERED"));
+        mvc.perform(get("/api/torrent/downloads").param("originOperator","invalid")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/torrent/downloads").param("statusOperator","invalid")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/torrent/downloads").param("statusOperator","ne","eq")).andExpect(status().isBadRequest());
+    }
+
     @Test void emptySummaryIncludesEveryStateAndRejectsInvalidFilters() throws Exception {
         var summary = queries.summary(new LinkedMultiValueMap<>());
         assertThat(summary.total()).isZero();
