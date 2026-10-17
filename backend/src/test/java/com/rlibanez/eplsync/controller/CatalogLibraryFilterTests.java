@@ -61,11 +61,11 @@ class CatalogLibraryFilterTests {
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].eplId").value(4));
         var f=new CatalogBookFilter();f.setTorrentStatus(new com.rlibanez.eplsync.torrent.downloads.DownloadStatus[]{com.rlibanez.eplsync.torrent.downloads.DownloadStatus.QUEUED});f.setTorrentStatusOperator("ne");
         var result=service.search(f,org.springframework.data.domain.PageRequest.of(1,1,org.springframework.data.domain.Sort.by("eplId")));
-        assertThat(result.getTotalElements()).isEqualTo(3);assertThat(result.getContent()).extracting(CatalogBook::getEplId).containsExactly(4L);
+        assertThat(result.getTotalElements()).isEqualTo(3);assertThat(result.getContent()).extracting(book -> java.util.Objects.requireNonNull(book).getEplId()).containsExactly(4L);
         torrentProperties.effective().setEnabled(true);
         try {
             var preview=bulk.preview(f,org.springframework.data.domain.PageRequest.of(0,20),false,true,null,true);
-            assertThat(preview.items()).extracting(com.rlibanez.eplsync.torrent.bulk.BulkStore.ItemView::eplId).containsExactlyInAnyOrder(2L,4L,5L);
+            assertThat(preview.items()).extracting(item -> java.util.Objects.requireNonNull(item).eplId()).containsExactlyInAnyOrder(2L,4L,5L);
             f.setExcludedIds(new Long[]{4L});
             assertThat(bulk.preview(f,org.springframework.data.domain.PageRequest.of(0,20),false,true,null,true).selectedBooks()).isEqualTo(2);
         } finally {torrentProperties.effective().setEnabled(false);}
@@ -90,7 +90,7 @@ class CatalogLibraryFilterTests {
             }
             var result=service.search(f,org.springframework.data.domain.PageRequest.of(0,20,org.springframework.data.domain.Sort.by("eplId")));
             assertThat(result.getContent()).as("torrent=%s/%s downloaded=%s calibre=%s/%s",tp,tr,downloaded,cp,cr)
-                .extracting(CatalogBook::getEplId).containsExactlyElementsOf(expected);
+                .extracting(book -> java.util.Objects.requireNonNull(book).getEplId()).containsExactlyElementsOf(expected);
             assertThat(result.getTotalElements()).isEqualTo(expected.size());
         }
     }
@@ -100,7 +100,7 @@ class CatalogLibraryFilterTests {
         try {
             var preview=bulk.preview(f,org.springframework.data.domain.PageRequest.of(0,1),false,true,null,true);
             assertThat(preview.selectedBooks()).isEqualTo(1);
-            assertThat(preview.items()).extracting(com.rlibanez.eplsync.torrent.bulk.BulkStore.ItemView::eplId).containsExactly(1L);
+            assertThat(preview.items()).extracting(item -> java.util.Objects.requireNonNull(item).eplId()).containsExactly(1L);
             f.setExcludedIds(new Long[]{1L});
             assertThat(bulk.preview(f,org.springframework.data.domain.PageRequest.of(0,1),false,true,null,true).selectedBooks()).isZero();
             try(var file=exports.prepare(f,org.springframework.data.domain.Sort.by("eplId"))) {
@@ -176,12 +176,12 @@ class CatalogLibraryFilterTests {
     @Test void jsonTorrentStatesRetainMultipleAndSingleValuesForSelections() {
         var mapper=tools.jackson.databind.json.JsonMapper.builder().build();
         var filter=mapper.readValue("{\"torrentStatus\":[\"QUEUED\",\"UNKNOWN\"]}",CatalogBookFilter.class);
-        assertThat(service.search(filter,org.springframework.data.domain.PageRequest.of(0,20,org.springframework.data.domain.Sort.by("eplId"))).getContent()).extracting(CatalogBook::getEplId).containsExactly(1L,4L);
+        assertThat(service.search(filter,org.springframework.data.domain.PageRequest.of(0,20,org.springframework.data.domain.Sort.by("eplId"))).getContent()).extracting(book -> java.util.Objects.requireNonNull(book).getEplId()).containsExactly(1L,4L);
         var single=mapper.readValue("{\"torrentStatus\":\"QUEUED\"}",CatalogBookFilter.class);
-        assertThat(service.search(single,org.springframework.data.domain.PageRequest.of(0,20)).getContent()).extracting(CatalogBook::getEplId).containsExactly(1L);
+        assertThat(service.search(single,org.springframework.data.domain.PageRequest.of(0,20)).getContent()).extracting(book -> java.util.Objects.requireNonNull(book).getEplId()).containsExactly(1L);
     }
     @Test void jsonFiltersRetainTheSameCriteriaForSelectAllOperations() {
         var filter=tools.jackson.databind.json.JsonMapper.builder().build().readValue("{\"torrentPresence\":\"PRESENT\",\"calibrePresence\":\"ABSENT\"}",CatalogBookFilter.class);
-        assertThat(service.search(filter,org.springframework.data.domain.PageRequest.of(0,20)).getContent()).extracting(CatalogBook::getEplId).containsExactly(5L);
+        assertThat(service.search(filter,org.springframework.data.domain.PageRequest.of(0,20)).getContent()).extracting(book -> java.util.Objects.requireNonNull(book).getEplId()).containsExactly(5L);
     }
 }

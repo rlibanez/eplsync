@@ -64,18 +64,18 @@ class CalibreTransfersTests {
         return catalogTransfers.prepare(new CatalogCalibreTransfers.Selection(filter));
     }
     CatalogCalibreTransfers.Request catalogRequest(CatalogCalibreTransfers.Prepared prepared,boolean download) {
-        return new CatalogCalibreTransfers.Request(UUID.randomUUID().toString(),"other",prepared.books(),prepared.files().stream().map(f->new CalibreTransfers.FileChoice(f.recordId(),f.index())).toList(),download,prepared.missing().stream().map(CatalogCalibreTransfers.Book::eplId).toList());
+        return new CatalogCalibreTransfers.Request(UUID.randomUUID().toString(),"other",prepared.books(),prepared.files().stream().map(f->new CalibreTransfers.FileChoice(f.recordId(),f.index())).toList(),download,prepared.missing().stream().map(book -> Objects.requireNonNull(book).eplId()).toList());
     }
     @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ","TORRENT_SYNC"})
     void catalogPrepareUsesFiltersAndExclusionsAndPinsOnlyTheCatalogRevision() {
         seedCatalog();var excluded=new com.rlibanez.eplsync.filter.CatalogBookFilter();excluded.setAuthor("Author");excluded.setExcludedIds(new Long[]{1L});
-        assertThat(catalogTransfers.prepare(new CatalogCalibreTransfers.Selection(excluded)).books()).extracting(CatalogCalibreTransfers.Book::eplId).containsExactly(2L,3L);
+        assertThat(catalogTransfers.prepare(new CatalogCalibreTransfers.Selection(excluded)).books()).extracting(book -> Objects.requireNonNull(book).eplId()).containsExactly(2L,3L);
         var filter=new com.rlibanez.eplsync.filter.CatalogBookFilter();filter.setTorrentPresence("PRESENT");filter.setTorrentRevision("UPDATED");filter.setTorrentStatus(new DownloadStatus[]{DownloadStatus.DOWNLOADED,DownloadStatus.QUEUED});filter.setExcludedIds(new Long[]{2L});
         var prepared=catalogTransfers.prepare(new CatalogCalibreTransfers.Selection(filter));
-        assertThat(prepared.books()).extracting(CatalogCalibreTransfers.Book::eplId).containsExactly(1L);
-        assertThat(prepared.files()).extracting(CalibreTransfers.Candidate::recordId).containsExactly(record);
+        assertThat(prepared.books()).extracting(book -> Objects.requireNonNull(book).eplId()).containsExactly(1L);
+        assertThat(prepared.files()).extracting(candidate -> Objects.requireNonNull(candidate).recordId()).containsExactly(record);
         jdbc.update("UPDATE catalog_books SET revision=2 WHERE epl_id=1");
-        assertThat(catalogSelection(1L).missing()).extracting(CatalogCalibreTransfers.Book::eplId).containsExactly(1L);
+        assertThat(catalogSelection(1L).missing()).extracting(book -> Objects.requireNonNull(book).eplId()).containsExactly(1L);
     }
     @Test @WithMockUser(authorities={"CATALOG_READ","CALIBRE_SEND","DOWNLOADS_FILES_READ"})
     void catalogSendReusesTransferWorkerLibrarySelectionAndIdempotency() {

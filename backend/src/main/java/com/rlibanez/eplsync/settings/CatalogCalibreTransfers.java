@@ -15,7 +15,6 @@ import java.util.*;
 
 /** Resolves catalog selections locally; pins revisions before creating the existing transfer jobs. */
 @Service
-@lombok.RequiredArgsConstructor
 public class CatalogCalibreTransfers {
     public record Book(long eplId,double revision,String title) {}
     public record Selection(CatalogBookFilter filters) {}
@@ -31,7 +30,14 @@ public class CatalogCalibreTransfers {
     private final BulkStore bulk;
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     private final org.springframework.transaction.PlatformTransactionManager manager;
-    private final tools.jackson.databind.json.JsonMapper json=tools.jackson.databind.json.JsonMapper.builder().build();
+    private final tools.jackson.databind.json.JsonMapper json;
+    public CatalogCalibreTransfers(CatalogBookService catalog,DownloadRepository downloads,DownloadTrackingService tracking,
+            EpubFiles epub,CalibreSettings settings,CalibreClient client,CalibreTransfers transfers,BulkStore bulk,
+            org.springframework.jdbc.core.JdbcTemplate jdbc,org.springframework.transaction.PlatformTransactionManager manager) {
+        this.catalog=catalog;this.downloads=downloads;this.tracking=tracking;this.epub=epub;this.settings=settings;
+        this.client=client;this.transfers=transfers;this.bulk=bulk;this.jdbc=jdbc;this.manager=manager;
+        this.json=tools.jackson.databind.json.JsonMapper.builder().build();
+    }
     private static void require() {
         Permission.require(Permission.CATALOG_READ);Permission.require(Permission.CALIBRE_SEND);Permission.require(Permission.DOWNLOADS_FILES_READ);
     }
@@ -43,7 +49,7 @@ public class CatalogCalibreTransfers {
         var books=page.getContent().stream().map(b->new Book(b.getEplId(),b.getRevision(),b.getTitle())).toList();
         var connection=settings.connection();var check=client.check(connection);
         var candidates=new ArrayList<CalibreTransfers.Candidate>();var missing=new ArrayList<Book>();
-        var records=downloads.findByEplIdIn(books.stream().map(Book::eplId).toList());
+        var records=downloads.findByEplIdIn(books.stream().map(book -> Objects.requireNonNull(book).eplId()).toList());
         String instance=tracking.instanceId();long deadline=System.nanoTime()+java.time.Duration.ofMinutes(2).toNanos();
         for(var b:books) {
             int before=candidates.size();
@@ -64,11 +70,11 @@ public class CatalogCalibreTransfers {
         if(request==null || request.id()==null || !request.id().matches("[a-zA-Z0-9-]{1,100}") || request.books()==null || request.books().isEmpty() || request.books().size()>1000 || request.books().stream().anyMatch(Objects::isNull) || request.files()==null || request.files().size()>1000 || request.files().stream().anyMatch(Objects::isNull)) throw new UserInputException("Selección de Calibre inválida");
         if(request.pending()==null || request.pending().size()>1000 || request.pending().stream().anyMatch(Objects::isNull) || new HashSet<>(request.pending()).size()!=request.pending().size() || request.pending().stream().anyMatch(id->request.books().stream().noneMatch(b->b.eplId()==id))) throw new UserInputException("Selección de descargas pendientes inválida");
         if(json.writeValueAsString(request).length()>524288) throw new UserInputException("La selección es demasiado grande; selecciona menos libros");
-        if(new HashSet<>(request.books().stream().map(Book::eplId).toList()).size()!=request.books().size() || new HashSet<>(request.files()).size()!=request.files().size()) throw new UserInputException("No selecciones libros o archivos duplicados");
+        if(new HashSet<>(request.books().stream().map(book -> Objects.requireNonNull(book).eplId()).toList()).size()!=request.books().size() || new HashSet<>(request.files()).size()!=request.files().size()) throw new UserInputException("No selecciones libros o archivos duplicados");
         return transfers.preparing(()-> {
             var existing=existing(request);if(existing!=null) return existing;
             var connection=settings.connection();String instance=tracking.instanceId();
-            var filter=new CatalogBookFilter();filter.setSelectedIds(request.books().stream().map(Book::eplId).toArray(Long[]::new));
+            var filter=new CatalogBookFilter();filter.setSelectedIds(request.books().stream().map(book -> Objects.requireNonNull(book).eplId()).toArray(Long[]::new));
             var prepared=prepare(new Selection(filter));
             if(!prepared.books().equals(request.books())) throw new UserInputException("El catálogo cambió; vuelve a preparar el envío");
             if(prepared.libraries().stream().noneMatch(l->l.id().equals(request.library()))) throw new UserInputException("La biblioteca de destino no está disponible");

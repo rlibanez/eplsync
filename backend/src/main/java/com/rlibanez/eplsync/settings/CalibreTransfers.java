@@ -197,7 +197,7 @@ public class CalibreTransfers {
         var rows=jdbc.query("SELECT * FROM calibre_job_items"+where+" ORDER BY "+order(sort,Map.of("position","position","eplId","epl_id","revision","CAST(revision AS REAL)","name","name COLLATE EPL_TEXT","state","state","calibreId","calibre_id","message","message COLLATE EPL_TEXT"))+",position LIMIT ? OFFSET ?",CalibreTransfers::mapItem,args.toArray());
         if(Permission.has(Permission.CATALOG_READ) && !rows.isEmpty()) {
             var covers=new HashMap<Long,com.rlibanez.eplsync.model.CatalogBook>();
-            catalogBooks.findAllById(rows.stream().map(Item::eplId).distinct().toList()).forEach(book->covers.put(book.getEplId(),book));
+            catalogBooks.findAllById(rows.stream().map(item -> Objects.requireNonNull(item).eplId()).distinct().toList()).forEach(book->covers.put(book.getEplId(),book));
             rows=rows.stream().map(item->{
                 var book=covers.get(item.eplId());
                 return book==null?item:new Item(item.id(),item.recordId(),item.index(),item.name(),item.size(),item.eplId(),item.revision(),item.state(),item.calibreId(),item.message(),item.identityComplete(),item.downloadJobId(),book.getCoverUrl(),book.getCoverAvailable(),item.position());
