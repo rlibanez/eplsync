@@ -71,7 +71,7 @@ class RevisionCleanupTests {
         var input=removal("files",true);var job=cleanup.removeSelected(input);
         assertThat(job.directRemoval()).isTrue();assertThat(job.selected()).isEqualTo(1);
         assertThat(cleanup.removeSelected(input).id()).isEqualTo(job.id());
-        assertThat(cleanup.jobs("downloads",0,20).items()).extracting(RevisionCleanup.Job::id).contains(job.id());
+        assertThat(cleanup.jobs("downloads",0,20).items()).extracting(value -> Objects.requireNonNull(value).id()).contains(job.id());
         cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
         assertThat(downloads.findById(old)).isEmpty();assertThat(downloads.findById(newer)).isPresent();
         cleanup.removeSelected(input);cleanup.cycle();verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);

@@ -63,7 +63,7 @@ class CalibreTorrentConcurrencyTests {
         var identities=new HashMap<String,Long>();
         var commands=new ArrayList<TorrentDownload>();
         for(long id=1;id<=100;id++) {
-            var book=books.save(CatalogBook.builder().eplId(id).revision(1.0).title("Book "+id).author("Author").build());
+            books.save(CatalogBook.builder().eplId(id).revision(1.0).title("Book "+id).author("Author").build());
             var row=new DownloadRecord();row.setEplId(id);row.setRevision(1.0);row.setHash(String.format("%040X",id));
             row.setClient("qbittorrent");row.setClientInstanceId(tracking.instanceId());row.setStatus(DownloadStatus.DOWNLOADED);
             row.setOrigin(DownloadRecord.Origin.EPLSYNC);row.setCreatedAt(Instant.now());
