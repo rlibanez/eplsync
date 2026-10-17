@@ -32,6 +32,16 @@ class CatalogMultiFilterTests {
    .language(langs[i]).revision(i==0?1.4:2.0).status(i==1?BookStatus.VERIFICADO:BookStatus.DISPONIBLE)
    .publicationStatus(i==1?PublicationStatus.UPDATED:PublicationStatus.PUBLISHED).genres("Drama").collection("Series").build());
  }
+ @Test void eplIdsAcceptLargeListsAndKeepPagingAndExclusions() throws Exception {
+  var ids=java.util.stream.LongStream.rangeClosed(1,40000).mapToObj(Long::toString).toArray(String[]::new);
+  mvc.perform(get("/api/catalog/books").param("eplId",ids).param("excludedIds","2").param("size","2").param("page","1").param("sort","eplId,asc"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4))
+   .andExpect(jsonPath("$.items[0].eplId").value(4)).andExpect(jsonPath("$.items[1].eplId").value(5));
+ }
+ @Test void otherFieldsStillRejectMoreThanOneHundredValues() throws Exception {
+  mvc.perform(get("/api/catalog/books").param("author",java.util.stream.IntStream.range(0,101).mapToObj(i->"Author "+i).toArray(String[]::new)))
+   .andExpect(status().isBadRequest()).andExpect(jsonPath("$.details").value("Máximo de 100 valores por campo"));
+ }
  @Test void repeatedQueryValuesUseOrWithinFieldsAndAndAcrossFields() throws Exception {
   mvc.perform(get("/api/catalog/books").param("author","Asimov","Sanderson").param("language","es","en")
    .param("status","DISPONIBLE","VERIFICADO").param("publicationStatus","PUBLISHED","UPDATED"))

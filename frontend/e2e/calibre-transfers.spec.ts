@@ -222,7 +222,7 @@ test("source read without Calibre send permission cannot send or manage jobs", a
   ).toBeVisible();
 });
 
-test("job validation errors stop polling until the user retries", async ({
+test("job validation errors stop polling and do not offer a useless retry", async ({
   page,
 }) => {
   let requests = 0;
@@ -246,8 +246,7 @@ test("job validation errors stop polling until the user retries", async ({
   const initialRequests = requests;
   await page.waitForTimeout(6200);
   expect(requests).toBe(initialRequests);
-  await page.getByRole("button", { name: "Reintentar", exact: true }).click();
-  await expect.poll(() => requests).toBe(initialRequests + 1);
+  await expect(page.getByRole("button", { name: "Reintentar", exact: true })).toHaveCount(0);
 });
 
 test("Calibre jobs filter by clicking state and user", async ({ page }) => {

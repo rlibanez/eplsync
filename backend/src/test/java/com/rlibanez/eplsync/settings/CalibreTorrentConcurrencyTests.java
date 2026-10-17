@@ -46,6 +46,7 @@ class CalibreTorrentConcurrencyTests {
     @Autowired TorrentProperties properties;
     @Autowired BulkStore store;
     @Autowired JdbcTemplate jdbc;
+    @Autowired javax.sql.DataSource source;
     @Autowired RevisionCleanup cleanup;
     @Autowired JobRetries retries;
     @Autowired com.rlibanez.eplsync.events.EventJournal journal;
@@ -87,6 +88,7 @@ class CalibreTorrentConcurrencyTests {
             assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             if(inFlight.get()>0) overlap.incrementAndGet();
             if(id==1) {
+                poisonReturnedConnection();
                 // The remote upload succeeded. Hold a competing SQLite write while
                 // both workers try to persist their local results, without replaying HTTP.
                 var locked=new CountDownLatch(1);var done=new CompletableFuture<Void>();contention.add(done);
@@ -107,7 +109,7 @@ class CalibreTorrentConcurrencyTests {
             return tracking.submit(command,()-> {
                 assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
                 inFlight.incrementAndGet();
-                try {Thread.sleep(15);assertThat(added.add(command.hash())).isTrue();return TorrentDownloadResult.Status.ACCEPTED;}
+                try {Thread.sleep(15);assertThat(added.add(command.hash())).isTrue();if(command.hash().equals(String.format("%040X",1001))) poisonReturnedConnection();return TorrentDownloadResult.Status.ACCEPTED;}
                 catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}
                 finally {inFlight.decrementAndGet();}
             });
@@ -139,6 +141,41 @@ class CalibreTorrentConcurrencyTests {
             assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Integer.class)).isEqualTo(100);
             assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE status='SUBMITTED'",Integer.class)).isEqualTo(100);
             assertThat(jdbc.queryForList("PRAGMA foreign_key_check")).isEmpty();
+            // The same recovered pool must handle remote deletions too, including
+            // loss of a connection after delete HTTP succeeded but before recording it.
+            var remote=new ArrayList<RemoteTorrent>();
+            for(long id=1;id<=6;id++) remote.add(new RemoteTorrent(String.format("%040X",id),DownloadStatus.DOWNLOADED,Instant.now(),Set.of(),"/downloads/"+id+".epub","Book","/downloads",false));
+            var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);
+            when(adapter.listTorrents()).thenAnswer(call->List.copyOf(remote));
+            when(adapter.listTorrents(anySet())).thenAnswer(call->List.copyOf(remote));
+            var deletions=new AtomicInteger();
+            doAnswer(call->{String hash=call.getArgument(0);assertThat(remote.removeIf(row->row.hash().equals(hash))).isTrue();if(deletions.incrementAndGet()==1) poisonReturnedConnection();return null;}).when(adapter).deleteTorrent(anyString(),eq(true));
+            when(torrent.exclusiveClient(any())).thenAnswer(call->{java.util.function.Function<com.rlibanez.eplsync.torrent.TorrentClient,?> work=call.getArgument(0);return work.apply(adapter);});
+            var previous=org.springframework.security.core.context.SecurityContextHolder.getContext();
+            var security=org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+            security.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new org.springframework.security.core.authority.SimpleGrantedAuthority(p.name())).toList()));
+            org.springframework.security.core.context.SecurityContextHolder.setContext(security);
+            try {
+                var ids=choices.subList(0,6).stream().map(CalibreTransfers.FileChoice::recordId).toList();
+                var removal=cleanup.removeSelected(new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(null,ids,true,"files",true,true)));
+                cleanup.cycle();cleanup.recover();cleanup.cycle();worker.tick();transfers.cycle();
+                assertThat(cleanup.get(removal.id()).succeeded()).isEqualTo(6);
+                assertThat(cleanup.get(removal.id()).blocked()).isZero();
+                assertThat(deletions.get()).isEqualTo(6);
+                verify(adapter,times(6)).deleteTorrent(anyString(),eq(true));
+                verify(torrent,times(100)).addTorrent(any(),any());
+                verify(calibre,times(100)).uploadEpub(any(),any(),anyString(),anyString());
+            } finally {org.springframework.security.core.context.SecurityContextHolder.setContext(previous);}
+            assertThat(jdbc.queryForObject("PRAGMA integrity_check",String.class)).isEqualTo("ok");
         } finally {worker.close();properties.effective().setEnabled(false);}
     }
+    private void poisonReturnedConnection() {
+        try(var pooled=source.getConnection()) {
+            pooled.setAutoCommit(false);
+            try(var statement=pooled.createStatement();var result=statement.executeQuery("SELECT 1")) {assertThat(result.next()).isTrue();}
+            pooled.unwrap(org.sqlite.SQLiteConnection.class).getDatabase().exec("COMMIT",false);
+            assertThatThrownBy(pooled::close).isInstanceOf(java.sql.SQLException.class).hasMessageContaining("no transaction is active");
+        } catch(java.sql.SQLException ex) {throw new IllegalStateException(ex);}
+    }
+
 }

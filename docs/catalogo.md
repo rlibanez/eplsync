@@ -25,6 +25,12 @@ de título, autor, idioma, género y otros campos. Puedes ordenar por las cabece
 o mediante **Ordenar**; **Columnas** permite mostrar, ocultar y reordenar campos.
 Los anchos de las columnas se ajustan arrastrando sus separadores.
 
+EPL ID admite listas sin un límite fijo de valores en la aplicación; el resto de
+campos mantiene el máximo de 100 valores. Si la solicitud supera los límites HTTP
+del servidor o del proxy, divide los identificadores en grupos más pequeños.
+Los errores de validación o de tamaño requieren corregir la búsqueda y no ofrecen
+«Reintentar»; los errores temporales de conexión o del servidor sí lo permiten.
+
 Las vistas de tabla, cuadrícula y mosaico presentan los mismos resultados.
 Abre un libro para consultar su ficha, enlaces y, si tienes permiso, el historial
 asociado. Selecciona libros para enviarlos al cliente torrent, enviarlos a Calibre

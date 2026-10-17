@@ -173,7 +173,8 @@ public class CatalogBookFilter {
 
         if (eplId != null && java.util.Arrays.stream(eplId).anyMatch(v -> v == null || v < 1))
             throw new com.rlibanez.eplsync.exception.UserInputException("eplId debe ser un entero mayor que cero");
-        eplId = compact(eplId); revision = compact(revision);
+        eplId = eplId == null || eplId.length == 0 ? null : java.util.Arrays.stream(eplId).distinct().toArray(Long[]::new);
+        revision = compact(revision);
         language = compact(language); publicationStatus = compact(publicationStatus);
 
         if (revision != null && java.util.Arrays.stream(revision).anyMatch(v -> v == null || !Double.isFinite(v) || v < 0))

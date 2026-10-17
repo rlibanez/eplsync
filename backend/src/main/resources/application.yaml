@@ -13,6 +13,7 @@ spring:
     driver-class-name: org.sqlite.JDBC
     hikari:
       maximum-pool-size: 2
+      exception-override-class-name: com.rlibanez.eplsync.config.SqliteConnectionExceptionOverride
       # WAL requiere almacenamiento local y backups consistentes de SQLite.
       data-source-properties:
         journal_mode: WAL

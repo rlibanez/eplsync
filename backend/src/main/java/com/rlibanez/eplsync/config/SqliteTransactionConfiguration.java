@@ -16,31 +16,50 @@ import org.springframework.transaction.TransactionDefinition;
 @Configuration
 public class SqliteTransactionConfiguration {
     @Bean
-    JpaTransactionManager transactionManager(EntityManagerFactory factory) {
-        return new SingleWriterTransactionManager(factory);
+    JpaTransactionManager transactionManager(EntityManagerFactory factory, javax.sql.DataSource source) {
+        return new SingleWriterTransactionManager(factory,source);
     }
 
     static final class SqliteJpaDialect extends org.springframework.orm.jpa.vendor.HibernateJpaDialect {
+        private final javax.sql.DataSource source;
+        SqliteJpaDialect(javax.sql.DataSource source) {this.source=source;}
         @Override public Object beginTransaction(jakarta.persistence.EntityManager entityManager,
                 TransactionDefinition definition) throws java.sql.SQLException {
             var session=entityManager.unwrap(org.hibernate.engine.spi.SessionImplementor.class);
-            var connection=session.getJdbcCoordinator().getLogicalConnection().getPhysicalConnection()
-                    .unwrap(org.sqlite.SQLiteConnection.class);
+            var pooled=session.getJdbcCoordinator().getLogicalConnection().getPhysicalConnection();
+            var connection=pooled.unwrap(org.sqlite.SQLiteConnection.class);
             // The Java queue cannot cover JDBC autocommit writes or other processes.
             // Reserve SQLite's writer before the first SELECT, rather than upgrading
             // a DEFERRED snapshot after an intervening commit (BUSY_SNAPSHOT).
             connection.getConnectionConfig().setTransactionMode(definition.isReadOnly()
                     ? org.sqlite.SQLiteConfig.TransactionMode.DEFERRED
                     : org.sqlite.SQLiteConfig.TransactionMode.IMMEDIATE);
-            return super.beginTransaction(entityManager,definition);
+            try {return super.beginTransaction(entityManager,definition);}
+            catch(java.sql.SQLException | RuntimeException | Error ex) {
+                // setAutoCommit(false) changes the driver's Java state before BEGIN.
+                // A failed BEGIN must never leave that connection available to borrowers.
+                try {source.unwrap(com.zaxxer.hikari.HikariDataSource.class).evictConnection(pooled);}
+                catch(java.sql.SQLException | RuntimeException evictionFailure) {
+                    ex.addSuppressed(evictionFailure);
+                    try {pooled.close();}catch(java.sql.SQLException closeFailure) {ex.addSuppressed(closeFailure);}
+                }
+                throw ex;
+            } finally {
+                // commit()/rollback() implicitly issue another BEGIN in xerial JDBC.
+                // Keep the current native IMMEDIATE reservation, but make that idle
+                // successor DEFERRED so a completed commit cannot fail taking a new writer.
+                connection.getConnectionConfig().setTransactionMode(org.sqlite.SQLiteConfig.TransactionMode.DEFERRED);
+            }
         }
     }
 
     static final class SingleWriterTransactionManager extends JpaTransactionManager {
         private final ReentrantLock writer = new ReentrantLock(true);
         private final Set<Object> owners = ConcurrentHashMap.newKeySet();
-        SingleWriterTransactionManager(EntityManagerFactory factory) {
+        private final javax.sql.DataSource source;
+        SingleWriterTransactionManager(EntityManagerFactory factory, javax.sql.DataSource source) {
             super(factory);
+            this.source=source;
             // Keep framework transaction traces under Spring's logging category.
             logger = org.apache.commons.logging.LogFactory.getLog(JpaTransactionManager.class);
         }
@@ -48,7 +67,7 @@ public class SqliteTransactionConfiguration {
         @Override public void afterPropertiesSet() {
             super.afterPropertiesSet();
             // Spring obtains the provider dialect here; install ours afterwards.
-            setJpaDialect(new SqliteJpaDialect());
+            setJpaDialect(new SqliteJpaDialect(source));
         }
 
         @Override protected void doBegin(Object transaction, TransactionDefinition definition) {

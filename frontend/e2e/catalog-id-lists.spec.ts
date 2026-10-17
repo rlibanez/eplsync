@@ -44,3 +44,79 @@ test("pasted multiline IDs remain separate and number ranges use one grid column
   await search.getByRole("button", {name: "Buscar", exact: true}).click();
   await expect(page).toHaveURL(/eplId=123&eplId=456&eplId=789/);
 });
+
+test("more than 100 EPL IDs are submitted without a client limit", async ({
+  page,
+}) => {
+  const values = Array.from({ length: 150 }, (_, i) => String(i + 1));
+  await page.goto("/catalog");
+  const search = page.locator(".catalog-search");
+  await search.locator("summary").click();
+  await search
+    .getByRole("textbox", { name: "EPL ID", exact: true })
+    .fill(values.join(" "));
+  const request = page.waitForRequest(
+    (r) =>
+      r.url().includes("/api/catalog/books?") &&
+      new URL(r.url()).searchParams.getAll("eplId").length === 150,
+  );
+  await search.getByRole("button", { name: "Buscar", exact: true }).click();
+  expect(new URL((await request).url()).searchParams.getAll("eplId")).toEqual(
+    values,
+  );
+});
+for (const status of [400, 403, 404, 413, 414, 422, 431, 503]) {
+  test(`catalog HTTP ${status} offers retry only for temporary failures`, async ({
+    page,
+  }) => {
+    await page.goto("/catalog");
+    await page.locator(".catalog-search summary").click();
+    let calls = 0;
+    await page.route("**/api/catalog/books?**", (r) => {
+      calls++;
+      return status === 400 || status === 422
+        ? r.fulfill({
+            status,
+            json: { details: "Revisa los EPL ID indicados" },
+          })
+        : r.fulfill({
+            status,
+            contentType: "text/html",
+            body: "<html>Request rejected</html>",
+          });
+    });
+    await page
+      .locator(".catalog-search")
+      .getByRole("textbox", { name: "EPL ID", exact: true })
+      .fill("1");
+    await page
+      .locator(".catalog-search")
+      .getByRole("button", { name: "Buscar", exact: true })
+      .click();
+    const alert = page.getByRole("alert").filter({
+      hasText:
+        status === 400 || status === 422
+          ? "Revisa los EPL ID indicados"
+          : [413, 414, 431].includes(status)
+            ? "grupos más pequeños"
+            : status === 404
+              ? "No se ha encontrado"
+              : `HTTP ${status}`,
+    });
+    await expect(alert).toBeVisible();
+    if (status === 503)
+      await expect(
+        alert.getByRole("button", { name: "Reintentar", exact: true }),
+      ).toBeVisible();
+    else {
+      await expect(
+        alert.getByRole("button", { name: "Reintentar", exact: true }),
+      ).toHaveCount(0);
+      expect(calls).toBe(1);
+    }
+    if ([413, 414, 431].includes(status))
+      await expect(alert).toContainText("grupos más pequeños");
+    if ([400, 422].includes(status))
+      await expect(alert).toContainText("Revisa los EPL ID indicados");
+  });
+}

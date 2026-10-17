@@ -104,6 +104,10 @@ public class BulkWorker {
         if (!ready || closing) return IDLE_WAIT;
         try { return dispatch(); }
         catch (RuntimeException ex) {
+            if (com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) {
+                log.debug("Cola torrent aplazada por contención SQLite; se comprobará de nuevo sin repetir envíos: jobId={}",activeId);
+                return TimeUnit.SECONDS.toNanos(1);
+            }
             // No registrar snapshots, credenciales ni respuestas HTTP remotas.
             log.error("No se pudo actualizar la cola torrent: jobId={}, tipo={}", activeId, OperationDiagnostics.technical(ex));
             return TimeUnit.SECONDS.toNanos(1);

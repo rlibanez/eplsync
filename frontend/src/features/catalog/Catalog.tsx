@@ -47,7 +47,7 @@ import {
   Check,
 } from "lucide-react";
 import { get, catalogParams, type BookPage } from "../../api/catalog";
-import { Loading, Failure } from "../../components/Feedback";
+import { Loading, Failure, canRetry } from "../../components/Feedback";
 export function Catalog() {
   const auth = useAuth();
   const { t, i18n } = useTranslation();
@@ -111,6 +111,7 @@ export function Catalog() {
   const query = params.toString();
   const result = useQuery({
     queryKey: ["catalog", query],
+    retry: (count, error) => count < 1 && canRetry(error),
     queryFn: ({ signal }) =>
       get<BookPage>(
         `/catalog/books?${filterRequest(catalogParams(params))}`,

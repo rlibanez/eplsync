@@ -344,6 +344,8 @@
     "retry": "Retry"
   },
   "errors": {
+    "requestTooLarge": "The request exceeds the size allowed by the server or proxy. Reduce the submitted data; for an EPL ID list, split it into smaller groups and search again.",
+    "invalidRequest": "The request is invalid or exceeds the server limits. Check the submitted values; if the EPL ID list is very long, split it into smaller groups.",
     "notFound": "This book could not be found.",
     "http": "Could not retrieve the information (HTTP {{status}}).",
     "network": "Could not connect to EPL Sync. Check that the server is available.",

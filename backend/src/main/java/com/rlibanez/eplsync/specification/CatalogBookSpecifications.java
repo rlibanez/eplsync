@@ -29,7 +29,7 @@ public final class CatalogBookSpecifications {
             spec = spec.and((root,q,cb) -> cb.not(selectedIds(root,cb,f.getExcludedIds())));
 
         if (f.getEplId() != null) {
-            spec = spec.and((root, q, cb) -> root.get("eplId").in((Object[]) f.getEplId()));
+            spec = spec.and((root, q, cb) -> selectedIds(root,cb,f.getEplId()));
         }
 
         spec = andIfNotNull(spec, textFilter("author",f.getAuthor(),f.getAuthorOperator()));
