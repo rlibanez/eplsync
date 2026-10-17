@@ -1738,6 +1738,8 @@
     "create": "Crear reintento"
   },
   "revisionCleanup": {
+    "removalHelp": "Borrado de los registros seleccionados y, según la opción elegida, de sus torrents y archivos. Las dependencias de otros trabajos se comprueban antes de eliminar.",
+    "removalJobTitle": "Trabajo de borrado de descargas",
     "title": "Limpiar revisiones antiguas",
     "jobs": "Trabajos de limpieza",
     "configure": "Opciones",

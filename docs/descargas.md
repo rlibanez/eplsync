@@ -24,6 +24,24 @@ requiere `TORRENT_CLEANUP`, y eliminar también sus archivos requiere además
 del cliente de destino, las protecciones de archivos compartidos y el registro en
 Eventos. Eliminar un registro local no cancela sus solicitudes de limpieza pendientes.
 
+Al confirmar **Eliminar** desde Estado de las descargas se crea un trabajo de tipo
+**Limpieza** en **Descargas → Trabajos**, y se abre su detalle. El trabajo conserva
+por separado la acción sobre el torrent y la opción de borrar el registro de EPL Sync.
+El registro solo se elimina tras confirmar la ausencia del torrent, salvo si se eligió
+borrar únicamente el registro local.
+
+El detalle muestra los elementos pendientes, bloqueados, fallidos y sin confirmar.
+**Continuar** vuelve a comprobar los bloqueados o fallidos tras resolver su causa;
+**Comprobar borrados sin confirmar** solo consulta el cliente; **Reintentar borrados
+sin confirmar** autoriza expresamente otra orden de borrado, con las mismas
+protecciones. Un reinicio o una consulta no repite una orden incierta.
+
+Los EPUB necesarios para Calibre (incluidos los trabajos pausados), los envíos torrent
+activos, las revisiones de sustitución y las limpiezas incompatibles siguen protegidos.
+Un borrado automático compatible de una actualización queda resuelto al confirmar la
+misma ausencia, sin enviar otra orden. Las solicitudes manuales pendientes anteriores
+se incorporan a los trabajos de su propietario al consultar la lista, sin ejecutarlas de nuevo.
+
 ## Sincronizar con el cliente
 
 - **Sincronizar con el cliente:** actualiza los registros según el estado de qBittorrent.

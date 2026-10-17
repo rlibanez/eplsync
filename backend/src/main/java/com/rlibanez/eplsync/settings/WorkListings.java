@@ -36,6 +36,7 @@ public class WorkListings {
         boolean normal=downloads?Permission.has(Permission.TORRENT_JOBS_MANAGE):Permission.has(Permission.CALIBRE_SEND)||Permission.has(Permission.CALIBRE_JOBS_MANAGE);
         var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         String owner=auth!=null && auth.getPrincipal() instanceof Account account && Permission.has(downloads?Permission.TORRENT_SYNC:Permission.CALIBRE_READ)?account.id():"";
+        if(downloads && !owner.isEmpty()) cleanup.adoptCurrentRemovals();
         String normalSql=downloads?"""
             SELECT j.id,'normal' kind,CASE WHEN typeof(j.created_at) IN ('integer','real') THEN j.created_at ELSE cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) END createdAt,
             coalesce(j.type,'DOWNLOAD') type,j.state state,j.event_actor_username username,NULL library,j.selected_books selectedBooks,
@@ -51,7 +52,7 @@ public class WorkListings {
             """;
         String projection="""
             SELECT j.id,'cleanup' kind,j.created_at createdAt,'CLEANUP' type,j.state state,j.owner_username username,j.library,
-            coalesce(json_array_length(j.confirmation),0) selectedBooks,coalesce(json_array_length(j.confirmation),0) total,
+            CASE WHEN j.direct_removal=1 THEN count(i.id) ELSE coalesce(json_array_length(j.confirmation),0) END selectedBooks,CASE WHEN j.direct_removal=1 THEN count(i.id) ELSE coalesce(json_array_length(j.confirmation),0) END total,
             coalesce(sum(i.state IN ('SUCCEEDED','BLOCKED','FAILED','UNCERTAIN','CANCELLED') OR i.state='SKIPPED' AND EXISTS(SELECT 1 FROM json_each(j.confirmation) chosen WHERE chosen.value=i.id)),0) processed,
             coalesce(sum(i.state='SUCCEEDED'),0) accepted,coalesce(sum(i.state IN ('BLOCKED','FAILED','UNCERTAIN')),0) failed
             FROM revision_cleanup_jobs j LEFT JOIN revision_cleanup_items i ON i.job_id=j.id

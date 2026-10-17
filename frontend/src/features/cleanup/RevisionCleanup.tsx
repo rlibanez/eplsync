@@ -39,6 +39,7 @@ interface Job {
   library: string | null;
   allowUndownloaded?: boolean;
   deleteHistory?: boolean;
+  directRemoval?: boolean;
   createdAt: number;
   total: number;
   selected: number;
@@ -62,6 +63,7 @@ interface Item {
   state: string;
   message: string | null;
   dispatched: boolean;
+  blockingCalibreJobId?: string | null;
 }
 const active = (job?: Job) =>
   !!job && ["QUEUED", "RUNNING"].includes(job.state);
@@ -75,7 +77,7 @@ function ErrorMessage({ error }: { error: unknown }) {
     </Alert>
   ) : null;
 }
-function useActions(source: Source) {
+function useActions(source: Source, direct = false, deleteHistory = false) {
   const auth = useAuth();
   if (source === "calibre")
     return auth.can("CALIBRE_READ") && auth.can("CALIBRE_DELETE")
@@ -83,12 +85,12 @@ function useActions(source: Source) {
       : [];
   if (
     !auth.can("TORRENT_SYNC") ||
-    !auth.can("DOWNLOADS_FILES_READ") ||
-    !auth.can("DOWNLOADS_DELETE")
+    (!direct && !auth.can("DOWNLOADS_FILES_READ")) ||
+    ((!direct || deleteHistory) && !auth.can("DOWNLOADS_DELETE"))
   )
     return [];
   return [
-    "RECORD",
+    ...(auth.can("DOWNLOADS_DELETE") ? ["RECORD"] : []),
     ...(auth.can("TORRENT_CLEANUP")
       ? ["TORRENT", ...(auth.can("TORRENT_FILES_DELETE") ? ["FILES"] : [])]
       : []),
@@ -396,11 +398,13 @@ function CleanupWizard({
 function CleanupItems({
   rows,
   offset = 0,
+  direct = false,
   selected,
   onSelect,
 }: {
   rows: Item[];
   offset?: number;
+  direct?: boolean;
   selected?: string[];
   onSelect?: (ids: string[]) => void;
 }) {
@@ -416,7 +420,7 @@ function CleanupItems({
             <th>EPL ID</th>
             <th>{t("revisionCleanup.book")}</th>
             <th>{t("revisionCleanup.remove")}</th>
-            <th>{t("revisionCleanup.keep")}</th>
+            {!direct && <th>{t("revisionCleanup.keep")}</th>}
             <th>{t("revisionCleanup.detail")}</th>
           </tr>
         </thead>
@@ -466,11 +470,19 @@ function CleanupItems({
                   </>
                 )}
               </td>
-              <td>
-                r{item.replacementRevision}
-                <br />
-                <small>ID: {item.replacementId}</small>
-              </td>
+              {!direct && (
+                <td>
+                  {item.replacementId ? (
+                    <>
+                      r{item.replacementRevision}
+                      <br />
+                      <small>ID: {item.replacementId}</small>
+                    </>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              )}
               <td>
                 <Badge
                   variant="light"
@@ -487,6 +499,13 @@ function CleanupItems({
                   {t(`revisionCleanup.states.${item.state}`)}
                 </Badge>
                 {item.message && <p className="muted">{item.message}</p>}
+                {item.blockingCalibreJobId && (
+                  <Link
+                    to={`/calibre/jobs/${encodeURIComponent(item.blockingCalibreJobId)}`}
+                  >
+                    {t("calibreUpdateSend.calibreJob")}
+                  </Link>
+                )}
               </td>
             </tr>
           ))}
@@ -587,7 +606,11 @@ export function CleanupJob() {
       ].forEach((key) => void cache.invalidateQueries({ queryKey: [key] }));
     },
   });
-  const actions = useActions(job.data?.source || "downloads");
+  const actions = useActions(
+    job.data?.source || "downloads",
+    job.data?.directRemoval,
+    job.data?.deleteHistory,
+  );
   if (job.isPending) return <Loading />;
   if (job.isError)
     return <Failure error={job.error} retry={() => void job.refetch()} />;
@@ -617,14 +640,23 @@ export function CleanupJob() {
     <>
       <WorkNavigation source={data.source} id={id} />
       <PageTitle
-        title={t("revisionCleanup.jobTitle")}
-        description={t("revisionCleanup.protection")}
+        title={t(
+          data.directRemoval
+            ? "revisionCleanup.removalJobTitle"
+            : "revisionCleanup.jobTitle",
+        )}
+        description={t(
+          data.directRemoval
+            ? "revisionCleanup.removalHelp"
+            : "revisionCleanup.protection",
+        )}
       />
       <p className="hash-text">{id}</p>
       <section className="panel settings-section job-report-panel">
         <div className="job-controls-heading">
           <div className="action-row">
-            {["QUEUED", "RUNNING", "PAUSED"].includes(data.state) && (
+            {(["QUEUED", "RUNNING", "PAUSED"].includes(data.state) ||
+              (data.directRemoval && data.blocked + data.failed > 0)) && (
               <Button
                 variant="default"
                 disabled={command.isPending}
@@ -636,14 +668,18 @@ export function CleanupJob() {
             {(actions.includes(data.action) ||
               (data.action === "EPUB" && actions.includes("BOOK"))) && (
               <>
-                {data.state === "PAUSED" && actions.includes(data.action) && (
-                  <Button
-                    disabled={command.isPending}
-                    onClick={() => command.mutate("continue")}
-                  >
-                    {t("revisionCleanup.continue")}
-                  </Button>
-                )}
+                {(data.state === "PAUSED" ||
+                  (data.directRemoval &&
+                    data.blocked + data.failed > 0 &&
+                    !active(data))) &&
+                  actions.includes(data.action) && (
+                    <Button
+                      disabled={command.isPending}
+                      onClick={() => command.mutate("continue")}
+                    >
+                      {t("revisionCleanup.continue")}
+                    </Button>
+                  )}
                 {data.source === "downloads" &&
                   data.action !== "RECORD" &&
                   actions.includes(data.action) &&
@@ -720,7 +756,9 @@ export function CleanupJob() {
                     <div>
                       <dt>{t("send.deleteHistory")}</dt>
                       <dd>
-                        {t(data.deleteHistory ? "downloads.yes" : "downloads.no")}
+                        {t(
+                          data.deleteHistory ? "downloads.yes" : "downloads.no",
+                        )}
                       </dd>
                     </div>
                   )}
@@ -764,7 +802,11 @@ export function CleanupJob() {
         <Loading />
       ) : (
         <>
-          <CleanupItems rows={rows.data.items} offset={page * 20} />
+          <CleanupItems
+            rows={rows.data.items}
+            direct={data.directRemoval}
+            offset={page * 20}
+          />
           <Pager
             page={page}
             pages={rows.data.meta.totalPages}

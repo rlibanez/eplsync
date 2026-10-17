@@ -1,6 +1,6 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Alert, Button, Checkbox, Select } from "@mantine/core";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -35,6 +35,16 @@ type RowActions = {
   refreshRow: (row: Row) => void;
   removeRow: (row: Row) => void;
 };
+// getRandomValues also works on the HTTP LAN installations supported by EPL Sync.
+function removalId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 15) | 64;
+  bytes[8] = (bytes[8] & 63) | 128;
+  const hex = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 export function DownloadActions({
   eplId,
   selected,
@@ -53,6 +63,8 @@ export function DownloadActions({
   children?: (actions: RowActions) => ReactNode;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const removalRequest = useRef<{ signature: string; id: string } | null>(null);
   const { can } = useAuth();
   const { status, revision } = useLocale();
   const cache = useQueryClient();
@@ -72,28 +84,46 @@ export function DownloadActions({
   });
   const action = useMutation({
     meta: { backendEvents: true },
-    mutationFn: (request: Operation) =>
-      post<{ items: Outcome[] }>(
-        `/torrent/downloads/${request.operation === "refresh" ? "refresh-selected" : "remove-records"}`,
-        {
-          eplId: request.eplId,
-          ids: request.ids,
-          ...(request.operation === "remove"
-            ? {
-                clientAction: request.clientAction,
-                deleteHistory: request.deleteHistory,
-                confirm: true,
-                confirmFiles: request.confirmFiles,
-              }
-            : {}),
-        },
-      ),
+    mutationFn: (request: Operation) => {
+      if (request.operation === "refresh")
+        return post<{ items: Outcome[]; id?: string }>(
+          "/torrent/downloads/refresh-selected",
+          { eplId: request.eplId, ids: request.ids },
+        );
+      const removal = {
+        eplId: request.eplId,
+        ids: request.ids,
+        clientAction: request.clientAction,
+        deleteHistory: request.deleteHistory,
+        confirm: true,
+        confirmFiles: request.confirmFiles,
+      };
+      if (!can("TORRENT_SYNC"))
+        return post<{ items: Outcome[]; id?: string }>(
+          "/torrent/downloads/remove-records",
+          removal,
+        );
+      const signature = JSON.stringify(removal);
+      if (removalRequest.current?.signature !== signature)
+        removalRequest.current = { signature, id: removalId() };
+      return post<{ id?: string; items?: Outcome[] }>(
+        "/revision-cleanups/removals",
+        { requestId: removalRequest.current.id, removal },
+      );
+    },
     retry: false,
     onSuccess: (data, request) => {
       setRemoval(false);
       setConfirmed(false);
+      if (data.id) {
+        for (const key of ["jobs", "revision-cleanups", "downloads"])
+          void cache.invalidateQueries({ queryKey: [key] });
+        onDone(request.ids);
+        navigate(`/downloads/jobs/cleanup/${data.id}`);
+        return;
+      }
       setOutcomes(
-        data.items.map((item) => ({
+        (data.items ?? []).map((item) => ({
           ...item,
           revision: request.rows.find((row) => row.id === item.id)?.revision,
           eplId:
@@ -127,6 +157,7 @@ export function DownloadActions({
     action.mutate({ ...target, operation: "refresh" });
   }
   function openRemoval(target: Targets) {
+    removalRequest.current = null;
     setTargets(target);
     setOutcomes(null);
     action.reset();
@@ -338,7 +369,9 @@ export function DownloadActions({
               </strong>
               {item.message && <p className="muted">{item.message}</p>}
               {item.blockingCalibreJobId && (
-                <Link to={`/calibre/jobs/${encodeURIComponent(item.blockingCalibreJobId)}`}>
+                <Link
+                  to={`/calibre/jobs/${encodeURIComponent(item.blockingCalibreJobId)}`}
+                >
                   {t("calibreUpdateSend.calibreJob")}
                 </Link>
               )}

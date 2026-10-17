@@ -1738,6 +1738,8 @@
     "create": "Create retry"
   },
   "revisionCleanup": {
+    "removalHelp": "Remove the selected records and, according to the chosen option, their torrents and files. Dependencies on other jobs are checked before deletion.",
+    "removalJobTitle": "Download removal job",
     "title": "Clean up older revisions",
     "jobs": "Cleanup jobs",
     "configure": "Options",

@@ -64,6 +64,134 @@ class RevisionCleanupTests {
     RevisionCleanup.Job preview(String source,String action) {return cleanup.preview(new RevisionCleanup.PreviewInput(source,action,List.of()));}
     RevisionCleanup.Item item(RevisionCleanup.Job job) {return cleanup.items(job.id(),0,1000).items().getFirst();}
     RevisionCleanup.Job start(RevisionCleanup.Job job) {return cleanup.start(job.id(),new RevisionCleanup.Confirmation(List.of(item(job).id()),true,true));}
+    RevisionCleanup.RemovalInput removal(String action,boolean deleteHistory) {
+        return new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(1L,List.of(old),deleteHistory,action,true,true));
+    }
+    @Test void directRemovalIsListedAndIdempotentAndPreservesTheOtherRevision() {
+        var input=removal("files",true);var job=cleanup.removeSelected(input);
+        assertThat(job.directRemoval()).isTrue();assertThat(job.selected()).isEqualTo(1);
+        assertThat(cleanup.removeSelected(input).id()).isEqualTo(job.id());
+        assertThat(cleanup.jobs("downloads",0,20).items()).extracting(RevisionCleanup.Job::id).contains(job.id());
+        cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(downloads.findById(old)).isEmpty();assertThat(downloads.findById(newer)).isPresent();
+        cleanup.removeSelected(input);cleanup.cycle();verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void directRemovalPreservesHistoryAndDoesNotNeedASuperiorRevision() {
+        downloads.deleteById(newer);remote.removeIf(r->r.hash().equals("B".repeat(40)));
+        var job=cleanup.removeSelected(removal("torrent",false));cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);assertThat(downloads.findById(old)).isPresent();
+        verify(adapter).deleteTorrent("A".repeat(40),false);
+    }
+    @Test void directLocalRemovalDoesNotDeleteTorrent() {
+        var job=cleanup.removeSelected(removal("keep",true));cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);assertThat(downloads.findById(old)).isEmpty();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void directDeletionSharesCompatibleAutomaticCleanupAndNeverDeletesItsReplacement() {
+        var automatic=automaticCleanup();
+        var input=removal("files",false);var job=cleanup.removeSelected(input);cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(cleanups.findById(automatic.getId()).orElseThrow().getState()).isEqualTo(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REMOVED);
+        cleanupQueue.runAutomatic(20);cleanup.cycle();verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
+    }
+    @Test void directDeletionCannotDeleteTheReplacementOfAnotherPendingUpdate() {
+        automaticCleanup();
+        var input=new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(1L,List.of(newer),false,"files",true,true));
+        var job=cleanup.removeSelected(input);cleanup.cycle();
+        assertThat(item(job).state()).isEqualTo("BLOCKED");assertThat(item(job).message()).contains("debe conservar");
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void directDeletionBlocksIncompatibleCleanupAndSharedPaths() {
+        var automatic=automaticCleanup();automatic.setDeleteHistory(false);cleanups.saveAndFlush(automatic);
+        var job=cleanup.removeSelected(removal("files",true));cleanup.cycle();
+        assertThat(item(job).state()).isEqualTo("BLOCKED");verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        cleanups.deleteAll();remote.set(1,remote("B","/downloads/old.epub"));
+        cleanup.control(job.id(),"continue");cleanup.cycle();
+        assertThat(item(job).state()).isEqualTo("BLOCKED");verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        remote.set(1,remote("B","/downloads/new.epub"));
+        cleanup.control(job.id(),"continue");cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void blockedDirectJobCanBeCancelledWithoutDeletingAnything() {
+        automaticCleanup();var job=cleanup.removeSelected(removal("files",true));cleanup.cycle();
+        assertThat(item(job).state()).isEqualTo("BLOCKED");cleanup.control(job.id(),"cancel");
+        assertThat(cleanup.get(job.id()).state()).isEqualTo("CANCELLED");assertThat(item(job).state()).isEqualTo("CANCELLED");
+        cleanup.cycle();verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void directJobsRecoverActiveWorkButPreserveUserPause() {
+        var job=cleanup.removeSelected(removal("files",true));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='PAUSED' WHERE id=?",job.id());cleanup.recover();cleanup.cycle();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        cleanup.control(job.id(),"continue");jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());
+        cleanup.recover();cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void directRemovalWaitsForPausedCalibreAndCanContinueWithoutDuplicating() {
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('protect','now','now','Owner','destination','main','source','PAUSED')");
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('protect-item','protect',0,?,0,'old.epub',1,1,'1','PENDING')",old);
+        var job=cleanup.removeSelected(removal("files",true));cleanup.cycle();
+        assertThat(item(job).state()).isEqualTo("BLOCKED");assertThat(item(job).message()).contains("pausado");
+        assertThat(item(job).blockingCalibreJobId()).isEqualTo("protect");
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThatThrownBy(()->cleanup.removeSelected(removal("files",true))).hasMessageContaining("ya tiene un trabajo");
+        jdbc.update("UPDATE calibre_job_items SET state='ACCEPTED' WHERE id='protect-item'");jdbc.update("UPDATE calibre_jobs SET state='COMPLETED' WHERE id='protect'");
+        cleanup.control(job.id(),"continue");cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void directCrashAfterRemoteDeleteRecoversByVerifyingWithoutRepeating(boolean deleteHistory) {
+        var job=cleanup.removeSelected(removal("files",deleteHistory));
+        var busy=new org.springframework.dao.CannotAcquireLockException("busy",new java.sql.SQLException("busy","",5));
+        doThrow(busy).doCallRealMethod().when(jdbc).update(eq("UPDATE revision_cleanup_items SET state=?,message=? WHERE id=?"),eq("SUCCEEDED"),any(),any());
+        assertThatThrownBy(cleanup::cycle).isSameAs(busy);
+        assertThat(item(job).state()).isEqualTo("RUNNING");
+        assertThat(remote).noneMatch(r->r.hash().equals("A".repeat(40)));
+        cleanup.recover();cleanup.cycle();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(downloads.existsById(old)).isEqualTo(!deleteHistory);
+        assertThat(downloads.existsById(newer)).isTrue();
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void directRetryRechecksCalibreDependencyAddedAfterTheOriginalAttempt() {
+        doThrow(new IllegalStateException("disconnected")).when(adapter).deleteTorrent(anyString(),anyBoolean());
+        var job=cleanup.removeSelected(removal("files",true));cleanup.cycle();
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('late','now','now','Owner','destination','main','source','PAUSED')");
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('late-item','late',0,?,0,'old.epub',1,1,'1','PENDING')",old);
+        restoreDeletion();cleanup.retryUnconfirmed(job.id(),retryInput("retry-blocked"));cleanup.cycle();
+        assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);
+        assertThat(item(job).message()).contains("Calibre", "pausado");
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        jdbc.update("UPDATE calibre_job_items SET state='ACCEPTED' WHERE id='late-item'");jdbc.update("UPDATE calibre_jobs SET state='COMPLETED' WHERE id='late'");
+        cleanup.retryUnconfirmed(job.id(),retryInput("retry-released"));cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);verify(adapter,times(2)).deleteTorrent("A".repeat(40),true);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id=?",Integer.class,"revision:"+job.id())).isEqualTo(1);
+    }
+    @Test void automaticDeletionWinningBeforeDirectWorkerDoesNotCauseASecondDelete() {
+        var automatic=automaticCleanup();var job=cleanup.removeSelected(removal("files",false));
+        cleanupQueue.runAutomatic(20);cleanup.cycle();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(cleanups.findById(automatic.getId()).orElseThrow().getState()).isEqualTo(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REMOVED);
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
+    }
+    @Test void directUncertainRemovalOnlyResendsAfterExplicitRetryAndSurvivesRecovery() {
+        doThrow(new IllegalStateException("disconnected")).when(adapter).deleteTorrent(anyString(),anyBoolean());
+        var job=cleanup.removeSelected(removal("files",true));cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);
+        cleanup.recover();cleanup.cycle();verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        cleanup.control(job.id(),"verify");cleanup.cycle();verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        restoreDeletion();cleanup.retryUnconfirmed(job.id(),retryInput("direct-retry"));cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);verify(adapter,times(2)).deleteTorrent("A".repeat(40),true);
+        cleanup.retryUnconfirmed(job.id(),retryInput("direct-retry"));cleanup.cycle();verify(adapter,times(2)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void oldManualRequestsBecomeVisibleWithoutSendingAnotherDelete() {
+        var actor=new com.rlibanez.eplsync.events.EventContext.Actor(owner.id(),owner.username(),"ADMIN");
+        doThrow(new IllegalStateException("disconnected")).when(adapter).deleteTorrent(anyString(),anyBoolean());
+        com.rlibanez.eplsync.events.EventContext.withActor(actor,()->history.remove(new com.rlibanez.eplsync.torrent.updates.HistoryActions.Selection(1L,List.of(old),true,true)));
+        var listed=listings.list("downloads",0,20,List.of(),"CLEANUP",null,null,null,"createdAt,desc");
+        assertThat(listed.items()).hasSize(1);assertThat(listed.items().getFirst()).containsEntry("selectedBooks",1L);
+        var jobs=cleanup.jobs("downloads",0,20).items();assertThat(jobs).hasSize(1);assertThat(jobs.getFirst().uncertain()).isEqualTo(1);
+        cleanup.jobs("downloads",0,20);cleanup.cycle();verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
     @Test void sqliteFailureDeletingOnlyLocalHistoryRetriesWithoutUncertaintyOrRemoteDeletion() {
         var job=start(preview("downloads","RECORD"));
         var busy=new org.springframework.dao.CannotAcquireLockException("busy",new java.sql.SQLException("busy","",5));
@@ -183,8 +311,9 @@ class RevisionCleanupTests {
         assertThat(downloads.findById(old)).isPresent();assertThat(downloads.findById(newer)).isPresent();
         verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
     }
-    @Test void concurrentManualAndAutomaticCleanupUseSameClientLockAndDeleteOnlyOnce() throws Exception {
-        pendingReplacement();var automatic=automaticCleanup();var job=start(forced("FILES"));
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void concurrentManualAndAutomaticCleanupUseSameClientLockAndDeleteOnlyOnce(boolean direct) throws Exception {
+        pendingReplacement();var automatic=automaticCleanup();var job=direct?cleanup.removeSelected(removal("files",false)):start(forced("FILES"));
         var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);var automaticStarted=new java.util.concurrent.CountDownLatch(1);
         doAnswer(call->{
             if(Thread.currentThread().getName().equals("audit-automatic")) automaticStarted.countDown();

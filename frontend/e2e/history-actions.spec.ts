@@ -80,8 +80,8 @@ test("history refreshes selected records and removes through a confirmed dialog 
       },
     });
   });
-  await page.route("**/api/torrent/downloads/remove-records", (r) => {
-    removed = r.request().postDataJSON();
+  await page.route("**/api/revision-cleanups/removals", (r) => {
+    removed = r.request().postDataJSON().removal;
     return r.fulfill({
       json: {
         items: [
@@ -282,8 +282,8 @@ test("history deletion confirms pending cleanup and removes only selected databa
   await page.route("**/api/torrent/downloads/delete-history**", (r) =>
     r.fulfill({ json: { deleted: 0, pendingCleanup: 1 } }),
   );
-  await page.route("**/api/torrent/downloads/remove-records", (r) => {
-    deleted = r.request().postDataJSON();
+  await page.route("**/api/revision-cleanups/removals", (r) => {
+    deleted = r.request().postDataJSON().removal;
     data.setRows(data.rows.filter((row) => !deleted.ids.includes(row.id)));
     return r.fulfill({
       json: {

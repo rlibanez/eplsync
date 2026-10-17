@@ -154,7 +154,7 @@ public class HistoryActions {
                 var requests=tx.execute(status -> {
                 var pending=new ArrayList<UpdateCleanup>();
                 for (var row:rows) {
-                    if(retryUnconfirmed && provenance!=null) {
+                    if(provenance!=null) {
                         var existing=entries.findByJobIdOrderByEplIdAsc(provenance).stream().filter(e->e.getDownloadId().equals(row.getId())).findFirst();
                         if(existing.isPresent()) {
                             var entry=existing.orElseThrow();
@@ -184,6 +184,7 @@ public class HistoryActions {
             });
         return audited?events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOADS",scope,operation,r -> Map.of("checked",r.items().size(),"removed",r.items().stream().filter(i -> "REMOVED".equals(i.cleanupState())).count())):operation.get();
     }
+    public CleanupQueue.CalibreBlocker blockingCalibre(String hash,String instance) {return queue.blockingCalibre(hash,instance);}
     private String blockingJob(DownloadRecord row) {
         var blocker=queue.blockingCalibre(row.getHash(),row.getClientInstanceId());
         return blocker==null?null:blocker.jobId();
