@@ -67,6 +67,26 @@ class RevisionCleanupTests {
     RevisionCleanup.RemovalInput removal(String action,boolean deleteHistory) {
         return new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(1L,List.of(old),deleteHistory,action,true,true));
     }
+    @Test void largeRemovalPreviewAndJobKeepAllRecordsAndReplayWithoutDuplicates() {
+        var ids=new ArrayList<String>();
+        var batch=new ArrayList<Object[]>();
+        for(int i=0;i<10001;i++) {
+            String id=UUID.randomUUID().toString();ids.add(id);
+            batch.add(new Object[]{id,i+100L,tracking.instanceId(),String.format("%040x",i+100)});
+        }
+        jdbc.batchUpdate("INSERT INTO torrent_downloads(id,epl_id,client_instance_id,hash,revision,created_at,client,origin,status) VALUES(?,?,?,?,1,0,'qbittorrent','EPLSYNC','DOWNLOADED')",batch);
+        assertThat(history.deleteHistory(new com.rlibanez.eplsync.torrent.updates.HistoryActions.HistoryDeletion(null,ids,true),true).pendingCleanup()).isZero();
+        var input=new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(null,ids,true,"files",true,true));
+        var job=cleanup.removeSelected(input);
+        assertThat(job.total()).isEqualTo(10001);
+        assertThat(job.pending()).isEqualTo(10001);
+        assertThat(cleanup.removeSelected(input).id()).isEqualTo(job.id());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items WHERE job_id=?",Long.class,job.id())).isEqualTo(10001);
+        assertThat(jdbc.queryForList("SELECT old_id FROM revision_cleanup_items WHERE job_id=? ORDER BY position",String.class,job.id())).containsExactlyElementsOf(ids);
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(downloads.count()).isEqualTo(10003);
+        assertThatThrownBy(()->cleanup.removeSelected(new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),input.removal()))).hasMessageContaining("pendiente");
+    }
     @Test void directRemovalIsListedAndIdempotentAndPreservesTheOtherRevision() {
         var input=removal("files",true);var job=cleanup.removeSelected(input);
         assertThat(job.directRemoval()).isTrue();assertThat(job.selected()).isEqualTo(1);

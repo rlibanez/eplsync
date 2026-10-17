@@ -30,10 +30,10 @@ public class HistoryActions {
     }
     private void requireSelection(Selection selection) {
         if (selection==null || (selection.eplId()!=null && selection.eplId()<1) || selection.ids()==null
-                || selection.ids().isEmpty() || selection.ids().size()>1000
+                || selection.ids().isEmpty()
                 || selection.ids().stream().anyMatch(id -> id==null || id.isBlank() || id.length()>64)
                 || new HashSet<>(selection.ids()).size()!=selection.ids().size())
-            throw new UserInputException("Selecciona entre 1 y 1000 registros, sin duplicados y con EPL ID válido si se especifica");
+            throw new UserInputException("Selecciona al menos un registro, sin duplicados y con EPL ID válido si se especifica");
     }
     private Map<String,Object> eventScope(Selection selection) {
         var scope=new LinkedHashMap<String,Object>();
@@ -46,7 +46,9 @@ public class HistoryActions {
     private List<DownloadRecord> validate(Selection selection) { return validate(selection,true); }
     private List<DownloadRecord> validate(Selection selection,boolean requireCurrentClient) {
         requireSelection(selection);
-        var rows=downloads.findAllById(selection.ids());
+        var rows=new ArrayList<DownloadRecord>();
+        for(int offset=0;offset<selection.ids().size();offset+=500)
+            rows.addAll(downloads.findAllById(selection.ids().subList(offset,Math.min(offset+500,selection.ids().size()))));
         if (rows.size()!=selection.ids().size() || (selection.eplId()!=null && rows.stream().anyMatch(r -> !r.getEplId().equals(selection.eplId()))))
             throw new UserInputException("Los registros seleccionados no pertenecen al libro");
         if (requireCurrentClient && rows.stream().anyMatch(r -> !r.getClientInstanceId().equals(tracking.instanceId())))
@@ -65,7 +67,9 @@ public class HistoryActions {
         var selection=new Selection(request.eplId(),request.ids(),null,null);
         java.util.function.Supplier<DeletionResult> operation=() -> tx.execute(status -> {
             var rows=validate(selection,false);
-            long pending=entries.countByDownloadIdInAndStateIn(request.ids(),CleanupQueue.PENDING);
+            long pending=0;
+            for(int offset=0;offset<request.ids().size();offset+=500)
+                pending+=entries.countByDownloadIdInAndStateIn(request.ids().subList(offset,Math.min(offset+500,request.ids().size())),CleanupQueue.PENDING);
             if(!preview) { downloads.deleteAll(rows);downloads.flush(); }
             return new DeletionResult(preview ? 0 : rows.size(),pending);
         });

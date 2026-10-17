@@ -212,7 +212,7 @@ public class RevisionCleanup {
         String action=switch(Objects.toString(r.clientAction(),"")) {case "keep"->"RECORD";case "torrent"->"TORRENT";case "files"->"FILES";default->throw new UserInputException("Acción de borrado inválida");};
         boolean history=Boolean.TRUE.equals(r.deleteHistory());
         if(action.equals("RECORD") && !history || !Boolean.TRUE.equals(r.confirm()) || action.equals("FILES") && !Boolean.TRUE.equals(r.confirmFiles())) throw new UserInputException("Confirma el borrado solicitado");
-        if(r.ids()==null || r.ids().isEmpty() || r.ids().size()>LIMIT || r.ids().stream().anyMatch(v->v==null || v.isBlank() || v.length()>64) || new HashSet<>(r.ids()).size()!=r.ids().size()) throw new UserInputException("Selecciona entre 1 y 1000 registros sin duplicados");
+        if(r.ids()==null || r.ids().isEmpty() || r.ids().stream().anyMatch(v->v==null || v.isBlank() || v.length()>64) || new HashSet<>(r.ids()).size()!=r.ids().size()) throw new UserInputException("Selecciona al menos un registro sin duplicados");
         var owner=authorize(sessions.current().id(),"downloads",action,true,history);
         String signature=json.writeValueAsString(input.removal());
         var existing=jdbc.queryForList("SELECT confirmation FROM revision_cleanup_jobs WHERE id=?",String.class,input.requestId());
@@ -222,17 +222,22 @@ public class RevisionCleanup {
         }
         String id=input.requestId();long now=Instant.now().toEpochMilli();String current=context("downloads");
         tx.executeWithoutResult(status->{
-            var rows=new ArrayList<Map<String,Object>>();
-            for(String record:r.ids()) {
-                var row=jdbc.queryForList("SELECT d.*,coalesce(b.title,'EPL ' || d.epl_id) title FROM torrent_downloads d LEFT JOIN catalog_books b ON b.epl_id=d.epl_id WHERE d.id=?",record).stream().findFirst().orElseThrow(()->new UserInputException("El registro ya no existe"));
+            String selected=json.writeValueAsString(r.ids());
+            var rows=jdbc.queryForList("SELECT d.*,coalesce(b.title,'EPL ' || d.epl_id) title FROM json_each(?) selected JOIN torrent_downloads d ON d.id=selected.value LEFT JOIN catalog_books b ON b.epl_id=d.epl_id ORDER BY CAST(selected.key AS INTEGER)",selected);
+            if(rows.size()!=r.ids().size()) throw new UserInputException("El registro ya no existe");
+            for(var row:rows) {
                 if(r.eplId()!=null && ((Number)row.get("epl_id")).longValue()!=r.eplId()) throw new UserInputException("El registro no pertenece al libro");
                 if(!action.equals("RECORD") && !Objects.equals(row.get("client_instance_id"),tracking.instanceId())) throw new UserInputException("El registro pertenece a otro cliente torrent");
-                if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE i.old_id=? AND (i.state='UNCERTAIN' OR i.state IN ('PENDING','RUNNING','VERIFYING','BLOCKED','FAILED') AND j.state<>'CANCELLED')",Long.class,record)>0) throw new UserInputException("El registro ya tiene un trabajo de limpieza pendiente; continúa o reintenta ese trabajo desde Trabajos de descargas");
-                rows.add(row);
             }
+            if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE i.old_id IN (SELECT value FROM json_each(?)) AND (i.state='UNCERTAIN' OR i.state IN ('PENDING','RUNNING','VERIFYING','BLOCKED','FAILED') AND j.state<>'CANCELLED')",Long.class,selected)>0)
+                throw new UserInputException("El registro ya tiene un trabajo de limpieza pendiente; continúa o reintenta ese trabajo desde Trabajos de descargas");
             jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,state,confirmation,delete_history,direct_removal,created_at,updated_at,expires_at) VALUES(?,'downloads',?,?,?,?, 'QUEUED',?,?,1,?,?,?)",id,action,owner.id(),owner.username(),current,signature,history,now,now,Long.MAX_VALUE);
+            var batch=new ArrayList<Object[]>();
             int position=0;
-            for(var row:rows) jdbc.update("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,old_hash,formats,state) VALUES(?,?,?,?,'',?,?,?,'',?,'[]','PENDING')",UUID.randomUUID().toString(),id,position++,row.get("id"),row.get("epl_id"),row.get("title"),revision(row.get("revision")),row.get("hash"));
+            for(var row:rows) batch.add(new Object[]{UUID.randomUUID().toString(),id,position++,row.get("id"),row.get("epl_id"),row.get("title"),revision(row.get("revision")),row.get("hash")});
+            for(int offset=0;offset<batch.size();offset+=500)
+                jdbc.batchUpdate("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,old_hash,formats,state) VALUES(?,?,?,?,'',?,?,?,'',?,'[]','PENDING')",batch.subList(offset,Math.min(offset+500,batch.size())));
+
         });
         events.live(new EventContext.Actor(owner.id(),owner.username(),"USER"),EventJournal.Category.JOB,"REVISION_CLEANUP",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,id,Map.of("selected",r.ids().size(),"source","downloads"));
         return get(id);
