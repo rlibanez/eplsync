@@ -325,7 +325,9 @@ export function Home() {
                         : "gray"
                   }
                 >
-                  {t(`events.outcomes.${operationOutcome(latest.outcome)}`)}
+                  {t(
+                    `events.outcomes.${operationOutcome(latest.outcome, latest.action)}`,
+                  )}
                 </Badge>
                 <time dateTime={latest.createdAt}>
                   {date(latest.createdAt)}

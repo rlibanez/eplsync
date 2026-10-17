@@ -13,6 +13,9 @@ public class EventOperations {
     public record Operation(EventJournal.Entry latest, Instant startedAt, Instant finishedAt,
                             Instant firstRecordedAt, Long durationMs, List<EventJournal.Entry> events) {}
     public record Page(List<Operation> items, long total, int page, int size, long cursor) {}
+    private static final String CONTROL_COMPLETED="action='CALIBRE_JOB_CONTROL' AND outcome IN ('PAUSED','RESUMED','RECOVERED','CANCELLED')";
+    private static final String EFFECTIVE_OUTCOME="CASE WHEN "+CONTROL_COMPLETED+" THEN 'SUCCEEDED' ELSE outcome END";
+    private static final String FINISHED="outcome IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') OR ("+CONTROL_COMPLETED+")";
     private final EventJournal journal;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
@@ -26,9 +29,9 @@ public class EventOperations {
         return search(filter,page,size,snapshot,operationId,"startedAt,desc");
     }
     public Page search(EventJournal.Filter filter,int page,int size,Long snapshot,String operationId,String sort) {
-        var fields=Map.of("startedAt","sort_at","finishedAt","CASE WHEN outcome IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') THEN created_at END",
-            "duration","CASE WHEN outcome IN ('SUCCEEDED','PARTIAL','FAILED','CANCELLED') AND start_at IS NOT NULL AND NOT (category='SECURITY' AND event_count=1) THEN MAX(0,created_at-start_at) END",
-            "category","category","event","action","outcome","outcome","origin","origin","user","COALESCE(actor_username,actor_kind)");
+        var fields=Map.of("startedAt","sort_at","finishedAt","CASE WHEN "+FINISHED+" THEN created_at END",
+            "duration","CASE WHEN ("+FINISHED+") AND start_at IS NOT NULL AND NOT (category='SECURITY' AND event_count=1) THEN MAX(0,created_at-start_at) END",
+            "category","category","event","action","outcome",EFFECTIVE_OUTCOME,"origin","origin","user","COALESCE(actor_username,actor_kind)");
         var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort,fields.keySet());
         String orderBy = criteria.stream().map(order -> (Set.of("category","event","outcome","origin","user").contains(order.getProperty())?com.rlibanez.eplsync.ordering.TextOrdering.sql(fields.get(order.getProperty())):fields.get(order.getProperty()))+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","))+", first_id DESC";
         if (page < 0 || size < 1 || size > 1000 || (snapshot != null && snapshot < 0))
@@ -54,8 +57,8 @@ public class EventOperations {
             if (filter.category() != null) { where += " AND category"+(filter.excluded("category")?"<>?":"=?"); args.add(filter.category().name()); }
             if (filter.origin() != null) { where += " AND origin"+(filter.excluded("origin")?"<>?":"=?"); args.add(filter.origin().name()); }
             if (filter.outcome() == EventJournal.Outcome.STARTED)
-                where += " AND outcome "+(filter.excluded("outcome")?"NOT IN":"IN")+" ('STARTED','RESUMED','RECOVERED')";
-            else if (filter.outcome() != null) { where += " AND outcome"+(filter.excluded("outcome")?"<>?":"=?"); args.add(filter.outcome().name()); }
+                where += " AND ("+EFFECTIVE_OUTCOME+") "+(filter.excluded("outcome")?"NOT IN":"IN")+" ('STARTED','RESUMED','RECOVERED')";
+            else if (filter.outcome() != null) { where += " AND ("+EFFECTIVE_OUTCOME+")"+(filter.excluded("outcome")?"<>?":"=?"); args.add(filter.outcome().name()); }
             if (filter.from() != null) { where += " AND sort_at>=?"; args.add(filter.from().toEpochMilli()); }
             if (filter.before() != null) { where += " AND sort_at<?"; args.add(filter.before().toEpochMilli()); }
             long total = jdbc.queryForObject(cte + "SELECT COUNT(*) FROM operations" + where, Long.class, args.toArray());
@@ -74,7 +77,8 @@ public class EventOperations {
                 var latest = events.getLast();
                 var start = events.stream().filter(e -> e.outcome() == EventJournal.Outcome.STARTED)
                     .map(value -> Objects.requireNonNull(value).createdAt()).min(Comparator.naturalOrder()).orElse(null);
-                var end = switch (latest.outcome()) {
+                boolean controlCompleted=latest.action().equals("CALIBRE_JOB_CONTROL") && Set.of(EventJournal.Outcome.PAUSED,EventJournal.Outcome.RESUMED,EventJournal.Outcome.RECOVERED,EventJournal.Outcome.CANCELLED).contains(latest.outcome());
+                var end = controlCompleted ? latest.createdAt() : switch (latest.outcome()) {
                     case SUCCEEDED, PARTIAL, FAILED, CANCELLED -> latest.createdAt();
                     default -> null;
                 };

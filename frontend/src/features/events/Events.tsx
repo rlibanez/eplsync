@@ -497,7 +497,10 @@ function EventsView({ operationId }: { operationId?: string }) {
                 <tbody>
                   {result.data.items.map((operation, rowIndex) => {
                     const event = operation.latest;
-                    const outcome = operationOutcome(event.outcome);
+                    const outcome = operationOutcome(
+                      event.outcome,
+                      event.action,
+                    );
                     const outcomeLabel =
                       outcome === "STARTED"
                         ? t("events.running")

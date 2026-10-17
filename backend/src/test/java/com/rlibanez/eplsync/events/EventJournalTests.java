@@ -227,6 +227,39 @@ class EventJournalTests {
         assertThat(journal.search(all, 0, 20).items().getFirst().actor()).isEqualTo(EventContext.Actor.unknown());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.EnumSource(value=Outcome.class,names={"PAUSED","RESUMED","RECOVERED","CANCELLED"})
+    void jobControlHasFinishedWithoutClosingTheJobAndRetainsMeasuredZero(Outcome result) {
+        var start=journal.record(Category.JOB,"CALIBRE_JOB_CONTROL",Outcome.STARTED,EventContext.Origin.MANUAL,"control",Map.of("jobId","job"));
+        var finish=journal.record(Category.JOB,"CALIBRE_JOB_CONTROL",result,EventContext.Origin.MANUAL,"control",Map.of("jobId","job"));
+        jdbc.update("UPDATE app_events SET created_at=? WHERE operation_id='control'",start.createdAt().toEpochMilli());
+        var running=journal.record(Category.JOB,"CALIBRE_SEND",Outcome.RESUMED,EventContext.Origin.MANUAL,"job",Map.of());
+        var page=operations.search(all,0,20,null,"control","duration,asc");
+        var control=page.items().getFirst();
+        assertThat(control.startedAt()).isEqualTo(start.createdAt());assertThat(control.finishedAt()).isEqualTo(start.createdAt());
+        assertThat(control.durationMs()).isZero();assertThat(control.latest().outcome()).isEqualTo(result);
+        assertThat(control.events()).hasSize(2);assertThat(control.latest().id()).isEqualTo(finish.id());
+        assertThat(operations.search(new Filter(null,Outcome.SUCCEEDED,null,null),0,20,null).items()).extracting(value->Objects.requireNonNull(value).latest().operationId()).containsExactly("control");
+        assertThat(operations.search(new Filter(null,Outcome.STARTED,null,null),0,20,null).items()).singleElement().satisfies(op->{assertThat(op.latest().id()).isEqualTo(running.id());assertThat(op.finishedAt()).isNull();assertThat(op.durationMs()).isNull();});
+        var excluded=new Filter(null,Outcome.STARTED,null,null,null,null,null,Map.of("outcome","ne"));
+        assertThat(operations.search(excluded,0,20,null).items()).singleElement().satisfies(op->assertThat(op.latest().operationId()).isEqualTo("control"));
+    }
+    @Test void completedJobControlsParticipateInFinishAndDurationSorting() {
+        var start=journal.record(Category.JOB,"CALIBRE_JOB_CONTROL",Outcome.STARTED,EventContext.Origin.MANUAL,"control",Map.of());
+        var finish=journal.record(Category.JOB,"CALIBRE_JOB_CONTROL",Outcome.RESUMED,EventContext.Origin.MANUAL,"control",Map.of());
+        jdbc.update("UPDATE app_events SET created_at=? WHERE id=?",Instant.parse("2026-10-02T16:00:00Z").toEpochMilli(),start.id());
+        jdbc.update("UPDATE app_events SET created_at=? WHERE id=?",Instant.parse("2026-10-02T16:02:00Z").toEpochMilli(),finish.id());
+        at("other",Outcome.STARTED,"16:03:00");at("other",Outcome.SUCCEEDED,"16:04:00");
+        assertThat(operations.search(all,0,20,null,null,"duration,desc").items()).extracting(value->Objects.requireNonNull(value).latest().operationId()).containsExactly("control","other");
+        assertThat(operations.search(all,0,20,null,null,"finishedAt,desc").items()).extracting(value->Objects.requireNonNull(value).latest().operationId()).containsExactly("other","control");
+    }
+    @Test void jobControlWithMissingStartDoesNotInventADurationAndSecurityRemainsUnmeasured() {
+        journal.record(Category.JOB,"CALIBRE_JOB_CONTROL",Outcome.RESUMED,EventContext.Origin.MANUAL,"missing",Map.of());
+        journal.record(Category.SECURITY,"USER_CREATE",Outcome.SUCCEEDED,EventContext.Origin.MANUAL,"audit",Map.of());
+        var missing=operations.search(all,0,20,null,"missing").items().getFirst();
+        assertThat(missing.startedAt()).isNull();assertThat(missing.finishedAt()).isNotNull();assertThat(missing.durationMs()).isNull();
+        var audit=operations.search(all,0,20,null,"audit").items().getFirst();
+        assertThat(audit.startedAt()).isEqualTo(audit.finishedAt());assertThat(audit.durationMs()).isNull();
+    }
     @Test void groupedOperationsApplyMultipleCriteriaBeforePagination() {
         at("short",Outcome.STARTED,"16:00:00");at("short",Outcome.SUCCEEDED,"16:01:00");
         at("long",Outcome.STARTED,"16:02:00");at("long",Outcome.SUCCEEDED,"16:05:00");

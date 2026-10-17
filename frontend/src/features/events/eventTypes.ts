@@ -70,8 +70,13 @@ export interface OperationPage {
   size: number;
   cursor: number;
 }
-export const operationOutcome = (outcome: string) =>
-  ["STARTED", "RESUMED", "RECOVERED"].includes(outcome) ? "STARTED" : outcome;
+export const operationOutcome = (outcome: string, action?: string) =>
+  action === "CALIBRE_JOB_CONTROL" &&
+  ["PAUSED", "RESUMED", "RECOVERED", "CANCELLED"].includes(outcome)
+    ? "SUCCEEDED"
+    : ["STARTED", "RESUMED", "RECOVERED"].includes(outcome)
+      ? "STARTED"
+      : outcome;
 export function formatDuration(ms: number, locale?: string) {
   const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
   if (ms < 60000) return number.format(ms / 1000) + " s";

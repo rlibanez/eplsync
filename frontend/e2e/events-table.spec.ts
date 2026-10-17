@@ -184,3 +184,89 @@ test("historical catalog summaries omit simulation too", async ({ page }) => {
     "Simulación",
   ]);
 });
+
+test("finished job controls show completion and measured zero while audit duration stays unknown", async ({
+  page,
+}) => {
+  const time = "2026-10-17T13:13:16Z";
+  const event = (
+    id: number,
+    action: string,
+    category: string,
+    outcome: string,
+  ) => ({
+    id,
+    action,
+    category,
+    outcome,
+    origin: "MANUAL",
+    operationId: action,
+    createdAt: time,
+    details: {},
+    actor: { id: "test-admin", username: "Roberto", kind: "USER" },
+  });
+  const control = event(2, "CALIBRE_JOB_CONTROL", "JOB", "RESUMED");
+  const audit = event(3, "USER_CREATE", "SECURITY", "SUCCEEDED");
+  const active = event(4, "CALIBRE_SEND", "JOB", "RESUMED");
+  await page.route("**/api/events/operations?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            latest: control,
+            startedAt: time,
+            finishedAt: time,
+            firstRecordedAt: time,
+            durationMs: 0,
+            events: [{ ...control, id: 1, outcome: "STARTED" }, control],
+          },
+          {
+            latest: audit,
+            startedAt: time,
+            finishedAt: time,
+            firstRecordedAt: time,
+            durationMs: null,
+            events: [audit],
+          },
+          {
+            latest: active,
+            startedAt: time,
+            finishedAt: null,
+            firstRecordedAt: time,
+            durationMs: null,
+            events: [active],
+          },
+        ],
+        total: 3,
+        page: 0,
+        size: 20,
+        cursor: 4,
+      },
+    }),
+  );
+  await page.reload();
+  const table = page.locator(".events-table");
+  const controlRow = table
+    .getByRole("row")
+    .filter({ hasText: "Controlar trabajo de Calibre" });
+  await expect(controlRow).toContainText("Completado");
+  await expect(
+    controlRow.getByRole("cell", { name: "0 s", exact: true }),
+  ).toBeVisible();
+  const headers = await table.locator("thead th").allTextContents();
+  const duration = headers.findIndex((label) => /duración/i.test(label));
+  const finish = headers.findIndex((label) => /^fin$/i.test(label.trim()));
+  expect(duration).toBeGreaterThanOrEqual(0);
+  await expect(
+    table
+      .getByRole("row")
+      .filter({ hasText: "Crear usuario" })
+      .getByRole("cell")
+      .nth(duration),
+  ).toHaveText("—");
+  await expect(
+    table.getByRole("row").filter({ hasText: "Envío a Calibre" }),
+  ).toContainText("En ejecución");
+  expect(finish).toBeGreaterThanOrEqual(0);
+  await expect(controlRow.getByRole("cell").nth(finish)).not.toHaveText("—");
+});
