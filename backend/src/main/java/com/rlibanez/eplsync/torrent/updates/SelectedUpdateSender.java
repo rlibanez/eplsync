@@ -41,9 +41,9 @@ public class SelectedUpdateSender {
     }
     @Transactional(timeout=120)
     public BulkStore.View create(Request input) {
-        if(input==null || input.ids()==null || input.ids().isEmpty() || input.ids().size()>10000
+        if(input==null || input.ids()==null || input.ids().isEmpty()
             || input.ids().stream().anyMatch(id -> id==null || id<1) || new HashSet<>(input.ids()).size()!=input.ids().size())
-            throw new UserInputException("Selecciona entre 1 y 10000 libros, sin duplicados");
+            throw new UserInputException("Selecciona libros sin duplicados");
         var selection=new UpdatePreferences.Preferences(input.states());RevisionUpdates.validate(selection,0,1,"eplId,asc");
         var request=new UpdateRequest(input.previousVersions(),input.options(),input.batchSize(),input.concurrency(),input.interval(),input.multipleHashes(),input.cleanupTiming(),input.deleteHistory());
         if(request.options()!=null && request.options().hash()!=null) throw new UserInputException("Las actualizaciones no admiten un hash específico");

@@ -48,25 +48,23 @@ public class CalibreUpdateFlow {
     private static void require() {Permission.require(Permission.CALIBRE_SEND);Permission.require(Permission.DOWNLOADS_FILES_READ);Permission.require(Permission.CATALOG_READ);}
     public List<Book> prepare(List<Long> ids) {
         require();
-        if(ids==null || ids.isEmpty() || ids.size()>1000 || ids.stream().anyMatch(i -> i==null || i<=0) || new HashSet<>(ids).size()!=ids.size()) throw new UserInputException("Selecciona entre 1 y 1000 libros únicos");
+        if(ids==null || ids.isEmpty() || ids.stream().anyMatch(i -> i==null || i<=0) || new HashSet<>(ids).size()!=ids.size()) throw new UserInputException("Selecciona libros únicos");
         var c=settings.connection();client.check(c);
-        var result=new ArrayList<Book>();int totalFiles=0,totalPrevious=0;long deadline=System.nanoTime()+Duration.ofMinutes(2).toNanos();
+        var result=new ArrayList<Book>();var seenBooks=new HashSet<Long>();long deadline=System.nanoTime()+Duration.ofMinutes(2).toNanos();
         for(long id:ids) {
             if(System.nanoTime()>deadline) throw new UserInputException("La preparación ha tardado demasiado; selecciona menos libros");
             var rows=jdbc.queryForList("SELECT b.epl_id,c.title,c.revision FROM calibre_books b JOIN catalog_books c ON c.epl_id=b.epl_id WHERE b.active=true AND b.calibre_id=? AND b.revision<c.revision AND NOT EXISTS (SELECT 1 FROM calibre_books newer WHERE newer.active=true AND newer.epl_id=b.epl_id AND newer.revision>=c.revision)",id);
             if(rows.size()!=1) throw new UserInputException("La selección de actualizaciones cambió; vuelve a buscar");
             var row=rows.getFirst();long epl=((Number)row.get("epl_id")).longValue();double revision=((Number)row.get("revision")).doubleValue();
-            if(result.stream().anyMatch(b -> b.eplId()==epl)) throw new UserInputException("Selecciona una sola actualización por EPL ID");
+            if(!seenBooks.add(epl)) throw new UserInputException("Selecciona una sola actualización por EPL ID");
             var previous=jdbc.query("SELECT calibre_id,revision FROM calibre_books WHERE active=true AND epl_id=? AND revision<? ORDER BY revision,calibre_id",(r,n)->new Previous(r.getLong(1),BigDecimal.valueOf(r.getDouble(2)).stripTrailingZeros().toPlainString()),epl,revision);
-            totalPrevious+=previous.size();
-            if(previous.size()>1000 || totalPrevious>10000) throw new UserInputException("Demasiadas revisiones anteriores para este libro");
+            if(previous.size()>1000) throw new UserInputException("Demasiadas revisiones anteriores para este libro");
             var candidates=new ArrayList<CalibreTransfers.Candidate>();String problem=null;
             for(var d:downloads.findByEplIdIn(List.of(epl))) {
                 if(!d.getClientInstanceId().equals(tracking.instanceId()) || Double.compare(d.getRevision(),revision)!=0 || d.getStatus()!=DownloadStatus.DOWNLOADED) continue;
                 try {var available=files.list(d.getId());if(available.isEmpty()) problem="La descarga no contiene ningún EPUB disponible";for(var f:available) if(f.size()>268435456) problem="El EPUB supera 256 MiB";else candidates.add(new CalibreTransfers.Candidate(d.getId(),f.index(),f.name(),f.size(),epl,revision,f.expectedSize()));}
                 catch(RuntimeException ex) {problem="El EPUB descargado no es accesible; revisa el montaje y los permisos";}
             }
-            totalFiles+=candidates.size();if(totalFiles>10000) throw new UserInputException("Demasiados EPUB candidatos; selecciona menos libros");
             if(!candidates.isEmpty()) problem=null;
             result.add(new Book(id,epl,(String)row.get("title"),revision,previous,List.copyOf(candidates),problem));
         }
@@ -75,18 +73,23 @@ public class CalibreUpdateFlow {
     public record Availability(long calibreId,String state) {}
     public List<Availability> availability(List<Long> ids) {
         Permission.require(Permission.CALIBRE_READ);Permission.require(Permission.DOWNLOADS_FILES_READ);Permission.require(Permission.CATALOG_READ);
-        if(ids==null || ids.isEmpty() || ids.size()>1000 || ids.stream().anyMatch(i -> i==null || i<=0) || new HashSet<>(ids).size()!=ids.size()) throw new UserInputException("Selecciona entre 1 y 1000 libros únicos");
-        var placeholders=String.join(",",Collections.nCopies(ids.size(),"?"));
-        var rows=jdbc.queryForList("SELECT b.calibre_id,b.epl_id,c.revision FROM calibre_books b JOIN catalog_books c ON c.epl_id=b.epl_id WHERE b.active=true AND b.calibre_id IN ("+placeholders+")",ids.toArray());
+        if(ids==null || ids.isEmpty() || ids.stream().anyMatch(i -> i==null || i<=0) || new HashSet<>(ids).size()!=ids.size()) throw new UserInputException("Selecciona libros únicos");
+        var rows=new ArrayList<Map<String,Object>>();
+        for(int offset=0;offset<ids.size();offset+=500) {
+            var batch=ids.subList(offset,Math.min(offset+500,ids.size()));
+            var placeholders=String.join(",",Collections.nCopies(batch.size(),"?"));
+            rows.addAll(jdbc.queryForList("SELECT b.calibre_id,b.epl_id,c.revision FROM calibre_books b JOIN catalog_books c ON c.epl_id=b.epl_id WHERE b.active=true AND b.calibre_id IN ("+placeholders+")",batch.toArray()));
+        }
         var epls=rows.stream().map(r -> ((Number)r.get("epl_id")).longValue()).distinct().toList();
-        var records=downloads.findByEplIdIn(epls);
+        var byBook=new HashMap<Long,List<DownloadRecord>>();
+        for(int offset=0;offset<epls.size();offset+=500) for(var d:downloads.findByEplIdIn(epls.subList(offset,Math.min(offset+500,epls.size())))) byBook.computeIfAbsent(d.getEplId(),ignored->new ArrayList<>()).add(d);
         var result=new ArrayList<Availability>();
         long deadline=System.nanoTime()+Duration.ofMinutes(2).toNanos();
         for(var row:rows) {
             if(System.nanoTime()>deadline) throw new UserInputException("La comprobación ha tardado demasiado; vuelve a buscar");
             long id=((Number)row.get("calibre_id")).longValue(), epl=((Number)row.get("epl_id")).longValue();
             double revision=((Number)row.get("revision")).doubleValue();String state="MISSING";
-            for(var d:records) {
+            for(var d:byBook.getOrDefault(epl,List.of())) {
                 if(d.getEplId()!=epl || !d.getClientInstanceId().equals(tracking.instanceId()) || Double.compare(d.getRevision(),revision)!=0 || d.getStatus()!=DownloadStatus.DOWNLOADED) continue;
                 state="INACCESSIBLE";
                 try {
@@ -102,7 +105,6 @@ public class CalibreUpdateFlow {
     public Result createAutomated(Request request,java.util.function.Consumer<Result> committed) {return transfers.preparing(()->createPrepared(request,committed));}
     private Result createPrepared(Request request,java.util.function.Consumer<Result> committed) {
         require();if(request==null || request.id()==null || !request.id().matches("[A-Za-z0-9-]{1,64}") || request.books()==null || request.books().stream().anyMatch(Objects::isNull)) throw new UserInputException("Selección inválida");
-        if(json.writeValueAsString(request).length()>524288) throw new UserInputException("La selección es demasiado grande; selecciona menos revisiones anteriores");
         var previousRequest=existing(request);
         if(previousRequest!=null) return previousRequest;
         var prepared=prepare(request.books().stream().map(b -> b.calibreId()).toList());
@@ -151,15 +153,19 @@ public class CalibreUpdateFlow {
             String calibreId=selected.isEmpty() && waits.isEmpty()?null:transfers.enqueueUpdates(connection,selected,waits,cleanup,downloadId,dependencies);
             var result=new Result(downloadId,calibreId);
             committed.accept(result);
-            jdbc.update("INSERT INTO calibre_update_requests(id,owner_id,payload,result,created_at) VALUES(?,?,?,?,?)",request.id(),EventContext.actor().id(),json.writeValueAsString(request),json.writeValueAsString(result),Instant.now().toString());
+            jdbc.update("INSERT INTO calibre_update_requests(id,owner_id,payload,result,created_at) VALUES(?,?,?,?,?)",request.id(),EventContext.actor().id(),signature(request),json.writeValueAsString(result),Instant.now().toString());
             return result;
         });
+    }
+    private String signature(Request request) {
+        try {return "sha256:"+java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(request)));}
+        catch(java.security.NoSuchAlgorithmException ex) {throw new IllegalStateException(ex);}
     }
     private Result existing(Request request) {
         var rows=jdbc.queryForList("SELECT owner_id,payload,result FROM calibre_update_requests WHERE id=?",request.id());
         if(rows.isEmpty()) return null;
         var row=rows.getFirst();
-        if(!Objects.equals(row.get("owner_id"),EventContext.actor().id()) || !json.readValue((String)row.get("payload"),Request.class).equals(request)) throw new UserInputException("La solicitud ya se utilizó con otra selección");
+        if(!Objects.equals(row.get("owner_id"),EventContext.actor().id()) || !(Objects.equals(row.get("payload"),signature(request)) || (!row.get("payload").toString().startsWith("sha256:") && json.readValue((String)row.get("payload"),Request.class).equals(request)))) throw new UserInputException("La solicitud ya se utilizó con otra selección");
         return json.readValue((String)row.get("result"),Result.class);
     }
     /** Called by the single sender; only hashes from the linked job and pinned revision are observed. */
@@ -168,7 +174,7 @@ public class CalibreUpdateFlow {
         if(jdbc.queryForObject("SELECT next_probe FROM calibre_jobs WHERE id=?",Long.class,job)>now) return;
         var hashes=new HashSet<>(jdbc.queryForList("WITH RECURSIVE retry_jobs(original,id) AS (SELECT DISTINCT download_job_id,download_job_id FROM calibre_job_items WHERE job_id=? AND download_job_id IS NOT NULL UNION SELECT r.original,j.child_id FROM retry_jobs r JOIN job_retry_jobs j ON j.parent_id=r.id AND j.kind='downloads') SELECT DISTINCT b.hash FROM torrent_bulk_items b JOIN retry_jobs r ON r.id=b.job_id JOIN calibre_job_items i ON i.download_job_id=r.original AND i.epl_id=b.epl_id AND CAST(i.revision AS REAL)=b.revision WHERE i.job_id=? AND i.state='WAITING_DOWNLOAD' AND b.state IN ('ACCEPTED','ALREADY_EXISTS')",String.class,job,job));
         if(!hashes.isEmpty()) torrent.exclusiveClient(adapter -> {
-            var remote=new HashMap<String,RemoteTorrent>();for(var t:adapter.listTorrents(hashes)) for(String alias:t.aliases()) remote.put(alias,t);
+            var remote=new HashMap<String,RemoteTorrent>();for(var t:hashes.size()>1000?adapter.listTorrents():adapter.listTorrents(hashes)) for(String alias:t.aliases()) remote.put(alias,t);
             tracking.observeSelected(remote,hashes);return null;
         });
         jdbc.update("UPDATE calibre_jobs SET next_probe=? WHERE id=?",now+internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE).toMillis(),job);
@@ -177,11 +183,14 @@ public class CalibreUpdateFlow {
         var row=jdbc.queryForMap("SELECT i.download_job_id,i.wait_until FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.id=?",item.id());
         if(((Number)row.get("wait_until")).longValue()<Instant.now().toEpochMilli()) throw new UserInputException("La espera superó 30 días; revisa la descarga y reanuda");
         String downloadId=(String)row.get("download_job_id");
-        var hashRows=jdbc.queryForList("WITH RECURSIVE retry_jobs(id) AS (SELECT ? UNION SELECT j.child_id FROM job_retry_jobs j JOIN retry_jobs r ON r.id=j.parent_id WHERE j.kind='downloads') SELECT hash,state FROM torrent_bulk_items WHERE job_id IN (SELECT id FROM retry_jobs) AND epl_id=? AND revision=?",downloadId,item.eplId(),Double.valueOf(item.revision()));
-        if(hashRows.isEmpty() || hashRows.stream().allMatch(r -> Set.of("FAILED","CANCELLED","SKIPPED").contains(r.get("state")))) throw new UserInputException("El envío al cliente torrent falló, se canceló o ya no existe");
-        Set<String> hashes=new HashSet<>();for(var r:hashRows) if(Set.of("ACCEPTED","ALREADY_EXISTS").contains(r.get("state"))) hashes.add((String)r.get("hash"));
+        Set<String> hashes=new HashSet<>();
+        if(downloadId!=null) {
+            var hashRows=jdbc.queryForList("WITH RECURSIVE retry_jobs(id) AS (SELECT ? UNION SELECT j.child_id FROM job_retry_jobs j JOIN retry_jobs r ON r.id=j.parent_id WHERE j.kind='downloads') SELECT hash,state FROM torrent_bulk_items WHERE job_id IN (SELECT id FROM retry_jobs) AND epl_id=? AND revision=?",downloadId,item.eplId(),Double.valueOf(item.revision()));
+            if(hashRows.isEmpty() || hashRows.stream().allMatch(r -> Set.of("FAILED","CANCELLED","SKIPPED").contains(r.get("state")))) throw new UserInputException("El envío al cliente torrent falló, se canceló o ya no existe");
+            for(var r:hashRows) if(Set.of("ACCEPTED","ALREADY_EXISTS").contains(r.get("state"))) hashes.add((String)r.get("hash"));
+        }
         for(var d:downloads.findByEplIdIn(List.of(item.eplId()))) {
-            if(!d.getClientInstanceId().equals(tracking.instanceId()) || !hashes.contains(d.getHash()) || Double.compare(d.getRevision(),Double.parseDouble(item.revision()))!=0) continue;
+            if(!d.getClientInstanceId().equals(tracking.instanceId()) || (downloadId==null?!d.getId().equals(item.recordId()):!hashes.contains(d.getHash())) || Double.compare(d.getRevision(),Double.parseDouble(item.revision()))!=0) continue;
             if(d.getStatus()==DownloadStatus.NOT_FOUND || d.getStatus()==DownloadStatus.ERROR) throw new UserInputException("El torrent no está disponible o tiene un error; revisa Estado de las descargas");
             if(d.getStatus()!=DownloadStatus.DOWNLOADED) continue;
             var available=files.list(d.getId());

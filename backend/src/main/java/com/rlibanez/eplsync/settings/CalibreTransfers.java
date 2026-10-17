@@ -22,8 +22,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class CalibreTransfers {
     public record FileChoice(String recordId,int index) {}
     public record Candidate(String recordId,int index,String name,long size,long eplId,double revision,long expectedSize) {}
-    public record Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files) {}
-    public record Request(String library,List<FileChoice> files) {}
+    public record Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files,List<String> deferredRecords) {
+        public Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files) {this(libraries,library,files,List.of());}
+    }
+    public record Request(String library,List<FileChoice> files,List<String> deferredRecords) {
+        public Request {if(deferredRecords==null) deferredRecords=List.of();}
+        public Request(String library,List<FileChoice> files) {this(library,files,List.of());}
+    }
     public record Job(String id,String createdAt,String updatedAt,String username,String library,String state,String message,
         long total,long pending,long accepted,long skipped,long failed,long uncertain) {}
     public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position) {
@@ -81,6 +86,10 @@ public class CalibreTransfers {
     public Prepared prepare(List<String> ids) {
         requireSend();validateIds(ids);
         var connection=settings.connection();var check=client.check(connection);
+        if(ids.size()>1000) {
+            files.requireRoots();deferredDownloads(ids);
+            return new Prepared(check.libraries(),connection.library(),List.of(),List.copyOf(ids));
+        }
         var candidates=new ArrayList<Candidate>();long deadline=System.nanoTime()+Duration.ofMinutes(2).toNanos();
         for(String id:ids) {
             if(System.nanoTime()>deadline) throw new UserInputException("La preparación ha tardado demasiado; selecciona menos registros");
@@ -92,20 +101,46 @@ public class CalibreTransfers {
                 throw new com.rlibanez.eplsync.exception.TorrentOperationException(ex.getStatus(),"EPL ID "+row.getEplId()+" · revisión "+row.getRevision()+": "+ex.getMessage());
             }
             for(var file:available) {
-                if(file.size()>268435456 || candidates.size()>=1000) throw new UserInputException("Máximo 1000 EPUB de 256 MiB por selección");
+                if(file.size()>268435456) throw new UserInputException("El EPUB supera 256 MiB");
                 candidates.add(new Candidate(id,file.index(),file.name(),file.size(),row.getEplId(),row.getRevision(),file.expectedSize()));
             }
         }
         return new Prepared(check.libraries(),connection.library(),List.copyOf(candidates));
     }
     private static void validateIds(List<String> ids) {
-        if(ids==null || ids.isEmpty() || ids.size()>1000 || ids.stream().anyMatch(id -> id==null || id.isBlank() || id.length()>64) || new HashSet<>(ids).size()!=ids.size())
-            throw new UserInputException("Selecciona entre 1 y 1000 registros únicos");
+        if(ids==null || ids.isEmpty() || ids.stream().anyMatch(id -> id==null || id.isBlank() || id.length()>64) || new HashSet<>(ids).size()!=ids.size())
+            throw new UserInputException("Selecciona registros únicos");
+    }
+    private List<DownloadRecord> deferredDownloads(List<String> ids) {
+        var result=new ArrayList<DownloadRecord>();
+        for(int offset=0;offset<ids.size();offset+=500) result.addAll(downloads.findAllById(ids.subList(offset,Math.min(offset+500,ids.size()))));
+        if(result.size()!=ids.size() || result.stream().anyMatch(d->!tracking.instanceId().equals(d.getClientInstanceId()) || d.getStatus()!=DownloadStatus.DOWNLOADED)) throw new UserInputException("La selección contiene descargas no disponibles en el cliente actual");
+        var indexed=new HashMap<String,DownloadRecord>();result.forEach(record->indexed.put(record.getId(),record));
+        return ids.stream().map(id->Objects.requireNonNull(indexed.get(id))).toList();
     }
     public Job create(Request request) {
         requireSend();
-        if(request==null || request.library()==null || request.library().isBlank() || request.library().length()>256 || request.files()==null || request.files().isEmpty() || request.files().size()>1000 || request.files().stream().anyMatch(f -> f==null || f.index()<0)) throw new UserInputException("Selecciona entre 1 y 1000 EPUB");
+        if(request==null || request.library()==null || request.library().isBlank() || request.library().length()>256 || request.files()==null || (request.files().isEmpty() && request.deferredRecords().isEmpty()) || request.files().stream().anyMatch(f -> f==null || f.index()<0)) throw new UserInputException("Selecciona algún EPUB");
         if(new HashSet<>(request.files()).size()!=request.files().size()) throw new UserInputException("No selecciones el mismo EPUB dos veces");
+        if(!request.deferredRecords().isEmpty()) {
+            if(!request.files().isEmpty()) throw new UserInputException("Selección de archivos incompatible");
+            validateIds(request.deferredRecords());
+            return preparing(()-> {
+                var connection=settings.connection();String selectedSource=source();var check=client.check(connection);
+                if(check.libraries().stream().noneMatch(l->l.id().equals(request.library()))) throw new UserInputException("La biblioteca de destino no está disponible");
+                var records=deferredDownloads(request.deferredRecords());
+                return tx.execute(status->{
+                    if(!selectedSource.equals(source())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
+                    String id=createQueuedJob(connection,request.library());int position=0;
+                    for(var d:records) {
+                        var candidate=new Candidate(d.getId(),0,"EPL ID "+d.getEplId(),0,d.getEplId(),d.getRevision(),0);
+                        insertUpdate(id,position++,candidate,new CalibreUpdateFlow.Choice(0,d.getRevision(),true,List.of(),"KEEP",List.of(),false),null,true);
+                    }
+                    event(EventContext.actor(),id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",request.library(),"selected",records.size(),"waiting",records.size()));
+                    return job(id);
+                });
+            });
+        }
         lifecycle.readLock().lock();
         try {
             var connection=settings.connection();String source=source();
@@ -116,8 +151,6 @@ public class CalibreTransfers {
             var actor=EventContext.actor();String id=UUID.randomUUID().toString(),now=Instant.now().toString();
             tx.executeWithoutResult(s -> {
                 if(!connection.equals(settings.connection()) || !source.equals(source())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
-                if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i WHERE state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class)+selected.size()>10000)
-                    throw new UserInputException("Hay demasiados envíos pendientes a Calibre; espera a que finalicen");
                 jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username()==null ? "Sistema" : actor.username(),destination(connection),request.library(),source);
                 for(int position=0;position<selected.size();position++) {
                     var f=selected.get(position);
@@ -135,19 +168,29 @@ public class CalibreTransfers {
         return enqueueCatalog(connection,connection.library(),selected,waits,cleanup,downloadId,dependencies);
     }
     String enqueueCatalog(CalibreSettings.Connection connection,String library,List<Candidate> selected,List<CalibreUpdateFlow.Book> waits,Map<Long,CalibreUpdateFlow.Choice> cleanup,String downloadId,Map<Long,String> dependencies) {
-        if(!connection.equals(settings.connection())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
-        if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i WHERE state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class)+selected.size()+waits.size()>10000) throw new UserInputException("Hay demasiados envíos pendientes a Calibre");
-        var actor=EventContext.actor();String id=UUID.randomUUID().toString(),now=Instant.now().toString();
-        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username(),destination(connection),library,source());
+        return enqueueCatalog(connection,library,selected,waits,cleanup,downloadId,dependencies,Map.of());
+    }
+    String enqueueCatalog(CalibreSettings.Connection connection,String library,List<Candidate> selected,List<CalibreUpdateFlow.Book> waits,Map<Long,CalibreUpdateFlow.Choice> cleanup,String downloadId,Map<Long,String> dependencies,Map<Long,String> deferredRecords) {
+        String id=createQueuedJob(connection,library);
+        var actor=EventContext.actor();
         int position=0;
         for(var f:selected) insertUpdate(id,position++,f,cleanup.get(f.eplId()),null);
-        for(var b:waits) insertUpdate(id,position++,new Candidate(null,0,b.title(),0,b.eplId(),b.revision(),0),cleanup.get(b.eplId()),dependencies.getOrDefault(b.eplId(),downloadId));
+        for(var b:waits) insertUpdate(id,position++,new Candidate(deferredRecords.get(b.eplId()),0,b.title(),0,b.eplId(),b.revision(),0),cleanup.get(b.eplId()),dependencies.getOrDefault(b.eplId(),downloadId),true);
         event(actor,id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",library,"selected",position,"waiting",waits.size(),"cleanupBooks",cleanup.values().stream().filter(c -> !c.cleanup().equals("KEEP")).count()));
         return id;
     }
+    private String createQueuedJob(CalibreSettings.Connection connection,String library) {
+        if(!connection.equals(settings.connection())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
+        var actor=EventContext.actor();String id=UUID.randomUUID().toString(),now=Instant.now().toString();
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username(),destination(connection),library,source());
+        return id;
+    }
     private void insertUpdate(String job,int position,Candidate f,CalibreUpdateFlow.Choice cleanup,String downloadId) {
+        insertUpdate(job,position,f,cleanup,downloadId,false);
+    }
+    private void insertUpdate(String job,int position,Candidate f,CalibreUpdateFlow.Choice cleanup,String downloadId,boolean waiting) {
         jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,message,download_job_id,cleanup_policy,cleanup_ids,wait_until) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            UUID.randomUUID().toString(),job,position,f.recordId(),downloadId==null?f.index():null,f.name(),downloadId==null?f.size():null,f.eplId(),BigDecimal.valueOf(f.revision()).stripTrailingZeros().toPlainString(),downloadId==null?"PENDING":"WAITING_DOWNLOAD",downloadId==null?(f.size()!=f.expectedSize()?SIZE_WARNING:null):"Esperando la descarga del EPUB",downloadId,cleanup.cleanup(),tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(cleanup.cleanup().equals("KEEP")?List.of():cleanup.previous()),downloadId==null?null:Instant.now().plus(Duration.ofDays(30)).toEpochMilli());
+            UUID.randomUUID().toString(),job,position,f.recordId(),waiting?null:f.index(),f.name(),waiting?null:f.size(),f.eplId(),BigDecimal.valueOf(f.revision()).stripTrailingZeros().toPlainString(),waiting?"WAITING_DOWNLOAD":"PENDING",waiting?(downloadId==null?"EPUB pendiente de comprobación":"Esperando la descarga del EPUB"):(f.size()!=f.expectedSize()?SIZE_WARNING:null),downloadId,cleanup.cleanup(),cleanup.cleanup().equals("KEEP")?"[]":tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(cleanup.previous()),waiting?Instant.now().plus(Duration.ofDays(30)).toEpochMilli():null);
     }
     private static final String SUMMARY="SELECT j.*,count(i.id) AS total,sum(CASE WHEN i.state IN ('PENDING','SENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','CLEANUP_PENDING') THEN 1 ELSE 0 END) AS pending,sum(CASE WHEN i.state='ACCEPTED' THEN 1 ELSE 0 END) AS accepted,sum(CASE WHEN i.state='SKIPPED' THEN 1 ELSE 0 END) AS skipped,sum(CASE WHEN i.state='FAILED' THEN 1 ELSE 0 END) AS failed,sum(CASE WHEN i.state='UNCERTAIN' THEN 1 ELSE 0 END) AS uncertain FROM calibre_jobs j LEFT JOIN calibre_job_items i ON i.job_id=j.id";
     private static Job mapJob(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Job(r.getString("id"),r.getString("created_at"),r.getString("updated_at"),r.getString("owner_username"),r.getString("library"),r.getString("state"),r.getString("message"),r.getLong("total"),r.getLong("pending"),r.getLong("accepted"),r.getLong("skipped"),r.getLong("failed"),r.getLong("uncertain")); }
@@ -306,13 +349,12 @@ public class CalibreTransfers {
             if(item.state().equals("PENDING")) event(actor,item.id(),"CALIBRE_SEND_FILE",EventJournal.Outcome.STARTED,Map.of("jobId",id,"eplId",item.eplId(),"revision",item.revision()));
             if(item.state().equals("WAITING_DOWNLOAD")) {
                 try {
-                    if(!owner.permissions().contains(Permission.TORRENT_SYNC)) throw new UserInputException("El usuario ya no puede consultar el cliente torrent");
-                    updates.refreshDownloads(id);
+                    if(owner.permissions().contains(Permission.TORRENT_SYNC)) updates.refreshDownloads(id);
                     var waiting=jdbc.query("SELECT * FROM calibre_job_items WHERE job_id=? AND state='WAITING_DOWNLOAD' AND next_check<=? ORDER BY position LIMIT 50",CalibreTransfers::mapItem,id,Instant.now().toEpochMilli());
                     long deadline=System.nanoTime()+Duration.ofSeconds(20).toNanos();
                     for(var w:waiting) {
                         if(System.nanoTime()>deadline || !job(id).state().equals("RUNNING")) break;
-                        try {updates.waiting(id,w);} catch(RuntimeException ex) {
+                        try {if(w.downloadJobId()!=null && !owner.permissions().contains(Permission.TORRENT_SYNC)) throw new UserInputException("El usuario ya no puede consultar el cliente torrent");updates.waiting(id,w);} catch(RuntimeException ex) {
                             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
                             jdbc.update("UPDATE calibre_job_items SET state='BLOCKED_DOWNLOAD',message=? WHERE id=? AND state='WAITING_DOWNLOAD'",safeMessage(ex,"No se puede comprobar o leer la descarga; revisa conexión y carpetas"),w.id());
                             pause(id,actor,"Hay una descarga pendiente que requiere revisión");break;

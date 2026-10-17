@@ -54,3 +54,50 @@ test("catalog readers without file access cannot send to Calibre", async ({page}
   await page.getByRole("checkbox",{name:"Seleccionar Book 2",exact:true}).check();
   await expect(page.getByRole("button",{name:"Enviar a Calibre",exact:true})).toHaveCount(0);
 });
+test("whole catalog can be sent to Calibre as a single job", async ({page}) => {
+  const books=Array.from({length:73000},(_,n)=>({eplId:n+1,revision:1,title:`Book ${n+1}`}));
+  await page.route("**/api/catalog/books?**",route=>route.fulfill({json:{items:[{eplId:1,title:"Book 1",author:"Author",revision:1,download:{items:[]}}],meta:{page:0,size:20,totalItems:73000,totalPages:3650,hasNext:true,hasPrevious:false}}}));
+  await page.route("**/api/calibre/transfers/catalog/prepare",route=>route.fulfill({json:{library:"main",libraries:[{id:"main",name:"Main"}],files:[],books,missing:books,deferred:[]}}));
+  await page.route("**/api/calibre/transfers/catalog",route=>{
+    const request=route.request().postDataJSON();
+    expect(request.books).toHaveLength(73000);expect(request.pending).toHaveLength(73000);expect(request.download).toBe(true);
+    return route.fulfill({json:{id:"catalog-job"}});
+  });
+  await page.goto("/catalog");
+  await page.getByRole("button",{name:/Seleccionar todo/}).click();
+  await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
+  const dialog=page.getByRole("dialog");
+  await dialog.getByRole("checkbox",{name:/Descargar los EPUB no disponibles/}).check();
+  await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
+  await expect(page).toHaveURL(/\/calibre\/jobs\/catalog-job$/);
+});
+test("large downloaded selections defer file checks without requesting downloads",async({page})=>{
+  const books=Array.from({length:1001},(_,n)=>({eplId:n+1,revision:1,title:`Book ${n+1}`}));
+  await page.route("**/api/calibre/transfers/catalog/prepare",route=>route.fulfill({json:{library:"main",libraries:[{id:"main",name:"Main"}],files:[],books,missing:[],deferred:books}}));
+  await page.route("**/api/calibre/transfers/catalog",route=>{
+    const request=route.request().postDataJSON();expect(request.pending).toHaveLength(1001);expect(request.download).toBe(false);
+    return route.fulfill({json:{id:"catalog-job"}});
+  });
+  await page.goto("/catalog");await page.getByRole("button",{name:/Seleccionar todo/}).click();
+  await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
+  const dialog=page.getByRole("dialog");
+  await expect(dialog.getByText(/Se comprobarán los EPUB de 1001 libros/)).toBeVisible();
+  await expect(dialog.getByRole("checkbox",{name:/Descargar los EPUB/})).toHaveCount(0);
+  await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
+  await expect(page).toHaveURL(/\/calibre\/jobs\/catalog-job$/);
+});
+test("large file previews are paged without losing selected or excluded EPUBs",async({page})=>{
+  const files=Array.from({length:1001},(_,n)=>({...file,recordId:`record-${n}`,name:`File ${n}.epub`}));
+  await page.route("**/api/calibre/transfers/catalog/prepare",route=>route.fulfill({json:{library:"main",libraries:[{id:"main",name:"Main"}],files,books:[book],missing:[]}}));
+  await page.route("**/api/calibre/transfers/catalog",route=>{
+    const request=route.request().postDataJSON();expect(request.files).toHaveLength(1000);expect(request.files.some((entry:{recordId:string})=>entry.recordId==="record-1000")).toBe(false);
+    return route.fulfill({json:{id:"catalog-job"}});
+  });
+  await page.goto("/catalog");await page.getByRole("checkbox",{name:"Seleccionar Book 2",exact:true}).check();
+  await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();const dialog=page.getByRole("dialog");
+  await expect(dialog.getByRole("checkbox")).toHaveCount(100);
+  for(let n=0;n<10;n++) await dialog.getByRole("button",{name:"Siguiente",exact:true}).click();
+  await dialog.getByRole("checkbox",{name:/File 1000.epub/}).uncheck();
+  await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
+  await expect(page).toHaveURL(/\/calibre\/jobs\/catalog-job$/);
+});

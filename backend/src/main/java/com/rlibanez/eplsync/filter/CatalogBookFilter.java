@@ -167,8 +167,6 @@ public class CatalogBookFilter {
             calibrePresence="PRESENT";
         }
         for (Long[] ids : new Long[][]{selectedIds, excludedIds}) {
-            if (ids != null && ids.length > com.rlibanez.eplsync.config.QueryLimits.MAX_SELECTION_IDS)
-                throw new com.rlibanez.eplsync.exception.UserInputException("Máximo de 10000 identificadores por selección");
             if (ids != null && java.util.Arrays.stream(ids).anyMatch(id -> id == null || id < 1))
                 throw new com.rlibanez.eplsync.exception.UserInputException("Los identificadores seleccionados deben ser positivos");
         }

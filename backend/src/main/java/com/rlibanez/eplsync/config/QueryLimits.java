@@ -5,7 +5,6 @@ public final class QueryLimits {
     public static final int DEFAULT_SIZE = 20;
     public static final int MAX_SIZE = 1000;
     public static final int MAX_SORT_FIELDS = 8;
-    public static final int MAX_SELECTION_IDS = 10000;
     private QueryLimits() {}
 
     public static void page(int page, int size) {

@@ -76,14 +76,17 @@ class CatalogMultiFilterTests {
   mvc.perform(get("/api/catalog/books").param("eplId","1","-2")).andExpect(status().isBadRequest());
   mvc.perform(get("/api/catalog/books").param("revision","1.4","NaN")).andExpect(status().isBadRequest());
  }
- @Test void explicitSelectionsHaveAFiniteLimitBeforeQuerying() {
-  var filter = new com.rlibanez.eplsync.filter.CatalogBookFilter();
-  filter.setSelectedIds(java.util.stream.LongStream.rangeClosed(1,10001).boxed().toArray(Long[]::new));
-  org.assertj.core.api.Assertions.assertThatThrownBy(filter::normalize).isInstanceOf(IllegalArgumentException.class)
-      .hasMessage("Máximo de 10000 identificadores por selección");
+ @Test void wholeCatalogSelectionsAndExclusionsDoNotExceedSqliteParameterLimits() {
+  var filter=new CatalogBookFilter();
+  filter.setSelectedIds(java.util.stream.LongStream.rangeClosed(1,73000).boxed().toArray(Long[]::new));
+  assertThat(books.count(CatalogBookSpecifications.fromFilter(filter))).isEqualTo(5);
+  filter.setExcludedIds(java.util.stream.LongStream.rangeClosed(2,73000).boxed().toArray(Long[]::new));
+  assertThat(books.findAll(CatalogBookSpecifications.fromFilter(filter))).extracting(book -> Objects.requireNonNull(book).getEplId()).containsExactly(1L);
   filter.setSelectedIds(new Long[]{});
-  filter.setExcludedIds(java.util.stream.LongStream.rangeClosed(1,10001).boxed().toArray(Long[]::new));
-  org.assertj.core.api.Assertions.assertThatThrownBy(filter::normalize).isInstanceOf(IllegalArgumentException.class);
+  assertThat(books.count(CatalogBookSpecifications.fromFilter(filter))).isZero();
+  filter.setSelectedIds(new Long[]{-1L});
+  assertThatThrownBy(filter::normalize).isInstanceOf(IllegalArgumentException.class);
  }
+
 
 }

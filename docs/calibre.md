@@ -224,7 +224,9 @@ configurada. Si todavía no había una sincronización completa, se indica que l
 es parcial; **Sincronizar biblioteca** obtiene el listado completo. Los envíos a
 otras bibliotecas quedan reflejados en sus trabajos.
 
-Límites: 1000 EPUB por trabajo, 256 MiB por EPUB y 10000 archivos pendientes en total.
+No hay un tope de libros por trabajo ni de archivos pendientes en la cola.
+Se mantiene el máximo de 256 MiB por EPUB y el envío de un archivo cada vez.
+Las selecciones grandes aplazan la comprobación de los EPUB hasta su procesamiento.
 Se usa un archivo temporal por envío, eliminado al terminar; los temporales
 abandonados se revisan cada hora. Los trabajos terminados o cancelados se conservan
 90 días. Los que tengan envíos sin confirmar no se eliminan por retención.

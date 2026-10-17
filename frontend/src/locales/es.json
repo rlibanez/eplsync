@@ -1630,7 +1630,6 @@
   },
   "calibreSend": {
     "detailContains": "Detalle contiene",
-    "catalogLimit": "Selecciona como máximo 1000 libros para enviar a Calibre",
     "missing": "{{count}} libros no tienen el EPUB de la revisión del catálogo disponible.",
     "downloadMissing": "Descargar los EPUB no disponibles y enviarlos a Calibre cuando terminen",
     "title": "Enviar a Calibre",
@@ -1673,7 +1672,8 @@
       "CLEANUP_PENDING": "Limpieza pendiente"
     },
     "cancel": "Cancelar",
-    "detail": "Detalle"
+    "detail": "Detalle",
+    "deferred": "Se comprobarán los EPUB de {{count}} libros durante el trabajo, sin consultarlos todos al abrir el asistente."
   },
   "calibreUpdateSend": {
     "open": "Enviar actualizaciones ({{count}})",

@@ -139,7 +139,7 @@ export function CalibreUpdateSend({ selected }: { selected: number[] }) {
   return (
     <>
       <Button
-        disabled={!selected.length || selected.length > 1000}
+        disabled={!selected.length}
         onClick={() => {
           setRequestId(`${Date.now()}-${Math.random().toString(36).slice(2)}`);
           setOpened(true);

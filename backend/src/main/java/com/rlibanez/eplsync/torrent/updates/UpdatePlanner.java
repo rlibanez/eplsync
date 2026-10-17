@@ -146,7 +146,7 @@ public class UpdatePlanner {
     }
     @Transactional(timeout=120)
     public BulkStore.View create(CatalogBookFilter filter,boolean includeNotFound,UpdateRequest request,Selection selection) {
-        if(selection==Selection.REQUESTED && (filter.getSelectedIds()==null || filter.getSelectedIds().length==0 || filter.getSelectedIds().length>1000)) throw new com.rlibanez.eplsync.exception.UserInputException("La automatización requiere una selección explícita de hasta 1000 libros");
+        if(selection==Selection.REQUESTED && (filter.getSelectedIds()==null || filter.getSelectedIds().length==0)) throw new com.rlibanez.eplsync.exception.UserInputException("La automatización requiere una selección explícita de libros");
         var input=request==null ? new UpdateRequest(null,null,null,null,null,null) : request;
         if(input.options()!=null && input.options().hash()!=null) throw new com.rlibanez.eplsync.exception.UserInputException("Las actualizaciones no admiten options.hash");
         if(input.policy()!=PreviousVersions.KEEP) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP);

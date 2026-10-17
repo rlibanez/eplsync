@@ -77,7 +77,7 @@ class CalibreUpdateFlowTests {
     @Test void idempotentRequestsFromBeforeAutomationOptionsWereAddedRemainValid() {
         var request=new CalibreUpdateFlow.Request(UUID.randomUUID().toString(),List.of(ready("KEEP")),true,true);
         var result=submit(request);
-        jdbc.update("UPDATE calibre_update_requests SET payload=json_remove(payload,'$.downloadOptions') WHERE id=?",request.id());
+        jdbc.update("UPDATE calibre_update_requests SET payload=json_remove(?,'$.downloadOptions') WHERE id=?",tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(request),request.id());
         assertThat(submit(request)).isEqualTo(result);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Long.class)).isEqualTo(1);
     }

@@ -236,7 +236,6 @@ public class JobRetries {
         }
     }
     private void cloneCalibre(String child,Map<String,Object> parent,Plan plan,Account actor) {
-        if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i WHERE state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class)+plan.work().size()>10000) throw conflict("Hay demasiados envíos pendientes a Calibre");
         String now=Instant.now().toString();
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",child,now,now,actor.id(),actor.username(),destination(),parent.get("library"),source());
         int position=0;

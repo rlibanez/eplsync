@@ -178,7 +178,7 @@ export function RevisionUpdates() {
   function toggle(id: number, checked: boolean) {
     setSelected((old) =>
       checked
-        ? old.includes(id) || old.length >= 10000
+        ? old.includes(id)
           ? old
           : [...old, id]
         : old.filter((value) => value !== id),

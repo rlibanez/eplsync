@@ -24,9 +24,9 @@ public final class CatalogBookSpecifications {
 
         f.normalize();
         if (f.getSelectedIds() != null) spec = spec.and((root,q,cb) -> f.getSelectedIds().length == 0
-            ? cb.disjunction() : root.get("eplId").in((Object[]) f.getSelectedIds()));
+            ? cb.disjunction() : selectedIds(root,cb,f.getSelectedIds()));
         if (f.getExcludedIds() != null && f.getExcludedIds().length > 0)
-            spec = spec.and((root,q,cb) -> cb.not(root.get("eplId").in((Object[]) f.getExcludedIds())));
+            spec = spec.and((root,q,cb) -> cb.not(selectedIds(root,cb,f.getExcludedIds())));
 
         if (f.getEplId() != null) {
             spec = spec.and((root, q, cb) -> root.get("eplId").in((Object[]) f.getEplId()));
@@ -135,4 +135,12 @@ public final class CatalogBookSpecifications {
             return base;
         return base.and(other);
     }
+    private static jakarta.persistence.criteria.Predicate selectedIds(jakarta.persistence.criteria.Root<CatalogBook> root,jakarta.persistence.criteria.CriteriaBuilder cb,Long[] ids) {
+        if(ids.length<=1000) return root.get("eplId").in((Object[])ids);
+        // One JSON parameter avoids both SQLite's variable limit and a huge Criteria tree.
+        var criteria=(org.hibernate.query.criteria.HibernateCriteriaBuilder)cb;
+        String selected=java.util.Arrays.stream(ids).map(String::valueOf).collect(java.util.stream.Collectors.joining(",","[","]"));
+        return cb.isTrue(criteria.sql("? in (select cast(value as integer) from json_each(?))",Boolean.class,root.get("eplId"),criteria.value(selected)));
+    }
+
 }

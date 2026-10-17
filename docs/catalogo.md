@@ -79,8 +79,8 @@ de revisión sigue comparando la mayor revisión presente con el Catálogo.
 
 La barra de selección permite **Enviar a Calibre** mediante el mismo asistente de
 Estado de las descargas. Requiere permisos de lectura del catálogo, lectura de
-archivos y envío a Calibre. Admite hasta 1000 libros; al seleccionar todos conserva
-los filtros aplicados y los libros excluidos, sin limitarse a la página visible.
+archivos y envío a Calibre. Se puede enviar todo el Catálogo en un solo trabajo;
+al seleccionar todos conserva los filtros aplicados y los libros excluidos, sin limitarse a la página visible.
 
 Se utiliza el EPUB de la revisión del catálogo, registrado como descargado en el
 cliente torrent actual. El asistente permite elegir archivos y biblioteca. Para
@@ -114,3 +114,8 @@ Para el reinicio completo, utiliza el apartado correspondiente de
 **Ajustes → Base de datos**. La confirmación permite elegir si también se eliminan
 usuarios y configuraciones; esa opción vuelve a abrir el asistente de primer
 administrador. Es una operación distinta de actualizar el catálogo.
+
+En selecciones de más de 1000 libros ya descargados, la comprobación de sus EPUB
+se realiza por lotes durante el trabajo. Si un torrent contiene varios EPUB,
+el elemento requiere revisión para elegir el archivo. El asistente no consulta
+todos los archivos remotos antes de crear la cola.
