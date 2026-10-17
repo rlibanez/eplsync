@@ -36,7 +36,8 @@ public record CatalogBookResponse(
     public CatalogBookResponse withCalibre(Calibre value) {
         return new CatalogBookResponse(eplId,revision,author,title,genres,collection,volume,publicationYear,synopsis,pages,language,publicationStatus,publicationDate,insertDate,lastModifiedDate,status,rating,votesCount,links,coverUrl,coverAvailable,download,value);
     }
-    public record Download(List<DownloadItem> items,long totalItems,List<DownloadStatus> statuses) {
+    public record Download(List<DownloadItem> items,long totalItems,List<DownloadStatus> statuses, DownloadItem latest) {
+        public Download(List<DownloadItem> items,long totalItems,List<DownloadStatus> statuses) {this(items,totalItems,statuses,null);}
         public Download(List<DownloadItem> items) { this(items,items.size()); }
         public Download(List<DownloadItem> items,long totalItems) { this(items,totalItems,items.stream().map((DownloadItem entryValue) -> java.util.Objects.requireNonNull(entryValue).status()).distinct().toList()); }
         public boolean hasMore() { return totalItems > items.size(); }

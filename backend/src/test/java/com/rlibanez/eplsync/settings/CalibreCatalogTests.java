@@ -92,7 +92,7 @@ class CalibreCatalogTests {
             .andExpect(jsonPath("$.calibre.username").doesNotExist());
         mvc.perform(get("/api/catalog/books").param("size","1"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(5))
-            .andExpect(jsonPath("$.items[0].calibre").isEmpty());
+            .andExpect(jsonPath("$.items[0].calibre.revision").value(1.5)).andExpect(jsonPath("$.items[0].calibre.totalItems").value(2));
         verify(client,times(1)).books(any(),eq(0),eq(100));
         settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"other"));
         assertThat(snapshots.snapshot()).isNull();
@@ -234,6 +234,7 @@ class CalibreCatalogTests {
         mvc.perform(get("/api/calibre/books")).andExpect(status().isForbidden());
         mvc.perform(get("/api/calibre/books/1/open")).andExpect(status().isForbidden());
         mvc.perform(get("/api/catalog/books/1")).andExpect(status().isOk()).andExpect(jsonPath("$.calibre").isEmpty());
+        mvc.perform(get("/api/catalog/books")).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].calibre").isEmpty());
     }
     @Test @WithMockUser(authorities={"CALIBRE_READ","CALIBRE_SYNC"}) void synchronizersCannotReadCredentials() throws Exception {
         when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(),0,0,100));

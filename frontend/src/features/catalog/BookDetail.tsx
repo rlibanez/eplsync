@@ -1,3 +1,4 @@
+import { LibraryBadges } from "./LibraryBadges";
 import { BookCalibre } from "./BookCalibre";
 import { BookHistory } from "./BookHistory";
 import { useAuth } from "../auth/Auth";
@@ -69,6 +70,7 @@ export function BookDetail() {
                     })}
                   </span>
                 </div>
+                <LibraryBadges book={book} />
               </div>
             </div>
             <BookActions key={book.eplId} book={book} />

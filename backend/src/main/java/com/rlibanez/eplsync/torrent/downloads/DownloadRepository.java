@@ -15,6 +15,7 @@ public interface DownloadRepository extends JpaRepository<DownloadRecord, String
     interface HistoryRow {
         Long getEplId(); String getId(); Double getRevision(); String getStatus(); Integer getCompleted(); Long getTotal();
     }
+    // Keep native REAL projections from narrowing Double revisions to Float before DTO conversion.
     @Query(value="""
         WITH ranked AS (
           SELECT epl_id AS eplId, id, revision, status,
@@ -22,9 +23,18 @@ public interface DownloadRepository extends JpaRepository<DownloadRecord, String
                  count(*) OVER (PARTITION BY epl_id) AS total,
                  row_number() OVER (PARTITION BY epl_id ORDER BY revision DESC, created_at DESC, id ASC) AS position
           FROM torrent_downloads WHERE epl_id IN (:ids)
-        ) SELECT eplId,id,revision,status,completed,total FROM ranked WHERE position <= :limit ORDER BY eplId,position
+        ) SELECT eplId,id,CAST(revision AS TEXT) AS revision,status,completed,total FROM ranked WHERE position <= :limit ORDER BY eplId,position
         """, nativeQuery=true)
     List<HistoryRow> historyWindow(Collection<Long> ids, int limit);
+    @Query(value="""
+        SELECT eplId,id,CAST(revision AS TEXT) AS revision,status,completed,total FROM (
+          SELECT epl_id AS eplId,id,revision,status,CASE WHEN completed_at IS NULL THEN 0 ELSE 1 END AS completed,
+                 count(*) OVER(PARTITION BY epl_id) AS total,
+                 row_number() OVER(PARTITION BY epl_id ORDER BY revision DESC,created_at DESC,id ASC) AS position
+          FROM torrent_downloads WHERE epl_id IN (:ids) AND client_instance_id=:instance AND status<>'NOT_FOUND'
+        ) WHERE position=1
+        """,nativeQuery=true)
+    List<HistoryRow> latestPresent(Collection<Long> ids,String instance);
     interface HistoryStatus { Long getEplId(); String getStatus(); }
     @Query(value="SELECT epl_id AS eplId,status FROM torrent_downloads WHERE epl_id IN (:ids) GROUP BY epl_id,status",nativeQuery=true)
     List<HistoryStatus> historyStatuses(Collection<Long> ids);

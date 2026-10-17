@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, type LinkProps } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { Book } from "../../api/catalog";
+import { LibraryBadges } from "./LibraryBadges";
 import { BookCover } from "./BookCover";
 import { CatalogValue } from "./CatalogValue";
 import type { Column } from "./CatalogColumns";
@@ -53,7 +54,7 @@ export function CatalogCards({
   onFilter: (column: Column, value: string) => void;
 }) {
   const { t } = useTranslation();
-  const { number, status } = useLocale();
+  const { number } = useLocale();
   return (
     <div className={`catalog-cards catalog-cards-${view}`}>
       {books.map((book) => (
@@ -133,20 +134,7 @@ export function CatalogCards({
                     />
                   </div>
                 )}
-                {!!book.download?.items.length && (
-                  <div className="catalog-card-downloads">
-                    {[
-                      ...new Set(
-                        book.download.statuses ??
-                          book.download.items.map((item) => item.status),
-                      ),
-                    ].map((value) => (
-                      <span className="badge" key={value}>
-                        {status(value)}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <LibraryBadges book={book} />
               </>
             )}
           </div>

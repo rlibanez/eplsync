@@ -118,6 +118,8 @@ public class CatalogBookController {
                 resultPage.hasNext(),
                 resultPage.hasPrevious());
 
-        return new PageResponse<>(downloads.enrich(resultPage.getContent()), meta);
+        var enriched=downloads.enrich(resultPage.getContent());
+        if(com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.CALIBRE_READ)) enriched=calibre.enrich(enriched);
+        return new PageResponse<>(enriched, meta);
     }
 }

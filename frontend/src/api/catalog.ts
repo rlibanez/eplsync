@@ -29,6 +29,12 @@ export interface Book {
     items: { calibreId: number; revision: number | null }[];
   } | null;
   download: {
+    latest?: {
+      id: string;
+      revision: number | null;
+      status: string;
+      completed: boolean;
+    } | null;
     totalItems: number;
     statuses: string[];
     items: {

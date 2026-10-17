@@ -308,6 +308,27 @@ class DownloadTrackingTests {
         verifyNoInteractions(stubClient);
     }
 
+    @Test void catalogLatestTorrentUsesHighestPresentRevisionOfCurrentClient() throws Exception {
+        book(1.0,HASH);
+        for(int i=0;i<5;i++) {
+            var row=new DownloadRecord();row.setEplId(32L);row.setRevision(i==2?3.3:1.0+i);row.setHash(String.format("%040X",i+1));
+            row.setClient("stub");row.setClientInstanceId(i==4?"old-client":tracking.instanceId());row.setOrigin(DownloadRecord.Origin.EPLSYNC);
+            row.setStatus(i==3?DownloadStatus.NOT_FOUND:i==2?DownloadStatus.DOWNLOADING:DownloadStatus.DOWNLOADED);
+            row.setCreatedAt(Instant.now());downloads.save(row);
+        }
+        for(String url:List.of("/api/catalog/books/32","/api/catalog/books?eplId=32")) {
+            String path=url.contains("?")?"$.items[0]":"$";
+            mvc.perform(get(url)).andExpect(status().isOk()).andExpect(jsonPath(path+".download.latest.revision").value(3.3))
+                .andExpect(jsonPath(path+".download.latest.status").value("DOWNLOADING"));
+        }
+        var authentication=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        try {
+            org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated("reader",null,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("CATALOG_READ"))));
+            assertThat(views.enrich(books.findAll()).getFirst().download().latest()).isNull();
+        } finally {org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(authentication);}
+    }
+
     @Test void bookTextFilterSupportsExclusionPagingSummaryAndLiteralCharacters() throws Exception {
         book(1.0,HASH);
         books.save(CatalogBook.builder().eplId(33L).title("Other 100%_book").author("Author").language(Language.ESPANOL).revision(1.0).build());
