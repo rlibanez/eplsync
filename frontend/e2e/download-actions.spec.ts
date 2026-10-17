@@ -158,3 +158,26 @@ test("state synchronization permission exposes refresh but no deletion", async (
     page.getByRole("button", { name: "Descargar", exact: true }),
   ).toHaveCount(0);
 });
+
+test("blocked deletion explains the Calibre dependency and links to its job", async ({ page }) => {
+  await page.route("**/api/torrent/downloads/delete-history?preview=true", r => r.fulfill({ json: { pendingCleanup: 0 } }));
+  await page.route("**/api/torrent/downloads?**", r => r.fulfill({ json: {
+    items: [{ id: "blocked", eplId: 1, title: "Libro protegido", hash: "A".repeat(40), revision: 1,
+      status: "DOWNLOADED", client: "qbittorrent", clientInstanceId: "server", origin: "EPLSYNC" }],
+    meta: { page: 0, size: 20, totalItems: 1, totalPages: 1, hasNext: false, hasPrevious: false },
+  } }));
+  await page.route("**/api/torrent/downloads/remove-records", r => r.fulfill({ json: {
+    items: [{ id: "blocked", status: "DOWNLOADED", cleanupState: "WAITING", historyDeleted: false,
+      message: "No se puede borrar: el trabajo de Calibre está pausado y este EPUB está pendiente de envío.",
+      blockingCalibreJobId: "protect-job" }],
+  } }));
+  await page.goto("/downloads");
+  await page.getByRole("row").filter({ hasText: "Libro protegido" }).getByRole("button", { name: "Eliminar", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox", { name: "Acción", exact: true }).click();
+  await page.getByRole("option", { name: "Solo torrent", exact: true }).click();
+  await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await expect(dialog.getByText(/está pausado y este EPUB está pendiente de envío/)).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Ver trabajo de Calibre" })).toHaveAttribute("href", "/calibre/jobs/protect-job");
+  await expect(page.getByRole("row").filter({ hasText: "Libro protegido" })).toBeVisible();
+});

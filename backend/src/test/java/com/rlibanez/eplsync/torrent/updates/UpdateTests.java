@@ -169,7 +169,15 @@ class UpdateTests {
             var now=Instant.now();queue.runImmediate(100,now);
             verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
             assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
-            assertThat(only(job.jobId()).getMessage()).contains("Calibre");
+            assertThat(only(job.jobId()).getMessage()).contains("Calibre", "pausado", "pendiente de envío");
+            var outcome=historyActions.removeRecords(new HistoryActions.Removal(1L,List.of(record.getId()),true,"files",true,true));
+            assertThat(outcome.items()).singleElement().satisfies(row->{
+                assertThat(row.blockingCalibreJobId()).isEqualTo("protect-job");
+                assertThat(row.message()).contains("pausado", "pendiente de envío");
+                assertThat(row.historyDeleted()).isFalse();
+            });
+            assertThat(downloads.existsById(record.getId())).isTrue();
+            verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
             jdbc.update("UPDATE calibre_job_items SET state='ACCEPTED' WHERE id='protect-item'");
             jdbc.update("UPDATE calibre_jobs SET state='COMPLETED' WHERE id='protect-job'");
             queue.runImmediate(100,now.plusSeconds(60));

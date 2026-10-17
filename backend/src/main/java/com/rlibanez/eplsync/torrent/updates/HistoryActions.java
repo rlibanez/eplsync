@@ -13,7 +13,9 @@ import java.util.*;
 @Service
 public class HistoryActions {
     public record Selection(Long eplId,List<String> ids,Boolean deleteFiles,Boolean confirmFiles) {}
-    public record Item(String id,DownloadStatus status,String cleanupState,String message) {}
+    public record Item(String id,DownloadStatus status,String cleanupState,String message,String blockingCalibreJobId) {
+        public Item(String id,DownloadStatus status,String cleanupState,String message) {this(id,status,cleanupState,message,null);}
+    }
     public record Result(List<Item> items) {}
     private final DownloadRepository downloads;
     private final DownloadTrackingService tracking;
@@ -72,7 +74,7 @@ public class HistoryActions {
             operation,r -> Map.of("historyDeleted",r.deleted(),"pendingCleanup",r.pendingCleanup()));
     }
     public record Removal(Long eplId,List<String> ids,Boolean deleteHistory,String clientAction,Boolean confirm,Boolean confirmFiles) {}
-    public record RemovalItem(String id,DownloadStatus status,String cleanupState,String message,boolean historyDeleted) {}
+    public record RemovalItem(String id,DownloadStatus status,String cleanupState,String message,boolean historyDeleted,String blockingCalibreJobId) {}
     public record RemovalResult(List<RemovalItem> items) {}
     public RemovalResult removeRecords(Removal request) {
         requireReadAccess();
@@ -101,7 +103,7 @@ public class HistoryActions {
                 deleted.addAll(confirmed);
             }
         }
-        return new RemovalResult(outcomes.stream().map(r -> new RemovalItem(r.id(),r.status(),r.cleanupState(),r.message(),deleted.contains(r.id()))).toList());
+        return new RemovalResult(outcomes.stream().map(r -> new RemovalItem(r.id(),r.status(),r.cleanupState(),r.message(),deleted.contains(r.id()),r.blockingCalibreJobId())).toList());
     }
     public Result refresh(Selection selection) {return refresh(selection,true);}
     public Result refreshRevision(Selection selection) {return refresh(selection,false);}
@@ -177,10 +179,14 @@ public class HistoryActions {
                 return new Result(rows.stream().map(r -> {
                     var outcome=byId.get(r.getId());
                     var current=downloads.findById(r.getId()).orElse(null);
-                    return new Item(r.getId(),current==null?DownloadStatus.NOT_FOUND:current.getStatus(),outcome.state().name(),outcome.message());
+                    return new Item(r.getId(),current==null?DownloadStatus.NOT_FOUND:current.getStatus(),outcome.state().name(),outcome.message(),outcome.state()==UpdateCleanup.State.WAITING ? blockingJob(r) : null);
                 }).toList());
             });
         return audited?events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOADS",scope,operation,r -> Map.of("checked",r.items().size(),"removed",r.items().stream().filter(i -> "REMOVED".equals(i.cleanupState())).count())):operation.get();
+    }
+    private String blockingJob(DownloadRecord row) {
+        var blocker=queue.blockingCalibre(row.getHash(),row.getClientInstanceId());
+        return blocker==null?null:blocker.jobId();
     }
     private Result result(List<String> ids) {
         return new Result(downloads.findAllById(ids).stream().map(r -> new Item(r.getId(),r.getStatus(),null,null)).toList());

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { useState, type ReactNode } from "react";
 import { Alert, Button, Checkbox, Select } from "@mantine/core";
@@ -16,6 +17,7 @@ type Outcome = {
   cleanupState: string | null;
   message: string | null;
   historyDeleted?: boolean;
+  blockingCalibreJobId?: string | null;
   revision?: number;
   eplId?: number;
 };
@@ -335,6 +337,11 @@ export function DownloadActions({
                     : status(item.status)}
               </strong>
               {item.message && <p className="muted">{item.message}</p>}
+              {item.blockingCalibreJobId && (
+                <Link to={`/calibre/jobs/${encodeURIComponent(item.blockingCalibreJobId)}`}>
+                  {t("calibreUpdateSend.calibreJob")}
+                </Link>
+              )}
             </li>
           ))}
         </ul>
