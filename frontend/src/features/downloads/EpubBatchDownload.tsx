@@ -51,7 +51,7 @@ export function EpubBatchDownload({
     </TableAction>
   ) : (
     <Button
-      variant="filled"
+      variant="light"
       size="sm"
       leftSection={<Download size={16} />}
       loading={batch.isPending}

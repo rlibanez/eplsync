@@ -284,6 +284,7 @@ export function Catalog() {
               <SendToCalibre filters={selection.filters} count={count} />
               {auth.can("TORRENT_SEND") && (
                 <Button
+                  variant="light"
                   leftSection={<Send size={16} />}
                   onClick={() =>
                     setAction({

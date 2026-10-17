@@ -148,6 +148,7 @@ export function DownloadActions({
             {extraActions}
             {can("TORRENT_SYNC") && (
               <Button
+                variant="light"
                 leftSection={<RefreshCw size={16} />}
                 loading={action.isPending}
                 onClick={() => refresh(selection())}
