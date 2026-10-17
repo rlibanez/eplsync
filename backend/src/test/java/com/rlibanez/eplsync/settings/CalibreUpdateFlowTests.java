@@ -109,7 +109,7 @@ class CalibreUpdateFlowTests {
     @Test void waitingTurnsIntoSendAfterDownloadAndPinsRevisionAndHash() throws Exception {
         var result=submit(List.of(missing()),true,true);downloadItem("PENDING");transfers.cycle();
         assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("RUNNING");
-        transfers.recoverInterrupted();assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("PAUSED");transfers.control(result.calibreJobId(),"resume");
+        transfers.recoverInterrupted();assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("QUEUED");
         jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED'");
         var d=new DownloadRecord();d.setEplId(2L);d.setRevision(1.1);d.setHash("B".repeat(40));d.setClient("qbittorrent");d.setClientInstanceId(tracking.instanceId());d.setStatus(DownloadStatus.DOWNLOADED);d.setOrigin(DownloadRecord.Origin.EPLSYNC);d.setCreatedAt(Instant.now());String second=downloads.save(d).getId();
         byte[] epub=CalibreTransfersTests.epub(2,"1.1");when(files.list(second)).thenReturn(List.of(new EpubFiles.Item(0,"second.epub",epub.length)));when(files.download(second,0)).thenAnswer(call->new EpubFiles.Opened("second.epub",epub.length,new java.io.ByteArrayInputStream(epub)));
@@ -124,6 +124,24 @@ class CalibreUpdateFlowTests {
         doAnswer(call->{when(client.book(any(),eq(1L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));return null;}).when(client).remove(any(),eq(1L),eq(true));
         transfers.cycle();assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("COMPLETED");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true AND calibre_id=1",Long.class)).isZero();verify(client,times(1)).remove(any(),eq(1L),eq(true));
+    }
+    @Test void restartFinishesPendingCleanupWithoutRepeatingTheUploadOrAnAlreadyAppliedDeletion() {
+        var result=submit(List.of(ready("BOOK")),false,false);transfers.cycle();
+        assertThat(transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items().getFirst().state()).isEqualTo("CLEANUP_PENDING");
+        when(client.book(any(),eq(1L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        transfers.recoverInterrupted();transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true AND calibre_id=9",Long.class)).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void restartDoesNotDeletePreviousRevisionIfRetainedEpubCannotBeVerified() {
+        var result=submit(List.of(ready("BOOK")),false,false);transfers.cycle();
+        when(client.hasEpub(any(),eq(9L))).thenReturn(false);
+        transfers.recoverInterrupted();transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("PAUSED");
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
     }
     @Test void cleanupCannotRunAfterCancellation() {
         var result=submit(List.of(ready("BOOK")),false,false);transfers.cycle();transfers.control(result.calibreJobId(),"cancel");transfers.cycle();verify(client,never()).remove(any(),anyLong(),anyBoolean());

@@ -107,7 +107,7 @@ class RevisionCleanupTests {
     }
     @Test void forcedCleanupIsPersistedAndNeverDeletesReplacement() {
         pendingReplacement();var job=forced("FILES");assertThat(job.allowUndownloaded()).isTrue();assertThat(job.ready()).isEqualTo(1);
-        start(job);jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());cleanup.recover();cleanup.control(job.id(),"continue");cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        start(job);jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());cleanup.recover();cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
         verify(files,never()).list(newer);verify(adapter).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
     }
     @Test void forcedCleanupFulfilsIdenticalAutomaticDeletionWithoutRepeatingIt() {
@@ -327,7 +327,65 @@ class RevisionCleanupTests {
 
     @Test void calibreDoesNotReplayUnconfirmedDeletion() {var job=start(preview("calibre","BOOK"));cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);cleanup.control(job.id(),"verify");cleanup.cycle();verify(client,times(1)).remove(any(),eq(10L),eq(true));}
     @Test void calibreIdentityChangeAfterPreviewBlocksDeletion() {var job=start(preview("calibre","BOOK"));when(client.book(any(),eq(20L))).thenReturn(new CalibreClient.Book(20,"Different",List.of(),2L,BigDecimal.TWO,true));cleanup.cycle();assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);verify(client,never()).remove(any(),anyLong(),anyBoolean());}
-    @Test void interruptedDestructiveWorkNeedsVerification() {var job=start(preview("downloads","FILES"));jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=1 WHERE job_id=?",job.id());cleanup.recover();assertThat(cleanup.get(job.id()).state()).isEqualTo("PAUSED");assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);cleanup.control(job.id(),"continue");cleanup.cycle();verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());}
+    @Test void restartContinuesUndispatchedCleanupExactlyOnceAndRetainsReplacement() {
+        var job=start(preview("downloads","FILES"));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=0 WHERE job_id=?",job.id());
+        cleanup.recover();assertThat(item(job).state()).isEqualTo("PENDING");cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        cleanup.recover();cleanup.cycle();
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
+        assertThat(downloads.findById(newer)).isPresent();
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void restartConfirmsDispatchedDeletionWithoutRepeatingItAndRespectsHistoryChoice(boolean deleteHistory) {
+        var job=start(cleanup.preview(new RevisionCleanup.PreviewInput("downloads","FILES",List.of(),false,deleteHistory)));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=1 WHERE job_id=?",job.id());
+        remote.removeIf(row->row.hash().equals("A".repeat(40)));
+        cleanup.recover();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).state()).isEqualTo("COMPLETED");assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(downloads.findById(old).isPresent()).isEqualTo(!deleteHistory);
+        assertThat(downloads.findById(newer)).isPresent();verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void restartPreservesPausedCleanupAndOnlyMarksItsInFlightItemUncertain() {
+        var job=start(preview("downloads","FILES"));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='PAUSED' WHERE id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=1 WHERE job_id=?",job.id());
+        clearInvocations(adapter,client);
+        cleanup.recover();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).state()).isEqualTo("PAUSED");assertThat(item(job).state()).isEqualTo("UNCERTAIN");
+        verifyNoInteractions(adapter,client);
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"RUNNING","VERIFYING"})
+    void restartPreservesCancellationRequestedBeforeTheCrash(String itemState) {
+        var job=start(preview("downloads","FILES"));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING',cancel_requested=1 WHERE id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_items SET state=?,dispatched=? WHERE job_id=?",itemState,itemState.equals("VERIFYING"),job.id());
+        cleanup.recover();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).state()).isEqualTo("CANCELLED");assertThat(item(job).state()).isEqualTo(itemState.equals("VERIFYING")?"UNCERTAIN":"CANCELLED");
+        assertThat(cleanup.get(job.id()).pending()).isZero();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void restartChecksCalibreDeletionWithoutRepeatingIt() {
+        var job=start(preview("calibre","BOOK"));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=1 WHERE job_id=?",job.id());
+        when(client.book(any(),eq(10L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        cleanup.recover();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE calibre_id=20",Integer.class)).isEqualTo(1);
+    }
+    @Test void restartKeepsAStillPresentCalibreDeletionUncertain() {
+        var job=start(preview("calibre","BOOK"));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=1 WHERE job_id=?",job.id());
+        cleanup.recover();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void interruptedDestructiveWorkIsVerifiedAutomaticallyWithoutRepeatingDeletion() {var job=start(preview("downloads","FILES"));jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=1 WHERE job_id=?",job.id());cleanup.recover();assertThat(cleanup.get(job.id()).state()).isEqualTo("QUEUED");assertThat(item(job).state()).isEqualTo("VERIFYING");cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());}
     @Test void entireCalibreEntryIsRemovedOnlyAfterAbsenceConfirmed() {
         doAnswer(call->{when(client.book(any(),eq(10L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));return null;}).when(client).remove(any(),eq(10L),eq(true));
         var job=start(preview("calibre","BOOK"));cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);

@@ -60,8 +60,12 @@ public class CalibreTransfers {
     }
     void recoverInterrupted() {
         tx.executeWithoutResult(s -> {
-            jdbc.update("UPDATE calibre_job_items SET state='UNCERTAIN',message=coalesce(message || '. ','') || 'El proceso se interrumpió; verifica el envío antes de continuar' WHERE state='SENDING'");
-            jdbc.update("UPDATE calibre_jobs SET state='PAUSED',message='El proceso se interrumpió; reanuda para verificar los envíos' WHERE state='RUNNING' OR id IN (SELECT job_id FROM calibre_job_items WHERE state='UNCERTAIN') AND state='QUEUED'");
+            jdbc.update("UPDATE calibre_job_items SET state='UNCERTAIN',next_check=0,message=coalesce(message || '. ','') || 'El proceso se interrumpió; se comprobará el envío sin repetirlo' WHERE state='SENDING'");
+            // Only active jobs are recovered. A persisted pause, including a user's pause during an upload, stays paused.
+            int recovered=jdbc.update("UPDATE calibre_jobs SET state='QUEUED',next_check=0,next_probe=0,message='Recuperado tras reinicio; se comprobarán los envíos pendientes antes de continuar',updated_at=? WHERE state='RUNNING'",Instant.now().toString());
+            jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE state IN ('UNCERTAIN','WAITING_DOWNLOAD','CLEANUP_PENDING') AND job_id IN (SELECT id FROM calibre_jobs WHERE state='QUEUED')");
+            jdbc.update("UPDATE calibre_jobs SET next_check=0 WHERE state='QUEUED' AND id IN (SELECT job_id FROM calibre_job_items WHERE state='UNCERTAIN')");
+            if(recovered>0) log.info("Recuperación de trabajos de Calibre tras reinicio: reanudados={}",recovered);
         });
     }
     static String destination(CalibreSettings.Connection c) { return fingerprint(c.url()+"\n"+c.username()); }
@@ -285,7 +289,7 @@ public class CalibreTransfers {
             try { var current=settings.connection();if(!destination(current).equals(j.get("destination")) || !source().equals(j.get("source"))) {pause(id,actor,"La conexión o las carpetas cambiaron; restaura el destino antes de reanudar");return;}
                 connection=new CalibreSettings.Connection(current.url(),current.username(),current.password(),(String)j.get("library"));
             } catch(RuntimeException ex) {pause(id,actor,"Revisa la configuración de Calibre antes de continuar");return;}
-            jdbc.update("UPDATE calibre_jobs SET state='RUNNING',updated_at=? WHERE id=? AND state='QUEUED'",Instant.now().toString(),id);
+            jdbc.update("UPDATE calibre_jobs SET state='RUNNING',message=NULL,updated_at=? WHERE id=? AND state='QUEUED'",Instant.now().toString(),id);
             var pending=jdbc.query("SELECT * FROM calibre_job_items WHERE job_id=? AND state IN ('PENDING','UNCERTAIN','WAITING_DOWNLOAD','CLEANUP_PENDING') AND next_check<=? ORDER BY CASE WHEN state='WAITING_DOWNLOAD' THEN 2 WHEN state='UNCERTAIN' THEN 0 ELSE 1 END,position LIMIT 1",CalibreTransfers::mapItem,id,Instant.now().toEpochMilli());
             if(pending.isEmpty()) {
                 jdbc.update("UPDATE calibre_jobs SET next_check=coalesce((SELECT min(next_check) FROM calibre_job_items WHERE job_id=? AND state='WAITING_DOWNLOAD'),0) WHERE id=?",id,id);

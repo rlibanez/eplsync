@@ -384,13 +384,69 @@ class CalibreTransfersTests {
         verify(client,never()).findRevision(any(),anyLong(),any());
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
     }
+    @Test void restartContinuesActivePendingWorkWithoutResubmittingCompletedItems() {
+        var job=create();
+        jdbc.update("UPDATE calibre_jobs SET state='RUNNING',next_check=? WHERE id=?",Long.MAX_VALUE,job.id());
+        transfers.recoverInterrupted();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("QUEUED");
+        transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");
+        transfers.recoverInterrupted();transfers.cycle();
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"PAUSED","CANCELLED"})
+    void restartPreservesInactiveJobsEvenWhenAnUploadWasInterrupted(String state) {
+        var job=create();
+        jdbc.update("UPDATE calibre_jobs SET state=? WHERE id=?",state,job.id());
+        jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=1 WHERE job_id=?",job.id());
+        clearInvocations(client,files);
+        transfers.recoverInterrupted();transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo(state);
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        verifyNoInteractions(client,files);
+    }
+    @Test void restartVerifiesPersistedRemoteIdWithoutNeedingMetadataOrUploadingAgain() {
+        var job=create();
+        jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=0,calibre_id=9 WHERE job_id=?",job.id());
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),null,null,false));
+        transfers.recoverInterrupted();transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,never()).findRevision(any(),anyLong(),any());
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        verify(files,never()).download(anyString(),anyInt());
+    }
+    @Test void restartLeavesAnUnverifiableUploadForReviewInsteadOfRepeatingIt() {
+        var job=create();
+        jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=1 WHERE job_id=?",job.id());
+        transfers.recoverInterrupted();transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void restartDoesNotConfirmAnUncertainUploadWithoutAnEpub() {
+        var job=create();
+        jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=1 WHERE job_id=?",job.id());
+        when(client.findRevision(any(),anyLong(),any())).thenReturn(9L);
+        when(client.hasEpub(any(),eq(9L))).thenReturn(false);
+        transfers.recoverInterrupted();transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        assertThat(transfers.job(job.id()).accepted()).isZero();
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
     @Test void restartPreservesWarningAndDoesNotInferMissingIdentifiers() {
         var job=create();
         jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=0,message='El tamaño del EPUB no coincide con el registrado por el cliente torrent. El archivo podría haber sido modificado.' WHERE job_id=?",job.id());
         jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",job.id());
         transfers.recoverInterrupted();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("QUEUED");
         when(client.findRevision(any(),anyLong(),any())).thenReturn(9L);
-        transfers.control(job.id(),"resume");transfers.cycle();
+        transfers.cycle();
         assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
         assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
         assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).contains("tamaño del EPUB");
@@ -402,8 +458,9 @@ class CalibreTransfersTests {
         jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=1 WHERE job_id=?",job.id());
         jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",job.id());
         transfers.recoverInterrupted();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("QUEUED");
         when(client.findRevision(any(),anyLong(),any())).thenReturn(9L);
-        transfers.control(job.id(),"resume");transfers.cycle();
+        transfers.cycle();
         assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
     }

@@ -237,10 +237,10 @@ class JobRetriesTests {
         jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",child.jobId());
         jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=1,calibre_id=9 WHERE job_id=?",child.jobId());
         transfers.recoverInterrupted();
-        assertThat(transfers.job(child.jobId()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.job(child.jobId()).state()).isEqualTo("QUEUED");
         assertThat(transfers.job(child.jobId()).uncertain()).isEqualTo(1);
         assertThat(create("calibre",parent,preview)).isEqualTo(child);
-        transfers.control(child.jobId(),"resume");transfers.cycle();
+        transfers.cycle();
         assertThat(transfers.job(child.jobId()).state()).isEqualTo("COMPLETED");
         assertThat(retries.history("calibre",child.jobId()).source().rootId()).isEqualTo(parent);
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());

@@ -79,8 +79,12 @@ public class RevisionCleanup {
     }
     @jakarta.annotation.PostConstruct void recover() {
         tx.executeWithoutResult(status->{
-            jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 THEN 'UNCERTAIN' ELSE 'PENDING' END,message='Ejecución interrumpida; comprueba el resultado antes de continuar' WHERE state='RUNNING'");
-            jdbc.update("UPDATE revision_cleanup_jobs SET state='PAUSED',message='La aplicación se reinició; continúa el trabajo o comprueba sus resultados' WHERE state='RUNNING'");
+            jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 THEN 'UNCERTAIN' ELSE 'PENDING' END,message='Ejecución interrumpida; se comprobará el resultado antes de continuar' WHERE state='RUNNING'");
+            // A dispatched delete is only verified, never dispatched again during startup recovery.
+            jdbc.update("UPDATE revision_cleanup_items SET state='VERIFYING' WHERE state='UNCERTAIN' AND dispatched=1 AND job_id IN (SELECT id FROM revision_cleanup_jobs WHERE state IN ('QUEUED','RUNNING') AND cancel_requested=0)");
+            jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN state='VERIFYING' THEN 'UNCERTAIN' ELSE 'CANCELLED' END WHERE state IN ('PENDING','VERIFYING') AND job_id IN (SELECT id FROM revision_cleanup_jobs WHERE state IN ('QUEUED','RUNNING') AND cancel_requested=1)");
+            int recovered=jdbc.update("UPDATE revision_cleanup_jobs SET state=CASE WHEN cancel_requested=1 THEN 'CANCELLED' ELSE 'QUEUED' END,result=CASE WHEN cancel_requested=1 THEN 'CANCELLED' ELSE NULL END,message='Recuperado tras reinicio; se comprobarán los borrados solicitados sin repetirlos',updated_at=? WHERE state='RUNNING' OR state='QUEUED' AND cancel_requested=1",Instant.now().toEpochMilli());
+            if(recovered>0) log.info("Recuperación de trabajos de limpieza tras reinicio: recuperados={}",recovered);
         });
     }
     public <T> T exclusive(Supplier<T> work) {
@@ -350,7 +354,7 @@ public class RevisionCleanup {
                 var jobs=jdbc.queryForList("SELECT id FROM revision_cleanup_jobs WHERE state IN ('QUEUED','RUNNING') ORDER BY updated_at,id LIMIT 1",String.class);
                 if(jobs.isEmpty()) return;
                 String id=jobs.getFirst();
-                jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING',updated_at=? WHERE id=? AND state='QUEUED'",Instant.now().toEpochMilli(),id);
+                jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING',message=NULL,updated_at=? WHERE id=? AND state='QUEUED'",Instant.now().toEpochMilli(),id);
                 long deadline=System.nanoTime()+Duration.ofSeconds(30).toNanos();
                 for(int n=0;n<20 && !Thread.currentThread().isInterrupted() && System.nanoTime()<deadline;n++) {
                     if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE id=? AND cancel_requested=0",Long.class,id)==0) break;
