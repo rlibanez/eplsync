@@ -102,6 +102,82 @@ class RevisionCleanupTests {
         verify(adapter,times(1)).deleteTorrent(eq("A".repeat(40)),eq(true));
         assertThat(downloads.findById(newer)).isPresent();
     }
+    void whileCalibreBusy(Runnable check) throws Exception {
+        var acquired=new java.util.concurrent.CountDownLatch(1);
+        var release=new java.util.concurrent.CountDownLatch(1);
+        try(var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var holder=executor.submit(()->transfers.preparing(()->{
+                acquired.countDown();
+                try {if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Lock release timed out");}
+                catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new AssertionError(ex);}
+                return null;
+            }));
+            try {assertThat(acquired.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();check.run();}
+            finally {release.countDown();}
+            holder.get(5,java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"downloads","calibre"})
+    void busyCleanupSurvivesRestartAndDeletesOnlyOnce(String source) throws Exception {
+        var job=start(preview(source,"calibre".equals(source)?"BOOK":"FILES"));
+        if(source.equals("calibre")) removeRemoteBook();
+        whileCalibreBusy(()->{
+            cleanup.cycle();cleanup.recover();cleanup.cycle();
+            assertThat(cleanup.get(job.id()).pending()).isEqualTo(1);
+            assertThat(item(job).dispatched()).isFalse();
+            verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+            verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        });
+        cleanup.cycle();cleanup.recover();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        if(source.equals("calibre")) {verify(client,times(1)).remove(any(),eq(10L),eq(true));verify(client,never()).remove(any(),eq(20L),anyBoolean());}
+        else {verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());}
+    }
+    @Test void cancellationWhileWaitingForCalibreNeverDeletes() throws Exception {
+        var job=cleanup.removeSelected(removal("files",true));
+        whileCalibreBusy(()->{cleanup.cycle();cleanup.control(job.id(),"cancel");});
+        cleanup.cycle();cleanup.recover();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).state()).isEqualTo("CANCELLED");
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"downloads","calibre"})
+    void retainedRevisionIsRecheckedAfterTransientCalibreWait(String source) throws Exception {
+        var job=start(preview(source,source.equals("calibre")?"BOOK":"FILES"));
+        whileCalibreBusy(()->{
+            cleanup.cycle();
+            if(source.equals("calibre")) when(client.hasEpub(any(),eq(20L))).thenReturn(false);
+            else remote.removeIf(row->row.hash().equals("B".repeat(40)));
+        });
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void newCalibreDependencyAfterTransientWaitStillProtectsTorrent() throws Exception {
+        var job=cleanup.removeSelected(removal("files",true));
+        whileCalibreBusy(()->{
+            cleanup.cycle();
+            jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('dependency','now','now','Owner','destination','main','source','PAUSED')");
+            jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('dependency-item','dependency',0,?,0,'book.epub',20,1,'1','WAITING_DOWNLOAD')",old);
+        });
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void uncertainDeletionWaitsForCalibreWithoutResending(boolean absent) throws Exception {
+        var job=cleanup.removeSelected(removal("files",true));
+        jdbc.update("UPDATE revision_cleanup_items SET state='VERIFYING',dispatched=1 WHERE job_id=?",job.id());
+        if(absent) remote.removeIf(row->row.hash().equals("A".repeat(40)));
+        whileCalibreBusy(()->{cleanup.cycle();assertThat(item(job).state()).isEqualTo("VERIFYING");assertThat(item(job).dispatched()).isTrue();});
+        cleanup.cycle();cleanup.cycle();
+        assertThat(item(job).state()).isEqualTo(absent?"SUCCEEDED":"UNCERTAIN");
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(downloads.findById(newer)).isPresent();
+    }
     @Test void directCalibreDeletionNeedsNoHigherRevisionAndNeverTouchesTorrents() {
         var job=calibreRemoval(20);assertThat(job.ready()).isEqualTo(1);assertThat(job.directRemoval()).isTrue();
         assertThat(item(job).formats()).containsExactly("EPUB","PDF");
