@@ -120,6 +120,10 @@ public class ScheduledTasks {
     }
     /** SQL claim also prevents two tasks of the same operation from overlapping. */
     public Optional<Task> claim(Instant now) {return withExecution(()->claimDue(now));}
+    long nextRunMillis() {
+        Long due=jdbc.queryForObject("SELECT min(next_run) FROM scheduled_tasks WHERE enabled=1 AND running=0",Long.class);
+        return due==null?Long.MAX_VALUE:due;
+    }
     private Optional<Task> claimDue(Instant now) {
         for(var task:jdbc.query(SELECT+" WHERE t.enabled=1 AND t.running=0 AND t.next_run<=? ORDER BY t.next_run,t.id LIMIT 200",ScheduledTasks::map,now.toEpochMilli())) {
             var following=next(task.cron(),timezone,now);

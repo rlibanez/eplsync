@@ -94,6 +94,8 @@ logging:
     org.apache.hc.core5.http: WARN
     org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: ERROR
     com.rlibanez.eplsync: ${EPLSYNC_LOG_LEVEL:INFO}
+    # Framework SQL traces must not inherit the application DEBUG level.
+    com.rlibanez.eplsync.config.CoordinatedJdbcTemplate: ${EPLSYNC_SQL_LOG_LEVEL:INFO}
 
 # Valores de instalación. Para catálogo, portadas, torrent y eventos,
 # los ajustes guardados desde la interfaz tienen prioridad.

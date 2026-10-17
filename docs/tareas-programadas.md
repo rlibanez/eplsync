@@ -180,3 +180,18 @@ y sus registros de ciclos; los trabajos y los Eventos generados se conservan.
 Solo se permite una tarea **Actualizar descargas** y una **Actualizar biblioteca
 de Calibre** por instalación, incluidas las desactivadas. Puedes editar o eliminar
 la existente. Las sincronizaciones, importaciones y búsquedas admiten varias tareas.
+
+## Actividad en reposo
+
+Las colas vacías de Torrent, Calibre, limpieza y Telegram, el programador y los
+ciclos de actualización omiten consultas repetidas hasta que se confirma una
+escritura. Las escrituras revertidas no despiertan las colas. Se mantiene un sondeo
+de respaldo cada 30 segundos para detectar cambios externos.
+
+Los trabajos activos conservan su frecuencia de procesamiento. Las comprobaciones
+aplazadas, los reintentos y las próximas ejecuciones cron respetan su fecha prevista;
+no esperan al sondeo de respaldo. Los envíos inciertos siguen verificándose antes
+de repetir operaciones remotas. Las tareas de retención conservan sus intervalos.
+
+`EPLSYNC_LOG_LEVEL=DEBUG` no activa las trazas SQL de JDBC. Para diagnosticarlas
+expresamente, usa `EPLSYNC_SQL_LOG_LEVEL=DEBUG` y vuelve a `INFO` al terminar.

@@ -27,6 +27,16 @@ public class SqliteTransactionConfiguration {
     }
     @Bean
     JpaTransactionManager transactionManager(EntityManagerFactory factory, javax.sql.DataSource source,SqliteWriteCoordinator writer) {
+        var listeners=factory.unwrap(org.hibernate.engine.spi.SessionFactoryImplementor.class).getServiceRegistry()
+            .getService(org.hibernate.event.service.spi.EventListenerRegistry.class);
+        // Observe actual entity writes, including flushes before doCommit. Empty
+        // write transactions must not wake every idle worker again.
+        java.util.Objects.requireNonNull(listeners).appendListeners(org.hibernate.event.spi.EventType.POST_INSERT,
+            (org.hibernate.event.spi.PostInsertEventListener)event->WorkerActivity.changed());
+        listeners.appendListeners(org.hibernate.event.spi.EventType.POST_UPDATE,
+            (org.hibernate.event.spi.PostUpdateEventListener)event->WorkerActivity.changed());
+        listeners.appendListeners(org.hibernate.event.spi.EventType.POST_DELETE,
+            (org.hibernate.event.spi.PostDeleteEventListener)event->WorkerActivity.changed());
         return new SingleWriterTransactionManager(factory,source,writer);
     }
 

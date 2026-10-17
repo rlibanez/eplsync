@@ -58,6 +58,22 @@ class AutomaticUpdatesTests {
         var task=tasks.save(null,new ScheduledTasks.Input("Automation",op,"0 5 * * *",owner.id(),true));automations.save(task,config(changes));return task;
     }
     Map<String,Object> execute(ScheduledTasks.Task task) {return EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(EventContext.Origin.SCHEDULED,()->automations.execute(task)));}
+    @Test void idleAutomationWorkerDetectsNewCycleAndJpaCompletion() {
+        automations.refresh();
+        var probe=(com.rlibanez.eplsync.config.WorkerActivity.Probe)org.springframework.test.util.ReflectionTestUtils.getField(automations,"idleProbe");
+        assertThat(probe.ready()).isFalse();
+        var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of());execute(task);
+        assertThat(probe.ready()).isTrue();
+        String job=automations.latest(task.id()).jobs().getFirst().id();
+        bulk.next();var item=bulk.claim(job,bulk.pending(job,1).getFirst());
+        bulk.finish(item.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        org.springframework.test.util.ReflectionTestUtils.setField(automations,"workerEnabled",true);
+        try {
+            automations.tick();
+            assertThat(automations.latest(task.id()).state()).isEqualTo("COMPLETED");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Long.class)).isEqualTo(1);
+        } finally {org.springframework.test.util.ReflectionTestUtils.setField(automations,"workerEnabled",false);}
+    }
     @Test void torrentCyclePersistsFrozenOptionsLinksAndDoesNotStartAnotherWhilePending() {
         var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of("torrentCleanup","removeTorrentAndFiles"));
         var result=execute(task);var cycle=automations.latest(task.id());

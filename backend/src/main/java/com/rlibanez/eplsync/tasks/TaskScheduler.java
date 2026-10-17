@@ -46,12 +46,15 @@ public class TaskScheduler {
     public TaskScheduler(ScheduledTasks tasks,CalibreCatalogService calibre,UpdateCleanupService torrent,EventJournal journal,com.rlibanez.eplsync.service.CatalogImportService catalog,UpdateSearches searches) {this.searches=searches;this.catalog=catalog;this.tasks=tasks;this.calibre=calibre;this.torrent=torrent;this.journal=journal;}
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     public void start() {tasks.recover(Instant.now());ready=true;}
+    private final com.rlibanez.eplsync.config.WorkerActivity.Probe idleProbe=new com.rlibanez.eplsync.config.WorkerActivity.Probe();
     @Scheduled(fixedDelay=1000)
     public void tick() {
         if(!ready || closed) return;
         flushCompletions();
+        if(!idleProbe.ready()) return;
+        long beforeQuery=idleProbe.snapshot();
         for(int i=0;i<2;i++) {
-            var task=tasks.claim(Instant.now());if(task.isEmpty()) return;
+            var task=tasks.claim(Instant.now());if(task.isEmpty()) {idleProbe.emptyUntil(beforeQuery,tasks.nextRunMillis());return;}
             try {executor.submit(()->run(task.get()));}
             catch(RejectedExecutionException ex) {finishTask(task.get().id(),"INTERRUPTED","La aplicación está cerrándose");}
         }

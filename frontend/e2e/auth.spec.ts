@@ -489,3 +489,44 @@ test("connection failure shows a clear page and retry restores access", async ({
     page.getByRole("button", { name: "Iniciar sesión", exact: true }),
   ).toBeVisible();
 });
+
+test("initial setup key stays masked and is excluded from Bitwarden credential fields", async ({ page }) => {
+  let submissions = 0;
+  await page.route("http://127.0.0.1:5178/api/**", route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/auth/me") return route.fulfill({ status: 401, json: {} });
+    if (path === "/api/auth/status") return route.fulfill({ json: { initialized: false, initialAdminKeyRequired: true, passwordMinimumLength: 8 } });
+    if (path === "/api/auth/csrf") return route.fulfill({ json: { token: "setup-token", headerName: "X-CSRF-TOKEN" } });
+    if (path === "/api/auth/setup") {
+      expect(route.request().postDataJSON()).toEqual({ username: "webadmin", email: "owner@example.org", password: "account-password", passwordConfirmation: "account-password", initialAdminKey: "installation-secret" });
+      submissions++;
+      return route.fulfill({ status: 403, json: { details: "Test response" } });
+    }
+    return route.fulfill({ json: {} });
+  });
+  await page.goto("/settings/account");
+  const username = page.locator("input#auth-username");
+  const password = page.locator("input#auth-password");
+  const confirmation = page.locator("input#auth-password-confirmation");
+  const key = page.locator("input#auth-initial-setup-key");
+  await expect(username).toHaveAttribute("name", "username");
+  await expect(username).toHaveAttribute("autocomplete", "username");
+  await expect(password).toHaveAttribute("name", "password");
+  await expect(confirmation).toHaveAttribute("name", "passwordConfirmation");
+  for (const field of [password, confirmation]) {
+    await expect(field).toHaveAttribute("type", "password");
+    await expect(field).toHaveAttribute("autocomplete", "new-password");
+    await expect(field).not.toHaveAttribute("data-bwignore");
+  }
+  await expect(key).toHaveAttribute("type", "password");
+  await expect(key).toHaveAttribute("name", "initialAdminKey");
+  await expect(key).toHaveAttribute("autocomplete", "off");
+  await expect(key).toHaveAttribute("data-bwignore", "true");
+  await username.fill("webadmin");
+  await page.locator("input#auth-email").fill("owner@example.org");
+  await password.fill("account-password");
+  await confirmation.fill("account-password");
+  await key.fill("installation-secret");
+  await page.getByRole("button", { name: "Crear administrador", exact: true }).click();
+  await expect.poll(() => submissions).toBe(1);
+});

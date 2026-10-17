@@ -17,6 +17,7 @@ services:
       # General
       TZ: "${TZ:-Europe/Madrid}"
       EPLSYNC_LOG_LEVEL: "${EPLSYNC_LOG_LEVEL:-INFO}"
+      EPLSYNC_SQL_LOG_LEVEL: "${EPLSYNC_SQL_LOG_LEVEL:-INFO}"
 
       # Seguridad
       EPLSYNC_INITIAL_ADMIN_KEY: "${EPLSYNC_INITIAL_ADMIN_KEY:-}"

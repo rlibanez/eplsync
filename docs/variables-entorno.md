@@ -28,6 +28,7 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 | `HOST_PORT` | Puerto publicado en el host; el puerto interno sigue siendo 8088. | `8088` |
 | `DATA_DIR` | Carpeta del host para SQLite, historial y datos persistentes; excluye la clave de cifrado, suministrada mediante EPLSYNC_SECRET_KEY. | `./data` |
 | `EPLSYNC_LOG_LEVEL` | Nivel de log de EPL Sync: TRACE, DEBUG, INFO, WARN, ERROR u OFF. Requiere reiniciar el JAR o recrear el contenedor; no se guarda en la base de datos. | `INFO` |
+| `EPLSYNC_SQL_LOG_LEVEL` | Trazas SQL de JDBC, independientes del log de la aplicación. Usa `DEBUG` solo para diagnóstico; puede mostrar parámetros de consultas. | `INFO` |
 | `LOGS_DIR` | Carpeta del host para los logs. | `./logs` |
 | `TORRENT_DIR` | Carpeta del host con las descargas de qBittorrent. Requiere descomentar el montaje opcional en Compose. | `./torrent` |
 | `EPLSYNC_SECRET_KEY` | Necesaria para guardar contraseñas/API keys de qBittorrent en SQLite. Base64 estándar de 32 bytes (44 caracteres). Generar con `openssl rand -base64 32`; conservar y no cambiar si hay credenciales guardadas. | Vacío |

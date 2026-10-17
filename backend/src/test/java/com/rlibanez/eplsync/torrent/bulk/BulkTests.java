@@ -287,6 +287,39 @@ class BulkTests {
         assertThat(job.skipped()).isEqualTo(3); assertThat(job.pending()).isEqualTo(2);
     }
 
+    private com.rlibanez.eplsync.config.WorkerActivity.Probe idleProbe() {
+        return (com.rlibanez.eplsync.config.WorkerActivity.Probe)org.springframework.test.util.ReflectionTestUtils.getField(worker,"idleProbe");
+    }
+    @Test void automaticCoordinatorDetectsNewJpaJobAfterIdleWithoutWaitingForFallback() throws Exception {
+        worker=new BulkWorker(store,client,properties);worker.start();
+        awaitAutomatic(()->!idleProbe().ready());
+        var job=create(null);
+        awaitAutomatic(()->store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        verify(client,times(5)).addTorrent(any());
+    }
+    @Test void automaticCoordinatorDetectsResumeAfterIdleWithoutRepeatingCompletedItems() throws Exception {
+        var job=create(null);store.next();
+        var first=store.claim(job.jobId(),store.pending(job.jobId(),1).getFirst());
+        store.finish(first.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        store.control(job.jobId(),"pause");
+        worker=new BulkWorker(store,client,properties);worker.start();
+        awaitAutomatic(()->!idleProbe().ready());
+        verify(client,never()).addTorrent(any());
+        store.control(job.jobId(),"resume");
+        awaitAutomatic(()->store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        assertThat(store.view(job.jobId()).accepted()).isEqualTo(5);
+        verify(client,times(4)).addTorrent(any());
+    }
+    @Test void automaticCoordinatorWakesAtRetryDeadlineWithoutAnotherDatabaseWrite() throws Exception {
+        var job=create(null);var persisted=jobs.findById(job.jobId()).orElseThrow();
+        persisted.setState(BulkJob.State.RETRY_WAIT);persisted.setRetryAt(Instant.now().plusMillis(1200));jobs.saveAndFlush(persisted);
+        worker=new BulkWorker(store,client,properties);worker.start();
+        awaitAutomatic(()->!idleProbe().ready());
+        verify(client,never()).addTorrent(any());
+        awaitAutomatic(()->store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        verify(client,times(5)).addTorrent(any());
+    }
+
     @Test void workerProcessesAllItemsWithBoundedConcurrency() throws Exception {
         var active = new AtomicInteger(); var maximum = new AtomicInteger();
         var entered = new CountDownLatch(2); var release = new CountDownLatch(1);

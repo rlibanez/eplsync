@@ -139,9 +139,13 @@ public class AutomaticUpdates {
     }
     @org.springframework.beans.factory.annotation.Value("${eplsync.tasks.worker-enabled:true}") private boolean workerEnabled;
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=5000)
-    public void tick() {if(workerEnabled) refresh();}
+    public void tick() {if(workerEnabled && idleProbe.ready()) refresh();}
+    private final com.rlibanez.eplsync.config.WorkerActivity.Probe idleProbe=new com.rlibanez.eplsync.config.WorkerActivity.Probe();
     public void refresh() {
-        for(var id:jdbc.queryForList("SELECT id FROM scheduled_automation_runs WHERE state IN ('WAITING','ATTENTION') LIMIT 200",String.class)) refresh(id);
+        long beforeQuery=idleProbe.snapshot();
+        var pending=jdbc.queryForList("SELECT id FROM scheduled_automation_runs WHERE state IN ('WAITING','ATTENTION') LIMIT 200",String.class);
+        if(pending.isEmpty()) idleProbe.empty(beforeQuery);
+        for(var id:pending) refresh(id);
     }
     public void close(String taskId) {
         var row=active(taskId);if(row==null) return;

@@ -114,6 +114,7 @@ public class BulkWorker {
         }
     }
 
+    private final com.rlibanez.eplsync.config.WorkerActivity.Probe idleProbe=new com.rlibanez.eplsync.config.WorkerActivity.Probe();
     private long dispatch() {
         var iterator = inFlight.entrySet().iterator();
         while (iterator.hasNext()) {
@@ -152,8 +153,10 @@ public class BulkWorker {
         }
         if (job == null) {
             if (!properties.isEnabled()) return IDLE_WAIT;
+            if(!idleProbe.ready()) return IDLE_WAIT;
+            long beforeQuery=idleProbe.snapshot();
             job = store.next();
-            if (job == null) return IDLE_WAIT;
+            if (job == null) {idleProbe.emptyUntil(beforeQuery,store.nextRetryMillis());return IDLE_WAIT;}
             activeId = job.getId(); buffer.clear();
             activeSettings = settings == null ? null : settings.snapshot();
             submissionContext = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();

@@ -179,6 +179,17 @@ class TelegramNotificationsTests {
             .hasMessageContaining("propio bot").hasMessageNotContaining(TOKEN);
         assertThat(telegram.view(owner.id()).tokenConfigured()).isFalse();
     }
+    @Test void committedNotificationWakesIdleQueueWithoutDuplicatingDelivery() {
+        save();telegram.deliver();
+        var probe=(com.rlibanez.eplsync.config.WorkerActivity.Probe)org.springframework.test.util.ReflectionTestUtils.getField(telegram,"idleProbe");
+        assertThat(probe.ready()).isFalse();
+        notify("wake-after-idle",EventJournal.Outcome.PARTIAL);
+        assertThat(probe.ready()).isTrue();
+        telegram.deliver();telegram.deliver();
+        verify(client,times(1)).send(anyString(),anyString(),anyString());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM telegram_deliveries WHERE state='SENT'",Long.class)).isEqualTo(1);
+        assertThat(probe.ready()).isFalse();
+    }
     @Test void queuedMessagesAreGroupedSanitizedAndOnlySentByTheWorker() {
         save();notify("job",EventJournal.Outcome.STARTED);assertThat(queued()).isZero();
         notify("job",EventJournal.Outcome.PARTIAL);notify("job",EventJournal.Outcome.PARTIAL);

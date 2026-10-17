@@ -325,6 +325,23 @@ class CalibreTransfersTests {
         verify(client,never()).findRevision(any(),anyLong(),any());
         verify(client).uploadEpub(any(),any(),anyString(),anyString());
     }
+    @Test void emptyWorkerDoesNotPollOrWriteAndCommittedJobWakesIt() throws Exception {
+        transfers.cycle();
+        clearInvocations(jdbc);
+        org.springframework.test.util.ReflectionTestUtils.setField(transfers,"enabled",true);
+        try {
+            for(int n=0;n<10;n++) transfers.schedule();
+            verifyNoInteractions(jdbc);
+            var job=create();
+            transfers.schedule();
+            var busy=(java.util.concurrent.atomic.AtomicBoolean)org.springframework.test.util.ReflectionTestUtils.getField(transfers,"busy");
+            long deadline=System.nanoTime()+java.time.Duration.ofSeconds(10).toNanos();
+            while(busy.get() && System.nanoTime()<deadline) Thread.sleep(10);
+            assertThat(busy.get()).isFalse();
+            assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+            verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        } finally {org.springframework.test.util.ReflectionTestUtils.setField(transfers,"enabled",false);}
+    }
     CalibreTransfers.Job create() {
         return EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),() -> transfers.create(new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,0)))));
     }
@@ -643,6 +660,26 @@ class CalibreTransfersTests {
         assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).contains("tamaño del EPUB");
         verify(client,never()).findRevision(any(),anyLong(),any());
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void idleSchedulerVerifiesRecoveredUploadWithoutSendingItAgain() throws Exception {
+        transfers.cycle();
+        var job=create();
+        jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=1 WHERE job_id=?",job.id());
+        jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",job.id());
+        transfers.recoverInterrupted();
+        when(client.findRevision(any(),anyLong(),any())).thenReturn(9L);
+        org.springframework.test.util.ReflectionTestUtils.setField(transfers,"enabled",true);
+        try {
+            transfers.schedule();
+            var busy=(java.util.concurrent.atomic.AtomicBoolean)org.springframework.test.util.ReflectionTestUtils.getField(transfers,"busy");
+            long deadline=System.nanoTime()+java.time.Duration.ofSeconds(5).toNanos();
+            while(busy.get() && System.nanoTime()<deadline) Thread.sleep(10);
+            assertThat(busy.get()).isFalse();
+            assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+            transfers.schedule();
+            while(busy.get() && System.nanoTime()<deadline) Thread.sleep(10);
+            verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        } finally {org.springframework.test.util.ReflectionTestUtils.setField(transfers,"enabled",false);}
     }
     @Test void restartVerifiesCompleteIdentityWithoutRepeatingUpload() {
         var job=create();

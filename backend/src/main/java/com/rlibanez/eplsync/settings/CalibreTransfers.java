@@ -361,9 +361,10 @@ public class CalibreTransfers {
             events.recordAs(actor,EventJournal.Category.JOB,action,outcome,origin,id,details);
         }
     }
+    private final com.rlibanez.eplsync.config.WorkerActivity.Probe idleProbe=new com.rlibanez.eplsync.config.WorkerActivity.Probe();
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=1000)
     public void schedule() {
-        if(enabled && busy.compareAndSet(false,true)) executor.submit(() -> { try { long deadline=System.nanoTime()+Duration.ofSeconds(1).toNanos(); for(int n=0;n<5 && enabled && System.nanoTime()<deadline && !Thread.currentThread().isInterrupted();n++) cycle(); } catch(Exception ex) { log.error("Fallo en el coordinador de envíos a Calibre: causa={}",OperationDiagnostics.technical(ex)); } finally {busy.set(false);} });
+        if(enabled && idleProbe.ready() && busy.compareAndSet(false,true)) executor.submit(() -> { try { long deadline=System.nanoTime()+Duration.ofSeconds(1).toNanos(); for(int n=0;n<5 && enabled && idleProbe.ready() && System.nanoTime()<deadline && !Thread.currentThread().isInterrupted();n++) cycle(); } catch(Exception ex) { log.error("Fallo en el coordinador de envíos a Calibre: causa={}",OperationDiagnostics.technical(ex)); } finally {busy.set(false);} });
     }
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=3600000)
     public void retention() {
@@ -414,9 +415,15 @@ public class CalibreTransfers {
         try {
             // A previous cycle may have completed HTTP but failed to persist its result.
             // cycleLock guarantees that no upload from this worker is still running.
-            jdbc.update("UPDATE calibre_job_items SET state='UNCERTAIN',next_check=0 WHERE state='SENDING'");
+            long beforeQuery=idleProbe.snapshot();
+            if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM calibre_job_items WHERE state='SENDING')",Boolean.class)))
+                jdbc.update("UPDATE calibre_job_items SET state='UNCERTAIN',next_check=0 WHERE state='SENDING'");
             var queued=jdbc.queryForList("SELECT * FROM calibre_jobs WHERE state IN ('QUEUED','RUNNING') AND next_check<=? ORDER BY last_served_at,created_at,id LIMIT 1",Instant.now().toEpochMilli());
-            if(queued.isEmpty()) return;var j=queued.getFirst();String id=(String)j.get("id");
+            if(queued.isEmpty()) {
+                Long due=jdbc.queryForObject("SELECT min(next_check) FROM calibre_jobs WHERE state IN ('QUEUED','RUNNING')",Long.class);
+                idleProbe.emptyUntil(beforeQuery,due==null?Long.MAX_VALUE:due);
+                return;
+            }var j=queued.getFirst();String id=(String)j.get("id");
             jdbc.update("UPDATE calibre_jobs SET last_served_at=? WHERE id=?",Instant.now().toEpochMilli(),id);
             var actor=retryActor(id,(String)j.get("owner_id"),(String)j.get("owner_username"));
             var owner=actor.id()==null ? null : accounts.find(actor.id());

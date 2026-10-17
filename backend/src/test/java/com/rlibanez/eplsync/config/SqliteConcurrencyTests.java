@@ -22,6 +22,7 @@ class SqliteConcurrencyTests {
         registry.add("spring.datasource.url", () -> "jdbc:sqlite:"+directory.resolve("concurrent.db"));
     }
     @Autowired DataSource source;
+    @Autowired jakarta.persistence.EntityManagerFactory entityManagerFactory;
     @Autowired PlatformTransactionManager manager;
     @Autowired com.rlibanez.eplsync.settings.ServerSettings settings;
     @Autowired JdbcTemplate jdbc;
@@ -40,6 +41,59 @@ class SqliteConcurrencyTests {
     private static void await(CountDownLatch latch) {
         try { assertThat(latch.await(5,TimeUnit.SECONDS)).isTrue(); }
         catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}
+    }
+    @Test void idleQueueWakesOnlyForCommittedChanges() {
+        var probe=new WorkerActivity.Probe();probe.empty(probe.snapshot());
+        jdbc.update("UPDATE concurrency_probe SET value=2 WHERE id=99");
+        assertThat(probe.ready()).isFalse();
+        transaction(false).executeWithoutResult(status->{
+            jdbc.update("UPDATE concurrency_probe SET value=2 WHERE id=1");
+            assertThat(probe.ready()).isFalse();status.setRollbackOnly();
+        });
+        assertThat(probe.ready()).isFalse();
+        transaction(false).executeWithoutResult(status->{
+            jdbc.update("UPDATE concurrency_probe SET value=3 WHERE id=1");
+            assertThat(probe.ready()).isFalse();
+        });
+        assertThat(probe.ready()).isTrue();
+        probe.empty(probe.snapshot());
+        jdbc.update("UPDATE concurrency_probe SET value=4 WHERE id=1");
+        assertThat(probe.ready()).isTrue();
+    }
+    @Test void flushedJpaChangesWakeQueuesAfterCommitAndNotAfterRollback() {
+        var probe=new WorkerActivity.Probe();probe.empty(probe.snapshot());
+        var record=new com.rlibanez.eplsync.torrent.downloads.DownloadRecord();
+        record.setHash("ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD");
+        record.setEplId(123L);record.setRevision(1.0);record.setClient("qbittorrent");record.setClientInstanceId("probe");
+        record.setStatus(com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADING);
+        record.setOrigin(com.rlibanez.eplsync.torrent.downloads.DownloadRecord.Origin.EPLSYNC);record.setCreatedAt(java.time.Instant.now());
+        transaction(false).executeWithoutResult(status->{
+            var em=org.springframework.orm.jpa.EntityManagerFactoryUtils.getTransactionalEntityManager(entityManagerFactory);
+            em.persist(record);em.flush();assertThat(probe.ready()).isFalse();
+        });
+        assertThat(probe.ready()).isTrue();probe.empty(probe.snapshot());
+        transaction(false).executeWithoutResult(status->{
+            var em=org.springframework.orm.jpa.EntityManagerFactoryUtils.getTransactionalEntityManager(entityManagerFactory);
+            var managed=em.find(com.rlibanez.eplsync.torrent.downloads.DownloadRecord.class,record.getId());
+            managed.setRevision(2.0);em.flush();assertThat(probe.ready()).isFalse();status.setRollbackOnly();
+        });
+        assertThat(probe.ready()).isFalse();
+        transaction(false).executeWithoutResult(status->{
+            var em=org.springframework.orm.jpa.EntityManagerFactoryUtils.getTransactionalEntityManager(entityManagerFactory);
+            em.remove(em.find(com.rlibanez.eplsync.torrent.downloads.DownloadRecord.class,record.getId()));em.flush();
+        });
+        assertThat(probe.ready()).isTrue();
+    }
+    @Test void applicationDebugDoesNotEnableSqlTracing() {
+        var app=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger("com.rlibanez.eplsync");
+        var sql=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CoordinatedJdbcTemplate.class);
+        var before=app.getLevel();
+        try {
+            app.setLevel(ch.qos.logback.classic.Level.DEBUG);
+            assertThat(sql.isDebugEnabled()).isFalse();
+            sql.setLevel(ch.qos.logback.classic.Level.DEBUG);
+            assertThat(sql.isDebugEnabled()).isTrue();
+        } finally {app.setLevel(before);sql.setLevel(ch.qos.logback.classic.Level.INFO);}
     }
     @Test void onlyLockContentionIsDeferred() {
         for(int code:new int[]{5,6,517,262}) assertThat(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(

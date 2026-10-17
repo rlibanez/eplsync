@@ -459,6 +459,12 @@ public class BulkStore {
             items.transition(job.getId(), BulkItem.State.PENDING, BulkItem.State.CANCELLED);
     }
 
+    @Transactional(readOnly=true)
+    public long nextRetryMillis() {
+        var due=em.createQuery("select min(j.retryAt) from BulkJob j where j.state = :state",Instant.class)
+            .setParameter("state",BulkJob.State.RETRY_WAIT).getSingleResult();
+        return due==null?Long.MAX_VALUE:due.toEpochMilli();
+    }
     @Transactional
     public BulkJob next() {
         var now = Instant.now();

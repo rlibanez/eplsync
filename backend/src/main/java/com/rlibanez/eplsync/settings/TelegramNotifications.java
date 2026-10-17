@@ -161,17 +161,23 @@ public class TelegramNotifications {
     @jakarta.annotation.PostConstruct void start() {
         if(workerEnabled) {
             jdbc.update("UPDATE telegram_deliveries SET state='FAILED' WHERE state='SENDING'");
-            worker.scheduleWithFixedDelay(()->{try {deliver();}catch(RuntimeException ex) {log.warn("No se pudo procesar la cola de Telegram: tipo={}",ex.getClass().getSimpleName());}},1,1,TimeUnit.SECONDS);
+            worker.scheduleWithFixedDelay(()->{try {if(idleProbe.ready()) deliver();}catch(RuntimeException ex) {log.warn("No se pudo procesar la cola de Telegram: tipo={}",ex.getClass().getSimpleName());}},1,1,TimeUnit.SECONDS);
         }
     }
+    private final com.rlibanez.eplsync.config.WorkerActivity.Probe idleProbe=new com.rlibanez.eplsync.config.WorkerActivity.Probe();
     void deliver() {
+        long beforeQuery=idleProbe.snapshot();
         long now=Instant.now().toEpochMilli();
         if(now-lastMaintenance>=60000) {
             jdbc.update("DELETE FROM telegram_deliveries WHERE created_at<?",now-java.time.Duration.ofDays(7).toMillis());
             jdbc.update("UPDATE telegram_deliveries SET state='FAILED' WHERE state='PENDING' AND created_at<?",now-java.time.Duration.ofDays(1).toMillis());
             lastMaintenance=now;
         }
-        if(jdbc.queryForList("SELECT id FROM telegram_deliveries WHERE state='PENDING' AND next_attempt<=? LIMIT 1",String.class,now).isEmpty()) return;
+        if(jdbc.queryForList("SELECT id FROM telegram_deliveries WHERE state='PENDING' AND next_attempt<=? LIMIT 1",String.class,now).isEmpty()) {
+            Long due=jdbc.queryForObject("SELECT min(next_attempt) FROM telegram_deliveries WHERE state='PENDING'",Long.class);
+            idleProbe.emptyUntil(beforeQuery,due==null?Long.MAX_VALUE:due);
+            return;
+        }
         var pending=tx.execute(status -> {
             var selected=jdbc.queryForList("SELECT * FROM telegram_deliveries WHERE state='PENDING' AND next_attempt<=? ORDER BY created_at,id LIMIT 1",now);
             if(selected.isEmpty()) return selected;

@@ -57,6 +57,18 @@ class ScheduledTasksTests {
             verify(calibre,times(1)).sync();
         } finally {scheduler.close();}
     }
+    @Test void idleSchedulerDetectsNewDueTaskWithoutWaitingForFallback() throws Exception {
+        var scheduler=new TaskScheduler(tasks,calibre,torrent,journal,catalog,searches);
+        try {
+            scheduler.start();scheduler.tick();
+            var task=due("New after idle",ScheduledTasks.Operation.CALIBRE_SYNC);
+            scheduler.tick();
+            long deadline=System.nanoTime()+Duration.ofSeconds(5).toNanos();
+            while(tasks.find(task.id()).running() && System.nanoTime()<deadline) Thread.sleep(10);
+            assertThat(tasks.find(task.id()).lastResult()).isEqualTo("SUCCEEDED");
+            scheduler.tick();verify(calibre,times(1)).sync();
+        } finally {scheduler.close();}
+    }
     @Test void savesTelegramPreferenceIndependentlyOfTaskActivation() {
         var task=tasks.save(null,new ScheduledTasks.Input("Telegram",ScheduledTasks.Operation.TORRENT_SYNC,"0 5 * * *",owner.id(),true,false));
         assertThat(tasks.find(task.id()).telegramNotifications()).isFalse();

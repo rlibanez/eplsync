@@ -418,6 +418,8 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                   withAsterisk={setup || register}
                   minLength={3}
                   maxLength={64}
+                  id="auth-username"
+                  name="username"
                   value={username}
                   autoComplete="username"
                   disabled={pending}
@@ -434,6 +436,8 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                     error={emailInvalid}
                     required
                     maxLength={254}
+                    id="auth-email"
+                    name="email"
                     value={email}
                     autoComplete="email"
                     disabled={pending}
@@ -464,6 +468,8 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                   minLength={setup || register ? minimum : undefined}
 
                   maxLength={256}
+                  id="auth-password"
+                  name="password"
                   value={password}
                   autoComplete={
                     setup || register ? "new-password" : "current-password"
@@ -497,6 +503,8 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                     minLength={minimum}
                     maxLength={256}
                     error={mismatch}
+                    id="auth-password-confirmation"
+                    name="passwordConfirmation"
                     value={passwordConfirmation}
                     autoComplete="new-password"
                     disabled={pending}
@@ -513,7 +521,10 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                     />
                   }
                   required
+                  id="auth-initial-setup-key"
+                  name="initialAdminKey"
                   autoComplete="off"
+                  data-bwignore="true"
                   value={initialAdminKey}
                   disabled={pending}
                   onChange={(e) => setInitialAdminKey(e.currentTarget.value)}

@@ -490,16 +490,18 @@ public class RevisionCleanup {
         try {return client.book(c,id);}catch(org.springframework.web.server.ResponseStatusException ex) {if(ex.getStatusCode().value()==404) return null;throw ex;}
     }
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=1000) public void schedule() {
-        if(enabled && running.compareAndSet(false,true)) try {worker.execute(()->{try {cycle();}catch(RuntimeException ex) {log.warn("No se pudo completar el ciclo de limpieza: tipo={}",ex.getClass().getSimpleName());}finally {running.set(false);}});}catch(RejectedExecutionException ex) {running.set(false);}
+        if(enabled && idleProbe.ready() && running.compareAndSet(false,true)) try {worker.execute(()->{try {cycle();}catch(RuntimeException ex) {log.warn("No se pudo completar el ciclo de limpieza: tipo={}",ex.getClass().getSimpleName());}finally {running.set(false);}});}catch(RejectedExecutionException ex) {running.set(false);}
     }
+    private final com.rlibanez.eplsync.config.WorkerActivity.Probe idleProbe=new com.rlibanez.eplsync.config.WorkerActivity.Probe();
     /** No network calls or filesystem reads run on Spring's scheduler or under a SQL transaction. */
     public void cycle() {
         if(!lifecycle.tryLock()) return;
         try {
             if(!maintenance.enter(false)) return;
             try {
+                long beforeQuery=idleProbe.snapshot();
                 var jobs=jdbc.queryForList("SELECT id FROM revision_cleanup_jobs WHERE state IN ('QUEUED','RUNNING') ORDER BY updated_at,id LIMIT 1",String.class);
-                if(jobs.isEmpty()) return;
+                if(jobs.isEmpty()) {idleProbe.empty(beforeQuery);return;}
                 String id=jobs.getFirst();
                 // Only remote deletions need verification. A local history deletion can be retried idempotently.
                 jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 AND (SELECT action FROM revision_cleanup_jobs WHERE id=?)<>'RECORD' THEN 'VERIFYING' ELSE 'PENDING' END WHERE job_id=? AND state='RUNNING'",id,id);

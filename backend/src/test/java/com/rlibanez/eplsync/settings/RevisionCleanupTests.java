@@ -728,6 +728,36 @@ class RevisionCleanupTests {
 
     @Test void calibreDoesNotReplayUnconfirmedDeletion() {var job=start(preview("calibre","BOOK"));cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);cleanup.control(job.id(),"verify");cleanup.cycle();verify(client,times(1)).remove(any(),eq(10L),eq(true));}
     @Test void calibreIdentityChangeAfterPreviewBlocksDeletion() {var job=start(preview("calibre","BOOK"));when(client.book(any(),eq(20L))).thenReturn(new CalibreClient.Book(20,"Different",List.of(),2L,BigDecimal.TWO,true));cleanup.cycle();assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);verify(client,never()).remove(any(),anyLong(),anyBoolean());}
+    private void scheduledCleanupCycle() throws Exception {
+        org.springframework.test.util.ReflectionTestUtils.setField(cleanup,"enabled",true);
+        try {
+            cleanup.schedule();
+            var running=(java.util.concurrent.atomic.AtomicBoolean)org.springframework.test.util.ReflectionTestUtils.getField(cleanup,"running");
+            long deadline=System.nanoTime()+java.time.Duration.ofSeconds(5).toNanos();
+            while(running.get() && System.nanoTime()<deadline) Thread.sleep(10);
+            assertThat(running.get()).isFalse();
+        } finally {org.springframework.test.util.ReflectionTestUtils.setField(cleanup,"enabled",false);}
+    }
+    @Test void idleSchedulerDetectsNewCleanupAndDoesNotDuplicateDeletion() throws Exception {
+        cleanup.cycle();
+        var job=start(preview("downloads","FILES"));
+        scheduledCleanupCycle();scheduledCleanupCycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
+        assertThat(downloads.findById(newer)).isPresent();
+    }
+    @Test void idleSchedulerDetectsRecoveredDeletionAndOnlyVerifiesIt() throws Exception {
+        cleanup.cycle();
+        var job=start(preview("downloads","FILES"));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=1 WHERE job_id=?",job.id());
+        remote.removeIf(row->row.hash().equals("A".repeat(40)));
+        cleanup.recover();scheduledCleanupCycle();scheduledCleanupCycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(downloads.findById(newer)).isPresent();
+    }
     @Test void restartContinuesUndispatchedCleanupExactlyOnceAndRetainsReplacement() {
         var job=start(preview("downloads","FILES"));
         jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());
