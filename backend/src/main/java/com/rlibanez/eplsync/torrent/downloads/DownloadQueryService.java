@@ -71,7 +71,7 @@ public class DownloadQueryService {
     }
 
     private void validate(MultiValueMap<String, String> params, boolean listing) {
-        var allowed = new HashSet<>(Set.of("eplId", "hash", "revision", "status", "statusOperator", "originOperator", "origin", "client", "clientInstanceId", "completed"));
+        var allowed = new HashSet<>(Set.of("title", "titleOperator", "eplId", "hash", "revision", "status", "statusOperator", "originOperator", "origin", "client", "clientInstanceId", "completed"));
         if (listing) allowed.addAll(Set.of("page", "size", "sort"));
         DATE_FIELDS.forEach(field -> { allowed.add(field + "From"); allowed.add(field + "To"); });
         if (!allowed.containsAll(params.keySet())) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro de descargas desconocido");
@@ -89,7 +89,8 @@ public class DownloadQueryService {
             try {
                 switch (key) {
                     case "page", "size", "sort" -> { }
-                    case "statusOperator", "originOperator" -> com.rlibanez.eplsync.ordering.StateOperator.excluded(text);
+                    case "titleOperator", "statusOperator", "originOperator" -> com.rlibanez.eplsync.ordering.StateOperator.excluded(text);
+                    case "title" -> { if(text.length()>256) throw new com.rlibanez.eplsync.exception.UserInputException(); if(!text.isBlank()) values.put(key,text.trim()); }
                     case "eplId" -> { long id = Long.parseLong(text); if (id < 1) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, id); }
                     case "revision" -> { double revision = Double.parseDouble(text); if (!Double.isFinite(revision) || revision < 0) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, revision); }
                     case "completed" -> { if (!text.equals("true") && !text.equals("false")) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, Boolean.valueOf(text)); }
@@ -107,7 +108,12 @@ public class DownloadQueryService {
         return (root, query, cb) -> {
             var predicates = new ArrayList<Predicate>();
             values.forEach((key, value) -> {
-                if (key.equals("completed")) predicates.add((Boolean) value ? cb.isNotNull(root.get("completedAt")) : cb.isNull(root.get("completedAt")));
+                if(key.equals("title")) {
+                    var title=cb.coalesce(root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).<String>get("title"),"");
+                    var position=cb.locate(cb.lower(title),((String)value).toLowerCase(Locale.ROOT));
+                    predicates.add("ne".equals(params.getFirst("titleOperator"))?cb.equal(position,0):cb.greaterThan(position,0));
+                }
+                else if (key.equals("completed")) predicates.add((Boolean) value ? cb.isNotNull(root.get("completedAt")) : cb.isNull(root.get("completedAt")));
                 else if (key.equals("status")) {
                     var predicate = root.get(key).in((List<?>) value);
                     predicates.add("ne".equals(params.getFirst("statusOperator")) ? cb.not(predicate) : predicate);

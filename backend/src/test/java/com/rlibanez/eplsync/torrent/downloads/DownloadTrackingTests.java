@@ -308,6 +308,28 @@ class DownloadTrackingTests {
         verifyNoInteractions(stubClient);
     }
 
+    @Test void bookTextFilterSupportsExclusionPagingSummaryAndLiteralCharacters() throws Exception {
+        book(1.0,HASH);
+        books.save(CatalogBook.builder().eplId(33L).title("Other 100%_book").author("Author").language(Language.ESPANOL).revision(1.0).build());
+        for(int i=0;i<4;i++) {
+            var row=new DownloadRecord();row.setEplId(i<2?32L:i==2?33L:34L);row.setRevision(1.0+i);row.setHash(String.format("%040X",i+1));
+            row.setClient("stub");row.setClientInstanceId(tracking.instanceId());row.setOrigin(DownloadRecord.Origin.EPLSYNC);
+            row.setStatus(DownloadStatus.DOWNLOADED);row.setCreatedAt(Instant.now());downloads.save(row);
+        }
+        mvc.perform(get("/api/torrent/downloads").param("title"," tIt ").param("page","1").param("size","1").param("sort","revision,asc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2)).andExpect(jsonPath("$.items[0].revision").value(2.0));
+        mvc.perform(get("/api/torrent/downloads").param("title","title").param("titleOperator","ne").param("size","1000"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2)).andExpect(jsonPath("$.items.length()").value(2));
+        mvc.perform(get("/api/torrent/downloads/summary").param("title","title").param("titleOperator","ne").param("status","DOWNLOADED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(2));
+        mvc.perform(get("/api/torrent/downloads").param("title","%_"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].eplId").value(33)).andExpect(jsonPath("$.meta.totalItems").value(1));
+        mvc.perform(get("/api/torrent/downloads").param("titleOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4));
+        mvc.perform(get("/api/torrent/downloads").param("titleOperator","invalid")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/torrent/downloads").param("title","x".repeat(257))).andExpect(status().isBadRequest());
+    }
+
     @Test void stateExclusionAppliesBeforePagingAndToAllResults() throws Exception {
         for(int i=0;i<5;i++) {
             var row=new DownloadRecord();row.setEplId(32L);row.setRevision(1.0+i);row.setHash(String.format("%040X",i+1));

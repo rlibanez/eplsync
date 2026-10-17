@@ -1,4 +1,7 @@
-import { stateOperatorProps } from "../../components/StateOperator";
+import {
+  stateOperatorProps,
+  textOperatorProps,
+} from "../../components/StateOperator";
 import { CleanupLauncher } from "../cleanup/RevisionCleanup";
 import { PageTitle } from "../../components/PageTitle";
 import { SelectAllRows } from "../../components/SelectAllRows";
@@ -55,6 +58,8 @@ export interface Download {
 }
 const initialFilters = {
   eplId: "",
+  title: "",
+  titleOperator: "eq",
   status: "",
   statusOperator: "eq",
   origin: "",
@@ -73,6 +78,7 @@ function DownloadHistory() {
   const session = useSyncSession();
   const syncPending = useIsMutating({ mutationKey: ["torrent-sync"] }) > 0;
   const [filters, setFilters] = useState(initialFilters);
+  const [draftTitle, setDraftTitle] = useState("");
   const [draftEplId, setDraftEplId] = useState("");
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(20);
@@ -95,6 +101,20 @@ function DownloadHistory() {
     return () => window.clearTimeout(timer);
   }, [draftEplId, filters.eplId]);
 
+  useEffect(() => {
+    const title = draftTitle.trim();
+    if (title === filters.title) return;
+    const timer = window.setTimeout(() => {
+      setFilters((current) => ({
+        ...current,
+        title,
+        titleOperator: title ? current.titleOperator : "eq",
+      }));
+      setPage(0);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [draftTitle, filters.title]);
+
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters))
     if (value) {
@@ -102,7 +122,8 @@ function DownloadHistory() {
         ordering(value).forEach((sort) => params.append("sort", sort));
       else if (
         !key.endsWith("Operator") ||
-        (filters[key.slice(0, -8) as "status" | "origin"] && value === "ne")
+        (filters[key.slice(0, -8) as "status" | "origin" | "title"] &&
+          value === "ne")
       )
         params.set(key, value);
     }
@@ -252,6 +273,40 @@ function DownloadHistory() {
             }
             onChange={(e) => setDraftEplId(e.currentTarget.value)}
           />
+          <TextInput
+            name="title"
+            label={t("downloads.book")}
+            value={draftTitle}
+            maxLength={256}
+            {...textOperatorProps(filters.titleOperator === "ne", () =>
+              filter(
+                "titleOperator",
+                filters.titleOperator === "ne" ? "eq" : "ne",
+              ),
+            )}
+            rightSectionPointerEvents="auto"
+            rightSection={
+              draftTitle ? (
+                <CloseButton
+                  size="sm"
+                  aria-label={`${t("catalog.clear")}: ${t("downloads.book")}`}
+                  onClick={() => {
+                    setDraftTitle("");
+                    setFilters((current) => ({
+                      ...current,
+                      title: "",
+                      titleOperator: "eq",
+                    }));
+                    setPage(0);
+                  }}
+                />
+              ) : undefined
+            }
+            onChange={(e) => {
+              setDraftTitle(e.currentTarget.value);
+              if (!e.currentTarget.value.trim()) filter("titleOperator", "eq");
+            }}
+          />
           <MultiSelect
             searchable
             styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
@@ -309,6 +364,7 @@ function DownloadHistory() {
             onClick={() => {
               setDraftEplId("");
               setFilters(initialFilters);
+              setDraftTitle("");
               setPage(0);
               setSize(20);
             }}
