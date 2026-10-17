@@ -110,6 +110,16 @@ export function useJobRetry(
         {t("jobRetry.selected", { count: selected.length })}
       </Button>
     ),
+    failedAction:
+      selectable && history.data?.failed ? (
+        <Button
+          variant="default"
+          leftSection={<RotateCcw size={16} />}
+          onClick={() => start(null)}
+        >
+          {t("jobRetry.failed", { count: history.data.failed })}
+        </Button>
+      ) : null,
     content: (
       <>
         {manage && history.isError && (
@@ -144,17 +154,6 @@ export function useJobRetry(
               </span>
             ))}
           </p>
-        )}
-        {selectable && !!history.data?.failed && (
-          <div className="action-row">
-            <Button
-              variant="default"
-              leftSection={<RotateCcw size={16} />}
-              onClick={() => start(null)}
-            >
-              {t("jobRetry.failed", { count: history.data.failed })}
-            </Button>
-          </div>
         )}
         <AppModal
           width="normal"

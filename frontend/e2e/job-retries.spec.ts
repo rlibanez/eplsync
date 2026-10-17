@@ -121,6 +121,17 @@ for (const kind of ["downloads", "calibre"] as const) {
       });
     });
     await page.goto(`/${kind}/jobs/parent`);
+    await expect(
+      page
+        .locator(".job-report-panel .job-controls-heading .action-row")
+        .getByRole("button", { name: "Reintentar fallidos (1)", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Reintentar fallidos (1)",
+        exact: true,
+      }),
+    ).toHaveCount(1);
     await page
       .getByRole("button", { name: "Reintentar fallidos (1)", exact: true })
       .click();

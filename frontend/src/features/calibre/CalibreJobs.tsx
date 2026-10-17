@@ -543,15 +543,19 @@ export function CalibreJobDetail() {
       {retry.content}
 
       <section className="panel settings-section job-report-panel">
-        {can("CALIBRE_JOBS_MANAGE") &&
-          (!["COMPLETED", "CANCELLED"].includes(value.state) ||
-            value.uncertain > 0) && (
-            <div className="job-controls-heading">
-              <div className="action-row">
-                <Controls job={value} />
-              </div>
+        {(retry.failedAction ||
+          (can("CALIBRE_JOBS_MANAGE") &&
+            (!["COMPLETED", "CANCELLED"].includes(value.state) ||
+              value.uncertain > 0))) && (
+          <div className="job-controls-heading">
+            <div className="action-row">
+              {retry.failedAction}
+              {can("CALIBRE_JOBS_MANAGE") &&
+                (!["COMPLETED", "CANCELLED"].includes(value.state) ||
+                  value.uncertain > 0) && <Controls job={value} />}
             </div>
-          )}
+          </div>
+        )}
         <details className="report-collapse">
           <summary>
             <span>{t("calibreSend.report")}</span>

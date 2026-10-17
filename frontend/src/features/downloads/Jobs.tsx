@@ -513,6 +513,7 @@ export function JobDetail() {
           <section className="panel settings-section job-report-panel">
             <div className="job-controls-heading">
               <div className="action-row">
+                {retry.failedAction}
                 {["QUEUED", "RUNNING", "RETRY_WAIT", "CLEANUP_WAIT"].includes(
                   data.status,
                 ) && (
