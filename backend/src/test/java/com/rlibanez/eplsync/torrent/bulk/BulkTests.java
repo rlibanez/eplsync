@@ -330,6 +330,15 @@ class BulkTests {
         verify(client, times(1)).addTorrent(any());
     }
 
+    @Test void sqliteContentionDefersWithHashReconciliationInsteadOfImmediatePause() throws Exception {
+        when(client.addTorrent(any())).thenThrow(new org.springframework.dao.CannotAcquireLockException("busy",new java.sql.SQLException("busy","",517)))
+                .thenReturn(TorrentDownloadResult.Status.ALREADY_EXISTS);
+        var job=create(null);start();until(()->store.view(job.jobId()).status()==BulkJob.State.RETRY_WAIT);
+        var persisted=jobs.findById(job.jobId()).orElseThrow();persisted.setRetryAt(Instant.now().minusSeconds(1));jobs.save(persisted);
+        until(()->store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        assertThat(store.view(job.jobId()).alreadyExists()).isEqualTo(5);
+    }
+
     @Test void timeoutSchedulesBoundedRetryAndChecksExistingHashOnNextAttempt() throws Exception {
         when(client.addTorrent(any())).thenThrow(new TorrentConnectionException(TorrentConnectionException.Reason.TIMEOUT))
                 .thenReturn(TorrentDownloadResult.Status.ALREADY_EXISTS);

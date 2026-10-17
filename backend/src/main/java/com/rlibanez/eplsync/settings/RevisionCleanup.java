@@ -354,6 +354,8 @@ public class RevisionCleanup {
                 var jobs=jdbc.queryForList("SELECT id FROM revision_cleanup_jobs WHERE state IN ('QUEUED','RUNNING') ORDER BY updated_at,id LIMIT 1",String.class);
                 if(jobs.isEmpty()) return;
                 String id=jobs.getFirst();
+                // Only remote deletions need verification. A local history deletion can be retried idempotently.
+                jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 AND (SELECT action FROM revision_cleanup_jobs WHERE id=?)<>'RECORD' THEN 'VERIFYING' ELSE 'PENDING' END WHERE job_id=? AND state='RUNNING'",id,id);
                 jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING',message=NULL,updated_at=? WHERE id=? AND state='QUEUED'",Instant.now().toEpochMilli(),id);
                 long deadline=System.nanoTime()+Duration.ofSeconds(30).toNanos();
                 for(int n=0;n<20 && !Thread.currentThread().isInterrupted() && System.nanoTime()<deadline;n++) {
@@ -383,6 +385,7 @@ public class RevisionCleanup {
                 return null;
             })));
         } catch(RuntimeException ex) {
+            if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
             var fresh=jdbc.queryForList("SELECT dispatched FROM revision_cleanup_items WHERE id=?",Boolean.class,item.id());
             update(item.id(),verify || !fresh.isEmpty() && Boolean.TRUE.equals(fresh.getFirst())?"UNCERTAIN":ex instanceof UserInputException || ex instanceof org.springframework.security.access.AccessDeniedException?"BLOCKED":"FAILED",reason(ex));
         } finally {SecurityContextHolder.setContext(previous);}

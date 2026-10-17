@@ -19,7 +19,7 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.tasks.worker-enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.calibre.transfers.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
 @WithMockUser(roles="ADMIN")
 class ScheduledTasksTests {
-    @Autowired ScheduledTasks tasks;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean ScheduledTasks tasks;
     @Autowired InternalTaskSettings internal;
     @Autowired AccountStore accounts;
     @Autowired JdbcTemplate jdbc;
@@ -38,6 +38,24 @@ class ScheduledTasksTests {
     ScheduledTasks.Input input(String name,ScheduledTasks.Operation operation) {return new ScheduledTasks.Input(name,operation,"0 */15 * * * *",owner.id(),true);}
     ScheduledTasks.Task due(String name,ScheduledTasks.Operation operation) {
         var task=tasks.save(null,input(name,operation));jdbc.update("UPDATE scheduled_tasks SET next_run=0 WHERE id=?",task.id());return task;
+    }
+    @Test @WithMockUser(authorities={"CALIBRE_SYNC","CALIBRE_READ","CATALOG_READ","SETTINGS_MANAGE"})
+    void sqliteFailureSavingCompletionDoesNotExecuteTheTaskAgain() {
+        var scheduler=new TaskScheduler(tasks,calibre,torrent,journal,catalog,searches);
+        try {
+            scheduler.start();
+            var task=tasks.save(null,new ScheduledTasks.Input("Once",ScheduledTasks.Operation.CALIBRE_SYNC,"0 5 * * *",owner.id(),false));
+            var claimed=tasks.claimNow(task.id(),Instant.now());
+            when(calibre.sync()).thenReturn(new CalibreCatalogService.Snapshot("main",Instant.now(),12,10));
+            doThrow(new org.springframework.dao.CannotAcquireLockException("busy",new java.sql.SQLException("busy","",5)))
+                .doCallRealMethod().when(tasks).finish(eq(task.id()),eq("SUCCEEDED"),isNull());
+            scheduler.run(claimed);
+            assertThat(tasks.find(task.id()).running()).isTrue();
+            scheduler.tick();
+            assertThat(tasks.find(task.id()).running()).isFalse();
+            assertThat(tasks.find(task.id()).lastResult()).isEqualTo("SUCCEEDED");
+            verify(calibre,times(1)).sync();
+        } finally {scheduler.close();}
     }
     @Test void savesTelegramPreferenceIndependentlyOfTaskActivation() {
         var task=tasks.save(null,new ScheduledTasks.Input("Telegram",ScheduledTasks.Operation.TORRENT_SYNC,"0 5 * * *",owner.id(),true,false));

@@ -40,6 +40,14 @@ class SqliteConcurrencyTests {
         try { assertThat(latch.await(5,TimeUnit.SECONDS)).isTrue(); }
         catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}
     }
+    @Test void onlyLockContentionIsDeferred() {
+        for(int code:new int[]{5,6,517,262}) assertThat(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(
+                new IllegalStateException(new java.sql.SQLException("test","",code)))).isTrue();
+        for(int code:new int[]{10,19,13}) assertThat(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(
+                new java.sql.SQLException("test","",code))).isFalse();
+        assertThat(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(new com.rlibanez.eplsync.ordering.SqliteContention.WriterBusy())).isTrue();
+        assertThat(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(new IllegalStateException("other"))).isFalse();
+    }
     @Test void everyConnectionUsesWalFullBusyTimeoutAndForeignKeys() throws Exception {
         try(var first=source.getConnection();var second=source.getConnection()) {
             for(var connection:java.util.List.of(first,second)) try(var statement=connection.createStatement()) {
@@ -79,6 +87,27 @@ class SqliteConcurrencyTests {
             });});
             try {await(secondStarted);Thread.sleep(100);} finally {release.countDown();}
             first.get(5,TimeUnit.SECONDS);second.get(5,TimeUnit.SECONDS);
+            assertThat(jdbc.queryForObject("SELECT value FROM concurrency_probe",Integer.class)).isEqualTo(2);
+        }
+    }
+    @Test void autocommitCalibreWriteCannotInvalidateTorrentReadModifyWrite() throws Exception {
+        var read=new CountDownLatch(1);var release=new CountDownLatch(1);var attempted=new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var torrent=executor.submit(() -> transaction(false).executeWithoutResult(status -> {
+                int value=jdbc.queryForObject("SELECT value FROM concurrency_probe",Integer.class);
+                read.countDown();await(release);
+                jdbc.update("UPDATE concurrency_probe SET value=?",value+1);
+            }));
+            await(read);
+            var calibre=executor.submit(() -> {
+                attempted.countDown();jdbc.update("UPDATE concurrency_probe SET value=value+1");
+            });
+            try {
+                await(attempted);
+                // The old DEFERRED transaction let this commit invalidate its snapshot.
+                assertThatThrownBy(() -> calibre.get(200,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            } finally {release.countDown();}
+            torrent.get(5,TimeUnit.SECONDS);calibre.get(5,TimeUnit.SECONDS);
             assertThat(jdbc.queryForObject("SELECT value FROM concurrency_probe",Integer.class)).isEqualTo(2);
         }
     }

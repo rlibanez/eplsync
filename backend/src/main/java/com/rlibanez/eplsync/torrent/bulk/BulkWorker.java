@@ -225,6 +225,8 @@ public class BulkWorker {
         } catch (IllegalArgumentException ex) {
             return new Outcome(BulkItem.State.FAILED, "Opciones del torrent inválidas", false, false);
         } catch (RuntimeException ex) {
+            if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex))
+                return new Outcome(null,"SQLite ocupado; se comprobará el hash antes de continuar",false,true);
             return new Outcome(null, "Error inesperado; revisar antes de reanudar", true, false);
         }
     }

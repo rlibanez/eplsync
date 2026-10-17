@@ -221,6 +221,7 @@ public class CleanupQueue {
                     log.warn("Eliminación sin confirmar: solicitud={}, tipo={}",entry.getId(),ex.getClass().getSimpleName());
                 }
             } catch (RuntimeException ex) {
+                if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
                 log.warn("Limpieza pendiente: solicitud={}, tipo={}",entry.getId(),ex.getClass().getSimpleName());
                 if (entry.getState()!=UpdateCleanup.State.REQUESTED) save(entry,UpdateCleanup.State.BLOCKED,"No se pudo completar la comprobación de seguridad");
             }

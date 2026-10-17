@@ -22,12 +22,13 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.revision-cleanup.worker-enabled=false","eplsync.calibre.transfers.worker-enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
 class RevisionCleanupTests {
     @Autowired RevisionCleanup cleanup;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.rlibanez.eplsync.torrent.updates.HistoryActions history;
     @Autowired com.rlibanez.eplsync.torrent.updates.UpdateCleanupRepository cleanups;
     @Autowired com.rlibanez.eplsync.torrent.updates.CleanupQueue cleanupQueue;
     @Autowired WorkListings listings;
     @Autowired org.springframework.web.context.WebApplicationContext context;
     @Autowired com.rlibanez.eplsync.maintenance.DatabaseResetService reset;
-    @Autowired JdbcTemplate jdbc;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean JdbcTemplate jdbc;
     @Autowired AccountStore accounts;
     @Autowired CalibreSettings settings;
     @Autowired DownloadRepository downloads;
@@ -63,6 +64,29 @@ class RevisionCleanupTests {
     RevisionCleanup.Job preview(String source,String action) {return cleanup.preview(new RevisionCleanup.PreviewInput(source,action,List.of()));}
     RevisionCleanup.Item item(RevisionCleanup.Job job) {return cleanup.items(job.id(),0,1000).items().getFirst();}
     RevisionCleanup.Job start(RevisionCleanup.Job job) {return cleanup.start(job.id(),new RevisionCleanup.Confirmation(List.of(item(job).id()),true,true));}
+    @Test void sqliteFailureDeletingOnlyLocalHistoryRetriesWithoutUncertaintyOrRemoteDeletion() {
+        var job=start(preview("downloads","RECORD"));
+        var busy=new org.springframework.dao.CannotAcquireLockException("busy",new java.sql.SQLException("busy","",5));
+        doThrow(busy).doCallRealMethod().when(history).deleteRevisionHistory(eq(1L),eq(old));
+        assertThatThrownBy(cleanup::cycle).isSameAs(busy);
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(cleanup.get(job.id()).uncertain()).isZero();
+        assertThat(downloads.findById(old)).isEmpty();assertThat(downloads.findById(newer)).isPresent();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void sqliteFailureAfterDeletionIsVerifiedNextCycleWithoutRepeatingDelete() {
+        var job=start(preview("downloads","FILES"));
+        var busy=new org.springframework.dao.CannotAcquireLockException("busy",new java.sql.SQLException("busy","",5));
+        doThrow(busy).doCallRealMethod().when(jdbc).update(eq("UPDATE revision_cleanup_items SET state=?,message=? WHERE id=?"),eq("SUCCEEDED"),any(),any());
+        assertThatThrownBy(cleanup::cycle).isSameAs(busy);
+        assertThat(item(job).state()).isEqualTo("RUNNING");
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
+        assertThat(downloads.findById(newer)).isPresent();
+    }
     @Test void previewIsReadOnlyAndExcludesEqualRevisions() {download(2,1,"C");download(2,1,"D");var job=preview("downloads","FILES");assertThat(job.total()).isEqualTo(1);assertThat(job.ready()).isEqualTo(1);verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());assertThat(item(job).replacementId()).isEqualTo(newer);}
     @Test void previewShowsPendingHigherRevisionAsExcludedInsteadOfHidingOldCopy() {
         jdbc.update("UPDATE torrent_downloads SET status='QUEUED' WHERE id=?",newer);

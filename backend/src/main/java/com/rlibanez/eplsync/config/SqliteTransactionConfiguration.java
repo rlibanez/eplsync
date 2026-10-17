@@ -20,6 +20,22 @@ public class SqliteTransactionConfiguration {
         return new SingleWriterTransactionManager(factory);
     }
 
+    static final class SqliteJpaDialect extends org.springframework.orm.jpa.vendor.HibernateJpaDialect {
+        @Override public Object beginTransaction(jakarta.persistence.EntityManager entityManager,
+                TransactionDefinition definition) throws java.sql.SQLException {
+            var session=entityManager.unwrap(org.hibernate.engine.spi.SessionImplementor.class);
+            var connection=session.getJdbcCoordinator().getLogicalConnection().getPhysicalConnection()
+                    .unwrap(org.sqlite.SQLiteConnection.class);
+            // The Java queue cannot cover JDBC autocommit writes or other processes.
+            // Reserve SQLite's writer before the first SELECT, rather than upgrading
+            // a DEFERRED snapshot after an intervening commit (BUSY_SNAPSHOT).
+            connection.getConnectionConfig().setTransactionMode(definition.isReadOnly()
+                    ? org.sqlite.SQLiteConfig.TransactionMode.DEFERRED
+                    : org.sqlite.SQLiteConfig.TransactionMode.IMMEDIATE);
+            return super.beginTransaction(entityManager,definition);
+        }
+    }
+
     static final class SingleWriterTransactionManager extends JpaTransactionManager {
         private final ReentrantLock writer = new ReentrantLock(true);
         private final Set<Object> owners = ConcurrentHashMap.newKeySet();
@@ -29,13 +45,19 @@ public class SqliteTransactionConfiguration {
             logger = org.apache.commons.logging.LogFactory.getLog(JpaTransactionManager.class);
         }
 
+        @Override public void afterPropertiesSet() {
+            super.afterPropertiesSet();
+            // Spring obtains the provider dialect here; install ours afterwards.
+            setJpaDialect(new SqliteJpaDialect());
+        }
+
         @Override protected void doBegin(Object transaction, TransactionDefinition definition) {
             if (!definition.isReadOnly()) {
                 int seconds = definition.getTimeout() == TransactionDefinition.TIMEOUT_DEFAULT
                         ? 30 : Math.min(30, definition.getTimeout());
                 try {
                     if (!writer.tryLock(seconds, TimeUnit.SECONDS))
-                        throw new CannotCreateTransactionException("Tiempo de espera agotado para escribir en SQLite");
+                        throw new com.rlibanez.eplsync.ordering.SqliteContention.WriterBusy();
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                     throw new CannotCreateTransactionException("Escritura SQLite interrumpida", ex);

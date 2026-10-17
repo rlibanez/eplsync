@@ -30,7 +30,7 @@ class CalibreTransfersTests {
     @Autowired CalibreCatalogService catalog;
     @Autowired DownloadRepository downloads;
     @Autowired DownloadTrackingService tracking;
-    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @MockitoSpyBean org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired WebApplicationContext context;
     @MockitoSpyBean AccountStore accounts;
     @MockitoBean CalibreClient client;
@@ -463,6 +463,21 @@ class CalibreTransfersTests {
         transfers.cycle();
         assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void sqliteFailureAfterUploadIsVerifiedNextCycleWithoutPauseOrResending() throws Exception {
+        bytes=withoutIdentifiers(true,true);
+        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        var job=create();
+        var busy=new org.springframework.dao.CannotAcquireLockException("busy",new java.sql.SQLException("busy","",517));
+        doThrow(busy).doCallRealMethod().when(jdbc).update(eq("UPDATE calibre_job_items SET calibre_id=? WHERE id=?"),anyLong(),anyString());
+        transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("RUNNING");
+        assertThat(jdbc.queryForObject("SELECT state FROM calibre_job_items WHERE job_id=?",String.class,job.id())).isEqualTo("SENDING");
+        // No identity lookup is possible: the accepted remote ID must survive the failed local write.
+        transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
     }
     @Test void ambiguousUploadIsNeverAutomaticallyRepeatedAndCanBeVerified() {
         when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());

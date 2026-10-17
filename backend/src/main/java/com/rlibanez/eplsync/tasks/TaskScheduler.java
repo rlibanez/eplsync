@@ -25,6 +25,23 @@ public class TaskScheduler {
     private final UpdateSearches searches;
     private final com.rlibanez.eplsync.service.CatalogImportService catalog;
     private final ExecutorService executor=Executors.newFixedThreadPool(2,Thread.ofPlatform().name("scheduled-task-",0).factory());
+    private record Completion(String outcome,String message) {}
+    private final Map<String,Completion> pendingCompletions=new LinkedHashMap<>();
+    private synchronized void finishTask(String id,String outcome,String message) {
+        pendingCompletions.put(id,new Completion(outcome,message));
+        flushCompletions();
+    }
+    private synchronized void flushCompletions() {
+        var iterator=pendingCompletions.entrySet().iterator();
+        while(iterator.hasNext()) {
+            var entry=iterator.next();
+            try {tasks.finish(entry.getKey(),entry.getValue().outcome(),entry.getValue().message());iterator.remove();}
+            catch(RuntimeException ex) {
+                if(!com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
+                log.debug("Resultado de tarea pendiente de persistencia: id={}",entry.getKey());
+            }
+        }
+    }
     private volatile boolean ready,closed;
     public TaskScheduler(ScheduledTasks tasks,CalibreCatalogService calibre,UpdateCleanupService torrent,EventJournal journal,com.rlibanez.eplsync.service.CatalogImportService catalog,UpdateSearches searches) {this.searches=searches;this.catalog=catalog;this.tasks=tasks;this.calibre=calibre;this.torrent=torrent;this.journal=journal;}
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
@@ -32,10 +49,11 @@ public class TaskScheduler {
     @Scheduled(fixedDelay=1000)
     public void tick() {
         if(!ready || closed) return;
+        flushCompletions();
         for(int i=0;i<2;i++) {
             var task=tasks.claim(Instant.now());if(task.isEmpty()) return;
             try {executor.submit(()->run(task.get()));}
-            catch(RejectedExecutionException ex) {tasks.finish(task.get().id(),"INTERRUPTED","La aplicación está cerrándose");}
+            catch(RejectedExecutionException ex) {finishTask(task.get().id(),"INTERRUPTED","La aplicación está cerrándose");}
         }
     }
     public ScheduledTasks.Task runNow(String id) {
@@ -43,7 +61,7 @@ public class TaskScheduler {
         var task=tasks.claimNow(id,Instant.now());
         try {executor.submit(()->run(task,EventContext.Origin.MANUAL));}
         catch(RejectedExecutionException ex) {
-            tasks.finish(id,"INTERRUPTED","La aplicación está cerrándose");
+            finishTask(id,"INTERRUPTED","La aplicación está cerrándose");
             throw new UserInputException("El programador no está disponible");
         }
         return task;
@@ -106,7 +124,7 @@ public class TaskScheduler {
             if(message!=null && message.length()>1024) message=message.substring(0,1024);
             log.debug("Fallo de tarea programada: id={}, tipo={}",task.id(),ex.getClass().getSimpleName());
         } finally {
-            SecurityContextHolder.setContext(previous);tasks.finish(task.id(),outcome,message);
+            SecurityContextHolder.setContext(previous);finishTask(task.id(),outcome,message);
             if(outcome.equals("SUCCEEDED")) log.debug("Fin de tarea programada: id={}, nombre={}, resultado={}, resumen={}",task.id(),task.name(),outcome,details);
             else log.warn("Fin de tarea programada: id={}, nombre={}, resultado={}, motivo={}, resumen={}",task.id(),task.name(),outcome,message,details);
         }
