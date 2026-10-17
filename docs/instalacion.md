@@ -130,3 +130,12 @@ Una instalación limpia no utiliza automáticamente una instantánea consolidada
 La versión 1.5.0 de la aplicación utiliza el mismo esquema `1.5.0.6` que la 1.4.2.
 No añade migraciones ni renumera las anteriores. Al actualizar desde 1.4.2, Flyway
 valida el historial existente y conserva los datos sin ejecutar migraciones nuevas.
+
+La versión 1.6.0 añade cinco migraciones sobre la 1.5.0 (`V1_5_0_7` a
+`V1_5_0_11`), hasta el esquema `1.5.0.11`. Conserva los datos existentes,
+los trabajos y sus vínculos; las nuevas columnas reciben valores predeterminados.
+Las migraciones publicadas mantienen sus nombres y checksums. La actualización
+se verifica con los scripts exactos de la 1.5.0 y datos de catálogo, usuarios,
+Torrent, Calibre, tareas, eventos y operaciones pendientes. Conserva los datos
+persistentes y la clave de cifrado, y realiza una copia de seguridad antes de
+actualizar.

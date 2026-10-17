@@ -22,6 +22,55 @@ class DatabaseMigrationTests {
         return Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()))).locations(locations)
                 .ignoreMigrationPatterns(new String[0]).baselineOnMigrate(false).validateOnMigrate(true).cleanDisabled(true).load();
     }
+    @Test void upgradesPublished150To160PreservingAllExistingRows() {
+        var previous=flyway("classpath:migrations/released-1.5.0");
+        assertEquals(14,previous.migrate().migrationsExecuted);
+        assertEquals("1.5.0.6",previous.info().current().getVersion().toString());
+        var jdbc=jdbc();
+        jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at,notification_preferences) VALUES('owner','alice','alice','a@b.c','hash','ADMIN','ACTIVE','now','now',?)", "{\"floating\":false}");
+        jdbc.update("INSERT INTO scheduled_tasks(id,name,operation,cron,timezone,owner_id,owner_username,enabled,next_run,created_at,updated_at) VALUES('auto','Automatic','TORRENT_AUTO_UPDATE','0 5 * * *','UTC','owner','alice',1,100,0,0)");
+        jdbc.update("UPDATE scheduled_tasks SET telegram_notifications=0 WHERE id='auto'");
+        jdbc.update("INSERT INTO telegram_settings VALUES('owner',1,'encrypted-test-token','123456',0,1,1,'es')");
+        jdbc.update("INSERT INTO scheduled_automation_settings VALUES('auto','{}')");
+        jdbc.update("INSERT INTO scheduled_automation_runs(id,task_id,owner_id,state,created_at,configuration,context) VALUES('cycle','auto','owner','WAITING',0,'{}','SCHEDULED')");
+        jdbc.update("INSERT INTO app_settings VALUES('preserved.connection','{\"url\":\"http://calibre.test\"}')");
+        jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(123,1.2,'Libro conservado','Autor')");
+        jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('book','generation',1,9,123,1.1,'Libro conservado','Autor')");
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('record',123,1.1,'hash','qbittorrent','client','DOWNLOADED','EPLSYNC',0)");
+        jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,type,state) VALUES('download-job',1,1,0,1,'UPDATE','CLEANUP_WAIT')");
+        jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,state) VALUES('download-item','download-job',0,1,'ACCEPTED')");
+        jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,created_at,snapshot) VALUES('download-job','client','REMOVE_TORRENT',0,'{}')");
+        jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state) VALUES('cleanup','download-job','record',123,'hash','BLOCKED')");
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES('job','now','now','owner','alice','target','main','source','PAUSED')");
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('item','job',0,'record',0,'book.epub',1,123,'1.1','PENDING')");
+        jdbc.update("INSERT INTO scheduled_automation_jobs VALUES('cycle','downloads','download-job')");
+        jdbc.update("INSERT INTO update_search_results VALUES('owner','calibre',123,'MANUAL','{}','[{\"eplId\":123}]')");
+        jdbc.update("INSERT INTO app_events(created_at,category,action,outcome,origin,operation_id,details,actor_id) VALUES(1,'JOB','SCHEDULED_TASK','FAILED','SCHEDULED','operation','{}','owner')");
+        jdbc.update("UPDATE calibre_job_items SET state='UNCERTAIN',calibre_id=9 WHERE id='item'");
+        jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,state,created_at,updated_at,expires_at) VALUES('manual','downloads','FILES','owner','alice','context','RUNNING',1,2,3)");
+        jdbc.update("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,state,dispatched) VALUES('manual-item','manual',0,'record','replacement',123,'Book','1','2','UNCERTAIN',1)");
+        var before=new java.util.LinkedHashMap<String,java.util.List<java.util.Map<String,Object>>>();
+        for(var table:jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('flyway_schema_history','sqlite_sequence') ORDER BY name",String.class))
+            before.put(table,jdbc.queryForList("SELECT * FROM "+table+" ORDER BY rowid"));
+        var history=jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank");
+        var upgrade=flyway("classpath:db/migration");
+        assertEquals(5,upgrade.migrate().migrationsExecuted);
+        assertEquals("1.5.0.11",upgrade.info().current().getVersion().toString());
+        for(var entry:before.entrySet()) {
+            var after=jdbc.queryForList("SELECT * FROM "+entry.getKey()+" ORDER BY rowid");
+            for(var row:after) {
+                if(entry.getKey().equals("calibre_job_items")) {assertNull(row.remove("epub_identity"));assertEquals(0,row.remove("transient_attempts"));}
+                if(entry.getKey().equals("calibre_jobs")) assertEquals(0,row.remove("last_served_at"));
+                if(entry.getKey().equals("revision_cleanup_jobs")) assertEquals(0,row.remove("direct_removal"));
+                if(entry.getKey().equals("revision_cleanup_items")) assertNull(row.remove("calibre_identity"));
+            }
+            assertEquals(entry.getValue(),after,entry.getKey());
+        }
+        assertEquals(history,jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank LIMIT 14"));
+        assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
+        assertEquals("ok",jdbc.queryForObject("PRAGMA integrity_check",String.class));
+        upgrade.validate();assertEquals(0,upgrade.migrate().migrationsExecuted);
+    }
     @Test void jobCoordinationMigrationPreservesPausedAndUncertainWork() {
         Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()))).locations("classpath:db/migration").target("1.5.0.10").load().migrate();
         var jdbc=jdbc();
