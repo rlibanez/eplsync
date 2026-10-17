@@ -22,6 +22,7 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.revision-cleanup.worker-enabled=false","eplsync.calibre.transfers.worker-enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
 class RevisionCleanupTests {
     @Autowired RevisionCleanup cleanup;
+    @Autowired CalibreTransfers transfers;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.rlibanez.eplsync.torrent.updates.HistoryActions history;
     @Autowired com.rlibanez.eplsync.torrent.updates.UpdateCleanupRepository cleanups;
     @Autowired com.rlibanez.eplsync.torrent.updates.CleanupQueue cleanupQueue;
@@ -70,6 +71,36 @@ class RevisionCleanupTests {
     RevisionCleanup.Job calibreRemoval(long id) {return cleanup.previewCalibreRemoval(new RevisionCleanup.CalibreRemoval(List.of(id)));}
     void removeRemoteBook() {
         doAnswer(call->{long id=call.getArgument(1);when(client.book(any(),eq(id))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));return null;}).when(client).remove(any(),anyLong(),eq(true));
+    }
+    @Test void transientCalibreLockDefersTorrentDeletionWithoutDuplicatingIt() throws Exception {
+        var job=cleanup.removeSelected(removal("files",true));
+        var acquired=new java.util.concurrent.CountDownLatch(1);
+        var release=new java.util.concurrent.CountDownLatch(1);
+        try(var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var holder=executor.submit(()->transfers.preparing(()->{
+                acquired.countDown();
+                try {if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Lock release timed out");}
+                catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new AssertionError(ex);}
+                return null;
+            }));
+            try {
+                assertThat(acquired.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                cleanup.cycle();cleanup.cycle();
+                var waiting=cleanup.get(job.id());
+                assertThat(waiting.pending()).isEqualTo(1);
+                assertThat(waiting.blocked()).isZero();
+                assertThat(waiting.result()).isNull();
+                assertThat(waiting.message()).contains("reintentará automáticamente");
+                assertThat(item(job).dispatched()).isFalse();
+                verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+            } finally {release.countDown();}
+            holder.get(5,java.util.concurrent.TimeUnit.SECONDS);
+        }
+        cleanup.cycle();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(cleanup.get(job.id()).message()).isNull();
+        verify(adapter,times(1)).deleteTorrent(eq("A".repeat(40)),eq(true));
+        assertThat(downloads.findById(newer)).isPresent();
     }
     @Test void directCalibreDeletionNeedsNoHigherRevisionAndNeverTouchesTorrents() {
         var job=calibreRemoval(20);assertThat(job.ready()).isEqualTo(1);assertThat(job.directRemoval()).isTrue();

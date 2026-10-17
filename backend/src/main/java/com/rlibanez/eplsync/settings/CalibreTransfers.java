@@ -381,8 +381,11 @@ public class CalibreTransfers {
         lifecycle.readLock().lock();
         try {return work.get();} finally {lifecycle.readLock().unlock();}
     }
+    static final class OperationBusy extends UserInputException {
+        OperationBusy() {super("Hay una operación de Calibre en curso; espera a que termine y vuelve a intentarlo");}
+    }
     public <T> T exclusive(java.util.function.Supplier<T> work) {
-        if(!lifecycle.writeLock().tryLock()) throw new UserInputException("Hay un envío a Calibre en curso; espera antes de reiniciar la base de datos");
+        if(!lifecycle.writeLock().tryLock()) throw new OperationBusy();
         try { return work.get(); } finally { lifecycle.writeLock().unlock(); }
     }
     <T> T retryExclusive(java.util.function.Supplier<T> work) {

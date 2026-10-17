@@ -507,7 +507,11 @@ public class RevisionCleanup {
                     if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE id=? AND cancel_requested=0",Long.class,id)==0) break;
                     var pending=jdbc.query("SELECT * FROM revision_cleanup_items WHERE job_id=? AND state IN ('PENDING','VERIFYING') ORDER BY position LIMIT 1",this::item,id);
                     if(pending.isEmpty()) break;
-                    execute(id,pending.getFirst());
+                    try {execute(id,pending.getFirst());}
+                    catch(CalibreTransfers.OperationBusy ex) {
+                        jdbc.update("UPDATE revision_cleanup_jobs SET message=?,updated_at=? WHERE id=?", "Esperando a que termine la operación de Calibre; la limpieza se reintentará automáticamente",Instant.now().toEpochMilli(),id);
+                        break;
+                    }
                 }
                 finish(id);
             } finally {maintenance.leave(false);}
@@ -522,6 +526,7 @@ public class RevisionCleanup {
             var security=SecurityContextHolder.createEmptyContext();var authorities=new ArrayList<SimpleGrantedAuthority>();owner.permissions().forEach(p->authorities.add(new SimpleGrantedAuthority(p.name())));authorities.add(new SimpleGrantedAuthority("ROLE_"+owner.role()));security.setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,authorities));SecurityContextHolder.setContext(security);
             EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(EventContext.Origin.MANUAL,()->transfers.exclusive(()->{
                 Runnable guard=()->{authorize(owner.id(),job.source(),job.action(),job.directRemoval(),job.deleteHistory());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión o biblioteca cambió; prepara una nueva limpieza");if(job.directRemoval() && job.source().equals("calibre")) checkDirectCalibrePending(item,id);else if(job.directRemoval()) checkDirectPending(item,id,job,!verify && item.dispatched());else noPending(item,id,job.allowUndownloaded(),job.action(),!verify && item.dispatched(),job.deleteHistory());};
+                jdbc.update("UPDATE revision_cleanup_jobs SET message=NULL WHERE id=?",id);
                 guard.run();
                 if(!verify) requireCurrentAction(job.source(),job.action());
                 if(jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',message=NULL WHERE id=? AND state=?",item.id(),item.state())!=1) return null;
@@ -530,7 +535,7 @@ public class RevisionCleanup {
                 return null;
             })));
         } catch(RuntimeException ex) {
-            if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
+            if(ex instanceof CalibreTransfers.OperationBusy || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
             var fresh=jdbc.queryForList("SELECT dispatched FROM revision_cleanup_items WHERE id=?",Boolean.class,item.id());
             update(item.id(),verify || !fresh.isEmpty() && Boolean.TRUE.equals(fresh.getFirst())?"UNCERTAIN":ex instanceof UserInputException || ex instanceof org.springframework.security.access.AccessDeniedException?"BLOCKED":"FAILED",reason(ex));
         } finally {SecurityContextHolder.setContext(previous);}
