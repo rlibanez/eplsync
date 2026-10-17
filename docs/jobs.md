@@ -104,3 +104,29 @@ Consulta [Limpiar revisiones antiguas](limpieza-revisiones.md) para preparar una
 Las fichas de trabajos de Descargas y Calibre incluyen los enlaces **Anterior** y **Siguiente**, también para trabajos de limpieza. Siguen los filtros y el orden de la lista de origen y funcionan al cruzar páginas. Al volver a la lista se recupera la página del trabajo consultado y sus filtros. Al abrir una ficha directamente se utiliza el orden por fecha de creación descendente.
 
 En **Enviar actualizaciones**, la acción sobre los torrents antiguos y la casilla **Borrar también el registro de EPL Sync** son independientes. La casilla está desmarcada por defecto. El momento elegido se aplica también al borrado solo del registro: tras aceptar el envío o tras completar la nueva descarga. Si se eliminan torrent y registro, este último se conserva hasta confirmar la ausencia del torrent. Los reintentos mantienen ambas opciones. Borrar el registro requiere el permiso de eliminación de registros de Descargas; no amplía los permisos para borrar torrents o archivos.
+
+## Eliminar el historial de trabajos
+
+En **Descargas > Trabajos** y **Calibre > Trabajos** puedes seleccionar filas
+(o la página actual) y pulsar **Eliminar trabajos**. La previsualización indica
+cuáles se pueden eliminar y el motivo concreto de los bloqueos, con un enlace
+al trabajo dependiente cuando tienes permiso para consultarlo. Solo se eliminan
+los trabajos permitidos; el servidor comprueba otra vez sus condiciones al confirmar.
+
+Se pueden eliminar trabajos **terminados** y **cancelados**, incluidos los que
+terminaron con errores, siempre que no tengan envíos, descargas, limpiezas o
+resultados inciertos pendientes. Los pausados deben cancelarse primero.
+Un trabajo Torrent enlazado desde Calibre se conserva hasta eliminar el trabajo
+de Calibre que lo referencia, aunque este último haya terminado. Esta protección
+incluye los reintentos históricos de la descarga enlazada. Las cadenas de
+reintentos antiguas se eliminan desde sus hijos; si se seleccionan juntos, se
+ordena el borrado automáticamente. Los ciclos automáticos abiertos protegen
+también los reintentos enlazados indirectamente.
+
+Eliminar trabajos normales requiere el permiso de gestión de trabajos de su
+área. Para limpiezas se exige ser su propietario y disponer de los permisos de
+consulta y eliminación de Descargas o Calibre. El borrado elimina el trabajo,
+sus elementos y su historial de intentos. Conserva torrents, archivos, registros
+de Descargas, libros de Calibre, Eventos y resultados de tareas programadas.
+Se mantienen las marcas mínimas necesarias para impedir que una petición antigua
+vuelva a enviar o borrar al desaparecer el historial del trabajo.

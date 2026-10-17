@@ -214,6 +214,8 @@ public class RevisionCleanup {
         if(action.equals("RECORD") && !history || !Boolean.TRUE.equals(r.confirm()) || action.equals("FILES") && !Boolean.TRUE.equals(r.confirmFiles())) throw new UserInputException("Confirma el borrado solicitado");
         if(r.ids()==null || r.ids().isEmpty() || r.ids().stream().anyMatch(v->v==null || v.isBlank() || v.length()>64) || new HashSet<>(r.ids()).size()!=r.ids().size()) throw new UserInputException("Selecciona al menos un registro sin duplicados");
         var owner=authorize(sessions.current().id(),"downloads",action,true,history);
+        if(jdbc.queryForObject("SELECT count(*) FROM deleted_work_receipts WHERE source='downloads' AND kind='cleanup' AND request_id=?",Long.class,input.requestId())>0)
+            throw new UserInputException("El trabajo de esta solicitud ya fue eliminado; prepara una nueva solicitud de borrado");
         String signature=json.writeValueAsString(input.removal());
         var existing=jdbc.queryForList("SELECT confirmation FROM revision_cleanup_jobs WHERE id=?",String.class,input.requestId());
         if(!existing.isEmpty()) {

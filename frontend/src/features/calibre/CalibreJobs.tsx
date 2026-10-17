@@ -1,3 +1,4 @@
+import { useWorkDeletion } from "../jobs/useWorkDeletion";
 import { stateOperatorProps } from "../../components/StateOperator";
 import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
 import { ResolveCalibreUpload } from "./ResolveCalibreUpload";
@@ -195,6 +196,14 @@ export function CalibreJobs() {
     retry: false,
     refetchInterval: (query) => (query.state.status === "error" ? false : 5000),
   });
+  const deletion = useWorkDeletion(
+    "calibre",
+    (result.data?.items ?? []).map((job) => ({
+      id: job.id,
+      cleanup: job.type === "CLEANUP",
+    })),
+    `${page}&${size}&${state}&${excluded}&${type}&${excludeType}&${username}&${from}&${to}&${sort}`,
+  );
   const columns = useDownloadColumns(
     "eplsync.calibre.jobs.columns",
     [
@@ -217,7 +226,7 @@ export function CalibreJobs() {
       setSort(value);
       setPage(0);
     },
-    { defaults: "createdAt,desc" },
+    { defaults: "createdAt,desc", selection: deletion.visible },
     (page + 1) * size,
   );
   useEffect(() => {
@@ -325,9 +334,14 @@ export function CalibreJobs() {
         </Button>
       </div>
       <section className="panel">
-        <div className="table-toolbar">
-          <div className="catalog-table-controls">{columns.controls}</div>
-        </div>
+        <SelectionToolbar
+          count={deletion.count}
+          onClear={deletion.clear}
+          controls={columns.controls}
+          actions={deletion.action}
+          disabled={deletion.busy}
+        />
+        {deletion.content}
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
@@ -340,10 +354,14 @@ export function CalibreJobs() {
                 style={{ width: columns.width }}
               >
                 {columns.colgroup}
-                <thead>{columns.headings}</thead>
+                <thead>{columns.selectionHeadings(deletion.heading)}</thead>
                 <tbody>
                   {result.data.items.map((job, rowIndex) => (
                     <tr key={job.id}>
+                      {deletion.cell({
+                        id: job.id,
+                        cleanup: job.type === "CLEANUP",
+                      })}
                       {columns.cells(
                         [
                           <td>

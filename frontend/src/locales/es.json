@@ -1864,5 +1864,14 @@
     "description": "Se eliminarán las entradas seleccionadas de Calibre y todos sus formatos. Los torrents, archivos y registros de Descargas se conservarán.",
     "jobTitle": "Trabajo de borrado de Calibre",
     "action": "Borrar las entradas completas de Calibre y todos sus formatos"
+  },
+  "workDeletion": {
+    "delete": "Eliminar trabajos",
+    "help": "Se eliminarán los trabajos seleccionados y su detalle. Se conservarán los torrents, archivos, registros de Descargas y libros de Calibre. Los trabajos con operaciones pendientes o dependientes se conservarán.",
+    "available": "Se pueden eliminar {{count}} trabajos.",
+    "deleted": "Trabajos eliminados: {{count}}.",
+    "removed": "Eliminado",
+    "allowed": "Se puede eliminar",
+    "related": "Ver trabajo relacionado"
   }
 }

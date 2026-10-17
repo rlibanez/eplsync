@@ -1,3 +1,4 @@
+import { useWorkDeletion } from "../jobs/useWorkDeletion";
 import { stateOperatorProps } from "../../components/StateOperator";
 import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
 import { useJobRetry } from "../jobs/useJobRetry";
@@ -94,6 +95,20 @@ export function Jobs() {
       get<Page<Job>>(`/torrent/jobs?${params}&${sortQuery(sort)}`, signal),
     refetchInterval: 5000,
   });
+  useEffect(() => {
+    if (result.data)
+      setPage((current) =>
+        Math.min(current, Math.max(0, result.data.meta.totalPages - 1)),
+      );
+  }, [result.data]);
+  const deletion = useWorkDeletion(
+    "downloads",
+    (result.data?.items ?? []).map((job) => ({
+      id: job.jobId,
+      cleanup: job.type === "CLEANUP",
+    })),
+    `${params}&${sort}`,
+  );
   async function refreshJobs() {
     const request = ++refreshRequest.current;
     setRefresh("pending");
@@ -153,7 +168,7 @@ export function Jobs() {
       setSort(value);
       setPage(0);
     },
-    { defaults: "createdAt,desc" },
+    { defaults: "createdAt,desc", selection: deletion.visible },
     (page + 1) * size,
   );
   return (
@@ -258,9 +273,14 @@ export function Jobs() {
         </Button>
       </div>
       <section className="panel">
-        <div className="table-toolbar">
-          <div className="catalog-table-controls">{columns.controls}</div>
-        </div>
+        <SelectionToolbar
+          count={deletion.count}
+          onClear={deletion.clear}
+          controls={columns.controls}
+          actions={deletion.action}
+          disabled={deletion.busy}
+        />
+        {deletion.content}
         {result.isPending ? (
           <Loading />
         ) : result.isError ? (
@@ -277,10 +297,14 @@ export function Jobs() {
                 style={{ width: columns.width }}
               >
                 {columns.colgroup}
-                <thead>{columns.headings}</thead>
+                <thead>{columns.selectionHeadings(deletion.heading)}</thead>
                 <tbody>
                   {result.data.items.map((job, rowIndex) => (
                     <tr key={job.jobId}>
+                      {deletion.cell({
+                        id: job.jobId,
+                        cleanup: job.type === "CLEANUP",
+                      })}
                       {columns.cells(
                         [
                           <td>

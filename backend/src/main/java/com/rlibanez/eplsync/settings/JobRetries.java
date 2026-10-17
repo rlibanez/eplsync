@@ -201,6 +201,7 @@ public class JobRetries {
     private Link createPrepared(String kind,String id,JobRetryController.Confirmation confirmation) {
         permission(kind);var actor=sessions.current();
         if(confirmation==null || confirmation.token()==null || confirmation.token().length()!=36) throw new UserInputException("Solicitud de reintento inválida");
+        rejectDeletedRequest(kind,confirmation.token());
         var previous=existing(kind,id,confirmation.token(),actor.id());if(previous!=null) return previous;
         var previews=jdbc.queryForList("SELECT payload FROM job_retry_previews WHERE id=? AND owner_id=? AND kind=? AND parent_id=? AND expires_at>?",confirmation.token(),actor.id(),kind,id,Instant.now().toEpochMilli());
         if(previews.isEmpty()) throw conflict("La preparación del reintento ha caducado; vuelve a prepararlo");
@@ -211,6 +212,7 @@ public class JobRetries {
         if(!plan.changes().isEmpty() && !confirmation.confirmChanges()) throw new UserInputException("Confirma los cambios de conexión o archivo antes de continuar");
         authorize(kind,plan.work());
         java.util.function.Supplier<Link> reopen=()->tx.execute(s->{
+            rejectDeletedRequest(kind,confirmation.token());
             var existing=existing(kind,id,confirmation.token(),actor.id());if(existing!=null) return existing;
             var parent=job(kind,id);
             if(!terminal(kind,id,parent) || !plan.signature().equals(signature(kind,id,parent,selected(kind,id,plan.failedOnly(),plan.selection()))) || !plan.configuration().equals(configuration(kind))) throw conflict("El trabajo o la configuración cambiaron; vuelve a preparar el reintento");
@@ -232,6 +234,10 @@ public class JobRetries {
         });
         if(kind.equals("calibre")) return transfers.retryExclusive(reopen);
         synchronized(bulk) {return reopen.get();}
+    }
+    private void rejectDeletedRequest(String kind,String token) {
+        if(jdbc.queryForObject("SELECT count(*) FROM deleted_work_receipts WHERE source=? AND kind='retry' AND request_id=?",Long.class,kind,token)>0)
+            throw conflict("El historial de este reintento ya fue eliminado; prepara una nueva solicitud de reintento");
     }
     private Link existing(String kind,String parent,String token,String owner) {
         var attempts=jdbc.queryForList("SELECT * FROM job_retry_attempts WHERE id=?",token);

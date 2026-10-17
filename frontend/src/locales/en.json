@@ -1864,5 +1864,14 @@
     "description": "The selected Calibre entries and all their formats will be deleted. Torrents, files and download records will be preserved.",
     "jobTitle": "Calibre deletion job",
     "action": "Delete complete Calibre entries and all their formats"
+  },
+  "workDeletion": {
+    "delete": "Delete jobs",
+    "help": "The selected jobs and their details will be deleted. Torrents, files, download records and Calibre books will be kept. Jobs with pending operations or dependents will be kept.",
+    "available": "{{count}} jobs can be deleted.",
+    "deleted": "Jobs deleted: {{count}}.",
+    "removed": "Deleted",
+    "allowed": "Can be deleted",
+    "related": "View related job"
   }
 }

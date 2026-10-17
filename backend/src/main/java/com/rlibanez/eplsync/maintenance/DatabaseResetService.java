@@ -69,6 +69,7 @@ public class DatabaseResetService {
                             + "com.rlibanez.eplsync.torrent.bulk.BulkItem.State.IN_FLIGHT", Long.class)
                             .getSingleResult() > 0) throw busy();
                     em.createNativeQuery("DELETE FROM revision_cleanup_jobs").executeUpdate();
+                    em.createNativeQuery("DELETE FROM deleted_work_receipts").executeUpdate();
                     em.createNativeQuery("DELETE FROM telegram_deliveries").executeUpdate();
                     em.createNativeQuery("DELETE FROM scheduled_automation_runs").executeUpdate();
                     em.createNativeQuery("DELETE FROM job_retry_attempt_items").executeUpdate();
