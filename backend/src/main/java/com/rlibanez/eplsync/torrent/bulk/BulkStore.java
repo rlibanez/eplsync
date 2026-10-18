@@ -411,7 +411,7 @@ public class BulkStore {
             textExcluded.put(key,com.rlibanez.eplsync.ordering.StateOperator.excluded(params.getFirst(key+"Operator")==null?"eq":params.getFirst(key+"Operator")));
             var terms=params.getOrDefault(key,List.of());
             if(terms.stream().anyMatch(value->value==null || value.length()>4096)) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro de texto inválido");
-            textTerms.put(key,terms.stream().map(String::trim).filter(value->!value.isEmpty()).distinct().toList());
+            textTerms.put(key,terms.stream().map(value -> Objects.requireNonNull(value).trim()).filter(value->!value.isEmpty()).distinct().toList());
         }
         // One bound numeric set avoids SQLite's parameter limit for large ID selections.
         String idSet=","+ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","))+",";
