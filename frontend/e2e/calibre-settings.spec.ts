@@ -46,14 +46,19 @@ test("checks form credentials and saves the selected library", async ({
       exact: true,
     })
     .fill("http://localhost:8080");
-  await page.getByLabel("URL para abrir en el navegador", {exact:true}).fill("https://books.example/calibre");
+  await page
+    .getByLabel("URL para abrir en el navegador", { exact: true })
+    .fill("https://books.example/calibre");
   await page.getByLabel("Usuario", { exact: true }).fill("reader");
   await page.getByLabel("Contraseña", { exact: true }).fill("example-password");
   await page
     .getByRole("button", { name: "Comprobar conexión", exact: true })
     .click();
   await expect(page.getByRole("status")).toContainText("Conexión correcta");
-  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await page
+    .getByRole("region", { name: "Configuración de Calibre", exact: true })
+    .getByRole("button", { name: "Guardar", exact: true })
+    .click();
   await expect(page.getByLabel("Contraseña", { exact: true })).toHaveValue("");
   await expect(
     page.getByRole("heading", { name: "Libros de Calibre", exact: true }),
@@ -111,7 +116,10 @@ test("shows only the latest error when saving and checking cleared credentials",
       exact: true,
     })
     .check();
-  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await page
+    .getByRole("region", { name: "Configuración de Calibre", exact: true })
+    .getByRole("button", { name: "Guardar", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toHaveCount(1);
   await page
     .getByRole("button", { name: "Comprobar conexión", exact: true })
@@ -120,6 +128,50 @@ test("shows only the latest error when saving and checking cleared credentials",
   await expect(page.getByRole("alert")).toContainText(
     "Calibre ha rechazado el acceso",
   );
-  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await page
+    .getByRole("region", { name: "Configuración de Calibre", exact: true })
+    .getByRole("button", { name: "Guardar", exact: true })
+    .click();
   await expect(page.getByRole("alert")).toHaveCount(1);
 });
+
+for (const initial of [undefined, false] as const) {
+  test(`automatic identifiers default/persistence (initial=${initial})`, async ({
+    page,
+  }) => {
+    let enabled = initial;
+    let saves = 0;
+    await page.route("**/api/settings/calibre", (route) =>
+      route.fulfill({
+        json: {
+          url: "",
+          username: "",
+          passwordConfigured: false,
+          library: "",
+          autoCompleteIdentifiers: enabled,
+        },
+      }),
+    );
+    await page.route("**/api/settings/calibre/identifiers", (route) => {
+      expect(route.request().method()).toBe("PUT");
+      saves++;
+      enabled = route.request().postDataJSON().autoCompleteIdentifiers;
+      return route.fulfill({ json: { autoCompleteIdentifiers: enabled } });
+    });
+    await page.goto("/settings/calibre");
+    const section = page.getByRole("region", {
+      name: "Identificadores",
+      exact: true,
+    });
+    const toggle = section.getByRole("checkbox");
+    if (initial === false) await expect(toggle).not.toBeChecked();
+    else await expect(toggle).toBeChecked();
+    await toggle.click();
+    await section.getByRole("button", { name: "Guardar", exact: true }).click();
+    await expect.poll(() => saves).toBe(1);
+    await page.reload();
+    if (initial === false) await expect(toggle).toBeChecked();
+    else await expect(toggle).not.toBeChecked();
+    await expect(section).toContainText("manualmente");
+  });
+}

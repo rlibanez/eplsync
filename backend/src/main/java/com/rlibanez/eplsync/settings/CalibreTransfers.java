@@ -648,8 +648,12 @@ public class CalibreTransfers {
         String savedUuid=jdbc.queryForObject("SELECT calibre_uuid FROM calibre_job_items WHERE id=?",String.class,item.id());
         if(savedUuid!=null && !savedUuid.equals(book.uuid())) throw new UserInputException("La entrada de Calibre cambió; no se modificarán sus metadatos");
         if(book.uuid()!=null && !book.uuid().isBlank()) jdbc.update("UPDATE calibre_job_items SET calibre_uuid=? WHERE id=? AND calibre_uuid IS NULL",book.uuid(),item.id());
-        boolean completing=book.eplId()==null || book.revision()==null || Boolean.TRUE.equals(jdbc.queryForObject("SELECT identifier_completion_pending FROM calibre_job_items WHERE id=?",Boolean.class,item.id()));
-        if(book.eplId()==null || book.revision()==null) {
+        boolean missing=book.eplId()==null || book.revision()==null;
+        boolean completing=!missing && Boolean.TRUE.equals(jdbc.queryForObject("SELECT identifier_completion_pending FROM calibre_job_items WHERE id=?",Boolean.class,item.id()));
+        // The current preference controls new metadata writes, including recovery.
+        // A previously dispatched write can still be confirmed without sending it again.
+        if(missing && settings.autoCompleteIdentifiers()) {
+            completing=true;
             if(book.uuid()==null || book.uuid().isBlank()) throw new UserInputException("Calibre no devolvió el UUID de la entrada; no se completarán identificadores sin verificarla");
             jdbc.update("UPDATE calibre_job_items SET identifier_completion_pending=1 WHERE id=?",item.id());
             book=client.completeIdentifiers(connection,book.calibreId(),item.eplId(),revision,book.uuid());

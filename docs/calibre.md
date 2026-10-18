@@ -191,7 +191,8 @@ sin cambiar la revisión del Catálogo ni del registro torrent. La verificación
 Calibre utiliza la revisión real leída del EPUB, también tras reinicios y reintentos.
 Si falta alguno o ambos identificadores, se utiliza la identidad de la descarga
 para buscar la revisión y evitar duplicados. Después de importar el EPUB,
-EPL Sync completa únicamente los identificadores ausentes **en los metadatos de
+Con el completado automático activado (valor predeterminado), EPL Sync completa
+únicamente los identificadores ausentes **en los metadatos de
 la biblioteca de Calibre**, sobre el ID exacto devuelto por el envío y fijando su
 UUID. Conserva otros identificadores, como el ISBN, y no modifica el EPUB.
 Una discrepancia de revisión sin EPL ID que confirme el libro sigue bloqueada.
@@ -205,6 +206,23 @@ completados desde la descarga; las protecciones de limpieza se mantienen.
 - Si ya existe el mismo EPL ID y revisión, el resultado es **Ya existe**.
 - Si existe otra revisión, se añade una copia independiente y se conserva la anterior.
 - Si el EPUB es inaccesible o sus identificadores no coinciden, se registra el error.
+
+### Completado automático durante los envíos
+
+En **Ajustes → Calibre → Identificadores** puedes activar o desactivar
+**Completar automáticamente los identificadores ausentes**. Está activado por
+defecto, tanto en instalaciones nuevas como al actualizar, y se guarda en la
+base de datos; no requiere cambiar `.env` ni reiniciar la aplicación.
+
+Si lo desactivas, los envíos no añaden el EPL ID ni la revisión que falten en
+Calibre. Se mantienen la comprobación del EPUB, la validación de los
+identificadores presentes y las protecciones de limpieza. Los archivos EPUB
+no se modifican y el botón manual **Completar identificadores** sigue disponible.
+
+El ajuste se consulta al verificar cada envío, incluidos los reintentos. No
+revierte identificadores ya guardados ni cancela una petición ya enviada a
+Calibre; los resultados inciertos anteriores se pueden comprobar sin repetir
+la modificación.
 
 ## Completar identificadores
 

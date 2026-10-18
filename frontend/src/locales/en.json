@@ -1615,9 +1615,12 @@
     }
   },
   "calibre": {
+    "identifierSettings": "Identifiers",
+    "autoCompleteIdentifiers": "Automatically fill missing identifiers",
+    "autoCompleteIdentifiersHelp": "When sending EPUBs to Calibre, fill missing EPL ID and revision from the download. EPUB files are not modified. You can still use “Complete identifiers” manually when this option is disabled.",
     "bookAbsent": "This book is not in the synchronized Calibre library.",
     "configuration": "Calibre configuration",
-    "description": "Connect to the Calibre Content server to browse its library. This integration does not modify books or files.",
+    "description": "Connect to the Calibre content server to browse its library and configure EPUB transfers.",
     "connection": "Connection",
     "url": "Content server URL",
     "username": "Username",

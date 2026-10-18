@@ -21,6 +21,7 @@ interface View {
   passwordConfigured: boolean;
   library: string;
   browserUrl?: string;
+  autoCompleteIdentifiers?: boolean;
 }
 interface Check {
   connected: boolean;
@@ -124,7 +125,10 @@ function Form({ initial }: { initial: View }) {
   };
   return (
     <>
-      <section className="panel settings-section">
+      <section
+        className="panel settings-section"
+        aria-label={t("calibre.configuration")}
+      >
         <h2>{t("calibre.configuration")}</h2>
         <p>{t("calibre.description")}</p>
         <form
@@ -250,7 +254,66 @@ function Form({ initial }: { initial: View }) {
           )}
         </div>
       </section>
+      <IdentifierSettings initial={initial.autoCompleteIdentifiers ?? true} />
       {keyDialog && <SecretKeyDialog onClose={() => setKeyDialog(false)} />}
     </>
+  );
+}
+
+function IdentifierSettings({ initial }: { initial: boolean }) {
+  const { t } = useTranslation();
+  const cache = useQueryClient();
+  const settingsSaved = useSettingsSaved();
+  const [enabled, setEnabled] = useState(initial);
+  const save = useMutation({
+    mutationFn: () =>
+      request<{ autoCompleteIdentifiers: boolean }>(
+        "PUT",
+        { autoCompleteIdentifiers: enabled },
+        "/identifiers",
+      ),
+    retry: false,
+    onSuccess: (data) => {
+      setEnabled(data.autoCompleteIdentifiers);
+      cache.setQueryData<View>(["calibre-settings"], (old) =>
+        old
+          ? { ...old, autoCompleteIdentifiers: data.autoCompleteIdentifiers }
+          : old,
+      );
+      settingsSaved();
+    },
+  });
+  return (
+    <section
+      className="panel settings-section"
+      aria-label={t("calibre.identifierSettings")}
+    >
+      <h2>{t("calibre.identifierSettings")}</h2>
+      <p>{t("calibre.autoCompleteIdentifiersHelp")}</p>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          save.mutate();
+        }}
+      >
+        <Checkbox
+          label={t("calibre.autoCompleteIdentifiers")}
+          checked={enabled}
+          disabled={save.isPending}
+          onChange={(event) => {
+            setEnabled(event.currentTarget.checked);
+            save.reset();
+          }}
+        />
+        <div className="action-row">
+          <Button type="submit" loading={save.isPending}>
+            {t("calibre.save")}
+          </Button>
+        </div>
+      </form>
+      {save.isError && (
+        <Failure error={save.error} retry={() => save.mutate()} />
+      )}
+    </section>
   );
 }

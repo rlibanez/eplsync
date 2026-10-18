@@ -1615,9 +1615,12 @@
     }
   },
   "calibre": {
+    "identifierSettings": "Identificadores",
+    "autoCompleteIdentifiers": "Completar automáticamente los identificadores ausentes",
+    "autoCompleteIdentifiersHelp": "Al enviar EPUB a Calibre, completa el EPL ID y la revisión que falten con los datos de la descarga. Los archivos EPUB no se modifican. Puedes seguir usando «Completar identificadores» manualmente aunque desactives esta opción.",
     "bookAbsent": "Este libro no está en la biblioteca de Calibre sincronizada.",
     "configuration": "Configuración de Calibre",
-    "description": "Conecta con el servidor de contenido de Calibre para consultar su biblioteca. Esta integración no modifica libros ni archivos.",
+    "description": "Conecta con el servidor de contenido de Calibre para consultar su biblioteca y configurar los envíos de EPUB.",
     "connection": "Conexión",
     "url": "URL del servidor de contenido",
     "username": "Usuario",

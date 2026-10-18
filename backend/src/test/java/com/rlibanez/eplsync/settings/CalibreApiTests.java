@@ -22,7 +22,7 @@ class CalibreApiTests {
     MockMvc mvc;
     @BeforeEach void initialize() {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-        jdbc.update("DELETE FROM app_settings WHERE setting_key='calibre.connection'");
+        jdbc.update("DELETE FROM app_settings WHERE setting_key IN ('calibre.connection','calibre.identifiers')");
     }
     @Test @WithMockUser(authorities={"CALIBRE_READ"}) void identifierChangesRequireWriteAndDownloadPermissions() throws Exception {
         for(String action:java.util.List.of("preview","apply","cancel")) mvc.perform(post("/api/calibre/identifiers/"+action).with(csrf()).contentType("application/json").content("{\"calibreId\":9}"))
@@ -49,4 +49,23 @@ class CalibreApiTests {
             .andExpect(status().isOk()).andExpect(jsonPath("$.passwordConfigured").value(true)).andExpect(jsonPath("$.password").doesNotExist());
         mvc.perform(get("/api/settings/calibre")).andExpect(status().isOk()).andExpect(jsonPath("$.password").doesNotExist());
     }
+    @Test @WithMockUser(authorities={"SETTINGS_MANAGE", "ROLE_ADMIN"}) void identifierPreferenceDefaultsOnAndPersistsWithoutCallingCalibre() throws Exception {
+        mvc.perform(get("/api/settings/calibre")).andExpect(status().isOk()).andExpect(jsonPath("$.autoCompleteIdentifiers").value(true));
+        mvc.perform(put("/api/settings/calibre/identifiers").contentType("application/json").content("{\"autoCompleteIdentifiers\":false}"))
+            .andExpect(status().isForbidden());
+        mvc.perform(put("/api/settings/calibre/identifiers").with(csrf()).contentType("application/json").content("{\"autoCompleteIdentifiers\":false}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.autoCompleteIdentifiers").value(false));
+        mvc.perform(get("/api/settings/calibre")).andExpect(jsonPath("$.autoCompleteIdentifiers").value(false));
+        org.assertj.core.api.Assertions.assertThat(new CalibreSettings(jdbc, "").autoCompleteIdentifiers()).isFalse();
+        mvc.perform(put("/api/settings/calibre/identifiers").with(csrf()).contentType("application/json").content("{}"))
+            .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/settings/calibre")).andExpect(jsonPath("$.autoCompleteIdentifiers").value(false));
+        verifyNoInteractions(client);
+    }
+    @Test @WithMockUser(authorities={"CALIBRE_SEND", "CALIBRE_READ"}) void nonAdminsCannotChangeAutomaticIdentifiers() throws Exception {
+        mvc.perform(put("/api/settings/calibre/identifiers").with(csrf()).contentType("application/json").content("{\"autoCompleteIdentifiers\":false}"))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(client);
+    }
+
 }

@@ -12,12 +12,16 @@ import tools.jackson.databind.json.JsonMapper;
 @org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 public class CalibreSettings {
     static final String KEY = "calibre.connection";
+    static final String IDENTIFIERS = "calibre.identifiers";
+    public record IdentifierOptions(Boolean autoCompleteIdentifiers) {}
     static final String PASSWORD = "calibre.password";
     public record Input(String url, String username, String password, Boolean clearPassword, String library, String browserUrl) {
         public Input(String url,String username,String password,Boolean clearPassword,String library) { this(url,username,password,clearPassword,library,""); }
         @Override public String toString() { return "Calibre connection input [redacted]"; }
     }
-    public record View(String url, String username, boolean passwordConfigured, String library, String browserUrl) {}
+    public record View(String url, String username, boolean passwordConfigured, String library, String browserUrl, boolean autoCompleteIdentifiers) {
+        public View(String url,String username,boolean passwordConfigured,String library,String browserUrl) { this(url,username,passwordConfigured,library,browserUrl,true); }
+    }
     record Stored(String url, String username, String password, String library, String browserUrl, Boolean externalPassword) {}
     record Connection(String url, String username, String password, String library) {
         @Override public String toString() { return "Calibre connection [redacted]"; }
@@ -55,7 +59,20 @@ public class CalibreSettings {
         return values.isEmpty() ? defaults : json.readValue(values.getFirst(), Stored.class);
     }
     public synchronized View view() {
-        var s = stored(); return new View(s.url(), s.username(), (!s.password().isEmpty() || (usesEnvironmentPassword(s) && !environmentPassword.isEmpty())), s.library(), s.browserUrl()==null ? "" : s.browserUrl());
+        var s = stored(); return new View(s.url(), s.username(), (!s.password().isEmpty() || (usesEnvironmentPassword(s) && !environmentPassword.isEmpty())), s.library(), s.browserUrl()==null ? "" : s.browserUrl(), autoCompleteIdentifiers());
+    }
+    public synchronized boolean autoCompleteIdentifiers() {
+        var values = jdbc.queryForList("SELECT setting_value FROM app_settings WHERE setting_key=?", String.class, IDENTIFIERS);
+        if (values.isEmpty()) return true;
+        return !Boolean.FALSE.equals(json.readValue(values.getFirst(), IdentifierOptions.class).autoCompleteIdentifiers());
+    }
+    @org.springframework.transaction.annotation.Transactional
+    public synchronized IdentifierOptions saveIdentifierOptions(IdentifierOptions input) {
+        if (input == null || input.autoCompleteIdentifiers() == null)
+            throw new UserInputException("Indica si se deben completar automáticamente los identificadores");
+        jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value",
+            IDENTIFIERS, json.writeValueAsString(input));
+        return new IdentifierOptions(autoCompleteIdentifiers());
     }
     synchronized Connection resolve(Input input) {
         if (input == null) throw new UserInputException("Indica la conexión con Calibre");

@@ -25,6 +25,9 @@ public class CalibreController {
         // Persist exactly the credentials that were checked, even if another admin saved concurrently.
         return settings.save(new CalibreSettings.Input(connection.url(), connection.username(), connection.password(), true, connection.library(), input.browserUrl()));
     }
+    @PutMapping("/identifiers") public CalibreSettings.IdentifierOptions saveIdentifiers(@RequestBody CalibreSettings.IdentifierOptions input) {
+        return settings.saveIdentifierOptions(input);
+    }
     @PostMapping("/connection") public CalibreClient.Check check(@RequestBody CalibreSettings.Input input) {
         return client.check(settings.resolve(input));
     }

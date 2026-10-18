@@ -67,6 +67,7 @@ class CalibreIdentifiersTests {
     }
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
     @Test void previewAndApplyUseTheExactUploadAndKeepEpubIdentityUntouched() {
+        jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES('calibre.identifiers','{\"autoCompleteIdentifiers\":false}')");
         var preview=identifiers.preview(9);assertThat(preview.allowed()).isTrue();assertThat(preview.eplId()).isEqualTo(1);
         var result=identifiers.apply(preview.token());assertThat(result.allowed()).isFalse();
         assertThat(jdbc.queryForObject("SELECT identifiers_completed FROM calibre_job_items",Boolean.class)).isTrue();
