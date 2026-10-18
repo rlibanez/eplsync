@@ -21,6 +21,23 @@ export const test = base.extend<{ eventTransport: void }>({
         },
       );
       await context.route(
+        /\/api\/catalog\/books\/\d+\/activity(?:\?|$)/,
+        (route) =>
+          route.fulfill({
+            json: {
+              items: [],
+              meta: {
+                page: 0,
+                size: 20,
+                totalItems: 0,
+                totalPages: 0,
+                hasNext: false,
+                hasPrevious: false,
+              },
+            },
+          }),
+      );
+      await context.route(
         /\/api\/catalog\/books\/\d+\/history(?:\?|$)/,
         (route) => {
           if (route.request().method() !== "GET") return route.fallback();
@@ -196,8 +213,12 @@ export const test = base.extend<{ eventTransport: void }>({
           },
         ],
       };
-      await page.route("**/api/home/attention", route => route.fulfill({json:{items:[],total:0}}));
-      await page.route("**/api/home/tasks", route => route.fulfill({json:{items:[],total:0}}));
+      await page.route("**/api/home/attention", (route) =>
+        route.fulfill({ json: { items: [], total: 0 } }),
+      );
+      await page.route("**/api/home/tasks", (route) =>
+        route.fulfill({ json: { items: [], total: 0 } }),
+      );
       let notificationPreferences = {
         floating: true,
         unreadBadge: true,
@@ -375,7 +396,11 @@ export function operationResponse(
     })
     .filter((item) =>
       (["action", "category", "outcome", "origin"] as const).every(
-        (key) => !params.get(key) || (params.get(`${key}Operator`) === "ne" ? params.get(key) !== item.latest[key] : params.get(key) === item.latest[key]),
+        (key) =>
+          !params.get(key) ||
+          (params.get(`${key}Operator`) === "ne"
+            ? params.get(key) !== item.latest[key]
+            : params.get(key) === item.latest[key]),
       ),
     )
     .sort(

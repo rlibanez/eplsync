@@ -1,3 +1,4 @@
+import { BookActivity, canReadBookActivity } from "./BookActivity";
 import { LibraryBadges } from "./LibraryBadges";
 import { BookCalibre } from "./BookCalibre";
 import { BookHistory } from "./BookHistory";
@@ -170,6 +171,9 @@ export function BookDetail() {
               )}
               {auth.can("CALIBRE_READ") && (
                 <BookCalibre key={`calibre-${book.eplId}`} book={book} />
+              )}
+              {canReadBookActivity(auth.can) && (
+                <BookActivity key={`activity-${book.eplId}`} id={book.eplId} />
               )}
             </div>
           </>

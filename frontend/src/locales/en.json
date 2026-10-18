@@ -1,4 +1,36 @@
 {
+  "bookActivity": {
+    "title": "Book activity",
+    "help": "Operations and results from retained records and jobs.",
+    "date": "Date",
+    "operation": "Operation",
+    "result": "Result",
+    "openJob": "View job",
+    "empty": "No activity is available with these filters.",
+    "operations": {
+      "DOWNLOAD": "Send to download",
+      "DOWNLOAD_UPDATE": "Torrent update",
+      "DOWNLOAD_COMPLETED": "Download completed",
+      "CALIBRE_SEND": "Send to Calibre",
+      "DOWNLOAD_CLEANUP": "Download revision cleanup",
+      "CALIBRE_CLEANUP": "Calibre revision cleanup",
+      "DOWNLOAD_DELETE": "Delete downloads",
+      "CALIBRE_DELETE": "Delete from Calibre",
+      "DOWNLOAD_RETRY": "Download retry",
+      "CALIBRE_RETRY": "Calibre retry"
+    },
+    "results": {
+      "PENDING": "Pending",
+      "RUNNING": "Running",
+      "PAUSED": "Paused",
+      "SUCCEEDED": "Completed",
+      "FAILED": "Failed",
+      "BLOCKED": "Blocked",
+      "UNCERTAIN": "Unconfirmed",
+      "SKIPPED": "Skipped",
+      "CANCELLED": "Cancelled"
+    }
+  },
   "calibreIdentifiers": {
     "result": "Result",
     "books": "Books",

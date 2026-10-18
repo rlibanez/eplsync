@@ -125,3 +125,20 @@ En selecciones de más de 1000 libros ya descargados, la comprobación de sus EP
 se realiza por lotes durante el trabajo. Si un torrent contiene varios EPUB,
 el elemento requiere revisión para elegir el archivo. El asistente no consulta
 todos los archivos remotos antes de crear la cola.
+
+## Actividad del libro
+
+Al final de la ficha, **Actividad del libro** reúne los envíos a Torrent y Calibre,
+las descargas completadas, las limpiezas, los borrados y los reintentos que se
+conservan en EPL Sync. Mantiene los apartados actuales de Descargas y Calibre.
+
+La tabla permite paginar, ordenar y configurar las columnas visibles.
+Los enlaces abren el trabajo correspondiente.
+Cada usuario solo ve la actividad permitida por sus permisos; los trabajos de
+limpieza y borrado mantienen además su restricción por propietario.
+
+La consulta utiliza los registros locales, sin sincronizar los clientes ni crear
+operaciones. El envío aceptado por Torrent se distingue de la descarga completada.
+Los reintentos con instantáneas conservan el fallo inicial y el resultado de cada
+intento. Si se eliminan registros o trabajos, su actividad deja de estar disponible;
+esta sección no es un archivo de auditoría independiente.

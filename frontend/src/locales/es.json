@@ -1,4 +1,36 @@
 {
+  "bookActivity": {
+    "title": "Actividad del libro",
+    "help": "Operaciones y resultados de los registros y trabajos conservados.",
+    "date": "Fecha",
+    "operation": "Operación",
+    "result": "Resultado",
+    "openJob": "Ver trabajo",
+    "empty": "No hay actividad disponible con estos filtros.",
+    "operations": {
+      "DOWNLOAD": "Envío a descargar",
+      "DOWNLOAD_UPDATE": "Actualización en Torrent",
+      "DOWNLOAD_COMPLETED": "Descarga completada",
+      "CALIBRE_SEND": "Envío a Calibre",
+      "DOWNLOAD_CLEANUP": "Limpieza en Descargas",
+      "CALIBRE_CLEANUP": "Limpieza en Calibre",
+      "DOWNLOAD_DELETE": "Borrado en Descargas",
+      "CALIBRE_DELETE": "Borrado en Calibre",
+      "DOWNLOAD_RETRY": "Reintento en Descargas",
+      "CALIBRE_RETRY": "Reintento en Calibre"
+    },
+    "results": {
+      "PENDING": "Pendiente",
+      "RUNNING": "En ejecución",
+      "PAUSED": "Pausado",
+      "SUCCEEDED": "Completado",
+      "FAILED": "Fallido",
+      "BLOCKED": "Bloqueado",
+      "UNCERTAIN": "Sin confirmar",
+      "SKIPPED": "Omitido",
+      "CANCELLED": "Cancelado"
+    }
+  },
   "calibreIdentifiers": {
     "result": "Resultado",
     "books": "Libros",
