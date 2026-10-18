@@ -16,7 +16,8 @@ public class HomePreferences {
     // This ordered registry defines both new-account defaults and format compatibility.
     private static final List<Section> DEFAULTS=List.of(new Section("header",true,null),new Section("overview",true,null),
             new Section("newReleases",true,10),new Section("recentUpdates",true,10),
-            new Section("recentBooks",true,10),new Section("recentEvents",true,null,10));
+            new Section("recentBooks",true,10),new Section("attention",true,null),
+            new Section("scheduledTasks",true,null),new Section("recentEvents",true,null,10));
     private static final Map<String,Section> AVAILABLE=DEFAULTS.stream()
             .collect(java.util.stream.Collectors.toUnmodifiableMap((Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id(),section -> section));
     private final JdbcTemplate jdbc;
@@ -44,6 +45,15 @@ public class HomePreferences {
             if(defaultSection==null) continue;
             sections.put(section.id(),new Section(section.id(),section.enabled()==null ? defaultSection.enabled() : section.enabled(),
                     count(section.bookCount(),defaultSection.bookCount()),count(section.eventCount(),defaultSection.eventCount())));
+        }
+        // New operational sections precede Events without moving any saved section.
+        for(String id:List.of("attention","scheduledTasks")) if(!sections.containsKey(id) && sections.containsKey("recentEvents")) {
+            var ordered=new LinkedHashMap<String,Section>();
+            for(var entry:sections.entrySet()) {
+                if(entry.getKey().equals("recentEvents")) ordered.put(id,AVAILABLE.get(id));
+                ordered.put(entry.getKey(),entry.getValue());
+            }
+            sections=ordered;
         }
         for(var section:DEFAULTS) sections.putIfAbsent(section.id(),section);
         return new Preferences(List.copyOf(sections.values()));

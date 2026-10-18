@@ -186,6 +186,8 @@ export const test = base.extend<{ eventTransport: void }>({
           { id: "newReleases", enabled: true, bookCount: 10 },
           { id: "recentUpdates", enabled: true, bookCount: 10 },
           { id: "recentBooks", enabled: true, bookCount: 10 },
+          { id: "attention", enabled: true, bookCount: null },
+          { id: "scheduledTasks", enabled: true, bookCount: null },
           {
             id: "recentEvents",
             enabled: true,
@@ -194,6 +196,8 @@ export const test = base.extend<{ eventTransport: void }>({
           },
         ],
       };
+      await page.route("**/api/home/attention", route => route.fulfill({json:{items:[],total:0}}));
+      await page.route("**/api/home/tasks", route => route.fulfill({json:{items:[],total:0}}));
       let notificationPreferences = {
         floating: true,
         unreadBadge: true,

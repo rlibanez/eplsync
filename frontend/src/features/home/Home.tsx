@@ -1,3 +1,4 @@
+import { HomeAttention, HomeScheduledTasks } from "./HomeActivity";
 import { BookLink } from "../catalog/BookLink";
 import { useAuth } from "../auth/Auth";
 import { Fragment } from "react";
@@ -394,6 +395,18 @@ export function Home() {
           let content;
           if (section.id === "header") content = header;
           else if (section.id === "overview") content = overview;
+          else if (section.id === "attention")
+            content =
+              auth.can("TORRENT_JOBS_MANAGE") ||
+              auth.can("TORRENT_SYNC") ||
+              auth.can("CALIBRE_JOBS_MANAGE") ||
+              auth.can("CALIBRE_SEND") ||
+              auth.can("CALIBRE_READ") ? (
+                <HomeAttention />
+              ) : null;
+          else if (section.id === "scheduledTasks")
+            content =
+              auth.user?.role === "ADMIN" ? <HomeScheduledTasks /> : null;
           else if (section.id === "recentEvents")
             content = auth.can("EVENTS_MANAGE") ? eventPanel : null;
           else

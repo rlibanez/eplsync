@@ -7,6 +7,8 @@ export type HomeSectionId =
   | "newReleases"
   | "recentUpdates"
   | "recentBooks"
+  | "attention"
+  | "scheduledTasks"
   | "recentEvents";
 export interface HomeSection {
   id: HomeSectionId;
@@ -24,6 +26,8 @@ export const defaultHomePreferences = (): HomePreferences => ({
     { id: "newReleases", enabled: true, bookCount: 10, eventCount: null },
     { id: "recentUpdates", enabled: true, bookCount: 10, eventCount: null },
     { id: "recentBooks", enabled: true, bookCount: 10, eventCount: null },
+    { id: "attention", enabled: true, bookCount: null, eventCount: null },
+    { id: "scheduledTasks", enabled: true, bookCount: null, eventCount: null },
     { id: "recentEvents", enabled: true, bookCount: null, eventCount: 10 },
   ],
 });

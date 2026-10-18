@@ -45,7 +45,7 @@ test("home preferences support ordering, per-shelf counts, persistence and heade
   });
   await page.goto("/settings/home");
   const rows = page.locator(".home-section-settings > li");
-  await expect(rows).toHaveCount(6);
+  await expect(rows).toHaveCount(8);
   await expect(
     page.getByRole("textbox", { name: "Número de eventos" }),
   ).toHaveValue("10");

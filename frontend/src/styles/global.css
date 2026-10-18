@@ -2122,8 +2122,8 @@ summary {
   text-overflow: clip;
 }
 .scheduled-tasks-table:not(.resized) { table-layout: auto; }
-.scheduled-tasks-table:not(.resized) td:not(:first-child) { white-space: nowrap; max-width: none; }
-.scheduled-tasks-table:not(.resized) td:first-child { min-width: 220px; }
+.scheduled-tasks-table:not(.resized) td:not(.row-number) { white-space: nowrap; max-width: none; }
+.scheduled-tasks-table:not(.resized) td.scheduled-task-name { min-width: 220px; }
 
 /* Manual cleanup previews and job details share the application table frame. */
 .revision-cleanup-table { border: 1px solid var(--border, #2b342d); border-radius: 8px; }
@@ -2164,3 +2164,29 @@ summary {
 /* Visual result position; independent of record identity and sort keys. */
 th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; padding-right: 8px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 :is(.catalog-table, .updates-table, .download-record-table, .events-table) :is(th, td).row-number { overflow: visible; text-overflow: clip; }
+
+.home-section-title > h2 { display: flex; align-items: center; gap: 10px; }
+.home-activity-list { list-style: none; padding: 0; margin: 0; }
+.home-activity-list > li { padding: 16px 0; min-width: 0; }
+.home-activity-list > li + li { border-top: 1px solid var(--line); }
+.home-activity-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.home-activity-heading > a { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
+.home-activity-heading code { font-weight: 400; font-size: 13px; margin-left: 8px; }
+.home-activity-list p { margin: 8px 0; overflow-wrap: anywhere; }
+.home-activity-list time { font-size: 13px; }
+/* One compact row per scheduled task; facts wrap below the name on narrow screens. */
+.home-task-list { display: grid; grid-template-columns: minmax(180px, 1.5fr) auto repeat(3, minmax(130px, 1fr)); column-gap: 24px; }
+.home-task-list > li { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; row-gap: 12px; padding: 12px 0; }
+.home-task-list > li > .mantine-Badge-root { justify-self: start; }
+.home-task-name { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.home-task-name > a { font-weight: 600; }
+.home-task-name > span { font-size: 13px; }
+.home-task-facts { display: contents; font-size: 14px; }
+.home-task-facts > div { display: block; min-width: 0; border: 0; padding: 0; }
+.home-task-facts dt { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.home-task-facts dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 1100px) {
+  .home-task-list { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; }
+  .home-task-list > li { row-gap: 10px; }
+  .home-task-facts { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 16px; margin: 0; }
+}

@@ -89,10 +89,12 @@ export function EventConnection() {
           "revision-cleanups",
           "revision-cleanup",
           "revision-cleanup-items",
+          "home-attention",
         ])
           void cache.invalidateQueries({ queryKey: [key] });
       }
       void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
+      void cache.invalidateQueries({ queryKey: ["home-tasks"] });
     });
     channel.addEventListener("event", (message) => {
       const event: AppEvent = JSON.parse((message as MessageEvent).data);
@@ -139,6 +141,9 @@ export function EventConnection() {
       if (event.action === "SCHEDULED_TASK")
         void cache.invalidateQueries({ queryKey: ["scheduled-tasks"] });
       void cache.invalidateQueries({ queryKey: ["home-summary"] });
+      void cache.invalidateQueries({ queryKey: ["home-attention"] });
+      if (event.action === "SCHEDULED_TASK")
+        void cache.invalidateQueries({ queryKey: ["home-tasks"] });
       if (event.category === "JOB") {
         void cache.invalidateQueries({ queryKey: ["jobs", "home"] });
       }
@@ -163,6 +168,7 @@ export function EventConnection() {
                   "revision-cleanups",
                   "revision-cleanup",
                   "revision-cleanup-items",
+          "home-attention",
                   "calibre-library",
                   "calibre-snapshot",
                 ];

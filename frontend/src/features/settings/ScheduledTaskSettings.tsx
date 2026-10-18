@@ -281,7 +281,7 @@ export function ScheduledTaskSettings() {
                   <tr key={task.id}>
                     {columns.cells(
                       [
-                        <td>{task.name}</td>,
+                        <td className="scheduled-task-name">{task.name}</td>,
                         <td>
                           {t(`scheduledTasks.operations.${task.operation}`)}
                         </td>,

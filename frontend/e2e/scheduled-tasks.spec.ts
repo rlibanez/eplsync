@@ -315,6 +315,9 @@ test("creates, edits and toggles cron tasks and changes required check periods",
       )
       .toBeLessThan(155);
   }
+  const index = table.locator("tbody td.row-number").first();
+  await expect.poll(async () => (await index.boundingBox())!.width).toBeLessThan(65);
+  await expect(table.locator('th[data-table-column="rowNumber"] .column-resizer')).toHaveCount(0);
   const header = page.locator('th[data-table-column="name"]');
   const before = (await header.boundingBox())!.width;
   const handle = header.getByRole("button", {
@@ -339,6 +342,7 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   await expect
     .poll(async () => Math.abs(((await header.boundingBox())?.width ?? 0) - resized))
     .toBeLessThan(2);
+  await expect.poll(async () => (await index.boundingBox())!.width).toBeLessThan(65);
   await page.screenshot({
     path: "/tmp/eplsync-scheduled-tasks.png",
     fullPage: true,

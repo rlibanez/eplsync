@@ -55,7 +55,7 @@ class HomePreferencesTests {
         assertThat(preferences.get(userId)).isEqualTo(value);
         assertThat(preferences.get(adminId)).isEqualTo(HomePreferences.defaults());
         mvc.perform(get("/api/auth/home").session(login("reader"))).andExpect(status().isOk())
-            .andExpect(jsonPath("$.sections[2].bookCount").value(100));
+            .andExpect(jsonPath("$.sections[3].bookCount").value(100));
         assertThat(accounts.find(userId).permissions()).doesNotContain(Permission.CATALOG_IMPORT);
     }
     @Test void rejectsInvalidCountsAndSectionListsWithoutChangingSavedPreferences() throws Exception {
@@ -80,7 +80,7 @@ class HomePreferencesTests {
         assertThat(loaded.sections()).extracting((HomePreferences.Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id())
             .containsExactlyElementsOf(legacy.stream().map((HomePreferences.Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id()).toList());
         assertThat(loaded.sections()).allSatisfy(section -> assertThat(section.enabled()).isFalse());
-        assertThat(loaded.sections().get(2).bookCount()).isEqualTo(20);
+        assertThat(loaded.sections().get(3).bookCount()).isEqualTo(20);
         var session=login("reader");
         for(int count:new int[]{0,101}) {
             var sections=new ArrayList<>(loaded.sections());
@@ -115,18 +115,18 @@ class HomePreferencesTests {
             new HomePreferences.Section("header",false,null)));
         String json=stored(input);
         var loaded=preferences.get(userId);
-        assertThat(loaded.sections().subList(0,3)).isEqualTo(input.sections());
+        assertThat(loaded.sections().subList(2,5)).isEqualTo(input.sections());
         assertThat(loaded.sections()).extracting((HomePreferences.Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id())
-            .containsExactly("recentEvents","newReleases","header","overview","recentUpdates","recentBooks");
-        assertThat(loaded.sections().subList(3,6)).containsExactly(
+            .containsExactly("attention","scheduledTasks","recentEvents","newReleases","header","overview","recentUpdates","recentBooks");
+        assertThat(loaded.sections().subList(5,8)).containsExactly(
             new HomePreferences.Section("overview",true,null),
             new HomePreferences.Section("recentUpdates",true,10),
             new HomePreferences.Section("recentBooks",true,10));
         assertThat(jdbc.queryForObject("SELECT home_preferences FROM users WHERE id=?",String.class,userId)).isEqualTo(json);
         mvc.perform(get("/api/auth/home").session(login("reader"))).andExpect(status().isOk())
-            .andExpect(jsonPath("$.sections[0].eventCount").value(25))
-            .andExpect(jsonPath("$.sections[1].bookCount").value(42))
-            .andExpect(jsonPath("$.sections[5].id").value("recentBooks"));
+            .andExpect(jsonPath("$.sections[2].eventCount").value(25))
+            .andExpect(jsonPath("$.sections[3].bookCount").value(42))
+            .andExpect(jsonPath("$.sections[7].id").value("recentBooks"));
         assertThat(preferences.save(userId,loaded)).isEqualTo(loaded);
         assertThat(preferences.get(userId)).isEqualTo(loaded);
     }
@@ -140,7 +140,7 @@ class HomePreferencesTests {
             new HomePreferences.Section("overview",false,null))));
         var loaded=preferences.get(userId);
         assertThat(loaded.sections()).extracting((HomePreferences.Section entryValue) -> java.util.Objects.requireNonNull(entryValue).id())
-            .containsExactly("recentBooks","overview","header","newReleases","recentUpdates","recentEvents");
+            .containsExactly("recentBooks","overview","header","newReleases","recentUpdates","attention","scheduledTasks","recentEvents");
         assertThat(loaded.sections().getFirst()).isEqualTo(new HomePreferences.Section("recentBooks",false,7));
         assertThat(loaded.sections().get(1).enabled()).isFalse();
         assertThat(loaded.sections().getLast()).isEqualTo(new HomePreferences.Section("recentEvents",true,null,10));
@@ -157,8 +157,8 @@ class HomePreferencesTests {
         assertThat(loaded.sections().getFirst()).isEqualTo(new HomePreferences.Section("newReleases",true,10));
         assertThat(loaded.sections().get(1)).isEqualTo(new HomePreferences.Section("recentUpdates",false,10));
         assertThat(loaded.sections().get(2)).isEqualTo(new HomePreferences.Section("recentBooks",false,10));
-        assertThat(loaded.sections().get(3)).isEqualTo(new HomePreferences.Section("recentEvents",false,null,10));
-        assertThat(loaded.sections().get(4)).isEqualTo(new HomePreferences.Section("header",true,null));
+        assertThat(loaded.sections().get(5)).isEqualTo(new HomePreferences.Section("recentEvents",false,null,10));
+        assertThat(loaded.sections().get(6)).isEqualTo(new HomePreferences.Section("header",true,null));
     }
 
     @Test void emptyOrNullStoredListsUseDefaultsAndFuturePropertiesAreIgnored() {
@@ -169,6 +169,22 @@ class HomePreferencesTests {
         jdbc.update("UPDATE users SET home_preferences=? WHERE id=?",
             "{\"futureProperty\":true,\"sections\":[{\"id\":\"newReleases\",\"enabled\":false,\"bookCount\":37,\"futureField\":9}]}",userId);
         assertThat(preferences.get(userId).sections().getFirst()).isEqualTo(new HomePreferences.Section("newReleases",false,37));
+    }
+
+    @Test void addsOperationalSectionsBeforeEventsWithoutWritingOrResettingSavedChoices() {
+        var legacy=new HomePreferences.Preferences(HomePreferences.defaults().sections().stream()
+            .filter(section -> !Set.of("attention","scheduledTasks").contains(section.id()))
+            .map(section -> new HomePreferences.Section(section.id(),false,section.bookCount(),section.eventCount())).toList());
+        String json=stored(legacy);
+        var loaded=preferences.get(userId);
+        assertThat(loaded.sections().stream().map(section -> section.id()).toList()).containsExactly(
+            "header","overview","newReleases","recentUpdates","recentBooks","attention","scheduledTasks","recentEvents");
+        assertThat(loaded.sections().stream().filter(section -> !Set.of("attention","scheduledTasks").contains(section.id())).toList()).isEqualTo(legacy.sections());
+        assertThat(jdbc.queryForObject("SELECT home_preferences FROM users WHERE id=?",String.class,userId)).isEqualTo(json);
+        var sections=new ArrayList<>(loaded.sections());
+        sections.set(5,new HomePreferences.Section("attention",false,null));
+        Collections.swap(sections,5,6);
+        assertThat(preferences.save(userId,new HomePreferences.Preferences(sections)).sections()).isEqualTo(sections);
     }
 
     @Test void savingStillRejectsUnknownAndMissingSections() {
