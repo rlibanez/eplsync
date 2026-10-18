@@ -319,12 +319,9 @@ test("Mixed Calibre updates offer deferred sending and confirmed per-book cleanu
     )
     .check();
   await dialog.getByRole("button", { name: "Crear trabajos" }).click();
-  await expect(
-    dialog.getByRole("link", { name: "Ver trabajo de descargas" }),
-  ).toHaveAttribute("href", "/downloads/jobs/download");
-  await expect(
-    dialog.getByRole("link", { name: "Ver trabajo de Calibre" }),
-  ).toHaveAttribute("href", "/calibre/jobs/calibre");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Trabajos creados.", {exact:true})).toHaveCount(0);
+  await expect(page).toHaveURL(/\/calibre\/updates/);
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({
     download: true,

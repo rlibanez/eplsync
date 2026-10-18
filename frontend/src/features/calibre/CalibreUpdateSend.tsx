@@ -11,7 +11,6 @@ import {
   Stack,
 } from "@mantine/core";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/Auth";
 import { Failure } from "../../components/Feedback";
@@ -100,6 +99,8 @@ export function CalibreUpdateSend({ selected }: { selected: number[] }) {
     retry: false,
     onSuccess: () => {
       void cache.invalidateQueries({ queryKey: ["calibre-jobs"] });
+      void cache.invalidateQueries({ queryKey: ["jobs"] });
+      setOpened(false);
     },
   });
   if (
@@ -473,21 +474,6 @@ export function CalibreUpdateSend({ selected }: { selected: number[] }) {
           )}
           {send.isError && (
             <Failure error={send.error} retry={() => send.mutate()} />
-          )}
-          {send.isSuccess && (
-            <>
-              <p>{t("calibreUpdateSend.created")}</p>
-              {send.data.downloadJobId && (
-                <Link to={`/downloads/jobs/${send.data.downloadJobId}`}>
-                  {t("calibreUpdateSend.downloadJob")}
-                </Link>
-              )}
-              {send.data.calibreJobId && (
-                <Link to={`/calibre/jobs/${send.data.calibreJobId}`}>
-                  {t("calibreUpdateSend.calibreJob")}
-                </Link>
-              )}
-            </>
           )}
         </Stack>
       </AppModal>
