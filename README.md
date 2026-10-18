@@ -6,7 +6,7 @@
 Consulta el catálogo de ePubLibre y gestiona tus descargas y actualizaciones de
 libros con qBittorrent y Calibre. Programa sincronizaciones, importaciones del
 catálogo y búsquedas de actualizaciones. También puedes automatizar la actualización
-de las descargas y de la biblioteca de Calibre, con políticas independientes.
+de las descargas y de la biblioteca de Calibre.
 
 <table>
   <tr>
@@ -91,7 +91,7 @@ de las descargas y de la biblioteca de Calibre, con políticas independientes.
   - [Prepara las carpetas persistentes](#5-prepara-las-carpetas-persistentes)
   - [Inicia EPL Sync](#6-inicia-epl-sync)
 - [Ejecutar sin Docker](#ejecutar-sin-docker)
-  - [Descarga y descomprime el paquete](#1-descarga-y-descomprime-el-paquete)
+  - [Descarga el JAR y la configuración](#1-descarga-el-jar-y-la-configuración)
   - [Configura la aplicación](#2-configura-la-aplicación)
   - [Inicia EPL Sync](#3-inicia-epl-sync)
   - [Abre la aplicación](#4-abre-la-aplicación)
@@ -116,7 +116,7 @@ cd eplsync
 ### 3. Descarga Docker Compose
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.6.1/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.6.2/docker-compose.yml -o docker-compose.yml
 ```
 
 ### 4. Configura `.env`
@@ -124,7 +124,7 @@ curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.6.1/docker-comp
 Después, descarga la plantilla de configuración:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.6.1/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.6.2/.env.example -o .env
 chmod 600 .env
 ```
 
@@ -132,7 +132,7 @@ Edita `.env`. Para empezar, revisa estas variables:
 
 | Variable | Descripción | Valor predeterminado |
 | --- | --- | --- |
-| `EPLSYNC_VERSION` | Versión de la imagen. | `1.6.1` |
+| `EPLSYNC_VERSION` | Versión de la imagen. | `1.6.2` |
 | `PUID` | ID del usuario que puede escribir en las carpetas. En Linux, consulta su valor con `id -u`. | `1000` |
 | `PGID` | ID del grupo que puede escribir en las carpetas. En Linux, consulta su valor con `id -g`. | `1000` |
 | `HOST_PORT` | Puerto publicado. | `8088` |
@@ -169,29 +169,36 @@ qBittorrent en `EPLSYNC_TORRENT_FILES_REMOTE_ROOT` o en Ajustes > Torrent
 docker compose up -d
 ```
 
-Abre `http://localhost:8088`, o la dirección y puerto que hayas configurado.
+Abre `http://localhost:8088` o la dirección y puerto que hayas configurado.
 Para acceso por red o mediante un proxy HTTPS, consulta la
 [guía de acceso y seguridad](docs/seguridad.md#acceso-remoto).
 
 ## Ejecutar sin Docker
 
-Se recomienda encarecidamente la instalación en Docker. Aún así, se proporcionan
-instrucciones para su ejecución en Windows/Linux.
+Se recomienda la instalación mediante Docker. También puedes ejecutar el JAR
+directamente en Windows, Linux y macOS.
 
-### 1. Descarga y descomprime el paquete
+### 1. Descarga el JAR y la configuración
 
 Instala [Java 25](https://adoptium.net/temurin/releases/?version=25) y descarga
-`eplsync-1.6.1.jar` desde los archivos de la
-[Release 1.6.1](https://github.com/rlibanez/eplsync/releases/tag/v1.6.1).
-El mismo paquete sirve para Windows y Linux.
+`eplsync-1.6.2.jar` desde los archivos de la
+[Release 1.6.2](https://github.com/rlibanez/eplsync/releases/tag/v1.6.2).
+El mismo JAR sirve para Windows, Linux y macOS. En macOS, elige Java para
+**aarch64** si utilizas Apple Silicon (M1 o posterior) o **x64** si tu Mac es Intel.
+Comprueba con `java -version` que la terminal utiliza Java 25.
+
+El JAR incluye la interfaz web y el [controlador SQLite](https://github.com/xerial/sqlite-jdbc), con bibliotecas nativas
+para ambas arquitecturas de macOS. No necesitas instalar SQLite, Node.js ni Maven
+para ejecutarlo. qBittorrent y el servidor de contenido de Calibre son servicios
+opcionales que se configuran por separado.
 
 Guárdalo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
-`application.yaml` correspondiente a esa misma versión, además de las carpetas
+[`application.yaml` correspondiente a esa misma versión](https://raw.githubusercontent.com/rlibanez/eplsync/v1.6.2/backend/src/main/resources/application.yaml), además de las carpetas
 `data` y `logs`:
 
 ```text
 EPL-Sync/
-├── eplsync-1.6.1.jar
+├── eplsync-1.6.2.jar
 ├── application.yaml
 ├── data/
 └── logs/
@@ -199,8 +206,8 @@ EPL-Sync/
 
 ### 2. Configura la aplicación
 
-Edita el `application.yaml` incluido en el paquete. Es una copia del mismo archivo
-utilizado para construir la aplicación.
+Edita el `application.yaml` descargado junto al JAR. Es el mismo archivo utilizado
+para construir la aplicación.
 
 Antes de iniciar, revisa estos valores:
 
@@ -214,6 +221,20 @@ Antes de iniciar, revisa estos valores:
 - **Clave inicial:** `eplsync.security.initial-admin-key` es opcional y protege la
   creación del primer administrador.
 
+Para descargar EPUB desde la interfaz, enviarlos a Calibre o completar sus
+identificadores, EPL Sync necesita leer los archivos descargados por qBittorrent.
+Configura `eplsync.torrent.files.remote-root` con la raíz que comunica el cliente
+y `eplsync.torrent.files.local-root` con la carpeta equivalente accesible desde
+EPL Sync. Si ambos se ejecutan directamente en el mismo Mac, pueden ser la misma
+ruta, por ejemplo `/Users/tuusuario/Downloads/Libros`. Si qBittorrent está en Docker,
+la raíz remota puede ser `/downloads` y la local la carpeta compartida del Mac.
+Estas rutas y sus permisos se explican en la [guía de Calibre](docs/calibre.md).
+
+Guarda `data/` en almacenamiento local y concede al usuario que ejecuta Java
+permisos de escritura en la carpeta de EPL Sync y de lectura en la carpeta de
+EPUB. En macOS, autoriza el acceso de Terminal a Descargas o a los volúmenes
+utilizados si el sistema lo solicita.
+
 Las expresiones como `${EPLSYNC_SECRET_KEY:}` permiten utilizar variables del
 entorno. Para configurar una clave directamente en el archivo, sustituye toda
 la expresión por el valor entre comillas, por ejemplo `secret-key: "CLAVE_GENERADA"`.
@@ -221,10 +242,10 @@ Conserva la configuración y no compartas sus claves.
 
 ### 3. Inicia EPL Sync
 
-Abre una terminal en la carpeta del JAR y ejecuta, tanto en Windows como en Linux:
+Abre una terminal en la carpeta del JAR y ejecuta en Windows, Linux o macOS:
 
 ```sh
-java --enable-native-access=ALL-UNNAMED -jar eplsync-1.6.1.jar --spring.config.additional-location=file:./application.yaml
+java --enable-native-access=ALL-UNNAMED -jar eplsync-1.6.2.jar --spring.config.additional-location=file:./application.yaml
 ```
 
 El comando carga el archivo externo de configuración. En esta modalidad no se

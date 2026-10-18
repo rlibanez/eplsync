@@ -133,7 +133,8 @@ test("translates an existing error when switching languages", async ({
   await expect(page.getByRole("alert")).toContainText(
     "This book could not be found.",
   );
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  // A missing book cannot be recovered by retrying the same request.
+  await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
 });
 test.describe("English browser", () => {
   test.use({ locale: "en-GB" });

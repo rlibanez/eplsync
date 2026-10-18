@@ -107,7 +107,12 @@ test("state refreshes one row and deletes a mixed-book selection", async ({
     })
     .check();
   await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
-  await expect(dialog).toBeVisible();
+  await expect(
+    page.getByRole("dialog", { name: "Eliminar", exact: true }),
+  ).not.toBeVisible();
+  await expect(
+    page.getByRole("dialog").filter({ hasText: "Resultado de la operación" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("row").filter({ hasText: "Libro 1" }),
   ).toHaveCount(0);

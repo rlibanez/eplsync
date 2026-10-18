@@ -166,3 +166,25 @@ modificar migraciones publicadas. Conserva los trabajos existentes y su identida
 EPUB original; añade el UUID de Calibre y el seguimiento de la asignación y su
 confirmación. Los envíos antiguos reciben valores vacíos y no se modifican de
 forma automática por aplicar la migración.
+
+## Ejecución directa en Windows, Linux y macOS
+
+Las [instrucciones del JAR](../README.md#ejecutar-sin-docker) utilizan Java 25 y
+el mismo archivo en las tres plataformas, sin instalar Node.js, Maven ni SQLite.
+En macOS, selecciona Java aarch64 para Apple Silicon o x64 para Intel. El
+controlador SQLite incluido contiene bibliotecas nativas para ambas arquitecturas.
+El comando de arranque incluye `--enable-native-access=ALL-UNNAMED`.
+
+Ejecuta desde la carpeta que contiene el JAR y `application.yaml`; las rutas
+relativas de datos y logs parten de ella. Conserva esos archivos y la clave de
+cifrado al actualizar. No se utiliza el `.env` de Docker Compose.
+
+Para acceder a los EPUB, configura las raíces remota y local de Torrent con las
+rutas reales del cliente y del equipo que ejecuta EPL Sync, respectivamente. En
+macOS, utiliza rutas como `/Users/tuusuario/Downloads/Libros` y permite su lectura
+al proceso Java. qBittorrent y el servidor de contenido de Calibre siguen siendo
+servicios opcionales independientes.
+
+La versión 1.6.2 aplica `V1_5_0_13` al actualizar desde la 1.6.1, hasta el esquema
+`1.5.0.13`, conservando los datos y el historial existente. Las migraciones ya
+publicadas no se modifican ni se renombran.
