@@ -210,6 +210,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({java.io.IOException.class, org.springframework.web.context.request.async.AsyncRequestTimeoutException.class})
     public ResponseEntity<?> handleTransferFailure(Exception ex, HttpServletRequest request,
             jakarta.servlet.http.HttpServletResponse response) {
+        if (logClientDisconnect(ex)) return null;
         if (response.isCommitted()) {
             log.debug("Transferencia interrumpida: {}", ex.getClass().getSimpleName());
             return null;
@@ -218,6 +219,33 @@ public class GlobalExceptionHandler {
         resetDownloadResponse(response);
         return ResponseEntity.status(503).contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .body(java.util.Map.of("details", "La transferencia de la exportación se ha interrumpido o ha superado el tiempo máximo. Inténtalo de nuevo."));
+    }
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotWritableException.class)
+    public ResponseEntity<ErrorResponse> handleUnwritableResponse(
+            org.springframework.http.converter.HttpMessageNotWritableException ex, HttpServletRequest request) {
+        if (logClientDisconnect(ex)) return null;
+        return handleGenericException(ex, request);
+    }
+
+    private boolean logClientDisconnect(Exception ex) {
+        var visited = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Throwable, Boolean>());
+        for (Throwable cause = ex; cause != null && visited.add(cause); cause = cause.getCause()) {
+            boolean disconnected = cause instanceof org.apache.catalina.connector.ClientAbortException
+                || cause instanceof org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+            // Inspect transport IO causes, not Jackson's message: that message may
+            // contain arbitrary application data or describe a genuine JSON failure.
+            if (cause.getClass() == java.io.IOException.class || cause instanceof java.net.SocketException) {
+                String message = cause.getMessage();
+                disconnected |= message != null && java.util.Set.of("broken pipe", "connection reset", "connection reset by peer")
+                    .contains(message.trim().toLowerCase(java.util.Locale.ROOT));
+            }
+            if (disconnected) {
+                log.debug("Conexión HTTP cerrada durante la respuesta: {}", cause.getClass().getSimpleName());
+                return true;
+            }
+        }
+        return false;
     }
 
     @ExceptionHandler(org.springframework.core.task.TaskRejectedException.class)
