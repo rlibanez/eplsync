@@ -20,6 +20,7 @@ public class EpubFiles {
     public EpubFiles(DownloadRepository records, DownloadTrackingService tracking, TorrentClientService client, TorrentProperties properties) {
         this.records=records; this.tracking=tracking; this.client=client; this.properties=properties;
     }
+    public String clientInstanceId() {return tracking.instanceId();}
     public record Item(int index, String name, long size, long expectedSize) {
         public Item(int index,String name,long size) {this(index,name,size,size);}
     }
@@ -35,13 +36,18 @@ public class EpubFiles {
         });
     }
     public List<Item> list(String id) {
+        var result=completed(id);
+        if(result.isEmpty()) throw unavailable("El torrent no contiene archivos EPUB completamente descargados");
+        return result;
+    }
+    /** Live, accessible completed EPUBs; an incomplete torrent is an empty candidate set. */
+    public List<Item> completed(String id) {
         requireRoots();
         var result=new ArrayList<Item>();
         for(var f:files(id)) {
             try(var opened=open(f)) { result.add(new Item(f.index(), opened.name(), opened.size(), f.size())); }
             catch(IOException ex) { throw unavailable("No se puede leer el EPUB; revisa el montaje y los permisos de la carpeta"); }
         }
-        if(result.isEmpty()) throw unavailable("El torrent no contiene archivos EPUB completamente descargados");
         return List.copyOf(result);
     }
     public Opened download(String id,int index) {

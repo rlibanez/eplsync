@@ -327,7 +327,7 @@ public class CalibreTransfers {
                     finish(id,actor,item,"ACCEPTED",confirmed,"Envío verificado explícitamente; no se ha repetido el envío");
                     retryHistory.resolved(attempt,item.id());
                 } else {
-                    jdbc.update("UPDATE calibre_job_items SET state='PENDING',calibre_id=NULL,next_check=0,transient_attempts=0,message='El usuario confirmó que no se recibió el envío; reintento solicitado' WHERE id=? AND state='UNCERTAIN'",item.id());
+                    jdbc.update("UPDATE calibre_job_items SET state='PENDING',calibre_id=NULL,calibre_uuid=NULL,identifiers_completed=0,identifier_completion_pending=0,next_check=0,transient_attempts=0,message='El usuario confirmó que no se recibió el envío; reintento solicitado' WHERE id=? AND state='UNCERTAIN'",item.id());
                     jdbc.update("UPDATE calibre_jobs SET state='QUEUED',next_check=0,next_probe=0,message=NULL,updated_at=? WHERE id=?",Instant.now().toString(),id);
                 }
                 event(actor,id,"CALIBRE_JOB_CONTROL",EventJournal.Outcome.SUCCEEDED,Map.of("command",confirmed==null?"retryUnconfirmed":"verifyUnconfirmed","itemId",item.id(),"reason",Objects.toString(item.message(),"")));
@@ -561,7 +561,7 @@ public class CalibreTransfers {
             metadataNotice=identity.eplId()==null && identity.revision()==null ? "EPUB enviado sin EPL ID ni revisión" : identity.eplId()==null ? "EPUB enviado sin EPL ID" : identity.revision()==null ? "EPUB enviado sin revisión" : "";
             if(!revisionNotice(item,identity).isEmpty()) metadataNotice=(metadataNotice.isEmpty()?"EPUB enviado y verificado":metadataNotice)+revisionNotice(item,identity);
             jdbc.update("UPDATE calibre_job_items SET epub_identity=? WHERE id=? AND state='PENDING'",EPUB_IDENTITIES.writeValueAsString(identity),item.id());
-            remoteId=identity.eplId()!=null && identity.revision()!=null ? client.findRevision(connection,identity.eplId(),identity.revision()) : null;
+            remoteId=client.findRevision(connection,item.eplId(),identity.revision()==null?new BigDecimal(item.revision()):identity.revision());
             if(remoteId!=null && client.hasEpub(connection,remoteId)) {publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"SKIPPED",remoteId,"Esta revisión ya está en Calibre"+revisionNotice(item,identity));return;}
             remoteId=null;
             if(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE j.destination=? AND j.library=? AND i.epl_id=? AND CAST(coalesce(json_extract(i.epub_identity,'$.revision'),i.revision) AS REAL)=? AND i.state IN ('SENDING','UNCERTAIN') AND i.id<>? AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id)",Long.class,config.get("destination"),connection.library(),item.eplId(),identity.revision()==null?Double.parseDouble(item.revision()):identity.revision().doubleValue(),item.id())>0) {pause(job,actor,"Existe un envío de esta revisión pendiente de confirmación");return;}
@@ -590,10 +590,11 @@ public class CalibreTransfers {
                 postponeFailure(job,actor,item,ex);return;
             }
             log.warn("Operación de Calibre fallida: trabajo={}, elemento={}, EPL ID={}, fase={}, causa={}",job,item.id(),item.eplId(),sending?"ENVIO_O_VERIFICACION":item.state(),OperationDiagnostics.technical(ex));
+            String verificationReason=ex instanceof UserInputException?ex.getMessage():ex instanceof CalibreClient.PermanentFailure permanent?Objects.toString(permanent.getReason(),"Revisa la conexión y los permisos de Calibre"):OperationDiagnostics.reason(ex,"Revisa los metadatos y el EPUB de la entrada de Calibre");
             if((sending && !(ex instanceof org.springframework.web.server.ResponseStatusException)) || ex instanceof CalibreClient.UnconfirmedUpload) {
-                finish(job,actor,item,"UNCERTAIN",remoteId,"No se ha confirmado el envío; no se repetirá automáticamente"+(metadataNotice.isEmpty()?"":". "+metadataNotice));pause(job,actor,"Hay un envío pendiente de verificación");
+                finish(job,actor,item,"UNCERTAIN",remoteId,"No se ha confirmado el envío; no se repetirá automáticamente. "+verificationReason+(metadataNotice.isEmpty()?"":". "+metadataNotice));pause(job,actor,"Hay un envío pendiente de verificación");
             } else if(sending && remoteId!=null || item.state().equals("UNCERTAIN")) {
-                finish(job,actor,item,"UNCERTAIN",remoteId,"No se pudieron verificar los metadatos o el EPUB de Calibre");pause(job,actor,"Hay un envío pendiente de verificación");
+                finish(job,actor,item,"UNCERTAIN",remoteId,"No se pudieron verificar los metadatos o el EPUB de Calibre. "+verificationReason);pause(job,actor,"Hay un envío pendiente de verificación");
             } else if(ex instanceof org.springframework.web.server.ResponseStatusException status && status.getStatusCode().value()!=404) {
                 jdbc.update("UPDATE calibre_job_items SET message=? WHERE id=?", ex instanceof CalibreClient.PermanentFailure ? Objects.toString(status.getReason(),"Revisa la configuración de Calibre") : "Calibre respondió con HTTP "+status.getStatusCode().value()+"; revisa conexión y permisos",item.id());
                 pause(job,actor,sending ? "Calibre rechazó el envío; revisa permisos de escritura y conexión" : "No se puede consultar Calibre; revisa la conexión");
@@ -619,7 +620,18 @@ public class CalibreTransfers {
         var observed=expectedIdentity(item.id());
         var revision=observed.revision()==null?new BigDecimal(item.revision()):observed.revision();
         if(book.eplId()!=null && !java.util.Objects.equals(book.eplId(),item.eplId()) || book.revision()!=null && book.revision().compareTo(revision)!=0) throw new UserInputException("Los identificadores del libro recibido por Calibre no coinciden; comprueba sus metadatos");
+        String savedUuid=jdbc.queryForObject("SELECT calibre_uuid FROM calibre_job_items WHERE id=?",String.class,item.id());
+        if(savedUuid!=null && !savedUuid.equals(book.uuid())) throw new UserInputException("La entrada de Calibre cambió; no se modificarán sus metadatos");
+        if(book.uuid()!=null && !book.uuid().isBlank()) jdbc.update("UPDATE calibre_job_items SET calibre_uuid=? WHERE id=? AND calibre_uuid IS NULL",book.uuid(),item.id());
+        boolean completing=book.eplId()==null || book.revision()==null || Boolean.TRUE.equals(jdbc.queryForObject("SELECT identifier_completion_pending FROM calibre_job_items WHERE id=?",Boolean.class,item.id()));
+        if(book.eplId()==null || book.revision()==null) {
+            if(book.uuid()==null || book.uuid().isBlank()) throw new UserInputException("Calibre no devolvió el UUID de la entrada; no se completarán identificadores sin verificarla");
+            jdbc.update("UPDATE calibre_job_items SET identifier_completion_pending=1 WHERE id=?",item.id());
+            book=client.completeIdentifiers(connection,book.calibreId(),item.eplId(),revision,book.uuid());
+            log.debug("Identificadores completados en Calibre desde la descarga: trabajo={}, elemento={}, Calibre ID={}, EPL ID={}, revisión={}",jdbc.queryForObject("SELECT job_id FROM calibre_job_items WHERE id=?",String.class,item.id()),item.id(),book.calibreId(),item.eplId(),revision);
+        }
         if(!client.hasEpub(connection,book.calibreId())) throw new UserInputException("Calibre no confirma el formato EPUB del libro; el envío queda pendiente de verificación");
+        if(completing) jdbc.update("UPDATE calibre_job_items SET identifiers_completed=1,identifier_completion_pending=0 WHERE id=?",item.id());
         catalog.observe(connection,book);
     }
     public static final String SIZE_WARNING="El tamaño del EPUB no coincide con el registrado por el cliente torrent. El archivo podría haber sido modificado.";
@@ -627,6 +639,8 @@ public class CalibreTransfers {
         tx.executeWithoutResult(s -> {
             String previous=jdbc.queryForObject("SELECT message FROM calibre_job_items WHERE id=?",String.class,item.id());
             String detail=previous!=null && previous.contains(SIZE_WARNING) && !message.contains(SIZE_WARNING) ? message+". "+SIZE_WARNING : message;
+            if(Set.of("ACCEPTED","SKIPPED").contains(state) && Boolean.TRUE.equals(jdbc.queryForObject("SELECT identifiers_completed FROM calibre_job_items WHERE id=?",Boolean.class,item.id())))
+                detail="EPUB enviado y verificado. Identificadores ausentes completados en Calibre con los datos de la descarga; EPUB original sin modificar"+revisionNotice(item,expectedIdentity(item.id()))+(previous!=null && previous.contains(SIZE_WARNING)?". "+SIZE_WARNING:"");
             String next=state;
             if(Set.of("ACCEPTED","SKIPPED").contains(state) && !"KEEP".equals(jdbc.queryForObject("SELECT cleanup_policy FROM calibre_job_items WHERE id=?",String.class,item.id())) && !item.state().equals("CLEANUP_PENDING")) {
                 if(state(job).equals("CANCELLED")) detail+=". Limpieza de revisiones anteriores cancelada";

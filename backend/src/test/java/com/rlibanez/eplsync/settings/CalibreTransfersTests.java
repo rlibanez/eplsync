@@ -318,12 +318,37 @@ class CalibreTransfersTests {
     void sendsWithoutOptionalIdentifiers(boolean missingId,boolean missingRevision,String message) throws Exception {
         bytes=withoutIdentifiers(missingId,missingRevision);
         when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
-        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Libro",List.of("Autor"),missingId?null:1L,missingRevision?null:new java.math.BigDecimal("1.1"),false));
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Libro",List.of("Autor"),missingId?null:1L,missingRevision?null:new java.math.BigDecimal("1.1"),false,"book-uuid"));
+        when(client.completeIdentifiers(any(),eq(9L),eq(1L),any(),eq("book-uuid"))).thenReturn(new CalibreClient.Book(9,"Libro",List.of("Autor"),1L,new BigDecimal("1.1"),true,"book-uuid"));
         var job=create();transfers.cycle();
         assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
-        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).isEqualTo(message);
-        verify(client,never()).findRevision(any(),anyLong(),any());
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).contains("Identificadores ausentes completados");
+        assertThat(jdbc.queryForObject("SELECT identifiers_completed FROM calibre_job_items WHERE job_id=?",Boolean.class,job.id())).isTrue();
+        verify(client).findRevision(any(),eq(1L),any());
         verify(client).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void completedIdentifiersLetANewRequestSkipTheSameRevisionWithoutUploadingAgain() throws Exception {
+        bytes=withoutIdentifiers(true,true);when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        when(client.findRevision(any(),eq(1L),any())).thenReturn(9L);
+        var job=create();transfers.cycle();
+        assertThat(transfers.job(job.id()).skipped()).isEqualTo(1);
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void metadataTimeoutAndRestartVerifyTheSameEntryWithoutImportingAgain() throws Exception {
+        bytes=withoutIdentifiers(true,true);when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),null,null,false,"book-uuid"));
+        when(client.completeIdentifiers(any(),eq(9L),eq(1L),any(),eq("book-uuid")))
+            .thenThrow(new CalibreClient.TransientFailure(org.springframework.http.HttpStatus.BAD_GATEWAY,"Respuesta perdida",null));
+        var job=create();transfers.cycle();
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().state()).isEqualTo("UNCERTAIN");
+        assertThat(jdbc.queryForObject("SELECT identifier_completion_pending FROM calibre_job_items WHERE job_id=?",Boolean.class,job.id())).isTrue();
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true,"book-uuid"));
+        jdbc.update("UPDATE calibre_jobs SET next_check=0 WHERE id=?",job.id());jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE job_id=?",job.id());
+        transfers.recoverInterrupted();transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT identifiers_completed FROM calibre_job_items WHERE job_id=?",Boolean.class,job.id())).isTrue();
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,times(1)).completeIdentifiers(any(),eq(9L),eq(1L),any(),eq("book-uuid"));
     }
     @Test void emptyWorkerDoesNotPollOrWriteAndCommittedJobWakesIt() throws Exception {
         transfers.cycle();
@@ -575,7 +600,7 @@ class CalibreTransfersTests {
         when(client.findRevision(any(),anyLong(),any())).thenReturn(9L);
         transfers.control(job.id(),"resume");transfers.cycle();
         assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
-        verify(client,never()).findRevision(any(),anyLong(),any());
+        verify(client,times(1)).findRevision(any(),anyLong(),any());
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
     }
     @Test void busyTorrentWhileOpeningAReadyEpubDefersWithoutFailingOrUploadingTwice() {
@@ -617,7 +642,8 @@ class CalibreTransfersTests {
         var job=create();
         jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",job.id());
         jdbc.update("UPDATE calibre_job_items SET state='SENDING',identity_complete=0,calibre_id=9 WHERE job_id=?",job.id());
-        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),null,null,false));
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),null,null,false,"book-uuid"));
+        when(client.completeIdentifiers(any(),eq(9L),eq(1L),any(),eq("book-uuid"))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true,"book-uuid"));
         transfers.recoverInterrupted();transfers.cycle();
         assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");
         assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);

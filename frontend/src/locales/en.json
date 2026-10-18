@@ -1,4 +1,14 @@
 {
+  "calibreIdentifiers": {
+    "books": "Books",
+    "revision": "Revision",
+    "open": "Complete identifiers",
+    "help": "Each EPUB will be compared with its original upload or downloaded EPUBs. Only missing identifiers with an unambiguous match will be completed; EPUB files will not be modified.",
+    "apply": "Complete selected",
+    "progress": "Checking identifiers",
+    "select": "Select Calibre ID",
+    "failed": "Could not check or update the Calibre entry"
+  },
   "telegram": {
     "description": "Receive notifications about your operations even when EPL Sync is not open in your browser.",
     "enabled": "Enable Telegram notifications",

@@ -189,14 +189,42 @@ coincida con el registro de descarga. Con el mismo EPL ID se permite una revisi�
 interna distinta: se conserva el EPUB y se muestra la discrepancia en el detalle,
 sin cambiar la revisión del Catálogo ni del registro torrent. La verificación en
 Calibre utiliza la revisión real leída del EPUB, también tras reinicios y reintentos.
-Si falta alguno o ambos identificadores, se mantiene el envío con el aviso
-correspondiente; una discrepancia de revisión sin EPL ID que confirme el libro
-sigue bloqueada. Solo cuando están ambos se busca esa revisión en Calibre usando
-sus identificadores reales, no el título ni una copia local antigua:
+Si falta alguno o ambos identificadores, se utiliza la identidad de la descarga
+para buscar la revisión y evitar duplicados. Después de importar el EPUB,
+EPL Sync completa únicamente los identificadores ausentes **en los metadatos de
+la biblioteca de Calibre**, sobre el ID exacto devuelto por el envío y fijando su
+UUID. Conserva otros identificadores, como el ISBN, y no modifica el EPUB.
+Una discrepancia de revisión sin EPL ID que confirme el libro sigue bloqueada.
+Los identificadores existentes que contradigan la identidad esperada no se sobrescriben.
+
+La escritura y su comprobación quedan separadas de la importación. Ante un fallo
+transitorio se comprueba la misma entrada y se reintenta sin importar otra copia.
+El trabajo conserva la identidad original del EPUB y señala los identificadores
+completados desde la descarga; las protecciones de limpieza se mantienen.
 
 - Si ya existe el mismo EPL ID y revisión, el resultado es **Ya existe**.
 - Si existe otra revisión, se añade una copia independiente y se conserva la anterior.
 - Si el EPUB es inaccesible o sus identificadores no coinciden, se registra el error.
+
+## Completar identificadores
+
+En **Calibre → Biblioteca**, selecciona las entradas y pulsa **Completar
+identificadores**. Se necesita permiso para leer Calibre, descargar EPUB de Calibre, enviar a
+Calibre y leer los archivos de Descargas. El asistente comprueba cada entrada antes de permitir
+seleccionarla para la corrección.
+
+Para los envíos anteriores debe conservarse un envío aceptado de EPL Sync asociado al mismo servidor,
+biblioteca e ID de Calibre. Además, el contenido de los recursos del EPUB se
+compara mediante la exportación original de Calibre, sin usar la copia transformada del servidor de contenido. Se ignoran los metadatos del OPF y del contenedor que Calibre puede regenerar
+al descargarlo, manteniendo la comprobación de la estructura del paquete y
+del orden de lectura. Si falta la descarga,
+el contenido difiere, los identificadores contradicen el envío o hay asociaciones
+ambiguas, se excluye la entrada con un motivo. No se buscan coincidencias por título.
+
+Al confirmar se vuelve a comprobar el contenido y el UUID. Solo se completan los
+identificadores ausentes y se actualiza la copia local de la biblioteca. Cada
+entrada se procesa por separado y los errores permiten reintentar la misma
+previsualización durante quince minutos, sin volver a enviar el libro. Para importaciones manuales sin ese envío se buscan coincidencias inequívocas con los EPUB descargados, como se detalla más adelante.
 
 ## Trabajos de Calibre
 
@@ -394,3 +422,17 @@ El trabajador sigue enviando un solo EPUB a la vez. Reparte turnos entre trabajo
 y procesa hasta cinco ciclos por activación, con un presupuesto de un segundo;
 un ciclo de red ya iniciado conserva sus propios plazos. Los resúmenes completos
 se calculan al consultar o finalizar un trabajo, evitando repetirlos por archivo.
+
+### Identificar libros importados manualmente
+
+«Completar identificadores» también permite identificar entradas sin un envío conservado de EPL Sync. La previsualización las señala individualmente como «Importación ajena a EPL Sync» y compara su EPUB original con los EPUB accesibles de los registros de Descargas del cliente configurado. La disponibilidad y finalización se consultan en el cliente torrent en ese momento, aunque el estado guardado aún no se haya sincronizado. No se asignan identificadores por título, autor, nombre ni tamaño del archivo. Se compara el contenido y la estructura, ignorando los metadatos del OPF.
+
+Solo se permite completar cuando todas las coincidencias tienen el mismo EPL ID y revisión, sin identificadores contradictorios. Varias copias de la misma identidad son válidas; identidades diferentes para el mismo contenido se excluyen. También se excluyen las coincidencias con torrents que contienen varios EPUB, cuya correspondencia individual no puede asegurarse. Si un candidato no puede comprobarse o la comprobación excede el tiempo disponible, no se asignan identificadores. Antes de aplicar se vuelve a comprobar el conjunto de descargas, la identidad de Calibre y el contenido. No se crea un envío ficticio ni se alteran los EPUB, torrents o protecciones de limpieza.
+
+La comparación obtiene el formato almacenado mediante la orden de exportación de solo lectura de Calibre (`/cdb/cmd/export/0`), sin modificarlo. La descarga normal `/get/epub` puede incorporar metadata y portada y no se usa para identificar libros. Si el servidor o los permisos no permiten exportar el original, se informa del problema y no se acepta una copia transformada.
+
+El diagnóstico distingue entre ausencia de registros del cliente configurado, ausencia de EPUB completos y accesibles, diferencias tras comparar los originales, problemas al leer una descarga concreta y correspondencias ambiguas.
+
+El asistente permite **Cerrar** o usar Escape durante la comprobación o la aplicación. Cerrar también cancela el proceso en curso. Se detienen las siguientes entradas, se solicita la cancelación al servidor y se aborta la petición del navegador; las exportaciones en curso se interrumpen. Los cambios ya aplicados se conservan. Si se cierra durante una escritura, el libro en curso puede haberse completado: al reintentar se comprueba la misma entrada y no se vuelve a importar.
+
+La prueba opcional `CalibreIdentifiersRealTests` utiliza `calibredb` y `calibre-server` reales con una biblioteca temporal (`EPLSYNC_TEST_REAL_CALIBRE=1`). Importa un EPUB fuera de EPL Sync, comprueba el cambio de nombre y la transformación del servidor de contenido, verifica que la exportación original coincide byte por byte y ejecuta la previsualización, asignación y reintento sin simular la descarga de Calibre.

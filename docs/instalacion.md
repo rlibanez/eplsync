@@ -159,3 +159,10 @@ migraciones publicadas. Crea una tabla de identificadores de solicitudes ya
 eliminadas para impedir su repetición; no altera los trabajos ni las operaciones
 pendientes existentes. La actualización desde el esquema de la 1.6.0 conserva
 los datos y solo aplica esa migración adicional.
+
+
+La asignación de identificadores ausentes en Calibre añade `V1_5_0_13`, sin
+modificar migraciones publicadas. Conserva los trabajos existentes y su identidad
+EPUB original; añade el UUID de Calibre y el seguimiento de la asignación y su
+confirmación. Los envíos antiguos reciben valores vacíos y no se modifican de
+forma automática por aplicar la migración.

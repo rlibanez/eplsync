@@ -1,3 +1,4 @@
+import { CompleteCalibreIdentifiers } from "./CompleteCalibreIdentifiers";
 import { useBookViewState } from "../catalog/useBookViewState";
 import {
   textOperatorProps,
@@ -544,6 +545,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
                     toolbar={false}
                   />
                 )}
+                <CompleteCalibreIdentifiers selected={selected} />
                 <CalibreRemovalLauncher selected={selected} />
               </>
             )

@@ -1,4 +1,14 @@
 {
+  "calibreIdentifiers": {
+    "books": "Libros",
+    "revision": "Revisión",
+    "open": "Completar identificadores",
+    "help": "Se comparará el EPUB de Calibre con el archivo enviado desde EPL Sync o con los EPUB disponibles en Descargas. Los archivos EPUB no se modificarán.",
+    "apply": "Completar seleccionados",
+    "progress": "Comprobando identificadores",
+    "select": "Seleccionar Calibre ID",
+    "failed": "No se pudo comprobar o actualizar la entrada de Calibre"
+  },
   "telegram": {
     "description": "Recibe avisos de tus operaciones aunque EPL Sync no esté abierto en el navegador.",
     "enabled": "Activar notificaciones de Telegram",

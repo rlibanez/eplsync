@@ -2190,3 +2190,8 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
   .home-task-list > li { row-gap: 10px; }
   .home-task-facts { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 16px; margin: 0; }
 }
+
+/* Match the checkbox list used by the Calibre send assistant. */
+.identifier-preview-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--mantine-spacing-sm); max-height: 55vh; overflow-y: auto; }
+.identifier-preview-list > li { min-width: 0; overflow-wrap: anywhere; }
+.identifier-preview-list .mantine-Checkbox-labelWrapper { min-width: 0; }

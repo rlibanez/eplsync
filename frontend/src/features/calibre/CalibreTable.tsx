@@ -1,3 +1,4 @@
+import { CompleteCalibreIdentifiers } from "./CompleteCalibreIdentifiers";
 import { BookLink } from "../catalog/BookLink";
 import { CalibreRemovalLauncher } from "../cleanup/RevisionCleanup";
 import { TableAction } from "../../components/TableAction";
@@ -41,7 +42,7 @@ export const calibreColumns: TableColumn[] = [
   {
     field: "actions",
     label: "historyActions.actions",
-    width: 110,
+    width: 160,
     sortable: false,
   },
 ];
@@ -149,7 +150,9 @@ export function CalibreTable({
                     {book.eplId ? (
                       book.presence === "PRESENT" &&
                       auth.can("CATALOG_READ") ? (
-                        <BookLink to={`/catalog/${book.eplId}`}>{book.eplId}</BookLink>
+                        <BookLink to={`/catalog/${book.eplId}`}>
+                          {book.eplId}
+                        </BookLink>
                       ) : (
                         book.eplId
                       )
@@ -225,6 +228,10 @@ export function CalibreTable({
                           inline
                         />
                       )}
+                      <CompleteCalibreIdentifiers
+                        selected={[book.calibreId]}
+                        inline
+                      />
                       <CalibreRemovalLauncher
                         selected={[book.calibreId]}
                         inline

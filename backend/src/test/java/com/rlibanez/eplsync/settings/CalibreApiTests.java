@@ -24,6 +24,11 @@ class CalibreApiTests {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.update("DELETE FROM app_settings WHERE setting_key='calibre.connection'");
     }
+    @Test @WithMockUser(authorities={"CALIBRE_READ"}) void identifierChangesRequireWriteAndDownloadPermissions() throws Exception {
+        for(String action:java.util.List.of("preview","apply","cancel")) mvc.perform(post("/api/calibre/identifiers/"+action).with(csrf()).contentType("application/json").content("{\"calibreId\":9}"))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(client);
+    }
     @Test @WithMockUser(authorities={"CATALOG_READ"}) void restrictsSettingsChecksAndBooks() throws Exception {
         mvc.perform(get("/api/settings/calibre")).andExpect(status().isForbidden());
         mvc.perform(get("/api/settings/calibre/books")).andExpect(status().isForbidden());
