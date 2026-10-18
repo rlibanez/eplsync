@@ -546,13 +546,14 @@ export function DownloadActions({
                     : status(item.status)}
               </strong>
               {item.message && <p className="muted">{item.message}</p>}
-              {item.blockingCalibreJobId && (
-                <Link
-                  to={`/calibre/jobs/${encodeURIComponent(item.blockingCalibreJobId)}`}
-                >
-                  {t("calibreUpdateSend.calibreJob")}
-                </Link>
-              )}
+              {item.blockingCalibreJobId &&
+                (can("CALIBRE_SEND") || can("CALIBRE_JOBS_MANAGE")) && (
+                  <Link
+                    to={`/calibre/jobs/${encodeURIComponent(item.blockingCalibreJobId)}`}
+                  >
+                    {t("calibreUpdateSend.calibreJob")}
+                  </Link>
+                )}
             </li>
           ))}
         </ul>

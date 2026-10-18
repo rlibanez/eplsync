@@ -38,8 +38,8 @@ public class RevisionCleanup {
     public record Job(String id,String source,String action,String state,String result,String message,String username,String library,
         boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain) {}
     public record Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,
-        List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId) {
-        public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,null);}
+        List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention) {
+        public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,null,null);}
     }
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(RevisionCleanup.class);
     private static final int LIMIT=1000;
@@ -143,13 +143,13 @@ public class RevisionCleanup {
     }
     public PageResponse<Item> items(String id,int page,int size) {return items(id,page,size,new org.springframework.util.LinkedMultiValueMap<>());}
     public PageResponse<Item> items(String id,int page,int size,org.springframework.util.MultiValueMap<String,String> filters) {
-        get(id);com.rlibanez.eplsync.config.QueryLimits.page(page,size);
+        var currentJob=get(id);com.rlibanez.eplsync.config.QueryLimits.page(page,size);
         var where=new StringBuilder(" WHERE job_id=?");var args=new ArrayList<Object>();args.add(id);
         JobItemFilters.append(where,args,filters,"book","title");
         JobItemFilters.states(where,args,filters.getFirst("state")==null?"":filters.getFirst("state"),filters.getFirst("statusOperator")==null?"eq":filters.getFirst("statusOperator"),Set.of("READY","EXCLUDED","PENDING","RUNNING","VERIFYING","SUCCEEDED","BLOCKED","FAILED","UNCERTAIN","SKIPPED","CANCELLED"));
         long total=jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items"+where,Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
-        return new PageResponse<>(jdbc.query("SELECT * FROM revision_cleanup_items"+where+" ORDER BY position LIMIT ? OFFSET ?",this::item,args.toArray()).stream().map(this::withBlocker).toList(),meta(page,size,total));
+        return new PageResponse<>(jdbc.query("SELECT * FROM revision_cleanup_items"+where+" ORDER BY position LIMIT ? OFFSET ?",this::item,args.toArray()).stream().map(row->withBlocker(row,currentJob)).toList(),meta(page,size,total));
     }
     private static PageResponse.PageMeta meta(int page,int size,long total) {int pages=(int)((total+size-1)/size);return new PageResponse.PageMeta(page,size,total,pages,page==0,page>=pages-1,page+1<pages,page>0);}
     private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"));}
@@ -157,10 +157,15 @@ public class RevisionCleanup {
         var formats=new ArrayList<String>();for(var format:json.readTree(r.getString("formats"))) formats.add(format.asString());
         return new Item(r.getString("id"),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title"),r.getString("revision"),r.getString("old_id"),r.getString("replacement_id"),r.getString("replacement_revision"),List.copyOf(formats),r.getString("state"),r.getString("message"),r.getBoolean("dispatched"),r.getString("old_hash"),r.getString("replacement_hash"));
     }
-    private Item withBlocker(Item row) {
+    private Item withBlocker(Item row,Job job) {
         if(!"BLOCKED".equals(row.state()) || row.oldHash()==null || row.message()==null || !row.message().contains("Calibre")) return row;
         var blocker=history.blockingCalibre(row.oldHash(),tracking.instanceId());
-        return new Item(row.id(),row.eplId(),row.title(),row.revision(),row.oldId(),row.replacementId(),row.replacementRevision(),row.formats(),row.state(),row.message(),row.dispatched(),row.oldHash(),row.replacementHash(),blocker==null?null:blocker.jobId());
+        if(blocker==null) return new Item(row.id(),row.eplId(),row.title(),row.revision(),row.oldId(),row.replacementId(),row.replacementRevision(),row.formats(),row.state(),"El envío a Calibre ya no bloquea este EPUB. Requiere tu intervención: vuelve a intentar la limpieza para comprobar las demás protecciones",row.dispatched(),row.oldHash(),row.replacementHash(),null,true);
+        boolean automatic=job.directRemoval() && !Set.of("PAUSED","CANCELLED").contains(job.state()) && !blocker.requiresIntervention()
+            && jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id=? AND download_id=? AND state='WAITING'",Long.class,"revision:"+job.id(),row.oldId())>0;
+        String detail=blocker.message();
+        if(!automatic && !blocker.requiresIntervention()) detail="No se puede borrar: el trabajo de Calibre sigue utilizando este EPUB. Requiere tu intervención: espera a que termine y vuelve a intentar la limpieza";
+        return new Item(row.id(),row.eplId(),row.title(),row.revision(),row.oldId(),row.replacementId(),row.replacementRevision(),row.formats(),row.state(),detail,row.dispatched(),row.oldHash(),row.replacementHash(),!(Permission.has(Permission.CALIBRE_SEND)||Permission.has(Permission.CALIBRE_JOBS_MANAGE))?null:blocker.jobId(),!automatic);
     }
     private static String revision(Object value) {return new BigDecimal(value.toString()).stripTrailingZeros().toPlainString();}
     private List<Item> candidates(String source,List<String> ids) {

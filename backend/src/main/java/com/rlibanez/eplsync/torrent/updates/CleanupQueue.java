@@ -326,21 +326,24 @@ public class CleanupQueue {
             save(entry,UpdateCleanup.State.REQUESTED,message);return true;
         }));}
     }
-    public record CalibreBlocker(String jobId,String message) {}
+    public record CalibreBlocker(String jobId,String message,boolean requiresIntervention) {}
     public CalibreBlocker blockingCalibre(String hash,String instance) {
         var rows=em.createNativeQuery("SELECT j.id,j.state,i.state FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id JOIN torrent_downloads d ON (d.id=i.record_id OR (d.epl_id=i.epl_id AND d.revision=CAST(i.revision AS REAL))) WHERE d.hash=:hash AND d.client_instance_id=:instance AND i.state IN ('PENDING','SENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','UNCERTAIN','CLEANUP_PENDING') AND (j.state NOT IN ('COMPLETED','CANCELLED') OR i.state='UNCERTAIN') AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='calibre' AND r.source_item_id=i.id) ORDER BY j.created_at,j.id,i.position")
             .setParameter("hash",hash).setParameter("instance",instance).setMaxResults(1).getResultList();
         if(rows.isEmpty()) return null;
         var row=(Object[])rows.getFirst();
         String state=Objects.toString(row[1]);
-        String reason=switch(Objects.toString(row[2])) {
+        String itemState=Objects.toString(row[2]);
+        boolean intervention=state.equals("PAUSED") || itemState.equals("BLOCKED_DOWNLOAD") || Set.of("COMPLETED","CANCELLED").contains(state);
+        String reason=switch(itemState) {
             case "SENDING" -> "se está enviando este EPUB";
             case "UNCERTAIN" -> "el envío de este EPUB está pendiente de verificación";
-            case "WAITING_DOWNLOAD","BLOCKED_DOWNLOAD" -> "este EPUB está pendiente de descarga o revisión";
+            case "WAITING_DOWNLOAD" -> "este EPUB está esperando a que termine su descarga";
+            case "BLOCKED_DOWNLOAD" -> "la descarga de este EPUB requiere revisión";
             case "CLEANUP_PENDING" -> "la actualización de este EPUB aún tiene una limpieza pendiente";
             default -> "este EPUB está pendiente de envío";
         };
-        return new CalibreBlocker(Objects.toString(row[0]),"No se puede borrar: el trabajo de Calibre "+(state.equals("PAUSED")?"está pausado y ":"sigue pendiente y ")+reason+". Reanuda o resuelve ese trabajo antes de borrar el torrent");
+        return new CalibreBlocker(Objects.toString(row[0]),"No se puede borrar: el trabajo de Calibre "+(state.equals("PAUSED")?"está pausado y ":"sigue pendiente y ")+reason+(intervention?". Requiere tu intervención: reanuda o resuelve ese trabajo; el borrado sigue protegido":". Esperando automáticamente: el borrado sigue protegido mientras termina ese trabajo"),intervention);
     }
     private void save(UpdateCleanup entry,UpdateCleanup.State state,String message) {
         synchronized(bulk) {

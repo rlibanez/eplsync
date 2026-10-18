@@ -90,15 +90,15 @@ export function BookActivity({ id }: { id: number }) {
       <div className="book-section-heading">
         <h2>{t("bookActivity.title")}</h2>
       </div>
-      <div className="table-toolbar">
-        <div className="catalog-table-controls">{columns.controls}</div>
-      </div>
       {query.isPending ? (
         <Loading />
       ) : query.isError ? (
         <Failure error={query.error} retry={() => query.refetch()} />
-      ) : (
+      ) : query.data.meta.totalItems === 0 ? null : (
         <>
+          <div className="table-toolbar">
+            <div className="catalog-table-controls">{columns.controls}</div>
+          </div>
           <div className="table-scroll">
             <table
               className="download-record-table"

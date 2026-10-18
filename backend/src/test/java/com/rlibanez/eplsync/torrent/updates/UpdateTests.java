@@ -170,9 +170,18 @@ class UpdateTests {
             verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
             assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.WAITING);
             assertThat(only(job.jobId()).getMessage()).contains("Calibre", "pausado", "pendiente de envío");
+            assertThat(queue.blockingCalibre(OLD,record.getClientInstanceId()).requiresIntervention()).isTrue();
+            jdbc.update("UPDATE calibre_jobs SET state='QUEUED' WHERE id='protect-job'");
+            assertThat(queue.blockingCalibre(OLD,record.getClientInstanceId()).requiresIntervention()).isFalse();
+            assertThat(queue.blockingCalibre(OLD,record.getClientInstanceId()).message()).contains("Esperando automáticamente");
+            jdbc.update("UPDATE calibre_job_items SET state='BLOCKED_DOWNLOAD' WHERE id='protect-item'");
+            assertThat(queue.blockingCalibre(OLD,record.getClientInstanceId()).requiresIntervention()).isTrue();
+            jdbc.update("UPDATE calibre_job_items SET state='PENDING' WHERE id='protect-item'");
+            jdbc.update("UPDATE calibre_jobs SET state='PAUSED' WHERE id='protect-job'");
+
             var outcome=historyActions.removeRecords(new HistoryActions.Removal(1L,List.of(record.getId()),true,"files",true,true));
             assertThat(outcome.items()).singleElement().satisfies(row->{
-                assertThat(row.blockingCalibreJobId()).isEqualTo("protect-job");
+                assertThat(row.blockingCalibreJobId()).isNull(); // This user cannot consult Calibre jobs.
                 assertThat(row.message()).contains("pausado", "pendiente de envío");
                 assertThat(row.historyDeleted()).isFalse();
             });

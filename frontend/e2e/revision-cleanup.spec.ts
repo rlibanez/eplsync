@@ -443,3 +443,104 @@ test("cleanup job summary keeps partial status, metrics and help readable on des
     page.getByText("Comprobar solo consulta", { exact: false }),
   ).toHaveCount(0);
 });
+
+for (const intervention of [false, true]) {
+  test(`cleanup explains ${intervention ? "manual intervention" : "automatic waiting"} and links to its blocking job`, async ({
+    page,
+  }) => {
+    await page.route("**/api/revision-cleanups/cleanup-job", (route) =>
+      route.fulfill({
+        json: {
+          ...job,
+          state: "COMPLETED",
+          result: "FAILED",
+          directRemoval: true,
+          selected: 1,
+          blocked: 1,
+        },
+      }),
+    );
+    await page.route("**/api/revision-cleanups/cleanup-job/items?**", (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              ...ready,
+              state: "BLOCKED",
+              message: "Este EPUB sigue pendiente de envío a Calibre",
+              blockingCalibreJobId: "protect-job",
+              blockingRequiresIntervention: intervention,
+            },
+          ],
+          meta: { ...meta, totalItems: 1 },
+        },
+      }),
+    );
+    await page.goto("/downloads/jobs/cleanup/cleanup-job");
+    await expect(
+      page.getByText(
+        intervention ? "Requiere tu intervención" : "Esperando automáticamente",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Ver trabajo de Calibre", exact: true }),
+    ).toHaveAttribute("href", "/calibre/jobs/protect-job");
+    await expect(
+      page.getByText("Este EPUB sigue pendiente de envío a Calibre", {
+        exact: true,
+      }),
+    ).toBeVisible();
+  });
+}
+
+test("cleanup hides Calibre work links without Calibre job permissions", async ({
+  page,
+}) => {
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        id: "reader",
+        username: "reader",
+        role: "USER",
+        permissions: ["CATALOG_READ", "TORRENT_SYNC", "TORRENT_JOBS_MANAGE"],
+        mustChangePassword: false,
+      },
+    }),
+  );
+  await page.route("**/api/revision-cleanups/cleanup-job", (route) =>
+    route.fulfill({
+      json: {
+        ...job,
+        state: "COMPLETED",
+        result: "FAILED",
+        directRemoval: true,
+        selected: 1,
+        blocked: 1,
+      },
+    }),
+  );
+  await page.route("**/api/revision-cleanups/cleanup-job/items?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            ...ready,
+            state: "BLOCKED",
+            message: "EPUB protegido por Calibre",
+            blockingCalibreJobId: "protect-job",
+            blockingRequiresIntervention: true,
+          },
+        ],
+        meta: { ...meta, totalItems: 1 },
+      },
+    }),
+  );
+  await page.goto("/downloads/jobs/cleanup/cleanup-job");
+  await expect(
+    page.getByText("Requiere tu intervención", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Ver trabajo de Calibre", exact: true }),
+  ).toHaveCount(0);
+});

@@ -1,3 +1,4 @@
+import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { togglePageSelection } from "../../components/pageSelection";
 import { useJobItemSearch } from "../jobs/JobItemSearch";
@@ -77,6 +78,7 @@ interface Item {
   message: string | null;
   dispatched: boolean;
   blockingCalibreJobId?: string | null;
+  blockingRequiresIntervention?: boolean | null;
 }
 const active = (job?: Job) =>
   !!job && ["QUEUED", "RUNNING"].includes(job.state);
@@ -567,6 +569,7 @@ function CleanupItems({
   toggle,
   rows,
   offset = 0,
+  jobState,
   direct = false,
   selected,
   onSelect,
@@ -575,6 +578,7 @@ function CleanupItems({
   toggle?: (key: string) => void;
   rows: Item[];
   offset?: number;
+  jobState?: string;
   direct?: boolean;
   selected?: string[];
   onSelect?: (ids: string[]) => void;
@@ -691,13 +695,20 @@ function CleanupItems({
                   {t(`revisionCleanup.states.${item.state}`)}
                 </Badge>
                 {item.message && <p className="muted">{item.message}</p>}
-                {item.blockingCalibreJobId && (
-                  <Link
-                    to={`/calibre/jobs/${encodeURIComponent(item.blockingCalibreJobId)}`}
-                  >
-                    {t("calibreUpdateSend.calibreJob")}
-                  </Link>
-                )}
+                <WorkWaiting
+                  state={item.state}
+                  jobState={jobState}
+                  intervention={item.blockingRequiresIntervention}
+                />
+                {item.blockingCalibreJobId &&
+                  (auth.can("CALIBRE_SEND") ||
+                    auth.can("CALIBRE_JOBS_MANAGE")) && (
+                    <Link
+                      to={`/calibre/jobs/${encodeURIComponent(item.blockingCalibreJobId)}`}
+                    >
+                      {t("calibreUpdateSend.calibreJob")}
+                    </Link>
+                  )}
               </td>
             </tr>
           ))}
@@ -1075,6 +1086,7 @@ export function CleanupJob() {
         <>
           <CleanupItems
             rows={rows.data.items}
+            jobState={data.state}
             direct={data.directRemoval}
             offset={page * 20}
           />

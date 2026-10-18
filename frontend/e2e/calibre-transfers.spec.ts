@@ -621,3 +621,89 @@ for (const allUnavailable of [false, true])
       expect(submitted).toBe(1);
     }
   });
+
+for (const [state, label] of [
+  ["WAITING_DOWNLOAD", "Esperando automáticamente"],
+  ["BLOCKED_DOWNLOAD", "Requiere tu intervención"],
+]) {
+  test(`Calibre explains ${state} with its download job`, async ({ page }) => {
+    await jobRoutes(page);
+    await page.route("**/api/calibre/transfers/job/items?**", (route) =>
+      route.fulfill({
+        json: {
+          items: [
+            {
+              id: "waiting",
+              position: 0,
+              recordId: "1",
+              index: 0,
+              name: "Libro.epub",
+              size: 0,
+              eplId: 1,
+              revision: "1",
+              state,
+              calibreId: null,
+              message: "EPUB pendiente de descarga",
+              downloadJobId: "download-job",
+              coverAvailable: false,
+            },
+          ],
+          meta: { ...meta, totalItems: 1 },
+        },
+      }),
+    );
+    await page.goto("/calibre/jobs/job");
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Ver trabajo de descargas", exact: true }),
+    ).toHaveAttribute("href", "/downloads/jobs/download-job");
+  });
+}
+
+test("Calibre hides download work links without Torrent job permissions", async ({
+  page,
+}) => {
+  await jobRoutes(page);
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        id: "reader",
+        username: "reader",
+        role: "USER",
+        permissions: ["CATALOG_READ", "CALIBRE_JOBS_MANAGE"],
+        mustChangePassword: false,
+      },
+    }),
+  );
+  await page.route("**/api/calibre/transfers/job/items?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: "waiting",
+            position: 0,
+            recordId: "1",
+            index: 0,
+            name: "Libro.epub",
+            size: 0,
+            eplId: 1,
+            revision: "1",
+            state: "WAITING_DOWNLOAD",
+            calibreId: null,
+            message: "EPUB pendiente de descarga",
+            downloadJobId: "download-job",
+            coverAvailable: false,
+          },
+        ],
+        meta: { ...meta, totalItems: 1 },
+      },
+    }),
+  );
+  await page.goto("/calibre/jobs/job");
+  await expect(
+    page.getByText("Esperando automáticamente", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Ver trabajo de descargas", exact: true }),
+  ).toHaveCount(0);
+});

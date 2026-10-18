@@ -201,7 +201,10 @@ test("activity errors remain within the new section and can be retried", async (
   await activity
     .getByRole("button", { name: "Reintentar", exact: true })
     .click();
-  await expect(activity).toContainText(
-    "No hay actividad disponible con estos filtros.",
-  );
+  await expect(
+    activity.getByRole("heading", { name: "Actividad del libro", exact: true }),
+  ).toBeVisible();
+  await expect(activity.getByRole("alert")).toHaveCount(0);
+  await expect(activity.getByRole("table")).toHaveCount(0);
+  await expect(activity.locator(".table-toolbar, .pagination")).toHaveCount(0);
 });

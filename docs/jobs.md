@@ -130,3 +130,16 @@ sus elementos y su historial de intentos. Conserva torrents, archivos, registros
 de Descargas, libros de Calibre, Eventos y resultados de tareas programadas.
 Se mantienen las marcas mínimas necesarias para impedir que una petición antigua
 vuelva a enviar o borrar al desaparecer el historial del trabajo.
+
+## Esperas y bloqueos
+
+Los detalles de los trabajos distinguen **Esperando automáticamente** de
+**Requiere tu intervención**. El motivo explica qué impide continuar. Si se conoce
+el trabajo relacionado, se ofrece su enlace, sujeto a los permisos de consulta.
+
+Una descarga pendiente o una verificación que el trabajador sigue comprobando no
+requiere un reintento manual. Un trabajo pausado, una descarga pendiente de revisión,
+un fallo o un borrado sin confirmar que no se está verificando sí requieren revisión.
+El estado de espera no autoriza nuevos envíos ni borrados ni evita las comprobaciones
+de identidad y archivos compartidos. Una limpieza detenida puede necesitar un nuevo
+intento aunque el trabajo que la bloqueaba ya haya terminado.

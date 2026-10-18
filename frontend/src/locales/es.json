@@ -1971,5 +1971,9 @@
     "removed": "Eliminado",
     "allowed": "Se puede eliminar",
     "related": "Ver trabajo relacionado"
+  },
+  "workWaiting": {
+    "automatic": "Esperando automáticamente",
+    "intervention": "Requiere tu intervención"
   }
 }

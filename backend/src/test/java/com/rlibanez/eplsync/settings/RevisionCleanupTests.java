@@ -381,9 +381,19 @@ class RevisionCleanupTests {
         var job=cleanup.removeSelected(removal("files",true));cleanup.cycle();
         assertThat(item(job).state()).isEqualTo("BLOCKED");assertThat(item(job).message()).contains("pausado");
         assertThat(item(job).blockingCalibreJobId()).isEqualTo("protect");
+        assertThat(item(job).blockingRequiresIntervention()).isTrue();
+        var restricted=List.of(new SimpleGrantedAuthority("TORRENT_SYNC"));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,restricted));
+        assertThat(item(job).blockingCalibreJobId()).isNull();
+        assertThat(item(job).blockingRequiresIntervention()).isTrue();
+        login(owner);
+
         verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
         assertThatThrownBy(()->cleanup.removeSelected(removal("files",true))).hasMessageContaining("ya tiene un trabajo");
         jdbc.update("UPDATE calibre_job_items SET state='ACCEPTED' WHERE id='protect-item'");jdbc.update("UPDATE calibre_jobs SET state='COMPLETED' WHERE id='protect'");
+        assertThat(item(job).message()).contains("ya no bloquea", "vuelve a intentar");
+        assertThat(item(job).blockingCalibreJobId()).isNull();
+        assertThat(item(job).blockingRequiresIntervention()).isTrue();
         cleanup.control(job.id(),"continue");cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
         verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
     }

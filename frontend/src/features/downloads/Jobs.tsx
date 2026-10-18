@@ -1,3 +1,4 @@
+import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import {
   pageSelection,
@@ -910,7 +911,13 @@ export function JobDetail() {
                             </button>
                           </td>,
                           <td>{item.attempts}</td>,
-                          <td>{item.message || "—"}</td>,
+                          <td>
+                            {item.message || "—"}
+                            <WorkWaiting
+                              state={item.status}
+                              jobState={data?.status}
+                            />
+                          </td>,
                         ],
                         page * size + rowIndex + 1,
                       )}

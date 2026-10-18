@@ -1,3 +1,4 @@
+import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import {
   pageSelection,
@@ -876,6 +877,10 @@ export function CalibreJobDetail() {
                                   />
                                 </>
                               )}
+                            <WorkWaiting
+                              state={item.state}
+                              jobState={value.state}
+                            />
                             {item.downloadJobId &&
                               can("TORRENT_JOBS_MANAGE") && (
                                 <>

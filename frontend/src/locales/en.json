@@ -1971,5 +1971,9 @@
     "removed": "Deleted",
     "allowed": "Can be deleted",
     "related": "View related job"
+  },
+  "workWaiting": {
+    "automatic": "Waiting automatically",
+    "intervention": "Requires your attention"
   }
 }

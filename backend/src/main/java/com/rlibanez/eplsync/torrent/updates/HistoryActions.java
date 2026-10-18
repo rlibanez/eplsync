@@ -204,7 +204,7 @@ public class HistoryActions {
     public CleanupQueue.CalibreBlocker blockingCalibre(String hash,String instance) {return queue.blockingCalibre(hash,instance);}
     private String blockingJob(DownloadRecord row) {
         var blocker=queue.blockingCalibre(row.getHash(),row.getClientInstanceId());
-        return blocker==null?null:blocker.jobId();
+        return blocker==null || !(Permission.has(Permission.CALIBRE_SEND)||Permission.has(Permission.CALIBRE_JOBS_MANAGE))?null:blocker.jobId();
     }
     private Result result(List<String> ids) {
         return new Result(downloads.findAllById(ids).stream().map(r -> new Item(r.getId(),r.getStatus(),null,null)).toList());
