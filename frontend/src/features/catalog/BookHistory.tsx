@@ -1,3 +1,8 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
+import {
+  pageSelection,
+  togglePageSelection,
+} from "../../components/pageSelection";
 import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
 import { Group } from "@mantine/core";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
@@ -71,7 +76,8 @@ export function BookHistory({ id }: { id: number }) {
       defaults: "revision,desc",
       selection: selectable,
       hidden: can("DOWNLOADS_FILES_READ") ? [] : ["actions"],
-    }, (page + 1) * size,
+    },
+    (page + 1) * size,
   );
   const result = useQuery<Page<HistoryItem>>({
     queryKey: ["book-history", id, page, size, sort],
@@ -83,7 +89,13 @@ export function BookHistory({ id }: { id: number }) {
         signal,
       ),
   });
-  useEffect(() => setSelected([]), [page, size, sort, id]);
+  const selectRange = useRangeSelection(
+    result.data?.items.map((row) => row.id) ?? [],
+    (ids, checked) =>
+      setSelected((current) => togglePageSelection(current, ids, checked)),
+    `${id}:${page}:${size}:${sort}`,
+  );
+  useEffect(() => setSelected([]), [sort, id]);
   useEffect(() => {
     if (result.data)
       setPage((current) =>
@@ -133,26 +145,18 @@ export function BookHistory({ id }: { id: number }) {
                       <th className="history-selection">
                         <Checkbox
                           aria-label={t("historyActions.selectPage")}
-                          checked={
-                            result.data.items.length > 0 &&
-                            result.data.items.every((r) =>
-                              selected.includes(r.id),
-                            )
-                          }
-                          indeterminate={
-                            selected.length > 0 &&
-                            !result.data.items.every((r) =>
-                              selected.includes(r.id),
-                            )
-                          }
+                          {...pageSelection(
+                            selected,
+                            result.data.items.map((row) => row.id),
+                          )}
                           disabled={!result.data.items.length}
-                          onChange={(e) =>
-                            setSelected(
-                              e.currentTarget.checked
-                                ? result.data.items.map((r) => r.id)
-                                : [],
-                            )
-                          }
+                          onChange={(e) => {
+                            const checked = e.currentTarget.checked;
+                            const ids = result.data.items.map((row) => row.id);
+                            setSelected((current) =>
+                              togglePageSelection(current, ids, checked),
+                            );
+                          }}
                         />
                       </th>
                     ),
@@ -168,41 +172,38 @@ export function BookHistory({ id }: { id: number }) {
                               revision: revision(item.revision),
                             })}
                             checked={selected.includes(item.id)}
-                            onChange={(e) => {
-                              const checked = e.currentTarget.checked;
-                              setSelected((previous) =>
-                                checked
-                                  ? [...previous, item.id]
-                                  : previous.filter((id) => id !== item.id),
-                              );
-                            }}
+                            onMouseDown={selectRange.preventTextSelection}
+                            onChange={(e) => selectRange(item.id, e)}
                           />
                         </td>
                       )}
-                      {columns.cells([
-                        <td>{revision(item.revision)}</td>,
-                        <td>
-                          <span className="badge">{status(item.status)}</span>
-                        </td>,
-                        <td title={item.clientInstanceId}>
-                          {item.client || "—"}
-                          <small className="hash-text">{item.origin}</small>
-                        </td>,
-                        <td>{date(item.lastCheckedAt)}</td>,
-                        <td>{date(item.completedAt)}</td>,
-                        <td>
-                          <small className="hash-text" title={item.hash}>
-                            {item.hash || "—"}
-                          </small>
-                        </td>,
-                        <td>{item.lastError || "—"}</td>,
-                        <td>
-                          <Group gap={4} wrap="nowrap">
-                            <EpubDownload id={item.id} />
-                            <SendToCalibre ids={[item.id]} inline />
-                          </Group>
-                        </td>,
-                      ], page * size + rowIndex + 1)}
+                      {columns.cells(
+                        [
+                          <td>{revision(item.revision)}</td>,
+                          <td>
+                            <span className="badge">{status(item.status)}</span>
+                          </td>,
+                          <td title={item.clientInstanceId}>
+                            {item.client || "—"}
+                            <small className="hash-text">{item.origin}</small>
+                          </td>,
+                          <td>{date(item.lastCheckedAt)}</td>,
+                          <td>{date(item.completedAt)}</td>,
+                          <td>
+                            <small className="hash-text" title={item.hash}>
+                              {item.hash || "—"}
+                            </small>
+                          </td>,
+                          <td>{item.lastError || "—"}</td>,
+                          <td>
+                            <Group gap={4} wrap="nowrap">
+                              <EpubDownload id={item.id} />
+                              <SendToCalibre ids={[item.id]} inline />
+                            </Group>
+                          </td>,
+                        ],
+                        page * size + rowIndex + 1,
+                      )}
                     </tr>
                   ))}
                 </tbody>

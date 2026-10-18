@@ -1,3 +1,5 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
+import { togglePageSelection } from "../../components/pageSelection";
 import { BookLink } from "../catalog/BookLink";
 import { stateOperatorProps } from "../../components/StateOperator";
 import { PageTitle } from "../../components/PageTitle";
@@ -212,6 +214,12 @@ export function RevisionUpdates() {
     (page + 1) * size,
   );
   const rows = result.data?.items ?? [];
+  const selectRange = useRangeSelection(
+    rows.map((row) => row.eplId),
+    (ids, checked) =>
+      setSelected((current) => togglePageSelection(current, ids, checked)),
+    `${page}:${size}:${sort}:${registeredStatus}:${excluded}:${search?.generation}`,
+  );
   const allChecked =
     rows.length > 0 && rows.every((row) => selected.includes(row.eplId));
   return (
@@ -362,9 +370,8 @@ export function RevisionUpdates() {
                           <Checkbox
                             aria-label={`EPL ${row.eplId}`}
                             checked={selected.includes(row.eplId)}
-                            onChange={(e) =>
-                              toggle(row.eplId, e.currentTarget.checked)
-                            }
+                            onMouseDown={selectRange.preventTextSelection}
+                            onChange={(e) => selectRange(row.eplId, e)}
                           />
                         </td>
                       )}

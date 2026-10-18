@@ -1,3 +1,5 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
+import { togglePageSelection } from "../../components/pageSelection";
 import { PreviewHeading, usePreviewSort } from "../../components/PreviewSort";
 import { RowNumberCell, RowNumberHeading } from "../../components/RowNumber";
 import {
@@ -93,6 +95,17 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
   const sorting = usePreviewSort(previewFiles, () => setFilePage(0));
   const displayed = sorting.sorted(
     (file, field) => file[field as "name" | "eplId" | "revision" | "message"],
+  );
+  const selectRange = useRangeSelection(
+    displayed
+      .slice(filePage * 20, (filePage + 1) * 20)
+      .filter((file) => file.index >= 0)
+      .map(key),
+    (ids, checked) => {
+      setRequestId(requestIdentifier());
+      setChosen((current) => togglePageSelection(current, ids, checked));
+    },
+    `${opened}:${filePage}:${JSON.stringify(sorting.order)}`,
   );
   const send = useMutation({
     mutationFn: () =>
@@ -261,17 +274,8 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                                   aria-label={`${file.name} · EPL ID ${file.eplId} · ${t("downloads.revision")} ${revision(file.revision)}`}
                                   checked={chosenSet.has(key(file))}
                                   disabled={send.isPending || file.index < 0}
-                                  onChange={(e) => {
-                                    const checked = e.currentTarget.checked;
-                                    setRequestId(requestIdentifier());
-                                    setChosen((previous) =>
-                                      checked
-                                        ? [...previous, key(file)]
-                                        : previous.filter(
-                                            (value) => value !== key(file),
-                                          ),
-                                    );
-                                  }}
+                                  onMouseDown={selectRange.preventTextSelection}
+                                  onChange={(e) => selectRange(key(file), e)}
                                 />
                               </td>
                               <RowNumberCell

@@ -564,6 +564,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               excludedFields={excludedFields}
               columns={columns}
               selected={selectable ? selected : undefined}
+              selectionScope={`${params}:${sort}:${updates}`}
               onSelection={setSelected}
             />
             <Paging

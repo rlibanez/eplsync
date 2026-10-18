@@ -1,3 +1,4 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
 import { rowNumberWidth } from "../../components/RowNumber";
 import type { Metadata } from "../maintenance/CatalogMetadata";
 import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
@@ -98,8 +99,10 @@ export function Catalog() {
     widths: Partial<Record<Column, number>>;
   } | null>(null);
   const columnWidth = (key: Column) =>
-    key === "rowNumber" ? rowNumberWidth(lastRowNumber) : columns.settings.widths[key] ??
-    (key === "selection" ? 70 : key === "title" ? 320 : 180);
+    key === "rowNumber"
+      ? rowNumberWidth(lastRowNumber)
+      : (columns.settings.widths[key] ??
+        (key === "selection" ? 70 : key === "title" ? 320 : 180));
   const resized = Object.keys(columns.settings.widths).length > 0;
   const [search, setSearch] = useSearchParams();
   useEffect(() => {
@@ -118,10 +121,13 @@ export function Catalog() {
         signal,
       ),
   });
-  const lastRowNumber = Number(params.get("page") ?? 0) * Number(params.get("size") ?? 20) + (result.data?.items.length ?? 1);
+  const lastRowNumber =
+    Number(params.get("page") ?? 0) * Number(params.get("size") ?? 20) +
+    (result.data?.items.length ?? 1);
   const selection = useCatalogSelection(selectionQuery(params));
   const count = selection.count(result.data?.meta.totalItems ?? 0);
   const pageIds = result.data?.items.map((book) => book.eplId) ?? [];
+  const selectRange = useRangeSelection(pageIds, selection.toggle, query);
   const selectedOnPage = pageIds.filter(selection.isSelected).length;
   const [action, setAction] = useState<{
     type: "send";
@@ -369,8 +375,16 @@ export function Catalog() {
                       key={key}
                       data-column={key}
                       className={key === "rowNumber" ? "row-number" : undefined}
-                      style={key === "rowNumber" ? {minWidth: rowNumberWidth(lastRowNumber)} : undefined}
-                      title={key === "rowNumber" ? t("columns.rowNumberHelp") : undefined}
+                      style={
+                        key === "rowNumber"
+                          ? { minWidth: rowNumberWidth(lastRowNumber) }
+                          : undefined
+                      }
+                      title={
+                        key === "rowNumber"
+                          ? t("columns.rowNumberHelp")
+                          : undefined
+                      }
                       aria-sort={
                         ordering.includes(`${key},asc`)
                           ? "ascending"
@@ -394,7 +408,9 @@ export function Catalog() {
                             selection.toggle(pageIds, e.currentTarget.checked)
                           }
                         />
-                      ) : key === "rowNumber" ? t("columns.rowNumber") : (
+                      ) : key === "rowNumber" ? (
+                        t("columns.rowNumber")
+                      ) : (
                         <button
                           type="button"
                           className="catalog-sort-heading"
@@ -419,82 +435,86 @@ export function Catalog() {
                             )}
                         </button>
                       )}
-                      {key !== "rowNumber" && (<button
-                        className="column-resizer"
-                        type="button"
-                        aria-label={t("columns.resize", {
-                          column: t(columnLabels[key]),
-                        })}
-                        onPointerDown={(event) => {
-                          const header = event.currentTarget.closest("th")!;
-                          const widths = { ...columns.settings.widths };
-                          header
-                            .closest("table")!
-                            .querySelectorAll<HTMLElement>("th[data-column]")
-                            .forEach((cell) => {
-                              widths[cell.dataset.column as Column] =
-                                cell.getBoundingClientRect().width;
+                      {key !== "rowNumber" && (
+                        <button
+                          className="column-resizer"
+                          type="button"
+                          aria-label={t("columns.resize", {
+                            column: t(columnLabels[key]),
+                          })}
+                          onPointerDown={(event) => {
+                            const header = event.currentTarget.closest("th")!;
+                            const widths = { ...columns.settings.widths };
+                            header
+                              .closest("table")!
+                              .querySelectorAll<HTMLElement>("th[data-column]")
+                              .forEach((cell) => {
+                                widths[cell.dataset.column as Column] =
+                                  cell.getBoundingClientRect().width;
+                              });
+                            resize.current = {
+                              key,
+                              x: event.clientX,
+                              width: header.getBoundingClientRect().width,
+                              widths,
+                            };
+                            event.currentTarget.setPointerCapture(
+                              event.pointerId,
+                            );
+                            event.preventDefault();
+                          }}
+                          onPointerMove={(event) => {
+                            if (!resize.current) return;
+                            const drag = resize.current;
+                            columns.update({
+                              ...columns.settings,
+                              widths: {
+                                ...drag.widths,
+                                [drag.key]: Math.max(
+                                  70,
+                                  Math.min(
+                                    1200,
+                                    drag.width + event.clientX - drag.x,
+                                  ),
+                                ),
+                              },
                             });
-                          resize.current = {
-                            key,
-                            x: event.clientX,
-                            width: header.getBoundingClientRect().width,
-                            widths,
-                          };
-                          event.currentTarget.setPointerCapture(
-                            event.pointerId,
-                          );
-                          event.preventDefault();
-                        }}
-                        onPointerMove={(event) => {
-                          if (!resize.current) return;
-                          const drag = resize.current;
-                          columns.update({
-                            ...columns.settings,
-                            widths: {
-                              ...drag.widths,
-                              [drag.key]: Math.max(
-                                70,
-                                Math.min(
-                                  1200,
-                                  drag.width + event.clientX - drag.x,
+                          }}
+                          onPointerUp={() => {
+                            resize.current = null;
+                          }}
+                          onPointerCancel={() => {
+                            resize.current = null;
+                          }}
+                          onLostPointerCapture={() => {
+                            resize.current = null;
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              !["ArrowLeft", "ArrowRight"].includes(event.key)
+                            )
+                              return;
+                            event.preventDefault();
+                            const width = event.currentTarget
+                              .closest("th")!
+                              .getBoundingClientRect().width;
+                            columns.update({
+                              ...columns.settings,
+                              widths: {
+                                ...columns.settings.widths,
+                                [key]: Math.max(
+                                  70,
+                                  Math.min(
+                                    1200,
+                                    width +
+                                      (event.key === "ArrowRight" ? 20 : -20),
+                                  ),
                                 ),
-                              ),
-                            },
-                          });
-                        }}
-                        onPointerUp={() => {
-                          resize.current = null;
-                        }}
-                        onPointerCancel={() => {
-                          resize.current = null;
-                        }}
-                        onLostPointerCapture={() => {
-                          resize.current = null;
-                        }}
-                        onKeyDown={(event) => {
-                          if (!["ArrowLeft", "ArrowRight"].includes(event.key))
-                            return;
-                          event.preventDefault();
-                          const width = event.currentTarget
-                            .closest("th")!
-                            .getBoundingClientRect().width;
-                          columns.update({
-                            ...columns.settings,
-                            widths: {
-                              ...columns.settings.widths,
-                              [key]: Math.max(
-                                70,
-                                Math.min(
-                                  1200,
-                                  width +
-                                    (event.key === "ArrowRight" ? 20 : -20),
-                                ),
-                              ),
-                            },
-                          });
-                        }}
-                      />)}
+                              },
+                            });
+                          }}
+                        />
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -506,7 +526,11 @@ export function Catalog() {
                       <td
                         key={key}
                         className={
-                          key === "rowNumber" ? "row-number" : key === "title" ? "catalog-title-cell" : undefined
+                          key === "rowNumber"
+                            ? "row-number"
+                            : key === "title"
+                              ? "catalog-title-cell"
+                              : undefined
                         }
                       >
                         {key === "selection" ? (
@@ -515,15 +539,14 @@ export function Catalog() {
                               title: book.title,
                             })}
                             checked={selection.isSelected(book.eplId)}
-                            onChange={(e) =>
-                              selection.toggle(
-                                [book.eplId],
-                                e.currentTarget.checked,
-                              )
-                            }
+                            onMouseDown={selectRange.preventTextSelection}
+                            onChange={(e) => selectRange(book.eplId, e)}
                           />
                         ) : key === "rowNumber" ? (
-                          Number(params.get("page") ?? 0) * Number(params.get("size") ?? 20) + rowIndex + 1
+                          Number(params.get("page") ?? 0) *
+                            Number(params.get("size") ?? 20) +
+                          rowIndex +
+                          1
                         ) : key === "title" ? (
                           <Link
                             className="book-title"

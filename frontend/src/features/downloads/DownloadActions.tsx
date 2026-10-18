@@ -1,3 +1,5 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
+import { togglePageSelection } from "../../components/pageSelection";
 import { PreviewHeading, usePreviewSort } from "../../components/PreviewSort";
 import { RowNumberCell, RowNumberHeading } from "../../components/RowNumber";
 import { Link, useNavigate } from "react-router-dom";
@@ -162,6 +164,14 @@ export function DownloadActions({
       onDone(request.ids);
     },
   });
+  const selectRange = useRangeSelection(
+    removalRows
+      .slice(removalPage * 20, (removalPage + 1) * 20)
+      .map((row) => row.id),
+    (ids, checked) =>
+      setIncluded((current) => togglePageSelection(current, ids, checked)),
+    `${removal}:${removalPage}:${JSON.stringify(removalSorting.order)}`,
+  );
   function selection(): Targets {
     return {
       eplId,
@@ -393,14 +403,8 @@ export function DownloadActions({
                               aria-label={`${t("filters.eplId")} ${row.eplId ?? targets.eplId} · ${row.hash}`}
                               checked={included.includes(row.id)}
                               disabled={action.isPending || detailsLoading}
-                              onChange={(event) => {
-                                const checked = event.currentTarget.checked;
-                                setIncluded((old) =>
-                                  checked
-                                    ? [...old, row.id]
-                                    : old.filter((id) => id !== row.id),
-                                );
-                              }}
+                              onMouseDown={selectRange.preventTextSelection}
+                              onChange={(event) => selectRange(row.id, event)}
                             />
                           </td>
                           <RowNumberCell value={removalPage * 20 + index + 1} />

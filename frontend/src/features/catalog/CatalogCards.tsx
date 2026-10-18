@@ -1,3 +1,4 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
 import { Checkbox, Tooltip } from "@mantine/core";
 import { useState } from "react";
 import { Link, type LinkProps } from "react-router-dom";
@@ -55,6 +56,11 @@ export function CatalogCards({
 }) {
   const { t } = useTranslation();
   const { number } = useLocale();
+  const selectRange = useRangeSelection(
+    books.map((book) => book.eplId),
+    toggle,
+    search,
+  );
   return (
     <div className={`catalog-cards catalog-cards-${view}`}>
       {books.map((book) => (
@@ -66,7 +72,8 @@ export function CatalogCards({
             className="catalog-card-selection"
             aria-label={t("selection.book", { title: book.title })}
             checked={isSelected(book.eplId)}
-            onChange={(e) => toggle([book.eplId], e.currentTarget.checked)}
+            onMouseDown={selectRange.preventTextSelection}
+            onChange={(e) => selectRange(book.eplId, e)}
           />
           <Link
             className="catalog-card-cover"

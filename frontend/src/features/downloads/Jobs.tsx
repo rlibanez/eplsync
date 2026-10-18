@@ -1,3 +1,8 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
+import {
+  pageSelection,
+  togglePageSelection,
+} from "../../components/pageSelection";
 import { useJobItemSearch } from "../jobs/JobItemSearch";
 import { useBookViewState } from "../catalog/useBookViewState";
 import { BookLink } from "../catalog/BookLink";
@@ -109,13 +114,17 @@ export function Jobs() {
         Math.min(current, Math.max(0, result.data.meta.totalPages - 1)),
       );
   }, [result.data]);
+  const selectionScope = new URLSearchParams(params);
+  selectionScope.delete("page");
+  selectionScope.delete("size");
   const deletion = useWorkDeletion(
     "downloads",
     (result.data?.items ?? []).map((job) => ({
       id: job.jobId,
       cleanup: job.type === "CLEANUP",
     })),
-    `${params}&${sort}`,
+    `${selectionScope}&${sort}`,
+    `${page}:${size}`,
   );
   async function refreshJobs() {
     const request = ++refreshRequest.current;
@@ -542,6 +551,12 @@ export function JobDetail() {
     (page + 1) * size,
   );
   const data = job.data;
+  const selectRange = useRangeSelection(
+    items.data?.items.map((row) => row.id) ?? [],
+    (ids, checked) =>
+      setSelected((current) => togglePageSelection(current, ids, checked)),
+    `${id}:${page}:${size}:${sort}:${filter}:${excluded}:${search.query}`,
+  );
   return (
     <>
       <WorkNavigation source="downloads" id={id} />
@@ -834,30 +849,17 @@ export function JobDetail() {
                       <th>
                         <Checkbox
                           aria-label={t("selection.page")}
-                          checked={
-                            !!items.data?.items.length &&
-                            items.data.items.every((row) =>
-                              selected.includes(row.id),
-                            )
-                          }
+                          {...pageSelection(
+                            selected,
+                            (items.data?.items ?? []).map((row) => row.id),
+                          )}
                           onChange={(e) => {
                             const checked = e.currentTarget.checked;
-                            setSelected((old) =>
-                              checked
-                                ? [
-                                    ...new Set([
-                                      ...old,
-                                      ...(items.data?.items ?? []).map(
-                                        (row) => row.id,
-                                      ),
-                                    ]),
-                                  ]
-                                : old.filter(
-                                    (id) =>
-                                      !items.data?.items.some(
-                                        (row) => row.id === id,
-                                      ),
-                                  ),
+                            const ids = (items.data?.items ?? []).map(
+                              (row) => row.id,
+                            );
+                            setSelected((current) =>
+                              togglePageSelection(current, ids, checked),
                             );
                           }}
                         />
@@ -873,14 +875,8 @@ export function JobDetail() {
                           <Checkbox
                             aria-label={`EPL ${item.eplId}`}
                             checked={selected.includes(item.id)}
-                            onChange={(e) => {
-                              const checked = e.currentTarget.checked;
-                              setSelected((old) =>
-                                checked
-                                  ? [...old, item.id]
-                                  : old.filter((id) => id !== item.id),
-                              );
-                            }}
+                            onMouseDown={selectRange.preventTextSelection}
+                            onChange={(e) => selectRange(item.id, e)}
                           />
                         </td>
                       )}

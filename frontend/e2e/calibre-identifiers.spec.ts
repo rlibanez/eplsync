@@ -660,3 +660,62 @@ test("identifier table keeps selection across pages and applies only eligible ch
   await expect(check(1)).not.toBeChecked();
   await expect(check(2)).toBeDisabled();
 });
+
+test("Shift ranges in the identifier preview skip protected rows", async ({
+  page,
+}) => {
+  await library(page);
+  await page.route("**/api/calibre/books?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [1, 2, 3, 4, 5].map((id) => ({
+          calibreId: id,
+          title: `Libro ${id}`,
+          authors: "Autor",
+          eplId: null,
+          revision: null,
+          comparison: "UNKNOWN",
+          presence: "UNIDENTIFIED",
+        })),
+        meta: {
+          page: 0,
+          size: 20,
+          totalItems: 5,
+          totalPages: 1,
+          hasNext: false,
+          hasPrevious: false,
+        },
+      },
+    }),
+  );
+  await page.route("**/api/calibre/identifiers/preview", (r) => {
+    const id = r.request().postDataJSON().calibreId;
+    return r.fulfill({
+      json: {
+        token: id === 3 ? null : String(id),
+        calibreId: id,
+        title: `Libro ${id}`,
+        eplId: id,
+        revision: "1",
+        allowed: id !== 3,
+        message: "Comprobado",
+      },
+    });
+  });
+  await page.goto("/calibre");
+  await page.locator("thead input[type=checkbox]").check();
+  await page
+    .locator(".selection-toolbar-actions")
+    .getByRole("button", { name: "Completar identificadores", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog"),
+    rows = dialog.locator("tbody input[type=checkbox]");
+  await expect(rows.nth(4)).toBeChecked();
+  await expect(rows.nth(2)).toBeDisabled();
+  await rows.nth(0).click();
+  await rows.nth(4).click({ modifiers: ["Shift"] });
+  for (const i of [0, 1, 3, 4]) await expect(rows.nth(i)).not.toBeChecked();
+  await rows.nth(0).click({ modifiers: ["Shift"] });
+  for (const i of [0, 1, 3, 4]) await expect(rows.nth(i)).toBeChecked();
+  await expect(rows.nth(2)).not.toBeChecked();
+});

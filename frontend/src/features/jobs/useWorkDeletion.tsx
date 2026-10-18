@@ -1,3 +1,4 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
 import { useEffect, useState } from "react";
 import { Alert, Button, Checkbox } from "@mantine/core";
 import { Trash2 } from "lucide-react";
@@ -24,6 +25,7 @@ export function useWorkDeletion(
   source: "downloads" | "calibre",
   rows: Ref[],
   context: string,
+  pageScope = "",
 ) {
   const { t } = useTranslation();
   const { can } = useAuth();
@@ -79,12 +81,21 @@ export function useWorkDeletion(
   }, [context]);
   const busy = mutation.isPending;
   const selectedKey = new Set(selected.map(key));
-  const toggle = (row: Ref, checked: boolean) =>
-    setSelected((current) =>
-      checked
-        ? [...current.filter((ref) => key(ref) !== key(row)), row]
-        : current.filter((ref) => key(ref) !== key(row)),
-    );
+  const selectRange = useRangeSelection(
+    available.map(key),
+    (ids, checked) => {
+      const keys = new Set(ids);
+      setSelected((current) =>
+        checked
+          ? [
+              ...current.filter((row) => !keys.has(key(row))),
+              ...available.filter((row) => keys.has(key(row))),
+            ]
+          : current.filter((row) => !keys.has(key(row))),
+      );
+    },
+    `${context}:${pageScope}`,
+  );
   const open = () => {
     setOpened(true);
     setFinished(false);
@@ -136,7 +147,8 @@ export function useWorkDeletion(
             aria-label={`${t("downloads.job")}: ${row.id}`}
             disabled={busy || !(row.cleanup ? clean : manage)}
             checked={selectedKey.has(key(row))}
-            onChange={(event) => toggle(row, event.currentTarget.checked)}
+            onMouseDown={selectRange.preventTextSelection}
+            onChange={(event) => selectRange(key(row), event)}
           />
         </td>
       ),

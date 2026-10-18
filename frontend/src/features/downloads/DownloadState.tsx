@@ -1,3 +1,8 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
+import {
+  pageSelection,
+  togglePageSelection,
+} from "../../components/pageSelection";
 import { useBookViewState } from "../catalog/useBookViewState";
 import { BookLink } from "../catalog/BookLink";
 import {
@@ -208,6 +213,12 @@ function DownloadHistory() {
       ],
     },
     (page + 1) * size,
+  );
+  const selectRange = useRangeSelection(
+    result.data?.items.map((row) => row.id) ?? [],
+    (ids, checked) =>
+      setSelected((current) => togglePageSelection(current, ids, checked)),
+    `${page}:${size}:${JSON.stringify(filters)}`,
   );
   return (
     <CalibreSendProvider>
@@ -427,26 +438,24 @@ function DownloadHistory() {
                               <th className="history-selection">
                                 <Checkbox
                                   aria-label={t("historyActions.selectPage")}
-                                  checked={
-                                    result.data.items.length > 0 &&
-                                    result.data.items.every((row) =>
-                                      selected.includes(row.id),
-                                    )
-                                  }
-                                  indeterminate={
-                                    selected.length > 0 &&
-                                    !result.data.items.every((row) =>
-                                      selected.includes(row.id),
-                                    )
-                                  }
+                                  {...pageSelection(
+                                    selected,
+                                    result.data.items.map((row) => row.id),
+                                  )}
                                   disabled={!result.data.items.length}
-                                  onChange={(event) =>
-                                    setSelected(
-                                      event.currentTarget.checked
-                                        ? result.data.items.map((row) => row.id)
-                                        : [],
-                                    )
-                                  }
+                                  onChange={(event) => {
+                                    const checked = event.currentTarget.checked;
+                                    const ids = result.data.items.map(
+                                      (row) => row.id,
+                                    );
+                                    setSelected((current) =>
+                                      togglePageSelection(
+                                        current,
+                                        ids,
+                                        checked,
+                                      ),
+                                    );
+                                  }}
                                 />
                               </th>
                             ),
@@ -463,17 +472,12 @@ function DownloadHistory() {
                                       revision: revision(d.revision),
                                     })}
                                     checked={selected.includes(d.id)}
-                                    onChange={(event) => {
-                                      const checked =
-                                        event.currentTarget.checked;
-                                      setSelected((previous) =>
-                                        checked
-                                          ? [...previous, d.id]
-                                          : previous.filter(
-                                              (id) => id !== d.id,
-                                            ),
-                                      );
-                                    }}
+                                    onMouseDown={
+                                      selectRange.preventTextSelection
+                                    }
+                                    onChange={(event) =>
+                                      selectRange(d.id, event)
+                                    }
                                   />
                                 </td>
                               )}

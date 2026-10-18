@@ -1,3 +1,8 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
+import {
+  pageSelection,
+  togglePageSelection,
+} from "../../components/pageSelection";
 import { CompleteCalibreIdentifiers } from "./CompleteCalibreIdentifiers";
 import { BookLink } from "../catalog/BookLink";
 import { CalibreRemovalLauncher } from "../cleanup/RevisionCleanup";
@@ -60,8 +65,10 @@ export function CalibreTable({
   excludedFields = ["downloadAvailability"],
   selected,
   onSelection,
+  selectionScope = "",
 }: {
   items: CalibreBook[];
+  selectionScope?: string;
   offset?: number;
   emptyMessage?: string;
   selected?: number[];
@@ -79,6 +86,12 @@ export function CalibreTable({
       auth.can("CALIBRE_DELETE")) &&
     selected !== undefined &&
     !!onSelection;
+  const selectRange = useRangeSelection(
+    items.map((row) => row.calibreId),
+    (ids, checked) =>
+      onSelection?.(togglePageSelection(selected ?? [], ids, checked)),
+    `${selectionScope}:${offset}:${columns.visible.join(",")}`,
+  );
   return (
     <div className="table-scroll">
       <table className="download-record-table" style={{ width: columns.width }}>
@@ -90,19 +103,17 @@ export function CalibreTable({
                 <Checkbox
                   aria-label={t("historyActions.selectPage")}
                   disabled={!items.length}
-                  checked={
-                    items.length > 0 &&
-                    items.every((b) => selected!.includes(b.calibreId))
-                  }
-                  indeterminate={
-                    selected!.length > 0 &&
-                    !items.every((b) => selected!.includes(b.calibreId))
-                  }
+                  {...pageSelection(
+                    selected!,
+                    items.map((row) => row.calibreId),
+                  )}
                   onChange={(e) =>
                     onSelection!(
-                      e.currentTarget.checked
-                        ? items.map((b) => b.calibreId)
-                        : [],
+                      togglePageSelection(
+                        selected!,
+                        items.map((row) => row.calibreId),
+                        e.currentTarget.checked,
+                      ),
                     )
                   }
                 />
@@ -125,13 +136,8 @@ export function CalibreTable({
                   <Checkbox
                     aria-label={t("calibre.selectBook", { id: book.calibreId })}
                     checked={selected!.includes(book.calibreId)}
-                    onChange={(e) =>
-                      onSelection!(
-                        e.currentTarget.checked
-                          ? [...selected!, book.calibreId]
-                          : selected!.filter((id) => id !== book.calibreId),
-                      )
-                    }
+                    onMouseDown={selectRange.preventTextSelection}
+                    onChange={(e) => selectRange(book.calibreId, e)}
                   />
                 </td>
               )}

@@ -1,3 +1,4 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
 import { PreviewHeading, usePreviewSort } from "../../components/PreviewSort";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -47,6 +48,19 @@ export function CompleteCalibreIdentifiers({
     (row) => row.allowed && row.checked && !row.done,
   ).length;
   const pageSize = 20;
+  const selectRange = useRangeSelection(
+    displayed
+      .slice(page * pageSize, (page + 1) * pageSize)
+      .filter((row) => row.allowed && !row.done)
+      .map((row) => row.calibreId),
+    (ids, checked) =>
+      setRows((current) =>
+        current.map((row) =>
+          ids.includes(row.calibreId) ? { ...row, checked } : row,
+        ),
+      ),
+    `${opened}:${page}:${JSON.stringify(sorting.order)}`,
+  );
   const pages = Math.ceil(rows.length / pageSize);
   type Run = { id: string; abort: AbortController };
   const running = useRef<Run | null>(null);
@@ -286,16 +300,10 @@ export function CompleteCalibreIdentifiers({
                           aria-label={`${t("calibreIdentifiers.select")} ${row.calibreId}`}
                           checked={!!row.checked}
                           disabled={busy || !row.allowed || row.done}
-                          onChange={(event) => {
-                            const checked = event.currentTarget.checked;
-                            setRows((old) =>
-                              old.map((item) =>
-                                item.calibreId === row.calibreId
-                                  ? { ...item, checked }
-                                  : item,
-                              ),
-                            );
-                          }}
+                          onMouseDown={selectRange.preventTextSelection}
+                          onChange={(event) =>
+                            selectRange(row.calibreId, event)
+                          }
                         />
                       </td>
                       <RowNumberCell value={page * pageSize + index + 1} />

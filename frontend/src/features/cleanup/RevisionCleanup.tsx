@@ -1,3 +1,5 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
+import { togglePageSelection } from "../../components/pageSelection";
 import { useJobItemSearch } from "../jobs/JobItemSearch";
 import { useBookViewState } from "../catalog/useBookViewState";
 import { stateOperatorProps } from "../../components/StateOperator";
@@ -579,6 +581,12 @@ function CleanupItems({
 }) {
   const { t } = useTranslation();
   const auth = useAuth();
+  const selectRange = useRangeSelection(
+    rows.filter((row) => row.state === "READY").map((row) => row.id),
+    (ids, checked) =>
+      onSelect?.(togglePageSelection(selected ?? [], ids, checked)),
+    `${offset}:${JSON.stringify(order)}`,
+  );
   return (
     <div className="table-scroll revision-cleanup-table">
       <table>
@@ -627,13 +635,8 @@ function CleanupItems({
                     })}
                     checked={selected?.includes(item.id) || false}
                     disabled={item.state !== "READY"}
-                    onChange={(event) =>
-                      onSelect(
-                        event.currentTarget.checked
-                          ? [...selected!, item.id]
-                          : selected!.filter((id) => id !== item.id),
-                      )
-                    }
+                    onMouseDown={selectRange.preventTextSelection}
+                    onChange={(event) => selectRange(item.id, event)}
                   />
                 </td>
               )}

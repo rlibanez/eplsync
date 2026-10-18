@@ -29,7 +29,7 @@ export function BookCalibre({ book }: { book: Book }) {
     [size, setSize] = useState(20);
   const selectable = useAuth().can("CALIBRE_FILES_READ");
   const [selected, setSelected] = useState<number[]>([]);
-  useEffect(() => setSelected([]), [book.eplId, page, size, sort]);
+  useEffect(() => setSelected([]), [book.eplId, sort]);
   const pageSizeChoice = usePageSizeChoice(size);
   const columns = useDownloadColumns(
     "eplsync.book-calibre.columns",
@@ -42,7 +42,8 @@ export function BookCalibre({ book }: { book: Book }) {
     {
       defaults: "revision,desc",
       selection: selectable,
-    }, (page + 1) * size,
+    },
+    (page + 1) * size,
   );
   const result = useQuery<Page<CalibreBook>>({
     queryKey: ["calibre-library", book.eplId, page, size, sort],
@@ -55,14 +56,6 @@ export function BookCalibre({ book }: { book: Book }) {
       ),
     enabled: !!book.calibre && book.calibre.totalItems > 0,
   });
-  useEffect(() => {
-    if (result.data)
-      setSelected((previous) =>
-        previous.filter((id) =>
-          result.data.items.some((item) => item.calibreId === id),
-        ),
-      );
-  }, [result.data]);
   return (
     <section className="panel book-calibre">
       <div className="book-section-heading">
@@ -97,6 +90,7 @@ export function BookCalibre({ book }: { book: Book }) {
               items={result.data.items}
               columns={columns}
               selected={selectable ? selected : undefined}
+              selectionScope={`${book.eplId}:${sort}`}
               onSelection={setSelected}
               showCovers={false}
               excludedFields={excludedFields}

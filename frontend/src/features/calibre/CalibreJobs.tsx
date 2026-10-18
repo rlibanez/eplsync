@@ -1,3 +1,8 @@
+import { useRangeSelection } from "../../components/useRangeSelection";
+import {
+  pageSelection,
+  togglePageSelection,
+} from "../../components/pageSelection";
 import { useJobItemSearch } from "../jobs/JobItemSearch";
 import { useBookViewState } from "../catalog/useBookViewState";
 import { BookLink } from "../catalog/BookLink";
@@ -208,7 +213,8 @@ export function CalibreJobs() {
       id: job.id,
       cleanup: job.type === "CLEANUP",
     })),
-    `${page}&${size}&${state}&${excluded}&${type}&${excludeType}&${username}&${from}&${to}&${sort}`,
+    `${state}&${excluded}&${type}&${excludeType}&${username}&${from}&${to}&${sort}`,
+    `${page}:${size}`,
   );
   const columns = useDownloadColumns(
     "eplsync.calibre.jobs.columns",
@@ -567,10 +573,17 @@ export function CalibreJobDetail() {
     },
     (page + 1) * size,
   );
+  const selectRange = useRangeSelection(
+    result.data?.items.map((row) => row.id) ?? [],
+    (ids, checked) =>
+      setSelected((current) => togglePageSelection(current, ids, checked)),
+    `${id}:${page}:${size}:${sort}:${itemState}:${excluded}:${itemDetail}:${itemSearch.query}`,
+  );
   if (job.isPending) return <Loading />;
   if (job.isError)
     return <Failure error={job.error} retry={() => job.refetch()} />;
   const value = job.data;
+
   return (
     <section>
       <WorkNavigation source="calibre" id={id} />
@@ -754,30 +767,17 @@ export function CalibreJobDetail() {
                       <th>
                         <Checkbox
                           aria-label={t("selection.page")}
-                          checked={
-                            !!result.data?.items.length &&
-                            result.data.items.every((row) =>
-                              selected.includes(row.id),
-                            )
-                          }
+                          {...pageSelection(
+                            selected,
+                            (result.data?.items ?? []).map((row) => row.id),
+                          )}
                           onChange={(e) => {
                             const checked = e.currentTarget.checked;
-                            setSelected((old) =>
-                              checked
-                                ? [
-                                    ...new Set([
-                                      ...old,
-                                      ...(result.data?.items ?? []).map(
-                                        (row) => row.id,
-                                      ),
-                                    ]),
-                                  ]
-                                : old.filter(
-                                    (id) =>
-                                      !result.data?.items.some(
-                                        (row) => row.id === id,
-                                      ),
-                                  ),
+                            const ids = (result.data?.items ?? []).map(
+                              (row) => row.id,
+                            );
+                            setSelected((current) =>
+                              togglePageSelection(current, ids, checked),
                             );
                           }}
                         />
@@ -793,14 +793,8 @@ export function CalibreJobDetail() {
                           <Checkbox
                             aria-label={`EPL ${item.eplId}`}
                             checked={selected.includes(item.id)}
-                            onChange={(e) => {
-                              const checked = e.currentTarget.checked;
-                              setSelected((old) =>
-                                checked
-                                  ? [...old, item.id]
-                                  : old.filter((id) => id !== item.id),
-                              );
-                            }}
+                            onMouseDown={selectRange.preventTextSelection}
+                            onChange={(e) => selectRange(item.id, e)}
                           />
                         </td>
                       )}
