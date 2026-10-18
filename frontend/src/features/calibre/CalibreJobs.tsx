@@ -1,3 +1,5 @@
+import { useBookViewState } from "../catalog/useBookViewState";
+import { BookLink } from "../catalog/BookLink";
 import { useWorkDeletion } from "../jobs/useWorkDeletion";
 import { stateOperatorProps } from "../../components/StateOperator";
 import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
@@ -159,16 +161,16 @@ export function CalibreJobs() {
   const { t } = useTranslation();
   const { date, number } = useLocale();
   const saved = useWorkContext("calibre")?.view;
-  const [excluded, setExcluded] = useState(saved?.excluded ?? false);
+  const [excluded, setExcluded] = useBookViewState("excluded", saved?.excluded ?? false);
   const [excludeType, setExcludeType] = useState(saved?.excludeType ?? false);
-  const [page, setPage] = useState(saved?.page ?? 0),
-    [size, setSize] = useState(saved?.size ?? 20),
+  const [page, setPage] = useBookViewState("page", saved?.page ?? 0),
+    [size, setSize] = useBookViewState("size", saved?.size ?? 20),
     [state, setState] = useState<string | null>(saved?.filter ?? null),
     [type, setType] = useState<string | null>(saved?.type ?? null),
     [username, setUsername] = useState(saved?.username ?? ""),
     [from, setFrom] = useState(saved?.from ?? ""),
     [to, setTo] = useState(saved?.to ?? ""),
-    [sort, setSort] = useState(saved?.sort ?? "createdAt,desc");
+    [sort, setSort] = useBookViewState("sort", saved?.sort ?? "createdAt,desc");
   const bounds = dateBounds(from, to);
   const dates = new URLSearchParams();
   if (bounds.from) dates.set("from", bounds.from);
@@ -472,12 +474,12 @@ export function CalibreJobDetail() {
   const { can } = useAuth();
   const { date, number, revision } = useLocale();
   const cache = useQueryClient();
-  const [page, setPage] = useState(0),
-    [size, setSize] = useState(20),
-    [sort, setSort] = useState("position,asc");
-  const [excluded, setExcluded] = useState(false);
-  const [itemState, setItemState] = useState<string | null>(null);
-  const [itemDetail, setItemDetail] = useState("");
+  const [page, setPage] = useBookViewState("page", 0),
+    [size, setSize] = useBookViewState("size", 20),
+    [sort, setSort] = useBookViewState("sort", "position,asc");
+  const [excluded, setExcluded] = useBookViewState("excluded", false);
+  const [itemState, setItemState] = useBookViewState<string | null>("itemState", null);
+  const [itemDetail, setItemDetail] = useBookViewState("itemDetail", "");
   const choice = usePageSizeChoice(size);
   const [selected, setSelected] = useState<string[]>([]);
   useEffect(() => setSelected([]), [id, itemState, excluded, itemDetail, sort]);
@@ -781,9 +783,9 @@ export function CalibreJobDetail() {
                           <td>{number(item.position + 1)}</td>,
                           <td>
                             {can("CATALOG_READ") ? (
-                              <Link to={`/catalog/${item.eplId}`}>
+                              <BookLink to={`/catalog/${item.eplId}`}>
                                 {item.eplId}
-                              </Link>
+                              </BookLink>
                             ) : (
                               item.eplId
                             )}
@@ -800,9 +802,9 @@ export function CalibreJobDetail() {
                               />
                               <span>
                                 {can("CATALOG_READ") && item.eplId > 0 ? (
-                                  <Link to={`/catalog/${item.eplId}`}>
+                                  <BookLink to={`/catalog/${item.eplId}`}>
                                     {item.name}
-                                  </Link>
+                                  </BookLink>
                                 ) : (
                                   item.name
                                 )}

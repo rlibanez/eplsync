@@ -1,3 +1,5 @@
+import { useBookViewState } from "../catalog/useBookViewState";
+import { BookLink } from "../catalog/BookLink";
 import {
   stateOperatorProps,
   textOperatorProps,
@@ -77,11 +79,11 @@ function DownloadHistory() {
   const cache = useQueryClient();
   const session = useSyncSession();
   const syncPending = useIsMutating({ mutationKey: ["torrent-sync"] }) > 0;
-  const [filters, setFilters] = useState(initialFilters);
-  const [draftTitle, setDraftTitle] = useState("");
-  const [draftEplId, setDraftEplId] = useState("");
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(20);
+  const [filters, setFilters] = useBookViewState("filters", initialFilters);
+  const [draftTitle, setDraftTitle] = useBookViewState("draftTitle", "");
+  const [draftEplId, setDraftEplId] = useBookViewState("draftEplId", "");
+  const [page, setPage] = useBookViewState("page", 0);
+  const [size, setSize] = useBookViewState("size", 20);
   const pageSizeChoice = usePageSizeChoice(size);
   const selectable =
     (auth.can("CALIBRE_SEND") && auth.can("DOWNLOADS_FILES_READ")) ||
@@ -478,9 +480,9 @@ function DownloadHistory() {
                               {columns.cells(
                                 [
                                   <td>
-                                    <Link to={`/catalog/${d.eplId}`}>
+                                    <BookLink to={`/catalog/${d.eplId}`}>
                                       {d.eplId}
-                                    </Link>
+                                    </BookLink>
                                   </td>,
                                   <td className="catalog-title-cell">
                                     <DownloadBook book={d} />

@@ -1,3 +1,4 @@
+import { BookLink } from "../catalog/BookLink";
 import { TableAction } from "../../components/TableAction";
 import { RowNumberHeading, RowNumberCell } from "../../components/RowNumber";
 import { WorkNavigation } from "../jobs/WorkNavigation";
@@ -567,7 +568,7 @@ function CleanupItems({
               <td>{item.eplId ?? "—"}</td>
               <td>
                 {item.eplId && auth.can("CATALOG_READ") ? (
-                  <Link to={`/catalog/${item.eplId}`}>{item.title}</Link>
+                  <BookLink to={`/catalog/${item.eplId}`}>{item.title}</BookLink>
                 ) : (
                   item.title
                 )}

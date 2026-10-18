@@ -1,3 +1,4 @@
+import { BookLink } from "../catalog/BookLink";
 import { useAuth } from "../auth/Auth";
 import { Fragment } from "react";
 import {
@@ -314,7 +315,7 @@ export function Home() {
         ) : (
           <div className="home-books">
             {result.data.items.map((book) => (
-              <Link
+              <BookLink
                 className="home-book"
                 key={book.eplId}
                 to={`/catalog/${book.eplId}`}
@@ -326,7 +327,7 @@ export function Home() {
                 <span className="muted" title={book.author}>
                   {book.author}
                 </span>
-              </Link>
+              </BookLink>
             ))}
           </div>
         )}

@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { useBook } from "../../api/useBook";
 import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
-import { catalogReturnUrl } from "./navigation";
+import { bookReturn, catalogReturnUrl } from "./navigation";
 import { Loading, Failure } from "../../components/Feedback";
 export function BookDetail() {
   const { t } = useTranslation();
@@ -22,6 +22,7 @@ export function BookDetail() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const origin = bookReturn(location.state);
   const onFilter = (column: Column, value: string) =>
     navigate(`/catalog?${quickFilter(new URLSearchParams(), column, value)}`);
   const result = useBook(id);
@@ -29,9 +30,13 @@ export function BookDetail() {
   return (
     <>
       <div className="detail-navigation-row">
-        <Link className="back-link" to={catalogReturnUrl(location.state)}>
+        <Link
+          className="back-link"
+          to={origin?.to ?? catalogReturnUrl(location.state)}
+          state={origin?.state}
+        >
           <ArrowLeft size={16} />
-          {t("detail.back")}{" "}
+          {t(origin ? `detail.return.${origin.label}` : "detail.back")}{" "}
         </Link>
         {book && <BookNavigation id={book.eplId} />}
       </div>

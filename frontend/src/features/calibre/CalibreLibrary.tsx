@@ -1,3 +1,4 @@
+import { useBookViewState } from "../catalog/useBookViewState";
 import {
   textOperatorProps,
   stateOperatorProps,
@@ -54,20 +55,20 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
   const cache = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const searchHandled = useRef(false);
-  const [page, setPage] = useState(0),
-    [size, setSize] = useState(20),
-    [title, setTitle] = useState(""),
-    [author, setAuthor] = useState(""),
-    [eplId, setEplId] = useState(""),
-    [comparison, setComparison] = useState(""),
-    [presence, setPresence] = useState(""),
-    [sort, setSort] = useState("title,asc");
+  const [page, setPage] = useBookViewState("page", 0),
+    [size, setSize] = useBookViewState("size", 20),
+    [title, setTitle] = useBookViewState("title", ""),
+    [author, setAuthor] = useBookViewState("author", ""),
+    [eplId, setEplId] = useBookViewState("eplId", ""),
+    [comparison, setComparison] = useBookViewState("comparison", ""),
+    [presence, setPresence] = useBookViewState("presence", ""),
+    [sort, setSort] = useBookViewState("sort", "title,asc");
   const selectable = updates
     ? auth.can("CALIBRE_SEND") &&
       auth.can("DOWNLOADS_FILES_READ") &&
       auth.can("CATALOG_READ")
     : auth.can("CALIBRE_FILES_READ") || auth.can("CALIBRE_DELETE");
-  const [excluded, setExcluded] = useState({
+  const [excluded, setExcluded] = useBookViewState("excluded", {
     title: false,
     author: false,
     eplId: false,
@@ -100,7 +101,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     presence,
     ...(updates ? { updatesOnly: "true" } : {}),
   });
-  const [availability, setAvailability] = useState<string | null>(null);
+  const [availability, setAvailability] = useBookViewState<string | null>("availability", null);
   const canCheckFiles =
     auth.can("DOWNLOADS_FILES_READ") && auth.can("CATALOG_READ");
   const excludedFields = updates

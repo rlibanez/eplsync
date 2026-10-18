@@ -1,3 +1,4 @@
+import { BookLink } from "../catalog/BookLink";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { compareText } from "../../locales/textOrdering";
 import { DownloadBook, useDownloadColumns } from "./DownloadTable";
@@ -16,7 +17,6 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useLocale } from "../../locales/useLocale";
 import { Paging } from "./shared";
@@ -312,9 +312,9 @@ export function SyncReport({
                 <ul>
                   {report.cleanup.map((entry) => (
                     <li key={entry.id}>
-                      <Link to={`/catalog/${entry.eplId}`}>
+                      <BookLink to={`/catalog/${entry.eplId}`}>
                         EPL {entry.eplId}
-                      </Link>{" "}
+                      </BookLink>{" "}
                       · {entry.hash}: {entry.message}
                     </li>
                   ))}
@@ -425,9 +425,9 @@ export function SyncReport({
                           <tr key={`${item.eplId}:${item.hash}`}>
                             {bookColumns.cells([
                               <td>
-                                <Link to={`/catalog/${item.eplId}`}>
+                                <BookLink to={`/catalog/${item.eplId}`}>
                                   {item.eplId}
-                                </Link>
+                                </BookLink>
                               </td>,
                               <td>
                                 <DownloadBook book={item} />

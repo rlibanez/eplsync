@@ -293,6 +293,19 @@
     "filterByValue": "Filtrar por {{field}}: {{value}}"
   },
   "detail": {
+    "return": {
+      "home": "Volver al inicio",
+      "calibre": "Volver a biblioteca de Calibre",
+      "calibreUpdates": "Volver a actualizaciones de Calibre",
+      "calibreJobs": "Volver a trabajos de Calibre",
+      "calibreJob": "Volver a trabajo de Calibre",
+      "downloads": "Volver a estado de las descargas",
+      "downloadUpdates": "Volver a actualizaciones de descargas",
+      "downloadJobs": "Volver a trabajos de descargas",
+      "downloadJob": "Volver a trabajo de descarga",
+      "sync": "Volver a sincronización de descargas",
+      "cleanup": "Volver a trabajos de limpieza"
+    },
     "spoiler": "Mostrar contenido",
     "navigation": "Navegar entre libros",
     "previous": "Anterior",

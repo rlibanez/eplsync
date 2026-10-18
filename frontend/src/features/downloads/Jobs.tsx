@@ -1,3 +1,5 @@
+import { useBookViewState } from "../catalog/useBookViewState";
+import { BookLink } from "../catalog/BookLink";
 import { useWorkDeletion } from "../jobs/useWorkDeletion";
 import { stateOperatorProps } from "../../components/StateOperator";
 import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
@@ -40,17 +42,17 @@ export function Jobs() {
   const { t } = useTranslation();
   const { date, status, number } = useLocale();
   const saved = useWorkContext("downloads")?.view;
-  const [page, setPage] = useState(saved?.page ?? 0);
-  const [size, setSize] = useState(saved?.size ?? 20);
+  const [page, setPage] = useBookViewState("page", saved?.page ?? 0);
+  const [size, setSize] = useBookViewState("size", saved?.size ?? 20);
   const pageSizeChoice = usePageSizeChoice(size);
   const [filter, setFilter] = useState(saved?.filter ?? "");
-  const [excluded, setExcluded] = useState(saved?.excluded ?? false);
+  const [excluded, setExcluded] = useBookViewState("excluded", saved?.excluded ?? false);
   const [excludeType, setExcludeType] = useState(saved?.excludeType ?? false);
   const [type, setType] = useState(saved?.type ?? "");
   const [username, setUsername] = useState(saved?.username ?? "");
   const [from, setFrom] = useState(saved?.from ?? "");
   const [to, setTo] = useState(saved?.to ?? "");
-  const [sort, setSort] = useState(saved?.sort ?? "createdAt,desc");
+  const [sort, setSort] = useBookViewState("sort", saved?.sort ?? "createdAt,desc");
   const [refresh, setRefresh] = useState<
     "idle" | "pending" | "success" | "error"
   >("idle");
@@ -436,12 +438,12 @@ export function JobDetail() {
   const { t } = useTranslation();
   const { date, status, number, revision } = useLocale();
   const cache = useQueryClient();
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState(20);
+  const [page, setPage] = useBookViewState("page", 0);
+  const [size, setSize] = useBookViewState("size", 20);
   const pageSizeChoice = usePageSizeChoice(size);
-  const [filter, setFilter] = useState("");
-  const [excluded, setExcluded] = useState(false);
-  const [sort, setSort] = useState("position,asc");
+  const [filter, setFilter] = useBookViewState("filter", "");
+  const [excluded, setExcluded] = useBookViewState("excluded", false);
+  const [sort, setSort] = useBookViewState("sort", "position,asc");
   const [cancel, setCancel] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   useEffect(() => setSelected([]), [id, filter, excluded, sort]);
@@ -844,9 +846,9 @@ export function JobDetail() {
                       {columns.cells(
                         [
                           <td>
-                            <Link to={`/catalog/${item.eplId}`}>
+                            <BookLink to={`/catalog/${item.eplId}`}>
                               {item.eplId}
-                            </Link>
+                            </BookLink>
                           </td>,
                           <td className="catalog-title-cell">
                             <DownloadBook book={item} />

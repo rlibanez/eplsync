@@ -1,3 +1,4 @@
+import { BookLink } from "../catalog/BookLink";
 import { stateOperatorProps } from "../../components/StateOperator";
 import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
@@ -15,7 +16,7 @@ import { useDownloadColumns } from "./DownloadTable";
 import { useEffect, useState } from "react";
 import { Button, Checkbox, MultiSelect } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "../auth/Auth";
@@ -370,18 +371,18 @@ export function RevisionUpdates() {
                       {columns.cells(
                         [
                           <td>
-                            <Link to={`/catalog/${row.eplId}`}>
+                            <BookLink to={`/catalog/${row.eplId}`}>
                               {row.eplId}
-                            </Link>
+                            </BookLink>
                           </td>,
                           <td className="catalog-title-cell">
-                            <Link
+                            <BookLink
                               className="book-title"
                               to={`/catalog/${row.eplId}`}
                             >
                               <BookCover book={row} />
                               <span>{row.title}</span>
-                            </Link>
+                            </BookLink>
                           </td>,
                           <td>
                             <button

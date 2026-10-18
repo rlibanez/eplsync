@@ -293,6 +293,19 @@
     "filterByValue": "Filter by {{field}}: {{value}}"
   },
   "detail": {
+    "return": {
+      "home": "Back to Home",
+      "calibre": "Back to Calibre library",
+      "calibreUpdates": "Back to Calibre updates",
+      "calibreJobs": "Back to Calibre jobs",
+      "calibreJob": "Back to Calibre job",
+      "downloads": "Back to download status",
+      "downloadUpdates": "Back to download updates",
+      "downloadJobs": "Back to download jobs",
+      "downloadJob": "Back to download job",
+      "sync": "Back to download synchronization",
+      "cleanup": "Back to cleanup jobs"
+    },
     "spoiler": "Show content",
     "navigation": "Browse books",
     "previous": "Previous",

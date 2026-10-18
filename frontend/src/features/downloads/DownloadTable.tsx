@@ -1,3 +1,4 @@
+import { BookLink } from "../catalog/BookLink";
 import { ROW_NUMBER, RowNumberCell, rowNumberWidth } from "../../components/RowNumber";
 import {
   cloneElement,
@@ -8,7 +9,6 @@ import {
 } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { BookCover } from "../catalog/BookCover";
 import {
   TableColumns,
@@ -319,7 +319,7 @@ export function DownloadBook({
 }) {
   const title = book.title || `EPL ${book.eplId}`;
   return (
-    <Link className="book-title" to={`/catalog/${book.eplId}`}>
+    <BookLink className="book-title" to={`/catalog/${book.eplId}`}>
       <BookCover
         book={{
           eplId: book.eplId,
@@ -329,6 +329,6 @@ export function DownloadBook({
         }}
       />
       <span>{title}</span>
-    </Link>
+    </BookLink>
   );
 }

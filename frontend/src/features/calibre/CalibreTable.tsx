@@ -1,9 +1,9 @@
+import { BookLink } from "../catalog/BookLink";
 import { CalibreRemovalLauncher } from "../cleanup/RevisionCleanup";
 import { TableAction } from "../../components/TableAction";
 import { Checkbox, Group } from "@mantine/core";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
 import { BookOpen, ExternalLink } from "lucide-react";
-import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { BookCover } from "../catalog/BookCover";
 import { useAuth } from "../auth/Auth";
@@ -149,7 +149,7 @@ export function CalibreTable({
                     {book.eplId ? (
                       book.presence === "PRESENT" &&
                       auth.can("CATALOG_READ") ? (
-                        <Link to={`/catalog/${book.eplId}`}>{book.eplId}</Link>
+                        <BookLink to={`/catalog/${book.eplId}`}>{book.eplId}</BookLink>
                       ) : (
                         book.eplId
                       )
@@ -160,7 +160,7 @@ export function CalibreTable({
                   <td className={showCovers ? "catalog-title-cell" : undefined}>
                     {book.presence === "PRESENT" && book.eplId ? (
                       auth.can("CATALOG_READ") ? (
-                        <Link
+                        <BookLink
                           className="book-title"
                           to={`/catalog/${book.eplId}`}
                         >
@@ -175,7 +175,7 @@ export function CalibreTable({
                             />
                           )}
                           <span>{book.title || "—"}</span>
-                        </Link>
+                        </BookLink>
                       ) : (
                         <span className="book-title">
                           {showCovers && (
