@@ -126,6 +126,8 @@ for (const source of ["downloads", "calibre"] as const) {
     await expect(dialog).toContainText(
       "Se conservarán los torrents, archivos, registros de Descargas y libros de Calibre",
     );
+    await expect(dialog.getByRole("button", {name:"Cancelar",exact:true})).toBeVisible();
+    await expect(dialog.getByRole("button", {name:"Cerrar",exact:true})).toHaveCount(0);
     expect(deletions).toBe(0);
     await dialog
       .getByRole("button", { name: "Eliminar trabajos", exact: true })

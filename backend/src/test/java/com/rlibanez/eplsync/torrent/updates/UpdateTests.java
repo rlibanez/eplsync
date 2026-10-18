@@ -571,6 +571,28 @@ class UpdateTests {
         verify(stubClient,times(1)).listTorrents(Set.of(OLD,OTHER));
         verify(stubClient,never()).listTorrents();
     }
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"BOOK_HISTORY_READ","TORRENT_CLEANUP"})
+    void removalPreviewIncludesAllSelectedBooksWithoutChangingDownloads() throws Exception {
+        var first=downloads.findAll().getFirst();
+        var second=history(2,1.1,OTHER,DownloadStatus.SUBMITTED);
+        clearInvocations(stubClient);
+        mvc.perform(post("/api/torrent/downloads/removal-preview").contentType("application/json")
+            .content("{\"ids\":[\""+first.getId()+"\",\""+second.getId()+"\"]}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[?(@.id == '"+second.getId()+"')].hash").value(OTHER))
+            .andExpect(jsonPath("$[?(@.id == '"+first.getId()+"')].title").value("Book 1"));
+        assertThat(downloads.findById(first.getId())).isPresent();
+        assertThat(downloads.findById(second.getId())).isPresent();
+        verifyNoInteractions(stubClient);
+        assertThatThrownBy(() -> historyActions.previewRecords(new HistoryActions.Selection(1L,List.of(second.getId()),null,null)))
+            .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+    }
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_SYNC"})
+    void removalPreviewRequiresDeletionPermission() throws Exception {
+        mvc.perform(post("/api/torrent/downloads/removal-preview").contentType("application/json")
+            .content("{\"ids\":[\""+downloads.findAll().getFirst().getId()+"\"]}"))
+            .andExpect(status().isForbidden());
+    }
     @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_SYNC","DOWNLOADS_DELETE"})
     void stateCanDeleteHistoryAcrossBooksWithoutCallingClient() throws Exception {
         var first=downloads.findAll().getFirst();

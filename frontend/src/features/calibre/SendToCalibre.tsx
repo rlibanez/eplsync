@@ -1,3 +1,5 @@
+import { PreviewHeading, usePreviewSort } from "../../components/PreviewSort";
+import { RowNumberCell, RowNumberHeading } from "../../components/RowNumber";
 import {
   createContext,
   useContext,
@@ -5,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Alert, Button, Checkbox, Select, Stack } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Select, Stack } from "@mantine/core";
 import { Upload } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -72,6 +74,12 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
       );
     },
   });
+  const sorting = usePreviewSort(prepare.data?.files ?? [], () =>
+    setFilePage(0),
+  );
+  const displayed = sorting.sorted(
+    (file, field) => file[field as "name" | "eplId" | "revision"],
+  );
   const send = useMutation({
     mutationFn: () =>
       post<{ id: string }>(
@@ -142,7 +150,9 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
         ) : (
           prepare.data && (
             <Stack gap="md">
-              <p>{t("calibreSend.help")}</p>
+              <p>
+                {t("calibreSend.help")} {t("calibreSend.duplicates")}
+              </p>
               <Select
                 label={t("calibre.library")}
                 data={prepare.data.libraries.map((l) => ({
@@ -182,33 +192,87 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                 </Alert>
               )}
               {!!prepare.data.files.length && (
-                <fieldset className="send-options-group">
-                  <legend>{t("calibreSend.files")}</legend>
-                  <Stack gap="sm">
-                    {prepare.data.files
-                      .slice(filePage * 100, (filePage + 1) * 100)
-                      .map((file) => (
-                        <Checkbox
-                          key={key(file)}
-                          label={`${file.name} · EPL ID ${file.eplId} · ${t("downloads.revision")} ${revision(file.revision)}`}
-                          checked={chosenSet.has(key(file))}
-                          disabled={send.isPending}
-                          onChange={(e) => {
-                            const checked = e.currentTarget.checked;
-                            setRequestId(requestIdentifier());
-                            setChosen((previous) =>
-                              checked
-                                ? [...previous, key(file)]
-                                : previous.filter(
-                                    (value) => value !== key(file),
-                                  ),
-                            );
-                          }}
-                        />
-                      ))}
-                  </Stack>
-                  {prepare.data.files.length > 100 && (
-                    <div className="pagination">
+                <fieldset className="send-options-group cleanup-preview">
+                  <legend>{t("revisionCleanup.previewBooks")}</legend>
+                  <Group gap="xs">
+                    <Button
+                      variant="subtle"
+                      disabled={send.isPending}
+                      onClick={() => {
+                        setChosen(prepare.data!.files.map(key));
+                        setRequestId(requestIdentifier());
+                      }}
+                    >
+                      {t("revisionCleanup.selectAll")}
+                    </Button>
+                    <Button
+                      variant="subtle"
+                      disabled={send.isPending}
+                      onClick={() => {
+                        setChosen([]);
+                        setRequestId(requestIdentifier());
+                      }}
+                    >
+                      {t("revisionCleanup.clear", { count: chosen.length })}
+                    </Button>
+                  </Group>
+                  <div className="table-scroll revision-cleanup-table">
+                    <table aria-label={t("calibreSend.files")}>
+                      <thead>
+                        <tr>
+                          <th aria-label={t("revisionCleanup.selection")} />
+                          <RowNumberHeading />
+                          <PreviewHeading field="name" {...sorting}>
+                            {t("calibreSend.files")}
+                          </PreviewHeading>
+                          <PreviewHeading field="eplId" {...sorting}>
+                            EPL ID
+                          </PreviewHeading>
+                          <PreviewHeading field="revision" {...sorting}>
+                            {t("downloads.revision")}
+                          </PreviewHeading>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayed
+                          .slice(filePage * 20, (filePage + 1) * 20)
+                          .map((file, index) => (
+                            <tr key={key(file)}>
+                              <td>
+                                <Checkbox
+                                  key={key(file)}
+                                  aria-label={`${file.name} · EPL ID ${file.eplId} · ${t("downloads.revision")} ${revision(file.revision)}`}
+                                  checked={chosenSet.has(key(file))}
+                                  disabled={send.isPending}
+                                  onChange={(e) => {
+                                    const checked = e.currentTarget.checked;
+                                    setRequestId(requestIdentifier());
+                                    setChosen((previous) =>
+                                      checked
+                                        ? [...previous, key(file)]
+                                        : previous.filter(
+                                            (value) => value !== key(file),
+                                          ),
+                                    );
+                                  }}
+                                />
+                              </td>
+                              <RowNumberCell
+                                value={filePage * 20 + index + 1}
+                              />
+                              <td>{file.name}</td>
+                              <td>{file.eplId}</td>
+                              <td>{revision(file.revision)}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {prepare.data.files.length > 20 && (
+                    <nav
+                      className="pagination cleanup-preview-pagination"
+                      aria-label={t("revisionCleanup.previewPages")}
+                    >
                       <Button
                         variant="subtle"
                         disabled={!filePage}
@@ -218,18 +282,18 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                       </Button>
                       <span>
                         {filePage + 1} /{" "}
-                        {Math.ceil(prepare.data.files.length / 100)}
+                        {Math.ceil(prepare.data.files.length / 20)}
                       </span>
                       <Button
                         variant="subtle"
                         disabled={
-                          (filePage + 1) * 100 >= prepare.data.files.length
+                          (filePage + 1) * 20 >= prepare.data.files.length
                         }
                         onClick={() => setFilePage((page) => page + 1)}
                       >
                         {t("catalog.next")}
                       </Button>
-                    </div>
+                    </nav>
                   )}
                 </fieldset>
               )}
@@ -256,7 +320,6 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                 </>
               )}
 
-              <p className="muted">{t("calibreSend.duplicates")}</p>
               {send.isError && (
                 <Alert color="red">
                   {send.error.message || t("calibreSend.failed")}
@@ -265,13 +328,26 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
             </Stack>
           )
         )}
-        <ModalActions>
+        <ModalActions
+          summary={
+            prepare.isSuccess
+              ? t("calibreSend.selected", {
+                  count:
+                    chosen.length +
+                    (prepare.data.deferred?.length ||
+                      prepare.data.deferredRecords?.length ||
+                      0) +
+                    (download ? (prepare.data.missing?.length ?? 0) : 0),
+                })
+              : undefined
+          }
+        >
           <Button
             variant="default"
             onClick={() => setOpened(false)}
             disabled={send.isPending}
           >
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             disabled={

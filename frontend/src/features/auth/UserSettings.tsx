@@ -487,7 +487,7 @@ export function UserSettings() {
                 disabled={pending}
                 onClick={() => setCreating(false)}
               >
-                {t("import.cancel")}
+                {t("common.cancel")}
               </Button>
               <Button
                 type="submit"
@@ -552,7 +552,7 @@ export function UserSettings() {
             disabled={pending}
             onClick={() => setResetting(undefined)}
           >
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             loading={pending}
@@ -595,7 +595,7 @@ export function UserSettings() {
             disabled={pending}
             onClick={() => setDeleting(undefined)}
           >
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             color="red"
@@ -812,7 +812,7 @@ function UserEditor({
       <div className="user-editor-footer">
         <ModalActions>
           <Button variant="default" disabled={pending} onClick={cancel}>
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             loading={pending}

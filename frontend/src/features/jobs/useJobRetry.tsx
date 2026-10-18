@@ -253,7 +253,7 @@ export function useJobRetry(
               disabled={create.isPending}
               onClick={() => setOpened(false)}
             >
-              {t("import.cancel")}
+              {t("common.cancel")}
             </Button>
             <Button
               loading={create.isPending}

@@ -472,7 +472,7 @@ export function RevisionUpdates() {
             disabled={find.isPending}
             onClick={() => setOpened(false)}
           >
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             loading={find.isPending}

@@ -1,3 +1,8 @@
+import {
+  PreviewHeading,
+  usePreviewSort,
+  type PreviewOrder,
+} from "../../components/PreviewSort";
 import { BookLink } from "../catalog/BookLink";
 import { TableAction } from "../../components/TableAction";
 import { RowNumberHeading, RowNumberCell } from "../../components/RowNumber";
@@ -199,6 +204,16 @@ function CleanupWizard({
   const [preview, setPreview] = useState<Job>();
   const [rows, setRows] = useState<Item[]>([]);
   const [checked, setChecked] = useState<string[]>([]);
+  const [previewPage, setPreviewPage] = useState(0);
+  const sorting = usePreviewSort(rows, () => setPreviewPage(0));
+  const displayed = sorting.sorted(
+    (row, key) =>
+      row[
+        key as "eplId" | "title" | "revision" | "replacementRevision" | "state"
+      ],
+  );
+  const previewPageSize = 20;
+  const previewPages = Math.ceil(rows.length / previewPageSize);
   const [confirm, setConfirm] = useState(false);
   const [destructive, setDestructive] = useState(false);
   const prepare = useMutation({
@@ -227,6 +242,7 @@ function CleanupWizard({
       }
       setPreview(job);
       setRows(items.items);
+      setPreviewPage(0);
       setChecked(
         items.items
           .filter((item) => item.state === "READY")
@@ -266,7 +282,7 @@ function CleanupWizard({
       closeOnClickOutside={!busy}
       closeOnEscape={!busy}
       title={t(direct ? "calibreRemoval.delete" : "revisionCleanup.title")}
-      icon={Eraser}
+      icon={direct ? Trash2 : Eraser}
       width="wide"
     >
       <Stepper
@@ -370,29 +386,62 @@ function CleanupWizard({
               excluded: preview?.excluded,
             })}
           </p>
-          <Group gap="xs">
-            <Button
-              variant="subtle"
-              onClick={() =>
-                setChecked(
-                  rows
-                    .filter((item) => item.state === "READY")
-                    .map((item) => item.id),
-                )
-              }
-            >
-              {t("revisionCleanup.selectAll")}
-            </Button>
-            <Button variant="subtle" onClick={() => setChecked([])}>
-              {t("revisionCleanup.clear", { count: checked.length })}
-            </Button>
-          </Group>
-          <CleanupItems
-            rows={rows}
-            selected={checked}
-            onSelect={setChecked}
-            direct={direct}
-          />
+          <fieldset className="send-options-group cleanup-preview">
+            <legend>{t("revisionCleanup.previewBooks")}</legend>
+            <Group gap="xs" mb="sm">
+              <Button
+                variant="subtle"
+                onClick={() =>
+                  setChecked(
+                    rows
+                      .filter((item) => item.state === "READY")
+                      .map((item) => item.id),
+                  )
+                }
+              >
+                {t("revisionCleanup.selectAll")}
+              </Button>
+              <Button variant="subtle" onClick={() => setChecked([])}>
+                {t("revisionCleanup.clear", { count: checked.length })}
+              </Button>
+            </Group>
+            <CleanupItems
+              rows={displayed.slice(
+                previewPage * previewPageSize,
+                (previewPage + 1) * previewPageSize,
+              )}
+              offset={previewPage * previewPageSize}
+              selected={checked}
+              onSelect={setChecked}
+              direct={direct}
+              order={sorting.order}
+              toggle={sorting.toggle}
+            />
+            {previewPages > 1 && (
+              <nav
+                className="pagination cleanup-preview-pagination"
+                aria-label={t("revisionCleanup.previewPages")}
+              >
+                <Button
+                  variant="subtle"
+                  disabled={previewPage === 0}
+                  onClick={() => setPreviewPage((page) => page - 1)}
+                >
+                  {t("catalog.previous")}
+                </Button>
+                <span>
+                  {previewPage + 1} / {previewPages}
+                </span>
+                <Button
+                  variant="subtle"
+                  disabled={previewPage + 1 >= previewPages}
+                  onClick={() => setPreviewPage((page) => page + 1)}
+                >
+                  {t("catalog.next")}
+                </Button>
+              </nav>
+            )}
+          </fieldset>
         </>
       )}
       {step === 2 && (
@@ -433,7 +482,7 @@ function CleanupWizard({
           <Checkbox
             label={t(
               direct
-                ? "calibreRemoval.confirmDeletion"
+                ? "common.confirmDeletion"
                 : "revisionCleanup.confirmSelection",
             )}
             checked={confirm}
@@ -476,7 +525,7 @@ function CleanupWizard({
           {t(
             step > (direct ? 1 : 0)
               ? "revisionCleanup.back"
-              : "revisionCleanup.close",
+              : "common.cancel",
           )}
         </Button>
         {step === 0 ? (
@@ -510,12 +559,16 @@ function CleanupWizard({
   );
 }
 function CleanupItems({
+  order,
+  toggle,
   rows,
   offset = 0,
   direct = false,
   selected,
   onSelect,
 }: {
+  order?: PreviewOrder;
+  toggle?: (key: string) => void;
   rows: Item[];
   offset?: number;
   direct?: boolean;
@@ -531,17 +584,35 @@ function CleanupItems({
           <tr>
             {onSelect && <th aria-label={t("revisionCleanup.selection")} />}
             <RowNumberHeading />
-            <th>EPL ID</th>
-            <th>{t("revisionCleanup.book")}</th>
-            <th>{t("revisionCleanup.remove")}</th>
-            {!direct && <th>{t("revisionCleanup.keep")}</th>}
-            <th>{t("revisionCleanup.detail")}</th>
+            <PreviewHeading field="eplId" order={order} toggle={toggle}>
+              EPL ID
+            </PreviewHeading>
+            <PreviewHeading field="title" order={order} toggle={toggle}>
+              {t("revisionCleanup.book")}
+            </PreviewHeading>
+            <PreviewHeading field="revision" order={order} toggle={toggle}>
+              {t("revisionCleanup.remove")}
+            </PreviewHeading>
+            {!direct && (
+              <PreviewHeading
+                field="replacementRevision"
+                order={order}
+                toggle={toggle}
+              >
+                {t("revisionCleanup.keep")}
+              </PreviewHeading>
+            )}
+            <PreviewHeading field="state" order={order} toggle={toggle}>
+              {t("revisionCleanup.detail")}
+            </PreviewHeading>
           </tr>
         </thead>
         <tbody>
           {!rows.length && (
             <tr>
-              <td colSpan={onSelect ? 7 : 6}>{t("revisionCleanup.empty")}</td>
+              <td colSpan={5 + (direct ? 0 : 1) + (onSelect ? 1 : 0)}>
+                {t("revisionCleanup.empty")}
+              </td>
             </tr>
           )}
           {rows.map((item, rowIndex) => (
@@ -568,7 +639,9 @@ function CleanupItems({
               <td>{item.eplId ?? "—"}</td>
               <td>
                 {item.eplId && auth.can("CATALOG_READ") ? (
-                  <BookLink to={`/catalog/${item.eplId}`}>{item.title}</BookLink>
+                  <BookLink to={`/catalog/${item.eplId}`}>
+                    {item.title}
+                  </BookLink>
                 ) : (
                   item.title
                 )}

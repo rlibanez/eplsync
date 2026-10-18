@@ -1,5 +1,6 @@
 {
   "calibreIdentifiers": {
+    "result": "Resultado",
     "books": "Libros",
     "revision": "Revisión",
     "open": "Completar identificadores",
@@ -7,6 +8,8 @@
     "apply": "Completar seleccionados",
     "progress": "Comprobando identificadores",
     "select": "Seleccionar Calibre ID",
+    "selected_one": "{{count}} libro seleccionado",
+    "selected_other": "{{count}} libros seleccionados",
     "failed": "No se pudo comprobar o actualizar la entrada de Calibre"
   },
   "telegram": {
@@ -1521,6 +1524,19 @@
     "lastSearch": "Última búsqueda: {{date}}"
   },
   "historyActions": {
+    "confirmation": {
+      "records_one": "Se eliminará {{count}} registro de EPL Sync. Los torrents y sus archivos se conservarán.",
+      "records_other": "Se eliminarán {{count}} registros de EPL Sync. Los torrents y sus archivos se conservarán.",
+      "torrents_one": "Se eliminará {{count}} torrent. Sus archivos y los registros de EPL Sync se conservarán.",
+      "torrents_other": "Se eliminarán {{count}} torrents. Sus archivos y los registros de EPL Sync se conservarán.",
+      "torrentsAndRecords_one": "Se eliminará {{count}} torrent y su registro de EPL Sync. Los archivos se conservarán.",
+      "torrentsAndRecords_other": "Se eliminarán {{count}} torrents y sus registros de EPL Sync. Los archivos se conservarán.",
+      "files_one": "Se eliminará {{count}} torrent y sus archivos. Los registros de EPL Sync se conservarán.",
+      "files_other": "Se eliminarán {{count}} torrents y sus archivos. Los registros de EPL Sync se conservarán.",
+      "filesAndRecords_one": "Se eliminará {{count}} torrent, sus archivos y su registro de EPL Sync.",
+      "filesAndRecords_other": "Se eliminarán {{count}} torrents, sus archivos y sus registros de EPL Sync."
+    },
+    "confirmRemoval": "He revisado la selección y confirmo la eliminación.",
     "actions": "Acciones",
     "delete": "Eliminar",
     "inApp": "En EPL Sync",
@@ -1572,6 +1588,8 @@
     }
   },
   "common": {
+    "confirmDeletion": "Confirmo el borrado irreversible de los elementos seleccionados.",
+    "cancel": "Cancelar",
     "close": "Cerrar"
   },
   "applicationVersion": {
@@ -1671,6 +1689,8 @@
     "selectRecord": "Seleccionar EPL ID {{id}} (r{{revision}})"
   },
   "calibreSend": {
+    "selected_one": "{{count}} libro seleccionado",
+    "selected_other": "{{count}} libros seleccionados",
     "detailContains": "Detalle contiene",
     "missing": "{{count}} libros no tienen el EPUB de la revisión del catálogo disponible.",
     "downloadMissing": "Descargar los EPUB no disponibles y enviarlos a Calibre cuando terminen",
@@ -1807,6 +1827,8 @@
     }
   },
   "revisionCleanup": {
+    "previewBooks": "Libros",
+    "previewPages": "Páginas de la previsualización",
     "removalHelp": "Borrado de los registros seleccionados y, según la opción elegida, de sus torrents y archivos. Las dependencias de otros trabajos se comprueban antes de eliminar.",
     "removalJobTitle": "Trabajo de borrado de descargas",
     "title": "Limpiar revisiones antiguas",

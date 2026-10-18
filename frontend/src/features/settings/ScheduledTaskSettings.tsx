@@ -477,7 +477,7 @@ export function ScheduledTaskSettings() {
             disabled={closeCycle.isPending}
             onClick={() => setClosing(null)}
           >
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             loading={closeCycle.isPending}
@@ -509,7 +509,7 @@ export function ScheduledTaskSettings() {
             disabled={remove.isPending}
             onClick={() => setDeleting(null)}
           >
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             color="red"
@@ -912,7 +912,7 @@ function TaskEditor({
           disabled={mutation.isPending}
           onClick={onClose}
         >
-          {t("import.cancel")}
+          {t("common.cancel")}
         </Button>
         {automatic && step > 0 && (
           <Button

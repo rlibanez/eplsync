@@ -75,6 +75,9 @@ export function EpubBatchDownload({
             <div key={index}>{name}</div>
           ))}
           <ModalActions>
+            <Button variant="default" onClick={() => setWarning(null)}>
+              {t("common.cancel")}
+            </Button>
             <Button
               onClick={() => {
                 if (warning) startDownload(warning.url);
@@ -96,6 +99,11 @@ export function EpubBatchDownload({
             icon={Download}
           >
             <Failure error={batch.error} retry={() => batch.mutate(selected)} />
+            <ModalActions>
+              <Button variant="default" onClick={() => batch.reset()}>
+                {t("common.close")}
+              </Button>
+            </ModalActions>
           </AppModal>
         ) : (
           <Failure error={batch.error} retry={() => batch.mutate(selected)} />

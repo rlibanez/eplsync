@@ -910,7 +910,7 @@ export function JobDetail() {
         <p>{t("downloads.cancelConfirm")}</p>
         <ModalActions>
           <Button variant="default" onClick={() => setCancel(false)}>
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             color="red"

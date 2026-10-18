@@ -138,7 +138,7 @@ export function DatabaseReset() {
             disabled={pending}
             onClick={() => setOpened(false)}
           >
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             color="red"

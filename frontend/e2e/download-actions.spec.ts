@@ -87,8 +87,24 @@ test("state refreshes one row and deletes a mixed-book selection", async ({
     .first()
     .click();
   const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.locator(".mantine-Modal-title .lucide-trash2"),
+  ).toHaveCount(1);
   await dialog
     .getByRole("checkbox", { name: "Eliminar el registro del historial" })
+    .check();
+  await dialog
+    .locator(".app-modal-actions")
+    .getByRole("button", { name: "Siguiente", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Eliminar", exact: true }),
+  ).toBeDisabled();
+  await dialog
+    .getByRole("checkbox", {
+      name: "Confirmo el borrado irreversible de los elementos seleccionados.",
+      exact: true,
+    })
     .check();
   await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(dialog).toBeVisible();
@@ -263,8 +279,23 @@ test("blocked deletion explains the Calibre dependency and links to its job", as
     .getByRole("button", { name: "Eliminar", exact: true })
     .click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByRole("textbox", { name: "Acción", exact: true }).click();
+  await dialog
+    .getByRole("textbox", { name: "En el cliente torrent", exact: true })
+    .click();
   await page.getByRole("option", { name: "Solo torrent", exact: true }).click();
+  await dialog
+    .locator(".app-modal-actions")
+    .getByRole("button", { name: "Siguiente", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Eliminar", exact: true }),
+  ).toBeDisabled();
+  await dialog
+    .getByRole("checkbox", {
+      name: "Confirmo el borrado irreversible de los elementos seleccionados.",
+      exact: true,
+    })
+    .check();
   await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(page).toHaveURL(/\/downloads\/jobs\/cleanup\/removal-job$/);
   await expect(
@@ -281,3 +312,300 @@ test("blocked deletion explains the Calibre dependency and links to its job", as
   ).toBeVisible();
   expect(submissions).toBe(1);
 });
+
+test("deletion previews the whole cross-page selection and submits only checked records", async ({
+  page,
+}) => {
+  const rows = Array.from({ length: 45 }, (_, n) => ({
+    id: String(n + 1),
+    eplId: n + 1,
+    title: `Libro ${n + 1}`,
+    hash: String(n + 1).padStart(40, "A"),
+    revision: 1,
+    status: "DOWNLOADED",
+    client: "qbittorrent",
+    clientInstanceId: "server",
+    origin: "EPLSYNC",
+    coverAvailable: false,
+  }));
+  await page.route("**/api/torrent/downloads?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const p = Number(params.get("page") ?? 0),
+      size = Number(params.get("size") ?? 20);
+    return route.fulfill({
+      json: {
+        items: rows.slice(p * size, (p + 1) * size),
+        meta: {
+          page: p,
+          size,
+          totalItems: 45,
+          totalPages: Math.ceil(45 / size),
+          hasNext: (p + 1) * size < 45,
+          hasPrevious: p > 0,
+        },
+      },
+    });
+  });
+  await page.route("**/api/torrent/downloads/removal-preview", (route) => {
+    expect(route.request().postDataJSON().ids).toHaveLength(45);
+    return route.fulfill({ json: rows });
+  });
+  await page.route(
+    "**/api/torrent/downloads/delete-history?preview=true",
+    (route) => route.fulfill({ json: { pendingCleanup: 0 } }),
+  );
+  let sent: string[] = [];
+  await page.route("**/api/revision-cleanups/removals", (route) => {
+    sent = route.request().postDataJSON().removal.ids;
+    return route.fulfill({ json: { id: "deletion-job" } });
+  });
+  await page.goto("/downloads");
+  await page
+    .getByRole("button", { name: "Seleccionar todo (45)", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await page
+    .locator(".selection-toolbar-actions")
+    .getByRole("button", { name: "Eliminar", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator("tbody tr")).toHaveCount(20);
+  await expect(dialog.locator("legend", { hasText: "Libros" })).toBeVisible();
+  await expect(dialog.getByRole("columnheader")).toHaveText([
+    "",
+    "#",
+    "Libro",
+    "EPL ID",
+    "Revisión",
+    "Hash",
+  ]);
+  await expect(dialog.locator("tbody tr").first()).toContainText("Libro 1");
+  await expect(dialog.locator(".app-modal-actions")).toContainText(
+    "45 registros seleccionados",
+  );
+  await expect(
+    dialog.locator("label").filter({ hasText: /^Acción$/ }),
+  ).toHaveCount(0);
+
+  await expect(dialog.locator("tbody tr").first()).toContainText(rows[0].hash);
+  await expect(dialog).toContainText("45 registros seleccionados");
+  await dialog
+    .getByRole("button", { name: "Quitar selección (45)", exact: true })
+    .click();
+  await expect(
+    dialog
+      .locator(".app-modal-actions")
+      .getByRole("button", { name: "Siguiente", exact: true }),
+  ).toBeDisabled();
+  await dialog
+    .getByRole("button", { name: "Seleccionar disponibles", exact: true })
+    .click();
+  const pager = dialog.getByRole("navigation", {
+    name: "Páginas de la previsualización",
+  });
+  await pager.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await dialog.locator("tbody tr").first().getByRole("checkbox").uncheck();
+  await pager.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await expect(dialog.locator("tbody tr")).toHaveCount(5);
+  await expect(dialog.locator("tbody tr").last()).toContainText(rows[44].hash);
+  await expect(dialog).toContainText("44 registros seleccionados");
+  const cellBoxes = await dialog
+    .locator("tbody tr")
+    .first()
+    .locator("td")
+    .evaluateAll((cells) =>
+      cells.map((cell) => {
+        const box = cell.getBoundingClientRect();
+        return {
+          top: box.top,
+          height: box.height,
+          display: getComputedStyle(cell).display,
+        };
+      }),
+    );
+  expect(
+    cellBoxes.every(
+      (box) =>
+        box.display === "table-cell" &&
+        Math.abs(box.top - cellBoxes[0].top) < 1 &&
+        Math.abs(box.height - cellBoxes[0].height) < 1,
+    ),
+  ).toBe(true);
+  await dialog.screenshot({
+    path: "/tmp/eplsync-download-removal-preview.png",
+    animations: "disabled",
+  });
+  const hash = dialog.locator("td.hash-text").first();
+  expect(await hash.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe(
+    "nowrap",
+  );
+  await dialog
+    .getByRole("checkbox", {
+      name: "Eliminar el registro del historial",
+      exact: true,
+    })
+    .check();
+  await dialog
+    .locator(".app-modal-actions")
+    .getByRole("button", { name: "Siguiente", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Eliminar", exact: true }),
+  ).toBeDisabled();
+  await dialog.getByRole("button", { name: "Volver", exact: true }).click();
+  await expect(dialog.locator(".app-modal-actions")).toContainText(
+    "44 registros seleccionados",
+  );
+  await expect(dialog.locator("tbody tr")).toHaveCount(5);
+  await dialog
+    .locator(".app-modal-actions")
+    .getByRole("button", { name: "Siguiente", exact: true })
+    .click();
+  await dialog
+    .getByRole("checkbox", {
+      name: "Confirmo el borrado irreversible de los elementos seleccionados.",
+      exact: true,
+    })
+    .check();
+  await dialog.screenshot({
+    path: "/tmp/eplsync-download-removal-confirmation.png",
+    animations: "disabled",
+  });
+  await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await expect.poll(() => sent.length).toBe(44);
+  expect(sent).not.toContain("21");
+  expect(sent).toContain("1");
+  expect(sent).toContain("45");
+});
+
+for (const scenario of [
+  {
+    action: "keep",
+    history: true,
+    label: "",
+    summary:
+      "Se eliminarán 2 registros de EPL Sync. Los torrents y sus archivos se conservarán.",
+  },
+  {
+    action: "torrent",
+    history: false,
+    label: "Solo torrent",
+    summary:
+      "Se eliminarán 2 torrents. Sus archivos y los registros de EPL Sync se conservarán.",
+  },
+  {
+    action: "torrent",
+    history: true,
+    label: "Solo torrent",
+    summary:
+      "Se eliminarán 2 torrents y sus registros de EPL Sync. Los archivos se conservarán.",
+  },
+  {
+    action: "files",
+    history: false,
+    label: "Torrent y archivos",
+    summary:
+      "Se eliminarán 2 torrents y sus archivos. Los registros de EPL Sync se conservarán.",
+  },
+  {
+    action: "files",
+    history: true,
+    label: "Torrent y archivos",
+    summary:
+      "Se eliminarán 2 torrents, sus archivos y sus registros de EPL Sync.",
+  },
+])
+  test(`unified deletion confirmation: ${scenario.action}, history=${scenario.history}`, async ({
+    page,
+  }) => {
+    const rows = [1, 2].map((n) => ({
+      id: String(n),
+      eplId: n,
+      title: `Libro ${n}`,
+      revision: 1,
+      hash: String(n).repeat(40),
+      status: "DOWNLOADED",
+      client: "qbittorrent",
+      clientInstanceId: "server",
+      origin: "EPLSYNC",
+      coverAvailable: false,
+    }));
+    await page.route("**/api/torrent/downloads?**", (route) =>
+      route.fulfill({
+        json: {
+          items: rows,
+          meta: {
+            page: 0,
+            size: 20,
+            totalItems: 2,
+            totalPages: 1,
+            hasNext: false,
+            hasPrevious: false,
+          },
+        },
+      }),
+    );
+    await page.route(
+      "**/api/torrent/downloads/delete-history?preview=true",
+      (route) => route.fulfill({ json: { pendingCleanup: 0 } }),
+    );
+    let sends = 0;
+    await page.route("**/api/revision-cleanups/removals", (route) => {
+      sends++;
+      expect(route.request().postDataJSON().removal).toEqual({
+        ids: ["1", "2"],
+        clientAction: scenario.action,
+        deleteHistory: scenario.history,
+        confirm: true,
+        confirmFiles: scenario.action === "files",
+      });
+      return route.fulfill({ json: { id: "deletion-job" } });
+    });
+    await page.goto("/downloads");
+    await page
+      .getByRole("checkbox", {
+        name: "Seleccionar registros de esta página",
+        exact: true,
+      })
+      .check();
+    await page
+      .locator(".selection-toolbar-actions")
+      .getByRole("button", { name: "Eliminar", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    if (scenario.history)
+      await dialog
+        .getByRole("checkbox", {
+          name: "Eliminar el registro del historial",
+          exact: true,
+        })
+        .check();
+    if (scenario.action !== "keep") {
+      await dialog
+        .getByRole("textbox", { name: "En el cliente torrent", exact: true })
+        .click();
+      await page
+        .getByRole("option", { name: scenario.label, exact: true })
+        .click();
+    }
+    await dialog
+      .locator(".app-modal-actions")
+      .getByRole("button", { name: "Siguiente", exact: true })
+      .click();
+    await expect(dialog.locator("p strong")).toHaveText(scenario.summary);
+    await expect(dialog).not.toContainText("2 registros seleccionados");
+    await expect(dialog.locator("dl")).toHaveCount(0);
+    await expect(dialog.getByRole("checkbox")).toHaveCount(1);
+    expect(sends).toBe(0);
+    await expect(
+      dialog.getByRole("button", { name: "Eliminar", exact: true }),
+    ).toBeDisabled();
+    await dialog
+      .getByRole("checkbox", {
+        name: "Confirmo el borrado irreversible de los elementos seleccionados.",
+        exact: true,
+      })
+      .check();
+    await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+    await expect.poll(() => sends).toBe(1);
+  });

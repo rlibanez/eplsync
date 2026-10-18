@@ -1,5 +1,6 @@
 {
   "calibreIdentifiers": {
+    "result": "Result",
     "books": "Books",
     "revision": "Revision",
     "open": "Complete identifiers",
@@ -7,6 +8,8 @@
     "apply": "Complete selected",
     "progress": "Checking identifiers",
     "select": "Select Calibre ID",
+    "selected_one": "{{count}} book selected",
+    "selected_other": "{{count}} books selected",
     "failed": "Could not check or update the Calibre entry"
   },
   "telegram": {
@@ -1521,6 +1524,19 @@
     "lastSearch": "Last search: {{date}}"
   },
   "historyActions": {
+    "confirmation": {
+      "records_one": "{{count}} EPL Sync record will be deleted. Torrents and their files will be kept.",
+      "records_other": "{{count}} EPL Sync records will be deleted. Torrents and their files will be kept.",
+      "torrents_one": "{{count}} torrent will be deleted. Their files and EPL Sync records will be kept.",
+      "torrents_other": "{{count}} torrents will be deleted. Their files and EPL Sync records will be kept.",
+      "torrentsAndRecords_one": "{{count}} torrent and its EPL Sync record will be deleted. Files will be kept.",
+      "torrentsAndRecords_other": "{{count}} torrents and their EPL Sync records will be deleted. Files will be kept.",
+      "files_one": "{{count}} torrent and its files will be deleted. EPL Sync records will be kept.",
+      "files_other": "{{count}} torrents and their files will be deleted. EPL Sync records will be kept.",
+      "filesAndRecords_one": "{{count}} torrent, its files and its EPL Sync record will be deleted.",
+      "filesAndRecords_other": "{{count}} torrents, their files and their EPL Sync records will be deleted."
+    },
+    "confirmRemoval": "I have reviewed the selection and confirm deletion.",
     "actions": "Actions",
     "delete": "Delete",
     "inApp": "In EPL Sync",
@@ -1572,6 +1588,8 @@
     }
   },
   "common": {
+    "confirmDeletion": "I confirm irreversible deletion of the selected items.",
+    "cancel": "Cancel",
     "close": "Close"
   },
   "applicationVersion": {
@@ -1671,6 +1689,8 @@
     "selectRecord": "Select EPL ID {{id}} (r{{revision}})"
   },
   "calibreSend": {
+    "selected_one": "{{count}} book selected",
+    "selected_other": "{{count}} books selected",
     "detailContains": "Detail contains",
     "missing": "{{count}} books do not have the catalog revision EPUB available.",
     "downloadMissing": "Download unavailable EPUBs and send them to Calibre when complete",
@@ -1807,6 +1827,8 @@
     }
   },
   "revisionCleanup": {
+    "previewBooks": "Books",
+    "previewPages": "Preview pages",
     "removalHelp": "Remove the selected records and, according to the chosen option, their torrents and files. Dependencies on other jobs are checked before deletion.",
     "removalJobTitle": "Download removal job",
     "title": "Clean up older revisions",

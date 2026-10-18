@@ -453,6 +453,13 @@ export function CalibreUpdateSend({ selected }: { selected: number[] }) {
                 }
               >
                 <Button
+                  variant="default"
+                  disabled={send.isPending}
+                  onClick={() => setOpened(false)}
+                >
+                  {t("common.cancel")}
+                </Button>
+                <Button
                   loading={send.isPending}
                   disabled={
                     !choices.some((c) => c.send) ||

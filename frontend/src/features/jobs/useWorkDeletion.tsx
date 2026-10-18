@@ -204,7 +204,7 @@ export function useWorkDeletion(
             disabled={busy}
             onClick={() => setOpened(false)}
           >
-            {t("common.close")}
+            {t(finished ? "common.close" : "common.cancel")}
           </Button>
           {!finished && (
             <Button

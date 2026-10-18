@@ -146,7 +146,7 @@ export function EventMaintenance() {
             disabled={remove.isPending}
             onClick={() => setConfirm(false)}
           >
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             color="red"

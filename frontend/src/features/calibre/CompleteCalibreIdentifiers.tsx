@@ -1,8 +1,10 @@
+import { PreviewHeading, usePreviewSort } from "../../components/PreviewSort";
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Button, Checkbox, Progress } from "@mantine/core";
+import { Button, Checkbox, Group, Progress } from "@mantine/core";
 import { Tags } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { RowNumberHeading, RowNumberCell } from "../../components/RowNumber";
 import { TableAction } from "../../components/TableAction";
 import { AppModal, ModalActions } from "../../components/AppModal";
 import { useAuth } from "../auth/Auth";
@@ -33,7 +35,19 @@ export function CompleteCalibreIdentifiers({
   const [opened, setOpened] = useState(false),
     [busy, setBusy] = useState(false),
     [rows, setRows] = useState<Row[]>([]),
-    [progress, setProgress] = useState(0);
+    [progress, setProgress] = useState(0),
+    [page, setPage] = useState(0),
+    [attempted, setAttempted] = useState(false);
+  const sorting = usePreviewSort(rows, () => setPage(0));
+  const displayed = sorting.sorted(
+    (row, key) =>
+      row[key as "title" | "calibreId" | "eplId" | "revision" | "message"],
+  );
+  const selectedCount = rows.filter(
+    (row) => row.allowed && row.checked && !row.done,
+  ).length;
+  const pageSize = 20;
+  const pages = Math.ceil(rows.length / pageSize);
   type Run = { id: string; abort: AbortController };
   const running = useRef<Run | null>(null);
   function cancelRequest(run: Run) {
@@ -80,7 +94,9 @@ export function CompleteCalibreIdentifiers({
   async function preview() {
     setOpened(true);
     const run = begin();
+    setAttempted(false);
     setRows([]);
+    setPage(0);
     const result: Row[] = [];
     for (const [index, id] of selected.entries()) {
       try {
@@ -115,6 +131,7 @@ export function CompleteCalibreIdentifiers({
     }
   }
   async function apply() {
+    setAttempted(true);
     const chosen = rows.filter(
       (row) => row.allowed && row.checked && !row.done,
     );
@@ -200,45 +217,132 @@ export function CompleteCalibreIdentifiers({
             aria-label={t("calibreIdentifiers.progress")}
           />
         )}
-        <fieldset className="send-options-group">
+        <fieldset className="send-options-group cleanup-preview">
           <legend>{t("calibreIdentifiers.books")}</legend>
-          <ul className="identifier-preview-list">
-            {rows.map((row) => (
-              <li key={row.calibreId}>
-                <Checkbox
-                  aria-label={`${t("calibreIdentifiers.select")} ${row.calibreId}`}
-                  label={
-                    <>
-                      {row.title} · Calibre ID {row.calibreId} · EPL ID{" "}
-                      {row.eplId ?? "—"} · {t("calibreIdentifiers.revision")}{" "}
-                      {row.revision ?? "—"}
-                    </>
-                  }
-                  description={
-                    <span role={row.done ? "status" : undefined}>
-                      {row.message}
-                    </span>
-                  }
-                  checked={!!row.checked}
-                  disabled={busy || !row.allowed || row.done}
-                  onChange={(event) => {
-                    const checked = event.currentTarget.checked;
-                    setRows((old) =>
-                      old.map((item) =>
-                        item.calibreId === row.calibreId
-                          ? { ...item, checked }
-                          : item,
-                      ),
-                    );
-                  }}
-                />
-              </li>
-            ))}
-          </ul>
+          <Group gap="xs">
+            <Button
+              variant="subtle"
+              disabled={busy}
+              onClick={() =>
+                setRows((old) =>
+                  old.map((row) => ({
+                    ...row,
+                    checked: row.allowed && !row.done,
+                  })),
+                )
+              }
+            >
+              {t("revisionCleanup.selectAll")}
+            </Button>
+            <Button
+              variant="subtle"
+              disabled={busy}
+              onClick={() =>
+                setRows((old) => old.map((row) => ({ ...row, checked: false })))
+              }
+            >
+              {t("revisionCleanup.clear", { count: selectedCount })}
+            </Button>
+          </Group>
+          <div className="table-scroll revision-cleanup-table identifier-preview-table">
+            <table aria-label={t("calibreIdentifiers.books")}>
+              <colgroup>
+                <col style={{ width: 44 }} />
+                <col style={{ width: 44 }} />
+                <col style={{ width: 180 }} />
+                <col style={{ width: 104 }} />
+                <col style={{ width: 80 }} />
+                <col style={{ width: 80 }} />
+                <col />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th aria-label={t("revisionCleanup.selection")} />
+                  <RowNumberHeading />
+                  <PreviewHeading field="title" {...sorting}>
+                    {t("downloads.book")}
+                  </PreviewHeading>
+                  <PreviewHeading field="calibreId" {...sorting}>
+                    {t("calibre.id")}
+                  </PreviewHeading>
+                  <PreviewHeading field="eplId" {...sorting}>
+                    EPL ID
+                  </PreviewHeading>
+                  <PreviewHeading field="revision" {...sorting}>
+                    {t("calibreIdentifiers.revision")}
+                  </PreviewHeading>
+                  <PreviewHeading field="message" {...sorting}>
+                    {t("calibreIdentifiers.result")}
+                  </PreviewHeading>
+                </tr>
+              </thead>
+              <tbody>
+                {displayed
+                  .slice(page * pageSize, (page + 1) * pageSize)
+                  .map((row, index) => (
+                    <tr key={row.calibreId}>
+                      <td>
+                        <Checkbox
+                          aria-label={`${t("calibreIdentifiers.select")} ${row.calibreId}`}
+                          checked={!!row.checked}
+                          disabled={busy || !row.allowed || row.done}
+                          onChange={(event) => {
+                            const checked = event.currentTarget.checked;
+                            setRows((old) =>
+                              old.map((item) =>
+                                item.calibreId === row.calibreId
+                                  ? { ...item, checked }
+                                  : item,
+                              ),
+                            );
+                          }}
+                        />
+                      </td>
+                      <RowNumberCell value={page * pageSize + index + 1} />
+                      <td>{row.title}</td>
+                      <td>{row.calibreId}</td>
+                      <td>{row.eplId ?? "—"}</td>
+                      <td>{row.revision ?? "—"}</td>
+                      <td>
+                        <span role={row.done ? "status" : undefined}>
+                          {row.message}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          {pages > 1 && (
+            <nav
+              className="pagination cleanup-preview-pagination"
+              aria-label={t("revisionCleanup.previewPages")}
+            >
+              <Button
+                variant="subtle"
+                disabled={page === 0}
+                onClick={() => setPage((value) => value - 1)}
+              >
+                {t("catalog.previous")}
+              </Button>
+              <span>
+                {page + 1} / {pages}
+              </span>
+              <Button
+                variant="subtle"
+                disabled={page + 1 >= pages}
+                onClick={() => setPage((value) => value + 1)}
+              >
+                {t("catalog.next")}
+              </Button>
+            </nav>
+          )}
         </fieldset>
-        <ModalActions>
+        <ModalActions
+          summary={t("calibreIdentifiers.selected", { count: selectedCount })}
+        >
           <Button variant="default" onClick={close}>
-            {t("common.close")}
+            {t(!busy && attempted ? "common.close" : "common.cancel")}
           </Button>
           <Button
             loading={busy}

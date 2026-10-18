@@ -133,7 +133,7 @@ function Controls({ job }: { job: Job }) {
         onClose={() => {
           if (!control.isPending) setCancel(false);
         }}
-        title={t("calibreSend.cancel")}
+        title={t("downloads.cancelJob")}
         icon={X}
       >
         <p>{t("calibreSend.cancelHelp")}</p>
@@ -143,14 +143,14 @@ function Controls({ job }: { job: Job }) {
             disabled={control.isPending}
             onClick={() => setCancel(false)}
           >
-            {t("common.close")}
+            {t("common.cancel")}
           </Button>
           <Button
             color="red"
             loading={control.isPending}
             onClick={() => control.mutate("cancel")}
           >
-            {t("calibreSend.cancel")}
+            {t("downloads.cancelJob")}
           </Button>
         </ModalActions>
       </AppModal>

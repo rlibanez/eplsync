@@ -145,7 +145,7 @@ test("timeout explains uncertainty and closing preserves the original cover", as
     "no respondió dentro del tiempo permitido",
   );
   await expect(dialog).not.toContainText("epublibre");
-  await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator(".detail-cover img")).toHaveAttribute(
     "src",

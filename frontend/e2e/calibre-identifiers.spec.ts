@@ -75,10 +75,15 @@ test("previews original download links and fills only selected traceable entries
   await expect(
     dialog.getByRole("group", { name: "Libros", exact: true }),
   ).toBeVisible();
-  await expect(dialog.locator("li").first()).toHaveCSS(
-    "border-top-width",
-    "0px",
-  );
+  await expect(
+    dialog.getByRole("table", { name: "Libros", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("columnheader", { name: "Calibre ID", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("columnheader", { name: "Resultado", exact: true }),
+  ).toHaveCSS("position", "sticky");
   await expect(dialog).toContainText(
     "No se conserva un envío original verificable",
   );
@@ -272,10 +277,10 @@ test("manual imports show their origin per book before and after completion", as
     .click();
   const dialog = page.getByRole("dialog");
   await expect(
-    dialog.locator("li").filter({ hasText: "Libro 1" }),
+    dialog.locator("tbody tr").filter({ hasText: "Libro 1" }),
   ).toContainText("Importación ajena a EPL Sync");
   await expect(
-    dialog.locator("li").filter({ hasText: "Libro 2" }),
+    dialog.locator("tbody tr").filter({ hasText: "Libro 2" }),
   ).toContainText("distintas identidades");
   await expect(
     dialog.getByRole("checkbox", {
@@ -340,9 +345,9 @@ test("preview can be cancelled and closed without processing remaining books or 
   await expect.poll(() => calls).toBe(1);
   const dialog = page.getByRole("dialog");
   await expect(
-    dialog.getByRole("button", { name: "Cancelar", exact: true }),
+    dialog.getByRole("button", { name: "Cerrar", exact: true }),
   ).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
   await expect.poll(() => cancelled).toEqual([firstOperation]);
   await expect(dialog).toHaveCount(0);
   await page
@@ -448,9 +453,9 @@ test("closing during application cancels the remaining work", async ({
     .click();
   await expect.poll(() => applies).toBe(2);
   await expect(
-    dialog.locator("li").filter({ hasText: "Libro 1" }),
+    dialog.locator("tbody tr").filter({ hasText: "Libro 1" }),
   ).toContainText("Identificadores comprobados");
-  await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   release();
 });
@@ -514,4 +519,144 @@ test("row action opens the shared assistant for that book without changing the s
       exact: true,
     }),
   ).not.toBeChecked();
+});
+
+test("identifier table keeps selection across pages and applies only eligible checked books", async ({
+  page,
+}) => {
+  await library(page);
+  const books = Array.from({ length: 25 }, (_, index) => ({
+    calibreId: index + 1,
+    title: `Libro ${index + 1}`,
+    authors: "Autora",
+    eplId: null,
+    revision: null,
+    comparison: "UNKNOWN",
+    presence: "UNIDENTIFIED",
+  }));
+  await page.route("**/api/calibre/books?**", (route) => {
+    const params = new URL(route.request().url()).searchParams,
+      p = Number(params.get("page") ?? 0),
+      size = Number(params.get("size") ?? 20);
+    return route.fulfill({
+      json: {
+        items: books.slice(p * size, (p + 1) * size),
+        meta: {
+          page: p,
+          size,
+          totalItems: 25,
+          totalPages: Math.ceil(25 / size),
+          hasNext: (p + 1) * size < 25,
+          hasPrevious: p > 0,
+        },
+      },
+    });
+  });
+  await page.route("**/api/calibre/identifiers/preview", (route) => {
+    const id = route.request().postDataJSON().calibreId;
+    return route.fulfill({
+      json: {
+        token: id === 25 ? null : `token-${id}`,
+        calibreId: id,
+        title: `Libro ${id}`,
+        eplId: id === 25 ? null : id,
+        revision: id === 25 ? null : "1",
+        allowed: id !== 25,
+        message:
+          id === 25 ? "Sin correspondencia" : "Correspondencia inequívoca",
+      },
+    });
+  });
+  const applied: number[] = [];
+  await page.route("**/api/calibre/identifiers/apply", (route) => {
+    const id = Number(route.request().postDataJSON().token.split("-")[1]);
+    applied.push(id);
+    return route.fulfill({
+      json: {
+        token: `token-${id}`,
+        calibreId: id,
+        title: `Libro ${id}`,
+        eplId: id,
+        revision: "1",
+        allowed: false,
+        message: "Identificadores completados",
+      },
+    });
+  });
+  await page.goto("/calibre");
+  await page
+    .getByRole("button", { name: "Seleccionar todo (25)", exact: true })
+    .click();
+  await page
+    .locator(".selection-toolbar-actions")
+    .getByRole("button", { name: "Completar identificadores", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  const pager = dialog.getByRole("navigation", {
+    name: "Páginas de la previsualización",
+  });
+  const check = (id: number) =>
+    dialog.getByRole("checkbox", {
+      name: `Seleccionar Calibre ID ${id}`,
+      exact: true,
+    });
+  await expect(
+    dialog.getByRole("button", {
+      name: "Completar seleccionados",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(pager).toContainText("1 / 2");
+  await expect(dialog.locator("tbody tr")).toHaveCount(20);
+  expect(
+    await dialog
+      .locator(".identifier-preview-table")
+      .evaluate((e) => e.scrollHeight > e.clientHeight),
+  ).toBe(true);
+  await expect(dialog).toContainText("24 libros seleccionados");
+  await dialog
+    .getByRole("button", { name: "Quitar selección (24)", exact: true })
+    .click();
+  await expect(dialog).toContainText("0 libros seleccionados");
+  await dialog
+    .getByRole("button", { name: "Seleccionar disponibles", exact: true })
+    .click();
+  await expect(dialog).toContainText("24 libros seleccionados");
+  await dialog.getByRole("button", { name: "Calibre ID", exact: true }).click();
+  await dialog.getByRole("button", { name: "Calibre ID", exact: true }).click();
+  await expect(dialog.locator("tbody tr").first()).toContainText("Libro 25");
+  await expect(check(25)).toBeDisabled();
+  await expect(check(24)).toBeChecked();
+  await dialog.getByRole("button", { name: "Calibre ID", exact: true }).click();
+  await check(1).uncheck();
+  await pager.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await expect(dialog.locator("tbody tr")).toHaveCount(5);
+  await expect(
+    dialog.locator("tbody tr").last().locator("[data-row-number]"),
+  ).toHaveText("25");
+  await check(21).uncheck();
+  await expect(check(25)).toBeDisabled();
+  await pager.getByRole("button", { name: "Anterior", exact: true }).click();
+  await expect(check(1)).not.toBeChecked();
+  await expect(check(2)).toBeChecked();
+  await pager.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await expect(check(21)).not.toBeChecked();
+  await dialog
+    .getByRole("button", { name: "Completar seleccionados", exact: true })
+    .click();
+  await expect.poll(() => applied.length).toBe(22);
+  expect(applied).toEqual(
+    books
+      .map((book) => book.calibreId)
+      .filter((id) => ![1, 21, 25].includes(id)),
+  );
+  await expect(
+    dialog.getByRole("button", {
+      name: "Completar seleccionados",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await pager.getByRole("button", { name: "Anterior", exact: true }).click();
+  await expect(check(1)).not.toBeChecked();
+  await expect(check(2)).toBeDisabled();
 });

@@ -106,7 +106,7 @@ export function ResolveCalibreUpload({
             onClick={() => setOpened(false)}
             disabled={resolve.isPending}
           >
-            {t("calibreSend.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={() => resolve.mutate()}

@@ -97,8 +97,8 @@ test("large file previews are paged without losing selected or excluded EPUBs",a
   });
   await page.goto("/catalog");await page.getByRole("checkbox",{name:"Seleccionar Book 2",exact:true}).check();
   await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();const dialog=page.getByRole("dialog");
-  await expect(dialog.getByRole("checkbox")).toHaveCount(100);
-  for(let n=0;n<10;n++) await dialog.getByRole("button",{name:"Siguiente",exact:true}).click();
+  await expect(dialog.getByRole("checkbox")).toHaveCount(20);
+  for(let n=0;n<50;n++) await dialog.getByRole("button",{name:"Siguiente",exact:true}).click();
   await dialog.getByRole("checkbox",{name:/File 1000.epub/}).uncheck();
   await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
   await expect(page).toHaveURL(/\/calibre\/jobs\/catalog-job$/);

@@ -1,7 +1,9 @@
+import { PreviewHeading, usePreviewSort } from "../../components/PreviewSort";
+import { RowNumberCell, RowNumberHeading } from "../../components/RowNumber";
 import { Link, useNavigate } from "react-router-dom";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { useRef, useState, type ReactNode } from "react";
-import { Alert, Button, Checkbox, Select } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Select, Stepper } from "@mantine/core";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -21,7 +23,10 @@ type Outcome = {
   revision?: number;
   eplId?: number;
 };
-type Row = Pick<Download, "id" | "hash" | "revision"> & { eplId?: number };
+type Row = Pick<Download, "id" | "hash" | "revision"> & {
+  eplId?: number;
+  title?: string | null;
+};
 type Targets = { eplId?: number; ids: string[]; rows: Row[] };
 type Operation = Targets & {
   operation: "refresh" | "remove";
@@ -70,6 +75,18 @@ export function DownloadActions({
   const cache = useQueryClient();
   const [removal, setRemoval] = useState(false);
   const [targets, setTargets] = useState<Targets>({ ids: [], rows: [] });
+  const [removalPage, setRemovalPage] = useState(0);
+  const [removalStep, setRemovalStep] = useState(0);
+  const [included, setIncluded] = useState<string[]>([]);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  const previewGeneration = useRef(0);
+  const removalSorting = usePreviewSort(targets.rows, () => setRemovalPage(0));
+  const removalRows = removalSorting.sorted((row, field) =>
+    field === "eplId"
+      ? (row.eplId ?? targets.eplId)
+      : row[field as "revision" | "hash" | "title"],
+  );
   const [clientAction, setClientAction] = useState("keep");
   const [deleteHistory, setDeleteHistory] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -157,7 +174,42 @@ export function DownloadActions({
     action.mutate({ ...target, operation: "refresh" });
   }
   function openRemoval(target: Targets) {
+    const generation = ++previewGeneration.current;
     removalRequest.current = null;
+    setRemovalPage(0);
+    setRemovalStep(0);
+    setIncluded(target.ids);
+    setDetailsError(null);
+    const missingDetails = target.rows.length !== target.ids.length;
+    const targetIds = new Set(target.ids);
+    setDetailsLoading(missingDetails);
+    if (missingDetails)
+      void post<Row[]>("/torrent/downloads/removal-preview", {
+        eplId: target.eplId,
+        ids: target.ids,
+      })
+        .then((allRows) => {
+          if (previewGeneration.current !== generation) return;
+          if (
+            allRows.length !== target.ids.length ||
+            new Set(allRows.map((row) => row.id)).size !== target.ids.length ||
+            allRows.some((row) => !targetIds.has(row.id))
+          )
+            throw new Error(t("historyActions.failed"));
+          const byId = new Map(allRows.map((row) => [row.id, row]));
+          setTargets({
+            ...target,
+            rows: target.ids.map((id) => byId.get(id)!),
+          });
+        })
+        .catch((error) => {
+          if (previewGeneration.current === generation)
+            setDetailsError(error.message);
+        })
+        .finally(() => {
+          if (previewGeneration.current === generation)
+            setDetailsLoading(false);
+        });
     setTargets(target);
     setOutcomes(null);
     action.reset();
@@ -220,6 +272,7 @@ export function DownloadActions({
       )}
       <AppModal
         icon={Trash2}
+        width="wide"
         opened={removal}
         onClose={() => {
           if (!action.isPending) setRemoval(false);
@@ -227,117 +280,238 @@ export function DownloadActions({
         title={t("historyActions.delete")}
         centered
       >
-        <fieldset className="send-options-group">
-          <legend>{t("historyActions.inApp")}</legend>
-          <Checkbox
-            label={t("historyActions.historyRecord")}
-            checked={deleteHistory}
-            disabled={!can("DOWNLOADS_DELETE") || action.isPending}
-            onChange={(e) => setDeleteHistory(e.currentTarget.checked)}
-          />
-          {deleteHistory && (
-            <>
-              <p>
-                {t("historyActions.confirmHistory", {
-                  count: targets.ids.length,
-                })}
-              </p>
-              <p className="muted">{t("historyActions.rediscovery")}</p>
-              {preview.data && preview.data.pendingCleanup > 0 && (
-                <Alert color="yellow">
-                  {t("historyActions.pendingCleanup")}
-                </Alert>
-              )}
-              {preview.isError && (
-                <Alert color="red">{preview.error.message}</Alert>
-              )}
-            </>
-          )}
-        </fieldset>
-        <fieldset className="send-options-group">
-          <legend>{t("historyActions.inClient")}</legend>
-          <Select
-            label={t("send.previousAction")}
-            value={clientAction}
-            allowDeselect={false}
-            disabled={action.isPending}
-            data={[
-              { value: "keep", label: t("send.keepPrevious") },
-              ...(can("TORRENT_CLEANUP")
-                ? [{ value: "torrent", label: t("historyActions.torrentOnly") }]
-                : []),
-              ...(can("TORRENT_CLEANUP") && can("TORRENT_FILES_DELETE")
-                ? [
-                    {
-                      value: "files",
-                      label: t("historyActions.torrentAndFiles"),
-                    },
-                  ]
-                : []),
-            ]}
-            onChange={(value) => {
-              setClientAction(value ?? "keep");
-              setConfirmed(false);
-            }}
-          />
-          {clientAction === "files" && (
-            <Checkbox
-              mt="md"
-              checked={confirmed}
-              disabled={action.isPending}
-              onChange={(e) => setConfirmed(e.currentTarget.checked)}
-              label={t("historyActions.irreversible")}
-            />
-          )}
-        </fieldset>
-        {deleteHistory && clientAction !== "keep" && (
-          <p className="muted">{t("historyActions.combinedHelp")}</p>
-        )}
-        <ul className="history-action-records">
-          {targets.rows.map((row) => (
-            <li key={row.id}>
-              {(row.eplId ?? targets.eplId) != null && (
+        <Stepper active={removalStep} size="xs" allowNextStepsSelect={false}>
+          <Stepper.Step label={t("revisionCleanup.preview")} />
+          <Stepper.Step label={t("revisionCleanup.confirm")} />
+        </Stepper>
+        {removalStep === 0 ? (
+          <>
+            <fieldset className="send-options-group">
+              <legend>{t("historyActions.inApp")}</legend>
+              <Checkbox
+                label={t("historyActions.historyRecord")}
+                checked={deleteHistory}
+                disabled={!can("DOWNLOADS_DELETE") || action.isPending}
+                onChange={(e) => setDeleteHistory(e.currentTarget.checked)}
+              />
+              {deleteHistory && (
                 <>
-                  {t("filters.eplId")} {row.eplId ?? targets.eplId} ·{" "}
+                  <p className="muted">{t("historyActions.rediscovery")}</p>
+                  {preview.data && preview.data.pendingCleanup > 0 && (
+                    <Alert color="yellow">
+                      {t("historyActions.pendingCleanup")}
+                    </Alert>
+                  )}
+                  {preview.isError && (
+                    <Alert color="red">{preview.error.message}</Alert>
+                  )}
                 </>
               )}
-              {t("downloads.revision")} {revision(row.revision)}{" "}
-              <small className="hash-text">{row.hash}</small>
-            </li>
-          ))}
-        </ul>
+            </fieldset>
+            <fieldset className="send-options-group">
+              <legend>{t("historyActions.inClient")}</legend>
+              <Select
+                aria-label={t("historyActions.inClient")}
+                value={clientAction}
+                allowDeselect={false}
+                disabled={action.isPending}
+                data={[
+                  { value: "keep", label: t("send.keepPrevious") },
+                  ...(can("TORRENT_CLEANUP")
+                    ? [
+                        {
+                          value: "torrent",
+                          label: t("historyActions.torrentOnly"),
+                        },
+                      ]
+                    : []),
+                  ...(can("TORRENT_CLEANUP") && can("TORRENT_FILES_DELETE")
+                    ? [
+                        {
+                          value: "files",
+                          label: t("historyActions.torrentAndFiles"),
+                        },
+                      ]
+                    : []),
+                ]}
+                onChange={(value) => {
+                  setClientAction(value ?? "keep");
+                  setConfirmed(false);
+                }}
+              />
+            </fieldset>
+            {deleteHistory && clientAction !== "keep" && (
+              <p className="muted">{t("historyActions.combinedHelp")}</p>
+            )}
+            <fieldset className="send-options-group cleanup-preview">
+              <legend>{t("revisionCleanup.previewBooks")}</legend>
+              <Group gap="xs">
+                <Button
+                  variant="subtle"
+                  disabled={action.isPending || detailsLoading}
+                  onClick={() => setIncluded(targets.ids)}
+                >
+                  {t("revisionCleanup.selectAll")}
+                </Button>
+                <Button
+                  variant="subtle"
+                  disabled={action.isPending || detailsLoading}
+                  onClick={() => setIncluded([])}
+                >
+                  {t("revisionCleanup.clear", { count: included.length })}
+                </Button>
+              </Group>
+              {detailsLoading && <p role="status">{t("feedback.loading")}</p>}
+              {detailsError && <Alert color="red">{detailsError}</Alert>}
+              <div className="table-scroll revision-cleanup-table download-removal-preview">
+                <table>
+                  <thead>
+                    <tr>
+                      <th aria-label={t("revisionCleanup.selection")} />
+                      <RowNumberHeading />
+                      <PreviewHeading field="title" {...removalSorting}>
+                        {t("downloads.book")}
+                      </PreviewHeading>
+                      <PreviewHeading field="eplId" {...removalSorting}>
+                        EPL ID
+                      </PreviewHeading>
+                      <PreviewHeading field="revision" {...removalSorting}>
+                        {t("downloads.revision")}
+                      </PreviewHeading>
+                      <PreviewHeading field="hash" {...removalSorting}>
+                        Hash
+                      </PreviewHeading>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {removalRows
+                      .slice(removalPage * 20, (removalPage + 1) * 20)
+                      .map((row, index) => (
+                        <tr key={row.id}>
+                          <td>
+                            <Checkbox
+                              aria-label={`${t("filters.eplId")} ${row.eplId ?? targets.eplId} · ${row.hash}`}
+                              checked={included.includes(row.id)}
+                              disabled={action.isPending || detailsLoading}
+                              onChange={(event) => {
+                                const checked = event.currentTarget.checked;
+                                setIncluded((old) =>
+                                  checked
+                                    ? [...old, row.id]
+                                    : old.filter((id) => id !== row.id),
+                                );
+                              }}
+                            />
+                          </td>
+                          <RowNumberCell value={removalPage * 20 + index + 1} />
+                          <td>{row.title || "—"}</td>
+                          <td>{row.eplId ?? targets.eplId ?? "—"}</td>
+                          <td>{revision(row.revision)}</td>
+                          <td className="hash-text">{row.hash}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+              {targets.rows.length > 20 && (
+                <nav
+                  className="pagination cleanup-preview-pagination"
+                  aria-label={t("revisionCleanup.previewPages")}
+                >
+                  <Button
+                    variant="subtle"
+                    disabled={!removalPage}
+                    onClick={() => setRemovalPage((page) => page - 1)}
+                  >
+                    {t("catalog.previous")}
+                  </Button>
+                  <span>
+                    {removalPage + 1} / {Math.ceil(targets.rows.length / 20)}
+                  </span>
+                  <Button
+                    variant="subtle"
+                    disabled={(removalPage + 1) * 20 >= targets.rows.length}
+                    onClick={() => setRemovalPage((page) => page + 1)}
+                  >
+                    {t("catalog.next")}
+                  </Button>
+                </nav>
+              )}
+            </fieldset>
+          </>
+        ) : (
+          <>
+            <p>
+              <strong>
+                {t(
+                  `historyActions.confirmation.${clientAction === "keep" ? "records" : clientAction === "torrent" ? (deleteHistory ? "torrentsAndRecords" : "torrents") : deleteHistory ? "filesAndRecords" : "files"}`,
+                  { count: included.length },
+                )}
+              </strong>
+            </p>
+            {deleteHistory && clientAction !== "keep" && (
+              <p className="muted">{t("historyActions.combinedHelp")}</p>
+            )}
+            <Checkbox
+              checked={confirmed}
+              disabled={action.isPending}
+              onChange={(event) => setConfirmed(event.currentTarget.checked)}
+              label={t("common.confirmDeletion")}
+            />
+          </>
+        )}
         {action.isError && (
           <Alert color="red" role="alert">
             {action.error.message || t("historyActions.failed")}
           </Alert>
         )}
-        <ModalActions>
+        <ModalActions
+          summary={
+            removalStep === 0
+              ? t("historyActions.selected", { count: included.length })
+              : undefined
+          }
+        >
           <Button
             variant="default"
             disabled={action.isPending}
-            onClick={() => setRemoval(false)}
+            onClick={() => {
+              if (removalStep) {
+                setRemovalStep(0);
+                setConfirmed(false);
+              } else setRemoval(false);
+            }}
           >
-            {t("import.cancel")}
+            {t(removalStep ? "revisionCleanup.back" : "common.cancel")}
           </Button>
           <Button
-            color="red"
+            color={removalStep ? "red" : undefined}
             loading={action.isPending}
             disabled={
+              !included.length ||
+              detailsLoading ||
+              !!detailsError ||
               (!deleteHistory && clientAction === "keep") ||
               (deleteHistory && !preview.isSuccess) ||
-              (clientAction === "files" && !confirmed)
+              (removalStep === 1 && !confirmed)
             }
-            onClick={() =>
+            onClick={() => {
+              if (removalStep === 0) {
+                setRemovalStep(1);
+                setConfirmed(false);
+                return;
+              }
               action.mutate({
                 ...targets,
+                ids: included,
                 operation: "remove",
                 clientAction,
                 deleteHistory,
-                confirmFiles: confirmed,
-              })
-            }
+                confirmFiles: clientAction === "files" && confirmed,
+              });
+            }}
           >
-            {t("historyActions.delete")}
+            {t(removalStep ? "historyActions.delete" : "revisionCleanup.next")}
           </Button>
         </ModalActions>
       </AppModal>

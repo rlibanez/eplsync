@@ -145,7 +145,11 @@ export function RepairCover({ book }: { book: Book }) {
             disabled={force.isPending}
             onClick={() => setDecision(null)}
           >
-            {t("covers.close")}
+            {t(
+              ["CONCURRENT_CHANGE", "NO_COVER"].includes(decision?.reason || "")
+                ? "common.close"
+                : "common.cancel",
+            )}
           </Button>
           {!["CONCURRENT_CHANGE", "NO_COVER"].includes(
             decision?.reason || "",

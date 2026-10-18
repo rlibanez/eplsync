@@ -230,7 +230,7 @@ export function ImportWizard({
           variant="default"
           onClick={step === 0 ? onClose : () => setStep(0)}
         >
-          {t(step === 0 ? "import.cancel" : "import.back")}
+          {t(step === 0 ? "common.cancel" : "import.back")}
         </Button>
         {step === 0 ? (
           <Button

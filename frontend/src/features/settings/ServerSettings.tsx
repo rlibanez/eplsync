@@ -507,7 +507,7 @@ function SettingsForm({
         )}
         <ModalActions>
           <Button variant="default" onClick={() => setConfirm(false)}>
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             loading={mutation.isPending}

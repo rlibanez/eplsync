@@ -145,7 +145,14 @@ test("sends selected EPUB files to a library and controls its job", async ({
   await expect(
     dialog.getByText(/El tamaño del EPUB no coincide/),
   ).toBeVisible();
+  await expect(dialog.locator("legend", { hasText: "Libros" })).toBeVisible();
+  await expect(dialog.locator(".app-modal-actions")).toContainText(
+    "2 libros seleccionados",
+  );
   await dialog.getByRole("checkbox", { name: /Otro.epub/ }).uncheck();
+  await expect(dialog.locator(".app-modal-actions")).toContainText(
+    "1 libro seleccionado",
+  );
   await dialog
     .getByRole("button", { name: "Enviar a Calibre", exact: true })
     .click();
@@ -159,7 +166,7 @@ test("sends selected EPUB files to a library and controls its job", async ({
   await page.getByRole("button", { name: "Cancelar", exact: true }).click();
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Cancelar", exact: true })
+    .getByRole("button", { name: "Cancelar trabajo", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "Pausar", exact: true }),
@@ -246,7 +253,9 @@ test("job validation errors stop polling and do not offer a useless retry", asyn
   const initialRequests = requests;
   await page.waitForTimeout(6200);
   expect(requests).toBe(initialRequests);
-  await expect(page.getByRole("button", { name: "Reintentar", exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Reintentar", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("Calibre jobs filter by clicking state and user", async ({ page }) => {
@@ -485,7 +494,9 @@ test("repeating a direct send after a lost response keeps its request identifier
     .getByRole("button", { name: "Enviar a Calibre", exact: true })
     .click();
   await expect(modal).toContainText("Respuesta perdida");
-  await modal.getByRole("button", { name: "Enviar a Calibre", exact: true }).click();
+  await modal
+    .getByRole("button", { name: "Enviar a Calibre", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/calibre\/jobs\/job$/);
   expect(ids).toHaveLength(2);
   expect(ids[0]).toBeTruthy();

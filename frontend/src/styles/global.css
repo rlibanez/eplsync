@@ -2191,7 +2191,13 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
   .home-task-facts { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px 16px; margin: 0; }
 }
 
-/* Match the checkbox list used by the Calibre send assistant. */
-.identifier-preview-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--mantine-spacing-sm); max-height: 55vh; overflow-y: auto; }
-.identifier-preview-list > li { min-width: 0; overflow-wrap: anywhere; }
-.identifier-preview-list .mantine-Checkbox-labelWrapper { min-width: 0; }
+/* Bound preview tables inside assistants without changing the job detail tables. */
+.cleanup-preview .revision-cleanup-table { max-height: min(45vh, 420px); border: 0; border-radius: 0; }
+.cleanup-preview .revision-cleanup-table th { position: sticky; top: 0; z-index: 1; background: var(--surface-hover); }
+.cleanup-preview-pagination { justify-content: flex-end; padding: 12px 0 0; }
+
+.identifier-preview-table table { table-layout: fixed; min-width: 840px; }
+
+.download-removal-preview .hash-text { white-space: nowrap; overflow-wrap: normal; max-width: none; }
+
+.download-removal-preview td.hash-text { display: table-cell; vertical-align: middle; }

@@ -164,7 +164,7 @@ export function MissingBooks({ disabled }: { disabled: boolean }) {
             disabled={busy}
             onClick={() => setPreview(null)}
           >
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             color="red"

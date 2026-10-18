@@ -131,18 +131,22 @@ test("history refreshes selected records and removes through a confirmed dialog 
   await section.getByRole("button", { name: "Eliminar", exact: true }).click();
   await page
     .getByRole("dialog")
-    .getByRole("textbox", { name: "Acción", exact: true })
+    .getByRole("textbox", { name: "En el cliente torrent", exact: true })
     .click();
   await page
     .getByRole("option", { name: "Torrent y archivos", exact: true })
     .click();
   const confirm = page.getByRole("dialog");
+  await confirm
+    .locator(".app-modal-actions")
+    .getByRole("button", { name: "Siguiente", exact: true })
+    .click();
   await expect(
     confirm.getByRole("button", { name: "Eliminar", exact: true }),
   ).toBeDisabled();
   await confirm
     .getByRole("checkbox", {
-      name: "Entiendo que el borrado de archivos es irreversible.",
+      name: "Confirmo el borrado irreversible de los elementos seleccionados.",
     })
     .check();
   await confirm.getByRole("button", { name: "Eliminar", exact: true }).click();
@@ -195,13 +199,26 @@ test("history actions respect permissions and show errors inside the confirmatio
   await section.getByRole("button", { name: "Eliminar", exact: true }).click();
   await page
     .getByRole("dialog")
-    .getByRole("textbox", { name: "Acción", exact: true })
+    .getByRole("textbox", { name: "En el cliente torrent", exact: true })
     .click();
   await expect(
     page.getByRole("option", { name: "Torrent y archivos", exact: true }),
   ).toHaveCount(0);
   await page.getByRole("option", { name: "Solo torrent", exact: true }).click();
   const dialog = page.getByRole("dialog");
+  await dialog
+    .locator(".app-modal-actions")
+    .getByRole("button", { name: "Siguiente", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Eliminar", exact: true }),
+  ).toBeDisabled();
+  await dialog
+    .getByRole("checkbox", {
+      name: "Confirmo el borrado irreversible de los elementos seleccionados.",
+      exact: true,
+    })
+    .check();
   await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(dialog.getByRole("alert")).toContainText(
     "Los registros pertenecen a otro cliente",
@@ -318,6 +335,19 @@ test("history deletion confirms pending cleanup and removes only selected databa
     ),
   ).toBeVisible();
   expect(deleted).toBeUndefined();
+  await dialog
+    .locator(".app-modal-actions")
+    .getByRole("button", { name: "Siguiente", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Eliminar", exact: true }),
+  ).toBeDisabled();
+  await dialog
+    .getByRole("checkbox", {
+      name: "Confirmo el borrado irreversible de los elementos seleccionados.",
+      exact: true,
+    })
+    .check();
   await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
   await expect(
     dialog.getByText("Registro eliminado del historial", { exact: true }),

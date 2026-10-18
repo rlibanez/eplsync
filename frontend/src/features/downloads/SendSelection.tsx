@@ -421,7 +421,7 @@ export function SendSelection({
         </fieldset>
         <ModalActions>
           <Button variant="default" disabled={active} onClick={onClose}>
-            {t("import.cancel")}
+            {t("common.cancel")}
           </Button>
           <Button
             type="submit"

@@ -4,7 +4,7 @@ import { Download } from "lucide-react";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { AppModal } from "../../components/AppModal";
+import { AppModal, ModalActions } from "../../components/AppModal";
 import { Loading, Failure } from "../../components/Feedback";
 import { get } from "../../api/catalog";
 import { useAuth } from "../auth/Auth";
@@ -85,6 +85,11 @@ export function EpubDownload({ id }: { id: string }) {
             ))}
           </Stack>
         )}
+        <ModalActions>
+          <Button variant="default" onClick={() => setOpened(false)}>
+            {t(files.isError ? "common.close" : "common.cancel")}
+          </Button>
+        </ModalActions>
       </AppModal>
     </>
   );

@@ -17,6 +17,7 @@ public class HistoryActions {
         public Item(String id,DownloadStatus status,String cleanupState,String message) {this(id,status,cleanupState,message,null);}
     }
     public record Result(List<Item> items) {}
+    private final jakarta.persistence.EntityManager entityManager;
     private final DownloadRepository downloads;
     private final DownloadTrackingService tracking;
     private final TorrentClientService client;
@@ -25,7 +26,8 @@ public class HistoryActions {
     private final EventJournal events;
     private final org.springframework.transaction.support.TransactionTemplate tx;
     public HistoryActions(DownloadRepository downloads,DownloadTrackingService tracking,TorrentClientService client,
-            UpdateCleanupRepository entries,CleanupQueue queue,EventJournal events,org.springframework.transaction.PlatformTransactionManager manager) {
+            UpdateCleanupRepository entries,CleanupQueue queue,EventJournal events,org.springframework.transaction.PlatformTransactionManager manager,jakarta.persistence.EntityManager entityManager) {
+        this.entityManager=entityManager;
         this.downloads=downloads;this.tracking=tracking;this.client=client;this.entries=entries;this.queue=queue;this.events=events;this.tx=new org.springframework.transaction.support.TransactionTemplate(manager);
     }
     private void requireSelection(Selection selection) {
@@ -54,6 +56,17 @@ public class HistoryActions {
         if (requireCurrentClient && rows.stream().anyMatch(r -> !r.getClientInstanceId().equals(tracking.instanceId())))
             throw new TorrentOperationException(HttpStatus.CONFLICT,"Los registros pertenecen a otro cliente; restaura su destino antes de actuar");
         return rows;
+    }
+    public record PreviewRecord(String id,Long eplId,Double revision,String hash,String title) {}
+    public List<PreviewRecord> previewRecords(Selection selection) {
+        requireReadAccess();
+        if(!Permission.has(Permission.DOWNLOADS_DELETE)) Permission.require(Permission.TORRENT_CLEANUP);
+        var rows=validate(selection,false);
+        var metadata=com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager,rows.stream().map((DownloadRecord row) -> row.getEplId()).toList());
+        return rows.stream().map(row -> {
+            var book=metadata.get(row.getEplId());
+            return new PreviewRecord(row.getId(),row.getEplId(),row.getRevision(),row.getHash(),book==null ? null : book.title());
+        }).toList();
     }
     public record HistoryDeletion(Long eplId,List<String> ids,Boolean confirm) {}
     public record DeletionResult(int deleted,long pendingCleanup) {}
