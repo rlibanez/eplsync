@@ -2,7 +2,6 @@ package com.rlibanez.eplsync.settings;
 
 import com.rlibanez.eplsync.security.*;
 import com.rlibanez.eplsync.jobs.JobRetryController;
-import com.rlibanez.eplsync.torrent.downloads.*;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
@@ -141,9 +140,9 @@ class WorkDeletionTests {
         job(source,"parent","COMPLETED");job(source,"child","COMPLETED");
         jdbc.update("INSERT INTO job_retry_jobs(kind,child_id,parent_id,root_id,request_id,created_at) VALUES(?,'child','parent','parent','token',1)",source);
         assertThat(apply(source,false,ref("parent")).items().getFirst().relatedId()).isEqualTo("child");
-        assertThat(apply(source,true,ref("parent"),ref("child")).items()).allMatch(WorkDeletion.Item::allowed);
+        assertThat(apply(source,true,ref("parent"),ref("child")).items()).allMatch(item -> item.allowed());
         assertThat(count("job_retry_jobs")).isEqualTo(1);
-        assertThat(apply(source,false,ref("parent"),ref("child")).items()).allMatch(WorkDeletion.Item::deleted);
+        assertThat(apply(source,false,ref("parent"),ref("child")).items()).allMatch(item -> item.deleted());
         assertThat(count("job_retry_jobs")).isZero();
     }
     @ParameterizedTest @ValueSource(strings={"downloads","calibre"}) void automaticCyclesAndUnclosedAttemptsPreventDeletion(String source) {
@@ -165,9 +164,9 @@ class WorkDeletionTests {
         jdbc.update("INSERT INTO scheduled_automation_runs(id,task_id,state,created_at,configuration,context) VALUES('run','task','WAITING',1,'{}','context')");
         jdbc.update("INSERT INTO scheduled_automation_jobs(run_id,kind,job_id) VALUES('run',?,'parent')",source);
         var preview=apply(source,true,ref("parent"),ref("child"));
-        assertThat(preview.items()).noneMatch(WorkDeletion.Item::allowed);
+        assertThat(preview.items()).noneMatch(item -> item.allowed());
         assertThat(preview.items().getLast().reason()).contains("ciclo");
-        assertThat(apply(source,false,ref("parent"),ref("child")).items()).noneMatch(WorkDeletion.Item::deleted);
+        assertThat(apply(source,false,ref("parent"),ref("child")).items()).noneMatch(item -> item.deleted());
     }
     @Test void newDependencyCommittedWhileDeletionWaitsForTheWriterCannotBeMissed() throws Exception {
         job("downloads","torrent","COMPLETED");
@@ -207,7 +206,7 @@ class WorkDeletionTests {
     }
     @Test void deletionRechecksChangesAfterPreviewAndOnlyDeletesEligibleRows() {
         job("downloads","one","COMPLETED");job("downloads","two","COMPLETED");
-        assertThat(apply("downloads",true,ref("one"),ref("two")).items()).allMatch(WorkDeletion.Item::allowed);
+        assertThat(apply("downloads",true,ref("one"),ref("two")).items()).allMatch(item -> item.allowed());
         jdbc.update("UPDATE torrent_bulk_jobs SET state='QUEUED' WHERE id='two'");
         var result=apply("downloads",false,ref("one"),ref("two"));
         assertThat(result.items().getFirst().deleted()).isTrue();assertThat(result.items().getLast().allowed()).isFalse();

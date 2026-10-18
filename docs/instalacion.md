@@ -154,7 +154,7 @@ o de Calibre aplaza los borrados y se reintenta automáticamente; los conflictos
 reales de identidad, archivos compartidos o trabajos dependientes mantienen sus
 protecciones. Los borrados ya enviados solo se verifican tras un reinicio.
 
-El borrado manual del historial de trabajos añade `V1_5_0_12`, sin modificar las
+La versión 1.6.1 añade el borrado manual del historial de trabajos mediante `V1_5_0_12`, sin modificar las
 migraciones publicadas. Crea una tabla de identificadores de solicitudes ya
 eliminadas para impedir su repetición; no altera los trabajos ni las operaciones
 pendientes existentes. La actualización desde el esquema de la 1.6.0 conserva

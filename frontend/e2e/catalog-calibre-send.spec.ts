@@ -22,6 +22,7 @@ test("explicit catalog selection uses the shared EPUB assistant and creates a Ca
   await page.goto("/catalog");
   await expect(page.getByRole("button",{name:"Enviar a Calibre",exact:true})).toHaveCount(0);
   await page.getByRole("checkbox",{name:"Seleccionar Book 2",exact:true}).check();
+  await expect(page.locator(".selection-toolbar-actions button")).toHaveText(["Exportar magnet links", "Enviar a descargar", "Enviar a Calibre"]);
   await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
   const dialog=page.getByRole("dialog");
   await expect(dialog.getByRole("checkbox",{name:/Book.epub/})).toBeChecked();

@@ -191,7 +191,7 @@ class CalibreTorrentConcurrencyTests {
             security.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new org.springframework.security.core.authority.SimpleGrantedAuthority(p.name())).toList()));
             org.springframework.security.core.context.SecurityContextHolder.setContext(security);
             try {
-                var ids=choices.subList(0,6).stream().map(CalibreTransfers.FileChoice::recordId).toList();
+                var ids=choices.subList(0,6).stream().map(choice -> choice.recordId()).toList();
                 var removal=cleanup.removeSelected(new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(null,ids,true,"files",true,true)));
                 var syncWhileDeleting=executor.submit(()->library.sync());
                 var torrentWhileDeleting=executor.submit(()->tracking.sync(remoteSnapshot,false,false));

@@ -179,7 +179,7 @@ class SqliteConcurrencyTests {
                     var reader=executor.submit(()->transaction(true).execute(status->jdbc.queryForObject("SELECT value FROM concurrency_probe",Integer.class)));
                     assertThat(reader.get(1,TimeUnit.SECONDS)).isZero();
                 }
-                assertThat(waiting).noneMatch(Future::isDone);
+                assertThat(waiting).noneMatch(pending -> pending.isDone());
             } finally {release.countDown();}
             writer.get(5,TimeUnit.SECONDS);for(var pending:waiting) pending.get(5,TimeUnit.SECONDS);
             assertThat(jdbc.queryForObject("SELECT value FROM concurrency_probe",Integer.class)).isEqualTo(7);

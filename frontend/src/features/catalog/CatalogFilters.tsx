@@ -122,6 +122,7 @@ export function CatalogFilters({
   params: URLSearchParams;
   onChange: (params: URLSearchParams) => void;
 }) {
+  const [open, setOpen] = useState(initiallyOpen);
   const { t } = useTranslation();
   const { language, status } = useLocale();
   const auth = useAuth();
@@ -259,8 +260,11 @@ export function CatalogFilters({
   return (
     <details
       className="catalog-search panel"
-      open={initiallyOpen}
-      onToggle={(event) => onToggle?.(event.currentTarget.open)}
+      open={open}
+      onToggle={(event) => {
+        setOpen(event.currentTarget.open);
+        onToggle?.(event.currentTarget.open);
+      }}
     >
       <summary
         className={
@@ -285,6 +289,7 @@ export function CatalogFilters({
               event.stopPropagation();
               const details = event.currentTarget.closest("details");
               if (details) details.open = false;
+              setOpen(false);
               onToggle?.(false);
               const next = new URLSearchParams(params);
               filterKeys.forEach((key) => next.delete(key));
@@ -332,6 +337,7 @@ export function CatalogFilters({
             details.open = false;
             details.querySelector("summary")?.focus();
           }
+          setOpen(false);
           onToggle?.(false);
           onChange(next);
         }}

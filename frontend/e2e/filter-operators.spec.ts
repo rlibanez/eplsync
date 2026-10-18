@@ -4,7 +4,6 @@ const empty={items:[],meta:{page:0,size:20,totalItems:40,totalPages:2,hasNext:tr
 const control=(page:Page,label:string)=>page.locator(".mantine-InputWrapper-root").filter({has:page.getByRole("textbox",{name:label,exact:true})});
 
 for(const [path,endpoint,label,option,key] of [
-  ["/downloads","/torrent/downloads","Origen","EPL Sync","origin"],
   ["/downloads/jobs","/torrent/jobs","Tipo","Limpieza","type"],
   ["/calibre/jobs","/calibre/transfers","Tipo","Limpieza","type"],
 ] as const) test(`${path}: excluding ${key} survives paging and clears`,async({page})=>{
@@ -16,12 +15,16 @@ for(const [path,endpoint,label,option,key] of [
   await expect.poll(()=>requests.at(-1)?.get(`${key}Operator`)).toBe("ne");
   await page.getByRole("button",{name:"Siguiente",exact:true}).click();
   await expect.poll(()=>requests.at(-1)?.get("page")).toBe("1");expect(requests.at(-1)?.get(`${key}Operator`)).toBe("ne");
-  if(key === "origin") {
-    const all=page.waitForRequest(r=>new URL(r.url()).searchParams.get("size")==="1000" && new URL(r.url()).searchParams.get("originOperator")==="ne");
-    await page.getByRole("button",{name:"Seleccionar todo (40)",exact:true}).click();await all;
-  }
   await page.getByRole("button",{name:"Limpiar",exact:true}).click();
   await expect(control(page,label).getByRole("button",{name:"Incluir valores seleccionados",exact:true})).toHaveText("=");
+});
+
+test("download origin has no exclusion operator", async ({page}) => {
+  await page.route("**/api/torrent/downloads?**", r => r.fulfill({json:empty}));
+  await page.goto("/downloads");
+  const origin=control(page,"Origen");
+  await expect(origin.getByRole("textbox", {name:"Origen",exact:true})).toBeVisible();
+  await expect(origin.getByRole("button", {name:/valores seleccionados/})).toHaveCount(0);
 });
 
 test("catalog negative title, author and language persist and clear",async({page})=>{

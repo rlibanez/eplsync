@@ -1,7 +1,7 @@
 # Instalación con Docker Compose. Ejecutar docker compose up -d.
 services:
   eplsync:
-    image: "ghcr.io/rlibanez/eplsync:${EPLSYNC_VERSION:-1.6.0}"
+    image: "ghcr.io/rlibanez/eplsync:${EPLSYNC_VERSION:-1.6.1}"
     container_name: eplsync
     user: "${PUID:-1000}:${PGID:-1000}"
     restart: unless-stopped

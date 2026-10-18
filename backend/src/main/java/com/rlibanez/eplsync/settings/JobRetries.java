@@ -5,7 +5,6 @@ import com.rlibanez.eplsync.exception.UserInputException;
 
 import java.time.*;
 import java.util.*;
-import java.math.BigDecimal;
 import org.springframework.stereotype.Service;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -158,7 +157,7 @@ public class JobRetries {
             work.add(new Work(item,phase,row,cleanup));
         }
         if(kind.equals("calibre") && !work.isEmpty()) {
-            var chosen=new HashSet<>(work.stream().map(Work::id).toList());
+            var chosen=new HashSet<>(work.stream().map(item -> item.id()).toList());
             for(var unresolved:jdbc.queryForList("SELECT id FROM calibre_job_items WHERE job_id=? AND state IN ('UNCERTAIN','WAITING_DOWNLOAD','CLEANUP_PENDING','PENDING','SENDING')",String.class,id))
                 if(!chosen.contains(unresolved)) throw conflict("Selecciona también las operaciones pendientes de verificación antes de reabrir el trabajo");
         }
