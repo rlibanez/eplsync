@@ -19,9 +19,12 @@ public class HomeController {
     private final CatalogMetadataRepository metadata;
     private final DownloadQueryService downloads;
     private final EntityManager em;
+    private final com.rlibanez.eplsync.settings.CalibreSettings calibre;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     public HomeController(CatalogBookRepository books, CatalogMetadataRepository metadata,
-            DownloadQueryService downloads, EntityManager em) {
-        this.books=books; this.metadata=metadata; this.downloads=downloads; this.em=em;
+            DownloadQueryService downloads, EntityManager em,
+            com.rlibanez.eplsync.settings.CalibreSettings calibre, org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        this.books=books; this.metadata=metadata; this.downloads=downloads; this.em=em; this.calibre=calibre; this.jdbc=jdbc;
     }
     @GetMapping("/summary")
     public Map<String,Object> summary(jakarta.servlet.http.HttpServletResponse response) {
@@ -40,6 +43,18 @@ public class HomeController {
             for (var row : em.createQuery("select j.state, count(j) from BulkJob j group by j.state", Object[].class).getResultList())
                 counts.put(row[0].toString(), (Long) row[1]);
             blocks.put("jobs", Map.of("byStatus", counts));
+        }
+        if ((Permission.has(Permission.CALIBRE_READ) || Permission.has(Permission.CALIBRE_JOBS_MANAGE))
+                && !calibre.view().url().isBlank()) {
+            if (Permission.has(Permission.CALIBRE_READ))
+                blocks.put("calibre", Map.of("total", jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Long.class)));
+            if (Permission.has(Permission.CALIBRE_JOBS_MANAGE)) {
+                var counts=new LinkedHashMap<String,Long>();
+                jdbc.query("SELECT state,count(*) AS total FROM calibre_jobs GROUP BY state", row -> {
+                    counts.put(row.getString("state"),row.getLong("total"));
+                });
+                blocks.put("calibreJobs",Map.of("byStatus",counts));
+            }
         }
         return blocks;
     }

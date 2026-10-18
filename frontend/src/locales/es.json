@@ -238,6 +238,7 @@
     "search": "Buscar en el catálogo",
     "import": "Importar catálogo",
     "overview": "Resumen de EPL Sync",
+    "calibreBooksCount": "libros en la biblioteca",
     "booksCount": "libros en el catálogo",
     "downloadsCount": "descargas registradas",
     "activeJobs": "trabajos pendientes o en curso",

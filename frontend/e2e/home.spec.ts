@@ -139,3 +139,76 @@ test("a failed summary leaves the remaining home sections usable", async ({
   await expect(page.locator(".home-book")).toHaveCount(30);
   await expect(page.locator(".home-events a")).toBeVisible();
 });
+
+for (const width of [1920, 1200, 800, 390])
+  test(`Calibre overview cards wrap without overflow at ${width}px`, async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.setViewportSize({ width, height: 1000 });
+    await page.route("**/api/home/summary", (r) =>
+      r.fulfill({
+        json: {
+          catalog: { total: 100, sourceModifiedAt: null },
+          downloads: { total: 12, byStatus: {} },
+          jobs: { byStatus: { RUNNING: 2 } },
+          calibre: { total: 99 },
+          calibreJobs: { byStatus: { RUNNING: 1, PAUSED: 2, COMPLETED: 9 } },
+        },
+      }),
+    );
+    await page.goto("/");
+    const cards = page.locator(".home-stats article");
+    await expect(cards).toHaveCount(5);
+    await expect(cards.nth(3).locator(".home-count")).toHaveText("99");
+    await expect(cards.nth(4).locator(".home-count")).toHaveText("3");
+    await expect(cards.nth(3).getByRole("link")).toHaveAttribute(
+      "href",
+      "/calibre",
+    );
+    await expect(cards.nth(4).getByRole("link")).toHaveAttribute(
+      "href",
+      "/calibre/jobs",
+    );
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    for (const card of await cards.all())
+      expect(
+        await card.evaluate((el) => el.scrollWidth <= el.clientWidth),
+      ).toBe(true);
+    await page.screenshot({
+      path: `/tmp/eplsync-home-calibre-${width}.png`,
+      fullPage: true,
+    });
+  });
+
+test("Calibre overview cards stay hidden without permissions", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.route("**/api/auth/me", (r) =>
+    r.fulfill({
+      json: {
+        id: "reader",
+        username: "reader",
+        role: "USER",
+        permissions: ["CATALOG_READ"],
+        mustChangePassword: false,
+      },
+    }),
+  );
+  await page.route("**/api/home/summary", (r) =>
+    r.fulfill({
+      json: {
+        catalog: { total: 0 },
+        calibre: { total: 99 },
+        calibreJobs: { byStatus: { RUNNING: 1 } },
+      },
+    }),
+  );
+  await page.goto("/");
+  await expect(page.locator(".home-stats article")).toHaveCount(1);
+});

@@ -1805,10 +1805,12 @@ summary {
 .home-hero { min-height: 280px; padding: 28px 40px; }
 .home-hero h1 { font-size: clamp(30px, 3vw, 46px); }
 .home-hero p { color: var(--muted); }
-.home-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.home-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 20px; }
 .home-panel { min-width: 0; padding: 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .home-panel h2 { font-size: 19px; margin: 0; }
 .home-panel-title, .home-section-title, .home-section-title > a { display: flex; align-items: center; gap: 10px; }
+.home-panel-title > h2 { min-width: 0; overflow-wrap: anywhere; }
+.home-panel-title > svg { flex-shrink: 0; }
 .home-panel-title { color: inherit; margin-bottom: 20px; }
 .home-panel-title > svg:last-child { margin-left: auto; color: var(--accent); }
 .home-section-title { justify-content: space-between; margin-bottom: 22px; flex-wrap: wrap; }
@@ -1829,7 +1831,7 @@ summary {
 .home-events li + li { border-top: 1px solid var(--line); }
 .home-events a { display: grid; grid-template-columns: minmax(0, 1fr) auto 190px; gap: 16px; align-items: center; padding: 14px 0; color: inherit; }
 .home-events time { font-size: 14px; color: var(--muted); text-align: right; }
-@media (max-width: 900px) { .home-stats { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .home-stats { grid-template-columns: 1fr; } }
 @media (max-width: 600px) {
   .home-hero, .home-panel { padding: 20px; }
   .home-events a { grid-template-columns: minmax(0, 1fr) auto; }

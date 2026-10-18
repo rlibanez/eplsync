@@ -61,6 +61,8 @@ export function Home() {
             catalog?: { total: number; sourceModifiedAt: string | null };
             downloads?: { total: number; byStatus: Record<string, number> };
             jobs?: { byStatus: Record<string, number> };
+            calibre?: { total: number };
+            calibreJobs?: { byStatus: Record<string, number> };
           }>("/home/summary", signal),
         signal,
       ),
@@ -105,6 +107,10 @@ export function Home() {
   const empty = summary.data?.catalog?.total === 0;
   const activeCount = activeStates.reduce(
     (total, state) => total + (summary.data?.jobs?.byStatus[state] ?? 0),
+    0,
+  );
+  const calibreActiveCount = activeStates.reduce(
+    (total, state) => total + (summary.data?.calibreJobs?.byStatus[state] ?? 0),
     0,
   );
   if (preferences.isPending) return <Loading />;
@@ -248,6 +254,43 @@ export function Home() {
               )}
             </>
           )}
+        </article>
+      )}
+      {auth.can("CALIBRE_READ") && summary.data?.calibre && (
+        <article className="home-panel">
+          <Link className="home-panel-title" to="/calibre">
+            <Library size={20} />
+            <h2>Calibre</h2>
+            <ArrowRight size={16} />
+          </Link>
+          <strong className="home-count">{summary.data.calibre.total}</strong>
+          <span className="muted">{t("home.calibreBooksCount")}</span>
+        </article>
+      )}
+      {auth.can("CALIBRE_JOBS_MANAGE") && summary.data?.calibreJobs && (
+        <article className="home-panel">
+          <Link className="home-panel-title" to="/calibre/jobs">
+            <ListChecks size={20} />
+            <h2>{t("calibreSend.jobs")}</h2>
+            <ArrowRight size={16} />
+          </Link>
+          <strong className="home-count">{calibreActiveCount}</strong>
+          <span className="muted">{t("home.activeJobs")}</span>
+          {calibreActiveCount === 0 && (
+            <p className="muted home-small">{t("home.noJobs")}</p>
+          )}
+          <div className="home-statuses">
+            {activeStates
+              .filter(
+                (state) => (summary.data.calibreJobs?.byStatus[state] ?? 0) > 0,
+              )
+              .map((state) => (
+                <span key={state}>
+                  {status(state)}{" "}
+                  <b>{summary.data.calibreJobs?.byStatus[state]}</b>
+                </span>
+              ))}
+          </div>
         </article>
       )}
     </section>

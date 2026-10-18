@@ -238,6 +238,7 @@
     "search": "Search the catalog",
     "import": "Import catalog",
     "overview": "EPL Sync overview",
+    "calibreBooksCount": "books in the library",
     "booksCount": "books in the catalog",
     "downloadsCount": "recorded downloads",
     "activeJobs": "pending or ongoing jobs",

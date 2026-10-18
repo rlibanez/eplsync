@@ -15,7 +15,26 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class HomeTests {
     @Autowired WebApplicationContext context;
     @Autowired com.rlibanez.eplsync.repository.CatalogBookRepository books;
-    @org.junit.jupiter.api.BeforeEach void clear() { books.deleteAllInBatch(); }
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @org.junit.jupiter.api.BeforeEach void clear() {
+        books.deleteAllInBatch();
+        jdbc.update("DELETE FROM app_settings WHERE setting_key='calibre.connection'");
+    }
+    @Test void calibreBlocksRequireConfigurationAndIndependentPermissions() throws Exception {
+        var mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        var read=new org.springframework.security.core.authority.SimpleGrantedAuthority("CALIBRE_READ");
+        var jobs=new org.springframework.security.core.authority.SimpleGrantedAuthority("CALIBRE_JOBS_MANAGE");
+        mvc.perform(get("/api/home/summary").with(user("reader").authorities(read,jobs)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.calibre").doesNotExist()).andExpect(jsonPath("$.calibreJobs").doesNotExist());
+        jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES('calibre.connection',?)",
+            "{\"url\":\"http://calibre.test:8081\",\"username\":\"\",\"password\":\"\",\"library\":\"main\",\"browserUrl\":\"\"}");
+        mvc.perform(get("/api/home/summary").with(user("reader").authorities(read)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.calibre.total").value(0)).andExpect(jsonPath("$.calibreJobs").doesNotExist());
+        mvc.perform(get("/api/home/summary").with(user("manager").authorities(jobs)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.calibre").doesNotExist()).andExpect(jsonPath("$.calibreJobs.byStatus").isMap());
+        mvc.perform(get("/api/home/summary").with(user("reader").authorities(read,jobs)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.calibre.total").value(0)).andExpect(jsonPath("$.calibreJobs.byStatus").isMap());
+    }
     @Test void populatedCatalogSummaryCountsBooksWithoutLoadingTheirData() throws Exception {
         books.saveAndFlush(com.rlibanez.eplsync.model.CatalogBook.builder().eplId(1L)
             .revision(1.0).author("Author").title("Title").build());
