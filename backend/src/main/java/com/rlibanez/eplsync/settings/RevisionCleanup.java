@@ -141,10 +141,15 @@ public class RevisionCleanup {
         long total=jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE source=? AND owner_id=? AND state<>'PREVIEW'",Long.class,source,owner);
         return new PageResponse<>(jdbc.query(SELECT+" WHERE j.source=? AND j.owner_id=? AND j.state<>'PREVIEW' GROUP BY j.id ORDER BY j.created_at DESC,j.id LIMIT ? OFFSET ?",RevisionCleanup::job,source,owner,size,(long)page*size),meta(page,size,total));
     }
-    public PageResponse<Item> items(String id,int page,int size) {
+    public PageResponse<Item> items(String id,int page,int size) {return items(id,page,size,new org.springframework.util.LinkedMultiValueMap<>());}
+    public PageResponse<Item> items(String id,int page,int size,org.springframework.util.MultiValueMap<String,String> filters) {
         get(id);com.rlibanez.eplsync.config.QueryLimits.page(page,size);
-        long total=jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items WHERE job_id=?",Long.class,id);
-        return new PageResponse<>(jdbc.query("SELECT * FROM revision_cleanup_items WHERE job_id=? ORDER BY position LIMIT ? OFFSET ?",this::item,id,size,(long)page*size).stream().map(this::withBlocker).toList(),meta(page,size,total));
+        var where=new StringBuilder(" WHERE job_id=?");var args=new ArrayList<Object>();args.add(id);
+        JobItemFilters.append(where,args,filters,"book","title");
+        JobItemFilters.states(where,args,filters.getFirst("state")==null?"":filters.getFirst("state"),filters.getFirst("statusOperator")==null?"eq":filters.getFirst("statusOperator"),Set.of("READY","EXCLUDED","PENDING","RUNNING","VERIFYING","SUCCEEDED","BLOCKED","FAILED","UNCERTAIN","SKIPPED","CANCELLED"));
+        long total=jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items"+where,Long.class,args.toArray());
+        args.add(size);args.add((long)page*size);
+        return new PageResponse<>(jdbc.query("SELECT * FROM revision_cleanup_items"+where+" ORDER BY position LIMIT ? OFFSET ?",this::item,args.toArray()).stream().map(this::withBlocker).toList(),meta(page,size,total));
     }
     private static PageResponse.PageMeta meta(int page,int size,long total) {int pages=(int)((total+size-1)/size);return new PageResponse.PageMeta(page,size,total,pages,page==0,page>=pages-1,page+1<pages,page>0);}
     private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"));}

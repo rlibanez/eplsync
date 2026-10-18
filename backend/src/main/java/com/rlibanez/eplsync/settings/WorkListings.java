@@ -30,7 +30,12 @@ public class WorkListings {
         if(!downloads && !source.equals("calibre")) throw new UserInputException("Origen inválido");
         if(from!=null && before!=null && !from.isBefore(before)) throw new UserInputException("Intervalo de fechas inválido");
         if(username!=null && username.length()>64) throw new UserInputException("Usuario demasiado largo");
-        if(type!=null && !type.isEmpty() && !(downloads?Set.of("DOWNLOAD","UPDATE","CLEANUP"):Set.of("SEND","CLEANUP")).contains(type)) throw new UserInputException("Tipo de trabajo inválido");
+        var types=type==null || type.isEmpty()?List.<String>of():Arrays.stream(type.split(",",-1)).map(value -> Objects.requireNonNull(value).trim()).distinct().toList();
+        if(!(downloads?Set.of("DOWNLOAD","UPDATE","CLEANUP"):Set.of("SEND","CLEANUP")).containsAll(types)) throw new UserInputException("Tipo de trabajo inválido");
+        if(states!=null) {
+            if(states.stream().anyMatch(Objects::isNull)) throw new UserInputException("Estado de trabajo inválido");
+            states=states.stream().map(value -> Objects.requireNonNull(value).trim()).distinct().toList();
+        }
         var allowed=downloads?Set.of("jobId","createdAt","type","status","progress","selectedBooks","accepted","failed","username"):Set.of("id","createdAt","type","library","state","total","accepted","failed","username");
         var orders=TableOrdering.parse(sort,allowed);
         boolean normal=downloads?Permission.has(Permission.TORRENT_JOBS_MANAGE):Permission.has(Permission.CALIBRE_SEND)||Permission.has(Permission.CALIBRE_JOBS_MANAGE);
@@ -65,7 +70,7 @@ public class WorkListings {
             if(!valid.containsAll(states)) throw new UserInputException("Estado de trabajo inválido");
             base+=" AND state "+(exclude?"NOT IN (":"IN (")+String.join(",",Collections.nCopies(states.size(),"?"))+")";args.addAll(states);
         }
-        if(type!=null && !type.isEmpty()) {base+=" AND type"+(excludeType?"<>?":"=?");args.add(type);}
+        if(!types.isEmpty()) {base+=" AND type "+(excludeType?"NOT IN (":"IN (")+String.join(",",Collections.nCopies(types.size(),"?"))+")";args.addAll(types);}
         if(username!=null && !username.isBlank()) {base+=" AND instr(lower(username),lower(?))>0";args.add(username.trim());}
         if(from!=null) {base+=" AND createdAt>=?";args.add(from.toEpochMilli());}
         if(before!=null) {base+=" AND createdAt<?";args.add(before.toEpochMilli());}

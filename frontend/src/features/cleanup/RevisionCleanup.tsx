@@ -1,3 +1,6 @@
+import { useJobItemSearch } from "../jobs/JobItemSearch";
+import { useBookViewState } from "../catalog/useBookViewState";
+import { stateOperatorProps } from "../../components/StateOperator";
 import {
   PreviewHeading,
   usePreviewSort,
@@ -17,6 +20,7 @@ import {
   Group,
   Progress,
   Select,
+  MultiSelect,
   Stepper,
 } from "@mantine/core";
 import { Eraser, Trash2 } from "lucide-react";
@@ -523,9 +527,7 @@ function CleanupWizard({
           }
         >
           {t(
-            step > (direct ? 1 : 0)
-              ? "revisionCleanup.back"
-              : "common.cancel",
+            step > (direct ? 1 : 0) ? "revisionCleanup.back" : "common.cancel",
           )}
         </Button>
         {step === 0 ? (
@@ -748,7 +750,21 @@ export function CleanupJob() {
   const { id } = useParams();
   const { t } = useTranslation();
   const cache = useQueryClient();
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useBookViewState("page", 0);
+  const [states, setStates] = useBookViewState<string[]>("itemStates", []);
+  const [excludeState, setExcludeState] = useBookViewState(
+    "excludeState",
+    false,
+  );
+  const search = useJobItemSearch("book", t("downloads.book"), () =>
+    setPage(0),
+  );
+  const filters = new URLSearchParams(search.query);
+  if (states.length) {
+    filters.set("state", states.join(","));
+    if (excludeState) filters.set("statusOperator", "ne");
+  }
+  const filterQuery = filters.toString();
   const retryRequest = useRef("");
   useEffect(() => {
     retryRequest.current = "";
@@ -759,12 +775,20 @@ export function CleanupJob() {
     refetchInterval: (q) => (active(q.state.data) ? 2000 : false),
   });
   const rows = useQuery({
-    queryKey: ["revision-cleanup-items", id, page],
+    queryKey: ["revision-cleanup-items", id, page, filterQuery],
     queryFn: () =>
-      get<Page<Item>>(`/revision-cleanups/${id}/items?page=${page}&size=20`),
+      get<Page<Item>>(
+        `/revision-cleanups/${id}/items?page=${page}&size=20&${filterQuery}`,
+      ),
     enabled: !!job.data,
     refetchInterval: active(job.data) ? 2000 : false,
   });
+  useEffect(() => {
+    if (rows.data)
+      setPage((current) =>
+        Math.min(current, Math.max(0, rows.data.meta.totalPages - 1)),
+      );
+  }, [rows.data, setPage]);
   useEffect(() => {
     void cache.invalidateQueries({ queryKey: ["revision-cleanup-items", id] });
   }, [job.data?.state, job.data?.result, id, cache]);
@@ -989,6 +1013,57 @@ export function CleanupJob() {
         </details>
       </section>
       <ErrorMessage error={command.error} />
+      <div className="filters jobs-filters">
+        {search.fields}
+        <MultiSelect
+          searchable
+          clearable
+          label={t("downloads.status")}
+          value={states}
+          clearButtonProps={{
+            "aria-hidden": false,
+            tabIndex: 0,
+            "aria-label": `${t("catalog.clear")}: ${t("downloads.status")}`,
+          }}
+          {...stateOperatorProps(excludeState, () => {
+            setExcludeState(!excludeState);
+            setPage(0);
+          })}
+          data={[
+            "PENDING",
+            "RUNNING",
+            "VERIFYING",
+            "SUCCEEDED",
+            "BLOCKED",
+            "FAILED",
+            "UNCERTAIN",
+            "SKIPPED",
+            "CANCELLED",
+            "EXCLUDED",
+            "READY",
+          ].map((value) => ({
+            value,
+            label: t(`revisionCleanup.states.${value}`),
+          }))}
+          onChange={(values) => {
+            setStates(values);
+            if (!values.length) setExcludeState(false);
+            setPage(0);
+          }}
+        />
+        <Button
+          variant="subtle"
+          onClick={() => {
+            search.clear();
+            setStates([]);
+            setExcludeState(false);
+            setPage(0);
+          }}
+        >
+          {t("catalog.clear")}
+        </Button>
+      </div>
+
       {rows.isError ? (
         <Failure error={rows.error} retry={() => void rows.refetch()} />
       ) : rows.isPending ? (

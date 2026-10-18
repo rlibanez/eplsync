@@ -275,6 +275,28 @@ class CalibreTransfersTests {
         catalogBooks.deleteAllInBatch();
         assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().coverUrl()).isNull();
     }
+    @Test void itemFiltersApplyMultipleIdsFileTermsAndStatesBeforePagination() throws Exception {
+        var job=create();
+        for(int n=2;n<=4;n++) jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,message) VALUES(?,?,?,'record',?, ?,20,?,'1',?,?)","filter-"+n,job.id(),n,n,n==2?"Another,Title.epub":"file-"+n+".epub",n,n==2?"ACCEPTED":"FAILED","detail");
+        var filters=new org.springframework.util.LinkedMultiValueMap<String,String>();
+        filters.add("eplId","1");filters.add("eplId","3");filters.add("file","book");filters.add("file","file-3");
+        var page=transfers.items(job.id(),1,1,"PENDING,FAILED","",List.of("position,asc"),"eq",filters);
+        assertThat(page.meta().totalItems()).isEqualTo(2);assertThat(page.items()).singleElement().satisfies(item -> assertThat(item.eplId()).isEqualTo(3));
+        filters.clear();filters.add("file","Another,Title");
+        assertThat(transfers.items(job.id(),0,20,"","",List.of("position,asc"),"eq",filters).items()).singleElement().satisfies(item -> assertThat(item.eplId()).isEqualTo(2));
+        filters.set("fileOperator","ne");
+        assertThat(transfers.items(job.id(),0,20,"PENDING,ACCEPTED","",List.of("position,asc"),"ne",filters).items()).hasSize(2);
+        filters.clear();filters.add("eplId","1");filters.add("eplId","3");filters.set("eplIdOperator","ne");
+        assertThat(transfers.items(job.id(),0,20,"FAILED","",List.of("position,asc"),"eq",filters).items()).singleElement().satisfies(item -> assertThat(item.eplId()).isEqualTo(4));
+        filters.clear();filters.add("file","%' OR 1=1 --");
+        assertThat(transfers.items(job.id(),0,20,"","",List.of("position,asc"),"eq",filters).items()).isEmpty();
+        filters.clear();for(long n=1;n<=1200;n++) filters.add("eplId",Long.toString(n));
+        assertThat(transfers.items(job.id(),0,20,"","",List.of("position,asc"),"eq",filters).items()).hasSize(4);
+        filters.set("eplId","-1");
+        assertThatThrownBy(()->transfers.items(job.id(),0,20,"","",List.of("position,asc"),"eq",filters)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        mvc.perform(get("/api/calibre/transfers/"+job.id()+"/items").param("state","PENDING,FAILED").param("eplId","1","3").param("file","book","file-3").param("size","1").param("page","1"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2)).andExpect(jsonPath("$.items[0].eplId").value(3));
+    }
     @Test void jobsFilterByUsernameAndState() {
         String now=Instant.now().toString();
         for(String name:List.of("Roberto","Otra cuenta")) jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,?)",UUID.randomUUID().toString(),now,now,owner.id(),name,"destination","main","source",name.equals("Roberto") ? "COMPLETED" : "QUEUED");
@@ -480,10 +502,43 @@ class CalibreTransfersTests {
     }
     @Test void preparationIdentifiesTheInaccessibleRecordInsteadOfAnAnonymousError() {
         when(files.list(record)).thenThrow(new com.rlibanez.eplsync.exception.TorrentOperationException(org.springframework.http.HttpStatus.CONFLICT,"No se puede leer el EPUB; revisa el montaje y los permisos de la carpeta"));
-        assertThatThrownBy(() -> transfers.prepare(List.of(record)))
-            .isInstanceOf(com.rlibanez.eplsync.exception.TorrentOperationException.class)
-            .hasMessageContaining("EPL ID 1").hasMessageContaining("revisión 1.1").hasMessageContaining("No se puede leer el EPUB");
+        var prepared=transfers.prepare(List.of(record));
+        assertThat(prepared.files()).isEmpty();
+        assertThat(prepared.unavailable()).singleElement().satisfies(item -> {
+            assertThat(item.eplId()).isEqualTo(1L);assertThat(item.revision()).isEqualTo(1.1);
+            assertThat(item.message()).contains("No se puede leer el EPUB");
+        });
         assertThat(transfers.jobs(0,20,"",List.of("createdAt,desc")).meta().totalItems()).isZero();
+    }
+    @Test void preparationExcludesAnUnavailableEpubWithoutBlockingAvailableOnes() {
+        var failed=new DownloadRecord();failed.setEplId(38147L);failed.setRevision(1.1);failed.setHash("B".repeat(40));failed.setClient("qbittorrent");failed.setClientInstanceId(tracking.instanceId());failed.setStatus(DownloadStatus.DOWNLOADED);failed.setOrigin(DownloadRecord.Origin.EPLSYNC);failed.setCreatedAt(Instant.now());
+        String failedId=downloads.save(failed).getId();
+        when(files.list(failedId)).thenThrow(new com.rlibanez.eplsync.exception.TorrentOperationException(org.springframework.http.HttpStatus.CONFLICT,"El torrent no contiene archivos EPUB completamente descargados"));
+        var prepared=transfers.prepare(List.of(failedId,record,"removed-record"));
+        assertThat(prepared.files()).singleElement().satisfies(item -> assertThat(item.recordId()).isEqualTo(record));
+        assertThat(prepared.unavailable()).hasSize(2);
+        assertThat(prepared.unavailable().getFirst().message()).isEqualTo("Los archivos aún no están descargados");
+        var request=new CalibreTransfers.Request("main",prepared.files().stream().map(item -> new CalibreTransfers.FileChoice(item.recordId(),item.index())).toList(),List.of(),UUID.randomUUID().toString());
+        var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+        var job=EventContext.withActor(actor,()->transfers.create(request));
+        assertThat(EventContext.withActor(actor,()->transfers.create(request)).id()).isEqualTo(job.id());
+        transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(files,never()).download(eq(failedId),anyInt());
+    }
+    @Test void oversizedEpubDoesNotExcludeItsAvailableSibling() {
+        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length),new EpubFiles.Item(1,"large.epub",268435457)));
+        var prepared=transfers.prepare(List.of(record));
+        assertThat(prepared.files()).singleElement().satisfies(item -> assertThat(item.index()).isZero());
+        assertThat(prepared.unavailable()).singleElement().satisfies(item -> {assertThat(item.name()).isEqualTo("large.epub");assertThat(item.message()).contains("256 MiB");});
+    }
+    @Test void unavailableOrChangedSelectedEpubCannotBypassCreationChecks() {
+        assertThat(transfers.prepare(List.of(record)).files()).hasSize(1);
+        when(files.list(record)).thenThrow(new com.rlibanez.eplsync.exception.TorrentOperationException(org.springframework.http.HttpStatus.CONFLICT,"El torrent no contiene archivos EPUB completamente descargados"));
+        assertThatThrownBy(this::create).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class).hasMessageContaining("ya no está disponible");
+        assertThat(transfers.jobs(0,20,"",List.of("createdAt,desc")).meta().totalItems()).isZero();
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
     @Test void sizeWarningSurvivesTheSuccessfulTransferResult() {
         when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length,bytes.length+10)));

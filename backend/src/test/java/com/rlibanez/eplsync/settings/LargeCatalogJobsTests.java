@@ -94,6 +94,12 @@ class LargeCatalogJobsTests {
         jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('record-extra',1,2,?,'qbittorrent',?,'DOWNLOADED','EPLSYNC',0)","F".repeat(40),tracking.instanceId());
         var ids=new ArrayList<>(java.util.stream.LongStream.rangeClosed(1,1001).mapToObj(id->"record-"+id).toList());ids.add("record-extra");
         assertThat(transfers.prepare(ids).deferredRecords()).hasSize(1002);
+        jdbc.update("UPDATE torrent_downloads SET status='DOWNLOADING' WHERE id='record-extra'");
+        var mixed=new ArrayList<>(ids);mixed.add("removed-record");
+        var partial=transfers.prepare(mixed);
+        assertThat(partial.deferredRecords()).hasSize(1001).doesNotContain("record-extra");
+        assertThat(partial.unavailable()).hasSize(2);
+        jdbc.update("UPDATE torrent_downloads SET status='DOWNLOADED' WHERE id='record-extra'");
         assertThat(EventContext.withActor(actor,()->transfers.create(new CalibreTransfers.Request("main",List.of(),ids))).total()).isEqualTo(1002);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items",Integer.class)).isEqualTo(75003);

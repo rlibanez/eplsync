@@ -538,6 +538,35 @@ class BulkTests {
             .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
     }
 
+    @Test void itemFiltersCombineBeforePaginationWithMultipleTermsAndNegation() {
+        seedSortJob("filtered-job",3,1,1);
+        var book=books.findById(1L).orElseThrow(); book.setTitle("Alpha, beta"); books.save(book);
+        book=books.findById(2L).orElseThrow(); book.setTitle("Gamma"); books.save(book);
+        var params=new org.springframework.util.LinkedMultiValueMap<String,String>();
+        params.add("eplId","1"); params.add("eplId","2");
+        params.add("book","Alpha, beta"); params.add("book","Gamma");
+        var result=store.details("filtered-job",1,1,null,"eplId,asc","eq",params);
+        assertThat(result.meta().totalItems()).isEqualTo(2);
+        assertThat(result.items().getFirst().eplId()).isEqualTo(2L);
+        params.add("bookOperator","ne");
+        assertThat(store.details("filtered-job",0,20,null,"eplId,asc","eq",params).items()).isEmpty();
+        params.remove("bookOperator"); params.remove("book"); params.add("eplIdOperator","ne");
+        assertThat(store.details("filtered-job",0,20,null,"eplId,asc","eq",params).items().getFirst().eplId()).isEqualTo(3L);
+        params.clear(); for(int i=1;i<=1200;i++) params.add("eplId",String.valueOf(i));
+        assertThat(store.details("filtered-job",0,20,null,"eplId,asc","eq",params).meta().totalItems()).isEqualTo(3);
+        var rows=items.findByJobIdOrderByPosition("filtered-job",PageRequest.of(0,20)).getContent();
+        rows.getFirst().setMessage("EPUB accepted and verified"); items.save(rows.getFirst());
+        params.add("detail","verified"); params.add("detail","other term");
+        assertThat(store.details("filtered-job",0,20,List.of(BulkItem.State.ACCEPTED),"eplId,asc","eq",params).items().getFirst().eplId()).isEqualTo(1L);
+        params.remove("detail");
+        params.add("detail","unmatched detail");
+        assertThat(store.details("filtered-job",0,20,null,"eplId,asc","eq",params).items()).isEmpty();
+        params.add("detailOperator","ne");
+        assertThat(store.details("filtered-job",0,20,null,"eplId,asc","eq",params).meta().totalItems()).isEqualTo(3);
+        params.set("eplId","invalid");
+        assertThatThrownBy(()->store.details("filtered-job",0,20,null,"eplId,asc","eq",params)).hasMessageContaining("EPL ID");
+    }
+
     private void seedSortJob(String id,int total,int accepted,int failed) {
         var job=new BulkJob();job.setId(id);job.setState(BulkJob.State.QUEUED);job.setClient("qbittorrent");
         job.setCreatedAt(Instant.parse("2026-10-06T12:00:00Z"));job.setUpdatedAt(job.getCreatedAt());job.setSelectedBooks(total);

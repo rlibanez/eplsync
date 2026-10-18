@@ -1,3 +1,4 @@
+import { useJobItemSearch } from "../jobs/JobItemSearch";
 import { useBookViewState } from "../catalog/useBookViewState";
 import { BookLink } from "../catalog/BookLink";
 import { useWorkDeletion } from "../jobs/useWorkDeletion";
@@ -19,7 +20,6 @@ import {
   Alert,
   Checkbox,
   Button,
-  Select,
   MultiSelect,
   Progress,
   TextInput,
@@ -46,13 +46,19 @@ export function Jobs() {
   const [size, setSize] = useBookViewState("size", saved?.size ?? 20);
   const pageSizeChoice = usePageSizeChoice(size);
   const [filter, setFilter] = useState(saved?.filter ?? "");
-  const [excluded, setExcluded] = useBookViewState("excluded", saved?.excluded ?? false);
+  const [excluded, setExcluded] = useBookViewState(
+    "excluded",
+    saved?.excluded ?? false,
+  );
   const [excludeType, setExcludeType] = useState(saved?.excludeType ?? false);
   const [type, setType] = useState(saved?.type ?? "");
   const [username, setUsername] = useState(saved?.username ?? "");
   const [from, setFrom] = useState(saved?.from ?? "");
   const [to, setTo] = useState(saved?.to ?? "");
-  const [sort, setSort] = useBookViewState("sort", saved?.sort ?? "createdAt,desc");
+  const [sort, setSort] = useBookViewState(
+    "sort",
+    saved?.sort ?? "createdAt,desc",
+  );
   const [refresh, setRefresh] = useState<
     "idle" | "pending" | "success" | "error"
   >("idle");
@@ -194,21 +200,23 @@ export function Jobs() {
       </div>
 
       <div className="filters jobs-filters">
-        <Select
+        <MultiSelect
+          searchable
+          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("downloads.type")}
           {...stateOperatorProps(excludeType, () => {
             setExcludeType(!excludeType);
             setPage(0);
           })}
           clearable
-          value={type || null}
+          value={type ? type.split(",") : []}
           data={["DOWNLOAD", "UPDATE", "CLEANUP"].map((value) => ({
             value,
             label: t(`historyActions.jobTypes.${value}`),
           }))}
           onChange={(value) => {
-            setType(value ?? "");
-            if (!value) setExcludeType(false);
+            setType(value.join(","));
+            if (!value.length) setExcludeType(false);
             setPage(0);
           }}
         />
@@ -446,7 +454,13 @@ export function JobDetail() {
   const [sort, setSort] = useBookViewState("sort", "position,asc");
   const [cancel, setCancel] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
-  useEffect(() => setSelected([]), [id, filter, excluded, sort]);
+  const search = useJobItemSearch(
+    "book",
+    t("downloads.book"),
+    () => setPage(0),
+    t("calibreSend.detail"),
+  );
+  useEffect(() => setSelected([]), [id, filter, excluded, sort, search.query]);
   const job = useQuery({
     queryKey: ["job", id],
     queryFn: ({ signal }) =>
@@ -464,10 +478,19 @@ export function JobDetail() {
         : 3000,
   });
   const items = useQuery({
-    queryKey: ["job-items", id, page, size, filter, excluded, sort],
+    queryKey: [
+      "job-items",
+      id,
+      page,
+      size,
+      filter,
+      excluded,
+      sort,
+      search.query,
+    ],
     queryFn: ({ signal }) =>
       get<Page<Item>>(
-        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&${sortQuery(sort)}${filter ? `&status=${filter}${excluded ? "&statusOperator=ne" : ""}` : ""}`,
+        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&${sortQuery(sort)}&${search.query}${filter ? `&status=${filter}${excluded ? "&statusOperator=ne" : ""}` : ""}`,
         signal,
       ),
     refetchInterval:
@@ -748,21 +771,39 @@ export function JobDetail() {
         )
       )}
       <div className="filters jobs-filters">
-        <Select
+        {search.fields}
+        <MultiSelect
+          searchable
           label={t("downloads.itemStatus")}
+          clearButtonProps={{
+            "aria-hidden": false,
+            tabIndex: 0,
+            "aria-label": `${t("catalog.clear")}: ${t("downloads.itemStatus")}`,
+          }}
           {...stateOperatorProps(excluded, () => {
             setExcluded(!excluded);
             setPage(0);
           })}
-          value={filter || null}
+          value={filter ? filter.split(",") : []}
           clearable
           data={itemStates.map((value) => ({ value, label: status(value) }))}
           onChange={(v) => {
-            setFilter(v ?? "");
-            if (!v) setExcluded(false);
+            setFilter(v.join(","));
+            if (!v.length) setExcluded(false);
             setPage(0);
           }}
         />
+        <Button
+          variant="subtle"
+          onClick={() => {
+            search.clear();
+            setFilter("");
+            setExcluded(false);
+            setPage(0);
+          }}
+        >
+          {t("catalog.clear")}
+        </Button>
       </div>
       <section className="panel">
         <SelectionToolbar

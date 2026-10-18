@@ -96,9 +96,19 @@ for (const source of ["downloads", "calibre"] as const) {
     await page.route(`**/api/settings/work/${source}/*/neighbors?**`, (r) => {
       const url = new URL(r.request().url());
       expect(url.searchParams.get("username")).toBe("Own");
+      expect(url.searchParams.get("type")).toBe(
+        source === "downloads" ? "UPDATE,CLEANUP" : "SEND,CLEANUP",
+      );
+      expect(
+        url.searchParams.get(source === "downloads" ? "status" : "state"),
+      ).toBe("COMPLETED,PAUSED");
       expect(url.searchParams.get("sort")).toBe("createdAt,desc");
       expect(url.searchParams.has("page")).toBe(false);
-      expect([...url.searchParams.values()].every(value => value.trim().length > 0)).toBe(true);
+      expect(
+        [...url.searchParams.values()].every(
+          (value) => value.trim().length > 0,
+        ),
+      ).toBe(true);
       return r.fulfill({
         json: url.pathname.includes("/first/")
           ? {
@@ -113,6 +123,24 @@ for (const source of ["downloads", "calibre"] as const) {
       .getByRole("textbox", { name: "Usuario", exact: true })
       .fill("Own");
     await expect.poll(() => lists.at(-1)?.get("username")).toBe("Own");
+    for (const [name, options] of [
+      [
+        "Tipo",
+        [source === "downloads" ? "Actualización" : "Envío", "Limpieza"],
+      ],
+      ["Estado", ["Terminado", "Pausado"]],
+    ] as const) {
+      const field = page.getByRole("textbox", { name, exact: true });
+      for (const option of options) {
+        await field.click();
+        await page.getByRole("option", { name: option, exact: true }).click();
+        await page.keyboard.press("Escape");
+      }
+    }
+    await expect
+      .poll(() => lists.at(-1)?.get("type"))
+      .toBe(source === "downloads" ? "UPDATE,CLEANUP" : "SEND,CLEANUP");
+
     await page.getByRole("link", { name: "first", exact: true }).click();
     const nav = page.getByRole("navigation", {
       name: "Navegación entre trabajos",
@@ -143,5 +171,11 @@ for (const source of ["downloads", "calibre"] as const) {
       page.getByRole("textbox", { name: "Usuario", exact: true }),
     ).toHaveValue("Own");
     await expect.poll(() => lists.at(-1)?.get("page")).toBe("1");
+    expect(lists.at(-1)?.get("type")).toBe(
+      source === "downloads" ? "UPDATE,CLEANUP" : "SEND,CLEANUP",
+    );
+    expect(lists.at(-1)?.get(source === "downloads" ? "status" : "state")).toBe(
+      "COMPLETED,PAUSED",
+    );
   });
 }

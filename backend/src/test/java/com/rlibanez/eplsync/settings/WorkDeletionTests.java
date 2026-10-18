@@ -25,6 +25,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.revision-cleanup.worker-enabled=false","eplsync.calibre.transfers.worker-enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
 class WorkDeletionTests {
     @Autowired WorkDeletion deletion;
+    @Autowired WorkListings listings;
     @Autowired JobRetries retries;
     @Autowired JdbcTemplate jdbc;
     @Autowired AccountStore accounts;
@@ -85,6 +86,35 @@ class WorkDeletionTests {
             job(source,state,"CANCELLED");item(source,state,state,null);
             assertThat(apply(source,false,ref(state)).items().getFirst().reason()).contains("pendientes de resolver");
         }
+    }
+    @ParameterizedTest @ValueSource(strings={"downloads","calibre"})
+    void workFiltersCombineMultipleTypesAndStatesWithExclusionAndPagination(String source) throws Exception {
+        job(source,"a","QUEUED");job(source,"b","PAUSED");job(source,"d","COMPLETED");
+        cleanupJob(source,"c","COMPLETED","SUCCEEDED",true);cleanupJob(source,"e","PAUSED","PENDING",false);
+        boolean downloads=source.equals("downloads");
+        if(downloads) jdbc.update("UPDATE torrent_bulk_jobs SET type='UPDATE' WHERE id='b'");
+        String types=downloads?"DOWNLOAD,UPDATE":"SEND,CLEANUP", sort=downloads?"jobId,asc":"id,asc", idKey=downloads?"jobId":"id";
+        var rows=listings.list(source,0,20,List.of("QUEUED","PAUSED"),types,"",null,null,sort);
+        assertThat(rows.items().stream().map(row -> row.get(idKey)).toList()).containsExactlyElementsOf(downloads?List.of("a","b"):List.of("a","b","e"));
+        var page=listings.list(source,1,1,List.of("QUEUED","PAUSED"),types,"",null,null,sort);
+        assertThat(page.items()).singleElement().satisfies(row -> assertThat(row.get(idKey)).isEqualTo("b"));
+        assertThat(page.meta().totalItems()).isEqualTo(downloads?2:3);
+        var neighbors=listings.neighbors(source,"b",List.of("QUEUED","PAUSED"),types,"",null,null,sort);
+        assertThat(neighbors.previous().id()).isEqualTo("a");
+        assertThat(neighbors.next()==null?null:neighbors.next().id()).isEqualTo(downloads?null:"e");
+        var excludedStates=listings.list(source,0,20,List.of("QUEUED","PAUSED"),types,"",null,null,sort,"ne","eq");
+        assertThat(excludedStates.items().stream().map(row -> row.get(idKey)).toList()).containsExactlyElementsOf(downloads?List.of("d"):List.of("c","d"));
+        var excludedTypes=listings.list(source,0,20,List.of("QUEUED","PAUSED"),types,"",null,null,sort,"eq","ne");
+        assertThat(excludedTypes.items().stream().map(row -> row.get(idKey)).toList()).containsExactlyElementsOf(downloads?List.of("e"):List.of());
+        assertThatThrownBy(()->listings.list(source,0,20,List.of(),types+",INVALID","",null,null,sort)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        assertThatThrownBy(()->listings.list(source,0,20,List.of("QUEUED","INVALID"),types,"",null,null,sort)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var auth=SecurityContextHolder.getContext().getAuthentication();
+        String endpoint=downloads?"/api/torrent/jobs":"/api/calibre/transfers", stateKey=downloads?"status":"state";
+        mvc.perform(get(endpoint).with(authentication(auth)).param("type",types).param(stateKey,"QUEUED,PAUSED").param("sort",sort))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(downloads?2:3));
+        mvc.perform(get(endpoint).with(authentication(auth)).param("type",types).param("typeOperator","ne").param(stateKey,"QUEUED,PAUSED").param("sort",sort))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(downloads?1:0));
     }
     @Test void updateCleanupRequestsCannotBeLost() {
         for(String state:List.of("WAITING","BLOCKED","REQUESTED")) {

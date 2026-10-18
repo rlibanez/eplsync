@@ -48,8 +48,8 @@ public class BulkController {
     public PageResponse<BulkStore.ItemView> items(@PathVariable String id,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
             @RequestParam(defaultValue = "position,asc") String sort, @RequestParam(defaultValue="eq") String statusOperator,@RequestParam(required = false) String status, jakarta.servlet.http.HttpServletRequest request) {
-        if (!java.util.Set.of("page", "size", "status", "statusOperator", "sort").containsAll(request.getParameterMap().keySet()))
-            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro desconocido; se admiten page, size, status y sort");
+        if (!java.util.Set.of("page", "size", "status", "statusOperator", "sort", "eplId", "eplIdOperator", "book", "bookOperator", "detail", "detailOperator").containsAll(request.getParameterMap().keySet()))
+            throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro de filtro u ordenación desconocido");
         com.rlibanez.eplsync.config.TableOrdering.validateParameters(request);
         java.util.List<BulkItem.State> states = null;
         if (status != null) {
@@ -61,7 +61,9 @@ public class BulkController {
             }
         }
         sort = com.rlibanez.eplsync.config.TableOrdering.request(request, "position,asc");
-        synchronized (store) { return store.details(id, page, size, states, sort,statusOperator); }
+        var filters=new org.springframework.util.LinkedMultiValueMap<String,String>();
+        request.getParameterMap().forEach((key,values)->filters.put(key,java.util.Arrays.asList(values)));
+        synchronized (store) { return store.details(id,page,size,states,sort,statusOperator,filters); }
     }
 
     @PostMapping("/jobs/{id}/pause")

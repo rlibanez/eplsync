@@ -1,3 +1,4 @@
+import { useJobItemSearch } from "../jobs/JobItemSearch";
 import { useBookViewState } from "../catalog/useBookViewState";
 import { BookLink } from "../catalog/BookLink";
 import { useWorkDeletion } from "../jobs/useWorkDeletion";
@@ -15,7 +16,7 @@ import {
   Button,
   Group,
   Progress,
-  Select,
+  MultiSelect,
   TextInput,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -161,7 +162,10 @@ export function CalibreJobs() {
   const { t } = useTranslation();
   const { date, number } = useLocale();
   const saved = useWorkContext("calibre")?.view;
-  const [excluded, setExcluded] = useBookViewState("excluded", saved?.excluded ?? false);
+  const [excluded, setExcluded] = useBookViewState(
+    "excluded",
+    saved?.excluded ?? false,
+  );
   const [excludeType, setExcludeType] = useState(saved?.excludeType ?? false);
   const [page, setPage] = useBookViewState("page", saved?.page ?? 0),
     [size, setSize] = useBookViewState("size", saved?.size ?? 20),
@@ -254,34 +258,38 @@ export function CalibreJobs() {
       </div>
 
       <div className="filters jobs-filters">
-        <Select
+        <MultiSelect
+          searchable
+          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("downloads.type")}
           {...stateOperatorProps(excludeType, () => {
             setExcludeType(!excludeType);
             setPage(0);
           })}
-          value={type}
+          value={type ? type.split(",") : []}
           clearable
           data={["SEND", "CLEANUP"].map((value) => ({
             value,
             label: t(`historyActions.jobTypes.${value}`),
           }))}
           onChange={(value) => {
-            setType(value);
-            if (!value) setExcludeType(false);
+            setType(value.join(","));
+            if (!value.length) setExcludeType(false);
             setPage(0);
           }}
         />
-        <Select
+        <MultiSelect
+          searchable
+          styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
           label={t("downloads.status")}
           {...stateOperatorProps(excluded, () => {
             setExcluded(!excluded);
             setPage(0);
           })}
-          value={state}
+          value={state ? state.split(",") : []}
           onChange={(value) => {
-            setState(value);
-            if (!value) setExcluded(false);
+            setState(value.join(","));
+            if (!value.length) setExcluded(false);
             setPage(0);
           }}
           clearable
@@ -478,11 +486,20 @@ export function CalibreJobDetail() {
     [size, setSize] = useBookViewState("size", 20),
     [sort, setSort] = useBookViewState("sort", "position,asc");
   const [excluded, setExcluded] = useBookViewState("excluded", false);
-  const [itemState, setItemState] = useBookViewState<string | null>("itemState", null);
+  const [itemState, setItemState] = useBookViewState<string | null>(
+    "itemState",
+    null,
+  );
   const [itemDetail, setItemDetail] = useBookViewState("itemDetail", "");
+  const itemSearch = useJobItemSearch("file", t("calibreSend.file"), () =>
+    setPage(0),
+  );
   const choice = usePageSizeChoice(size);
   const [selected, setSelected] = useState<string[]>([]);
-  useEffect(() => setSelected([]), [id, itemState, excluded, itemDetail, sort]);
+  useEffect(
+    () => setSelected([]),
+    [id, itemState, excluded, itemDetail, sort, itemSearch.query],
+  );
   const job = useQuery({
     queryKey: ["calibre-job", id],
     queryFn: ({ signal }) => get<Job>(`/calibre/transfers/${id}`, signal),
@@ -502,10 +519,11 @@ export function CalibreJobDetail() {
       itemState,
       excluded,
       itemDetail.trim(),
+      itemSearch.query,
     ],
     queryFn: ({ signal }) =>
       get<Page<Item>>(
-        `/calibre/transfers/${id}/items?page=${page}&size=${size}&state=${itemState ?? ""}${itemState && excluded ? "&statusOperator=ne" : ""}&detail=${encodeURIComponent(itemDetail.trim())}&${sortQuery(sort)}`,
+        `/calibre/transfers/${id}/items?page=${page}&size=${size}&state=${itemState ?? ""}${itemState && excluded ? "&statusOperator=ne" : ""}&detail=${encodeURIComponent(itemDetail.trim())}&${itemSearch.query}&${sortQuery(sort)}`,
         signal,
       ),
     retry: false,
@@ -641,14 +659,21 @@ export function CalibreJobDetail() {
         </Alert>
       )}
       <div className="filters jobs-filters">
-        <Select
+        {itemSearch.fields}
+        <MultiSelect
+          searchable
           label={t("downloads.status")}
+          clearButtonProps={{
+            "aria-hidden": false,
+            tabIndex: 0,
+            "aria-label": `${t("catalog.clear")}: ${t("downloads.status")}`,
+          }}
           {...stateOperatorProps(excluded, () => {
             setExcluded(!excluded);
             setPage(0);
           })}
           clearable
-          value={itemState}
+          value={itemState ? itemState.split(",") : []}
           data={[
             "PENDING",
             "WAITING_DOWNLOAD",
@@ -665,8 +690,8 @@ export function CalibreJobDetail() {
             label: t(`calibreSend.states.${value}`),
           }))}
           onChange={(value) => {
-            setItemState(value);
-            if (!value) setExcluded(false);
+            setItemState(value.join(","));
+            if (!value.length) setExcluded(false);
             setPage(0);
           }}
         />
@@ -695,6 +720,7 @@ export function CalibreJobDetail() {
           variant="subtle"
           onClick={() => {
             setItemState(null);
+            itemSearch.clear();
             setExcluded(false);
             setItemDetail("");
             setPage(0);

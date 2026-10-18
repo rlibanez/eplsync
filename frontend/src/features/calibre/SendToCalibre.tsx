@@ -25,13 +25,21 @@ type Candidate = {
   name: string;
   size: number;
   expectedSize?: number;
-  eplId: number;
-  revision: number;
+  eplId: number | null;
+  revision: number | null;
+  message?: string;
 };
 type Prepared = {
   libraries: { id: string; name: string }[];
   library: string;
   files: Candidate[];
+  unavailable?: {
+    recordId: string;
+    name: string;
+    eplId: number | null;
+    revision: number | null;
+    message: string;
+  }[];
   books?: { eplId: number; revision: number; title: string }[];
   deferred?: { eplId: number; revision: number; title: string }[];
   deferredRecords?: string[];
@@ -74,11 +82,17 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
       );
     },
   });
-  const sorting = usePreviewSort(prepare.data?.files ?? [], () =>
-    setFilePage(0),
-  );
+  const previewFiles: Candidate[] = [
+    ...(prepare.data?.files ?? []),
+    ...(prepare.data?.unavailable ?? []).map((item, index) => ({
+      ...item,
+      index: -index - 1,
+      size: 0,
+    })),
+  ];
+  const sorting = usePreviewSort(previewFiles, () => setFilePage(0));
   const displayed = sorting.sorted(
-    (file, field) => file[field as "name" | "eplId" | "revision"],
+    (file, field) => file[field as "name" | "eplId" | "revision" | "message"],
   );
   const send = useMutation({
     mutationFn: () =>
@@ -191,7 +205,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                   })}
                 </Alert>
               )}
-              {!!prepare.data.files.length && (
+              {!!previewFiles.length && (
                 <fieldset className="send-options-group cleanup-preview">
                   <legend>{t("revisionCleanup.previewBooks")}</legend>
                   <Group gap="xs">
@@ -231,6 +245,9 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                           <PreviewHeading field="revision" {...sorting}>
                             {t("downloads.revision")}
                           </PreviewHeading>
+                          <PreviewHeading field="message" {...sorting}>
+                            {t("calibreSend.detail")}
+                          </PreviewHeading>
                         </tr>
                       </thead>
                       <tbody>
@@ -243,7 +260,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                                   key={key(file)}
                                   aria-label={`${file.name} · EPL ID ${file.eplId} · ${t("downloads.revision")} ${revision(file.revision)}`}
                                   checked={chosenSet.has(key(file))}
-                                  disabled={send.isPending}
+                                  disabled={send.isPending || file.index < 0}
                                   onChange={(e) => {
                                     const checked = e.currentTarget.checked;
                                     setRequestId(requestIdentifier());
@@ -261,14 +278,17 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                                 value={filePage * 20 + index + 1}
                               />
                               <td>{file.name}</td>
-                              <td>{file.eplId}</td>
+                              <td>{file.eplId ?? "—"}</td>
                               <td>{revision(file.revision)}</td>
+                              <td>
+                                {file.message ?? t("calibreSend.available")}
+                              </td>
                             </tr>
                           ))}
                       </tbody>
                     </table>
                   </div>
-                  {prepare.data.files.length > 20 && (
+                  {previewFiles.length > 20 && (
                     <nav
                       className="pagination cleanup-preview-pagination"
                       aria-label={t("revisionCleanup.previewPages")}
@@ -281,14 +301,11 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                         {t("catalog.previous")}
                       </Button>
                       <span>
-                        {filePage + 1} /{" "}
-                        {Math.ceil(prepare.data.files.length / 20)}
+                        {filePage + 1} / {Math.ceil(previewFiles.length / 20)}
                       </span>
                       <Button
                         variant="subtle"
-                        disabled={
-                          (filePage + 1) * 20 >= prepare.data.files.length
-                        }
+                        disabled={(filePage + 1) * 20 >= previewFiles.length}
                         onClick={() => setFilePage((page) => page + 1)}
                       >
                         {t("catalog.next")}

@@ -827,6 +827,25 @@ class RevisionCleanupTests {
     @Test void metadataFreeTorrentCanBeRemovedWithoutTouchingReplacement() {remote.set(0,new RemoteTorrent("A".repeat(40),DownloadStatus.QUEUED,null,Set.of(),null,"Book","/downloads",true));var job=start(preview("downloads","FILES"));cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);verify(adapter).deleteTorrent("A".repeat(40),false);}
     @Test void unchangedVerificationFailuresDoNotRepeatEvents() {var job=start(preview("calibre","BOOK"));cleanup.cycle();for(int n=0;n<3;n++) {cleanup.control(job.id(),"verify");cleanup.cycle();}assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE action='REVISION_CLEANUP' AND operation_id=?",Integer.class,job.id())).isLessThanOrEqualTo(2);}
     @Test void resetErasesPreviewsAndTheirItems() {preview("downloads","RECORD");reset.reset(false);assertThat(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs",Integer.class)).isZero();assertThat(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items",Integer.class)).isZero();}
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"downloads","calibre"})
+    void cleanupItemFiltersCombineMultipleTermsIdsStatesAndExclusions(String source) {
+        var job=start(preview(source,source.equals("downloads")?"RECORD":"BOOK"));
+        jdbc.update("UPDATE revision_cleanup_items SET title='Alpha book',state='SUCCEEDED' WHERE job_id=?",job.id());
+        for(int n=2;n<=4;n++) jdbc.update("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,state) VALUES(?,?,?,?, '',?,?,'1','2',?)","filter-"+n,job.id(),n,"filter-old-"+n,n==4?null:n,n==2?"Beta, book":"Gamma book",n==2?"FAILED":"BLOCKED");
+        var filters=new org.springframework.util.LinkedMultiValueMap<String,String>();
+        filters.add("eplId","1");filters.add("eplId","2");filters.add("book","Alpha");filters.add("book","Beta,");filters.set("state","SUCCEEDED,FAILED");
+        var result=cleanup.items(job.id(),1,1,filters);
+        assertThat(result.meta().totalItems()).isEqualTo(2);assertThat(result.items()).singleElement().satisfies(item -> assertThat(item.eplId()).isEqualTo(2));
+        filters.clear();filters.add("eplId","1");filters.add("eplId","2");filters.set("eplIdOperator","ne");filters.set("state","SUCCEEDED,FAILED");filters.set("statusOperator","ne");
+        assertThat(cleanup.items(job.id(),0,20,filters).items()).hasSize(2);
+        filters.add("book","Alpha");filters.add("book","Gamma");filters.set("bookOperator","ne");
+        assertThat(cleanup.items(job.id(),0,20,filters).items()).isEmpty();
+        filters.clear();filters.set("book","%' OR 1=1 --");assertThat(cleanup.items(job.id(),0,20,filters).items()).isEmpty();
+        filters.clear();for(long n=1;n<=1200;n++)filters.add("eplId",Long.toString(n));
+        assertThat(cleanup.items(job.id(),0,20,filters).items()).hasSize(3);
+        filters.set("state","FAILED,INVALID");assertThatThrownBy(()->cleanup.items(job.id(),0,20,filters)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        filters.clear();filters.set("bookOperator","invalid");assertThatThrownBy(()->cleanup.items(job.id(),0,20,filters)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+    }
     @Test void httpMutationsRequireCsrfAndReturnOnlyOwnerJobs() throws Exception {
         var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
         var auth=SecurityContextHolder.getContext().getAuthentication();

@@ -386,15 +386,52 @@ public class BulkStore {
     }
     @Transactional(readOnly = true)
     public PageResponse<ItemView> details(String id,int page,int size,List<BulkItem.State> states,String sort,String statusOperator) {
+        return details(id,page,size,states,sort,statusOperator,new org.springframework.util.LinkedMultiValueMap<>());
+    }
+    @Transactional(readOnly = true)
+    public PageResponse<ItemView> details(String id,int page,int size,List<BulkItem.State> states,String sort,String statusOperator,org.springframework.util.MultiValueMap<String,String> params) {
         boolean exclude=com.rlibanez.eplsync.ordering.StateOperator.excluded(statusOperator);
         job(id);
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
         var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, Set.of("position", "title", "eplId", "revision", "hash", "status", "attempts", "message"));
         var orders = criteria.stream().map(order -> new Sort.Order(order.getDirection(), order.getProperty().equals("title") ? "catalogBook.title" : order.getProperty().equals("status") ? "state" : order.getProperty())).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         if (orders.stream().noneMatch(order -> order.getProperty().equals("position"))) orders.add(Sort.Order.asc("position"));
-        org.springframework.data.jpa.domain.Specification<BulkItem> filter=(root,query,cb)-> states==null
-            ? cb.equal(root.get("jobId"),id)
-            : cb.and(cb.equal(root.get("jobId"),id),exclude?cb.not(root.get("state").in(states)):root.get("state").in(states));
+        var ids = new LinkedHashSet<Long>();
+        for (String input : params.getOrDefault("eplId",List.of())) {
+            for (String token : input.trim().split("[,;\\s]+")) {
+                if (token.isEmpty()) continue;
+                try { long value=Long.parseLong(token); if(value<=0) throw new NumberFormatException(); ids.add(value); }
+                catch(NumberFormatException ex) { throw new com.rlibanez.eplsync.exception.UserInputException("EPL ID debe contener identificadores enteros positivos"); }
+            }
+        }
+        boolean excludeIds=com.rlibanez.eplsync.ordering.StateOperator.excluded(params.getFirst("eplIdOperator")==null?"eq":params.getFirst("eplIdOperator"));
+        var textTerms=new LinkedHashMap<String,List<String>>();
+        var textExcluded=new HashMap<String,Boolean>();
+        for(String key:List.of("book","detail")) {
+            textExcluded.put(key,com.rlibanez.eplsync.ordering.StateOperator.excluded(params.getFirst(key+"Operator")==null?"eq":params.getFirst(key+"Operator")));
+            var terms=params.getOrDefault(key,List.of());
+            if(terms.stream().anyMatch(value->value==null || value.length()>4096)) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro de texto inválido");
+            textTerms.put(key,terms.stream().map(String::trim).filter(value->!value.isEmpty()).distinct().toList());
+        }
+        // One bound numeric set avoids SQLite's parameter limit for large ID selections.
+        String idSet=","+ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","))+",";
+        org.springframework.data.jpa.domain.Specification<BulkItem> filter=(root,query,cb)-> {
+            var predicates=new ArrayList<jakarta.persistence.criteria.Predicate>();
+            predicates.add(cb.equal(root.get("jobId"),id));
+            if(states!=null) predicates.add(exclude?cb.not(root.get("state").in(states)):root.get("state").in(states));
+            if(!ids.isEmpty()) {
+                var match=cb.gt(cb.locate(cb.literal(idSet),cb.concat(cb.concat(",",root.get("eplId").as(String.class)),",")),0);
+                predicates.add(excludeIds?cb.not(match):match);
+            }
+            for(var entry:textTerms.entrySet()) {
+                if(entry.getValue().isEmpty()) continue;
+                jakarta.persistence.criteria.Expression<String> column=entry.getKey().equals("book")?root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).get("title"):root.get("message");
+                var matches=entry.getValue().stream().map(term->cb.gt(cb.locate(cb.lower(cb.coalesce(column,"")),term.toLowerCase(java.util.Locale.ROOT)),0)).toArray(jakarta.persistence.criteria.Predicate[]::new);
+                var match=cb.or(matches);
+                predicates.add(textExcluded.get(entry.getKey())?cb.not(match):match);
+            }
+            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
         var result=items.findAll(com.rlibanez.eplsync.ordering.TextOrdering.sorted(filter,Sort.by(orders)),PageRequest.of(page,size));
         var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(em, result.getContent().stream().map((BulkItem entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).toList());
         result.forEach(row -> {

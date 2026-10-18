@@ -23,11 +23,7 @@ export async function checkTableControls(
     0,
   );
   await expect(table.locator("tbody tr").first().locator("td")).toHaveCount(
-    initial.length -
-      1 +
-      (await table
-        .locator("thead .updates-selection, thead .history-selection")
-        .count()),
+    await table.locator("thead th").count(),
   );
   await picker.getByRole("checkbox", { name: label, exact: true }).check();
   await picker

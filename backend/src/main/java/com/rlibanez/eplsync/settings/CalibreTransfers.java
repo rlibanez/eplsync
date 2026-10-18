@@ -24,8 +24,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class CalibreTransfers {
     public record FileChoice(String recordId,int index) {}
     public record Candidate(String recordId,int index,String name,long size,long eplId,double revision,long expectedSize) {}
-    public record Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files,List<String> deferredRecords) {
-        public Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files) {this(libraries,library,files,List.of());}
+    public record Unavailable(String recordId,String name,Long eplId,Double revision,String message) {}
+    public record Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files,List<String> deferredRecords,List<Unavailable> unavailable) {
+        public Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files) {this(libraries,library,files,List.of(),List.of());}
+        public Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files,List<String> deferredRecords) {this(libraries,library,files,deferredRecords,List.of());}
     }
     public record Request(String library,List<FileChoice> files,List<String> deferredRecords,String id) {
         public Request {if(deferredRecords==null) deferredRecords=List.of();}
@@ -91,26 +93,47 @@ public class CalibreTransfers {
     public Prepared prepare(List<String> ids) {
         requireSend();validateIds(ids);
         var connection=settings.connection();var check=client.check(connection);
-        if(ids.size()>1000) {
-            files.requireRoots();deferredDownloads(ids);
-            return new Prepared(check.libraries(),connection.library(),List.of(),List.copyOf(ids));
-        }
-        var candidates=new ArrayList<Candidate>();long deadline=System.nanoTime()+Duration.ofMinutes(2).toNanos();
+        var records=new HashMap<String,DownloadRecord>();
+        for(int offset=0;offset<ids.size();offset+=500)
+            downloads.findAllById(ids.subList(offset,Math.min(offset+500,ids.size()))).forEach(row -> records.put(row.getId(),row));
+        var unavailable=new ArrayList<Unavailable>();
+        var deferred=new ArrayList<String>();
+        var candidates=new ArrayList<Candidate>();
+        boolean large=ids.size()>1000;
+        if(large) files.requireRoots();
+        String instance=tracking.instanceId();
+        long deadline=System.nanoTime()+Duration.ofMinutes(2).toNanos();
         for(String id:ids) {
-            if(System.nanoTime()>deadline) throw new UserInputException("La preparación ha tardado demasiado; selecciona menos registros");
-            var row=downloads.findById(id).orElseThrow(() -> new UserInputException("El registro de descarga ya no existe"));
+            var row=records.get(id);
+            if(row==null) {unavailable.add(new Unavailable(id,"—",null,null,"El registro de descarga ya no existe"));continue;}
+            if(large) {
+                if(!instance.equals(row.getClientInstanceId()) || row.getStatus()!=DownloadStatus.DOWNLOADED)
+                    unavailable.add(unavailable(row,"EPL ID "+row.getEplId(),"La descarga no está disponible en el cliente actual"));
+                else deferred.add(id);
+                continue;
+            }
+            if(System.nanoTime()>deadline) {
+                unavailable.add(unavailable(row,"EPL ID "+row.getEplId(),"No se pudo comprobar la descarga a tiempo; vuelve a preparar el envío"));continue;
+            }
             List<EpubFiles.Item> available;
             try { available=files.list(id); }
-            catch(com.rlibanez.eplsync.exception.TorrentOperationException ex) {
-                log.debug("Preparación de envío a Calibre rechazada: registro={}, EPL ID={}, revisión={}, motivo={}",id,row.getEplId(),row.getRevision(),ex.getMessage());
-                throw new com.rlibanez.eplsync.exception.TorrentOperationException(ex.getStatus(),"EPL ID "+row.getEplId()+" · revisión "+row.getRevision()+": "+ex.getMessage());
+            catch(com.rlibanez.eplsync.exception.TorrentOperationException | com.rlibanez.eplsync.exception.TorrentConnectionException | UserInputException ex) {
+                if(Thread.currentThread().isInterrupted() || ex instanceof com.rlibanez.eplsync.exception.TorrentConnectionException connectionFailure && connectionFailure.getReason()==com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.INTERRUPTED) throw ex;
+                String reason=ex.getMessage()==null || ex.getMessage().isBlank() ? "No se puede comprobar o leer la descarga; revisa conexión y carpetas" : ex.getMessage().substring(0,Math.min(1024,ex.getMessage().length()));
+                if("El torrent no contiene archivos EPUB completamente descargados".equals(reason)) reason="Los archivos aún no están descargados";
+                log.debug("EPUB no disponible para enviar a Calibre: registro={}, EPL ID={}, revisión={}, motivo={}",id,row.getEplId(),row.getRevision(),reason);
+                unavailable.add(unavailable(row,"EPL ID "+row.getEplId(),reason));continue;
             }
+            if(available.isEmpty()) unavailable.add(unavailable(row,"EPL ID "+row.getEplId(),"Los archivos aún no están descargados"));
             for(var file:available) {
-                if(file.size()>268435456) throw new UserInputException("El EPUB supera 256 MiB");
+                if(file.size()>268435456) {unavailable.add(unavailable(row,file.name(),"El EPUB supera 256 MiB"));continue;}
                 candidates.add(new Candidate(id,file.index(),file.name(),file.size(),row.getEplId(),row.getRevision(),file.expectedSize()));
             }
         }
-        return new Prepared(check.libraries(),connection.library(),List.copyOf(candidates));
+        return new Prepared(check.libraries(),connection.library(),List.copyOf(candidates),List.copyOf(deferred),List.copyOf(unavailable));
+    }
+    private static Unavailable unavailable(DownloadRecord row,String name,String message) {
+        return new Unavailable(row.getId(),name,row.getEplId(),row.getRevision(),message);
     }
     private static void validateIds(List<String> ids) {
         if(ids==null || ids.isEmpty() || ids.stream().anyMatch(id -> id==null || id.isBlank() || id.length()>64) || new HashSet<>(ids).size()!=ids.size())
@@ -253,13 +276,15 @@ public class CalibreTransfers {
         return items(id,page,size,state,detail,sort,"eq");
     }
     public Page<Item> items(String id,int page,int size,String state,String detail,List<String> sort,String statusOperator) {
-        boolean exclude=com.rlibanez.eplsync.ordering.StateOperator.excluded(statusOperator);
+        return items(id,page,size,state,detail,sort,statusOperator,new org.springframework.util.LinkedMultiValueMap<>());
+    }
+    public Page<Item> items(String id,int page,int size,String state,String detail,List<String> sort,String statusOperator,org.springframework.util.MultiValueMap<String,String> filters) {
         paging(page,size);job(id);
         if(detail==null || detail.length()>4096) throw new UserInputException("Filtro de detalle inválido");
-        if(state==null || !state.isEmpty() && !Set.of("PENDING","SENDING","ACCEPTED","SKIPPED","FAILED","UNCERTAIN","CANCELLED","WAITING_DOWNLOAD","BLOCKED_DOWNLOAD","CLEANUP_PENDING").contains(state)) throw new UserInputException("Estado de envío inválido");
-        String where=" WHERE job_id=?";var args=new ArrayList<Object>();args.add(id);
-        if(!state.isEmpty()) {where+=" AND state"+(exclude?"<>?":"=?");args.add(state);}
-        if(!detail.isBlank()) {where+=" AND instr(lower(coalesce(message,'')),lower(?))>0";args.add(detail.trim());}
+        var where=new StringBuilder(" WHERE job_id=?");var args=new ArrayList<Object>();args.add(id);
+        JobItemFilters.states(where,args,state,statusOperator,Set.of("PENDING","SENDING","ACCEPTED","SKIPPED","FAILED","UNCERTAIN","CANCELLED","WAITING_DOWNLOAD","BLOCKED_DOWNLOAD","CLEANUP_PENDING"));
+        JobItemFilters.append(where,args,filters,"file","name");
+        if(!detail.isBlank()) {where.append(" AND instr(lower(coalesce(message,'')),lower(?))>0");args.add(detail.trim());}
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items"+where,Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
         var rows=jdbc.query("SELECT * FROM calibre_job_items"+where+" ORDER BY "+order(sort,Map.of("position","position","eplId","epl_id","revision","CAST(revision AS REAL)","name","name COLLATE EPL_TEXT","state","state","calibreId","calibre_id","message","message COLLATE EPL_TEXT"))+",position LIMIT ? OFFSET ?",CalibreTransfers::mapItem,args.toArray());

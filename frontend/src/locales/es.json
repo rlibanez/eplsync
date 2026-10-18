@@ -1689,6 +1689,7 @@
     "selectRecord": "Seleccionar EPL ID {{id}} (r{{revision}})"
   },
   "calibreSend": {
+    "available": "Disponible",
     "selected_one": "{{count}} libro seleccionado",
     "selected_other": "{{count}} libros seleccionados",
     "detailContains": "Detalle contiene",

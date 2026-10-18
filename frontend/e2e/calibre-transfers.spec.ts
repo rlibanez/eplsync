@@ -394,7 +394,7 @@ test("filtra los elementos del trabajo por estado y detalle pulsando sus valores
   await page.getByRole("button", { name: "Enviado", exact: true }).click();
   await expect(
     page.getByRole("textbox", { name: "Estado", exact: true }),
-  ).toHaveValue("Enviado");
+  ).toHaveValue("");
   const request = page.waitForRequest(
     (r) =>
       r.url().includes("/job/items?") &&
@@ -427,7 +427,7 @@ test("filtra los elementos del trabajo por estado y detalle pulsando sus valores
   ).toHaveValue("");
   await expect(
     page.getByRole("textbox", { name: "Estado", exact: true }),
-  ).toHaveValue("Enviado");
+  ).toHaveValue("");
   await page
     .getByRole("textbox", { name: "Detalle contiene" })
     .fill("verificado");
@@ -447,7 +447,7 @@ test("filtra los elementos del trabajo por estado y detalle pulsando sus valores
     page.getByRole("textbox", { name: "Estado", exact: true }),
   ).toHaveValue("");
   const labels = await page.locator(".jobs-filters label").allTextContents();
-  expect(labels).toEqual(["Estado", "Detalle contiene"]);
+  expect(labels).toEqual(["EPL ID", "Archivo", "Estado", "Detalle contiene"]);
 });
 
 test("repeating a direct send after a lost response keeps its request identifier", async ({
@@ -502,3 +502,122 @@ test("repeating a direct send after a lost response keeps its request identifier
   expect(ids[0]).toBeTruthy();
   expect(ids[1]).toBe(ids[0]);
 });
+
+for (const allUnavailable of [false, true])
+  test(`unavailable EPUBs stay disabled without blocking available sends (all=${allUnavailable})`, async ({
+    page,
+  }) => {
+    await jobRoutes(page);
+    const rows = Array.from({ length: 22 }, (_, index) => ({
+      id: String(index + 1),
+      eplId: index + 1,
+      title: `Libro ${index + 1}`,
+      hash: String(index + 1).padStart(40, "A"),
+      revision: 1.1,
+      status: "DOWNLOADED",
+      client: "qbittorrent",
+      clientInstanceId: "server",
+      origin: "EPLSYNC",
+      coverAvailable: false,
+    }));
+    await page.route("**/api/torrent/downloads?**", (route) => {
+      const params = new URL(route.request().url()).searchParams,
+        size = Number(params.get("size") ?? 20),
+        p = Number(params.get("page") ?? 0);
+      return route.fulfill({
+        json: {
+          items: rows.slice(p * size, (p + 1) * size),
+          meta: {
+            page: p,
+            size,
+            totalItems: 22,
+            totalPages: Math.ceil(22 / size),
+            hasNext: (p + 1) * size < 22,
+            hasPrevious: p > 0,
+          },
+        },
+      });
+    });
+    const available = allUnavailable
+      ? []
+      : rows.slice(0, 21).map((row) => ({
+          recordId: row.id,
+          index: 0,
+          name: `Libro ${row.id}.epub`,
+          size: 100,
+          eplId: row.eplId,
+          revision: row.revision,
+        }));
+    const unavailable = (allUnavailable ? rows : rows.slice(21)).map((row) => ({
+      recordId: row.id,
+      name: `EPL ID ${row.eplId}`,
+      eplId: row.eplId,
+      revision: row.revision,
+      message: "Los archivos aún no están descargados",
+    }));
+    await page.route("**/api/calibre/transfers/prepare", (route) => {
+      expect(route.request().postDataJSON().ids).toHaveLength(22);
+      return route.fulfill({
+        json: {
+          libraries: [{ id: "main", name: "Main" }],
+          library: "main",
+          files: available,
+          unavailable,
+        },
+      });
+    });
+    let submitted = 0;
+    await page.route("**/api/calibre/transfers", (route) => {
+      submitted++;
+      expect(route.request().postDataJSON().files).toEqual(
+        available.map((file) => ({ recordId: file.recordId, index: 0 })),
+      );
+      return route.fulfill({ json: { id: "job" } });
+    });
+    await page.goto("/downloads");
+    await page
+      .getByRole("button", { name: "Seleccionar todo (22)", exact: true })
+      .click();
+    await page
+      .locator(".selection-toolbar-actions")
+      .getByRole("button", { name: "Enviar a Calibre", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator("tbody tr")).toHaveCount(20);
+    await dialog.getByRole("button", { name: "EPL ID", exact: true }).click();
+    await dialog.getByRole("button", { name: "EPL ID", exact: true }).click();
+    const first = dialog.locator("tbody tr").first();
+    await expect(first).toContainText("EPL ID 22");
+    await expect(first).toContainText("Los archivos aún no están descargados");
+    await expect(first.getByRole("checkbox")).toBeDisabled();
+    await expect(first.getByRole("checkbox")).not.toBeChecked();
+    const count = allUnavailable ? 0 : 21;
+    await expect(dialog.locator(".app-modal-actions")).toContainText(
+      `${count} libros seleccionados`,
+    );
+    await dialog
+      .getByRole("button", { name: `Quitar selección (${count})`, exact: true })
+      .click();
+    await dialog
+      .getByRole("button", { name: "Seleccionar disponibles", exact: true })
+      .click();
+    await expect(first.getByRole("checkbox")).not.toBeChecked();
+    await dialog
+      .getByRole("navigation", { name: "Páginas de la previsualización" })
+      .getByRole("button", { name: "Siguiente", exact: true })
+      .click();
+    await expect(dialog.locator("tbody tr")).toHaveCount(2);
+    const send = dialog.getByRole("button", {
+      name: "Enviar a Calibre",
+      exact: true,
+    });
+    if (allUnavailable) {
+      await expect(send).toBeDisabled();
+      expect(submitted).toBe(0);
+    } else {
+      await expect(send).toBeEnabled();
+      await send.click();
+      await expect(page).toHaveURL(/\/calibre\/jobs\/job$/);
+      expect(submitted).toBe(1);
+    }
+  });
