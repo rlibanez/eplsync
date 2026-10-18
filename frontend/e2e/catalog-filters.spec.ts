@@ -91,7 +91,7 @@ test("advanced filters are collapsed and convert complete local days across DST"
     .toBe(normalColor);
 });
 
-test("clear applied filters from the heading preserves table preferences and disclosure state", async ({
+test("clear applied filters from the heading collapses search and preserves table preferences", async ({
   page,
 }) => {
   await page.route("**/api/catalog/books?**", (r) =>
@@ -125,15 +125,15 @@ test("clear applied filters from the heading preserves table preferences and dis
     await expect(clear).toHaveCount(0);
     await expect
       .poll(() => panel.evaluate((el) => (el as HTMLDetailsElement).open))
-      .toBe(expanded);
+      .toBe(false);
     const params = new URL(page.url()).searchParams;
     expect(params.get("page")).toBe("0");
     expect(params.get("size")).toBe("50");
     expect(params.getAll("sort")).toEqual(["author,asc"]);
     for (const key of ["author", "status", "revision", "addedFrom"])
       expect(params.has(key)).toBe(false);
-    if (expanded)
-      await expect(page.getByLabel("Autor", { exact: true })).toHaveValue("");
+    await summary.click();
+    await expect(page.getByLabel("Autor", { exact: true })).toHaveValue("");
   }
 });
 

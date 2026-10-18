@@ -284,7 +284,8 @@ export function CatalogFilters({
               event.preventDefault();
               event.stopPropagation();
               const details = event.currentTarget.closest("details");
-              onToggle?.(details?.open ?? false);
+              if (details) details.open = false;
+              onToggle?.(false);
               const next = new URLSearchParams(params);
               filterKeys.forEach((key) => next.delete(key));
               next.set("page", "0");
