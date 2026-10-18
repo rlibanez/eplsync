@@ -282,7 +282,6 @@ export function Catalog() {
               >
                 {t("selection.export")}
               </Button>
-              <SendToCalibre filters={selection.filters} count={count} />
               {auth.can("TORRENT_SEND") && (
                 <Button
                   variant="light"
@@ -299,6 +298,7 @@ export function Catalog() {
                   {t("selection.send")}
                 </Button>
               )}
+              <SendToCalibre filters={selection.filters} count={count} />
             </>
           }
         />
