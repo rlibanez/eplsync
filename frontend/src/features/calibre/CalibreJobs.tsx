@@ -58,6 +58,7 @@ type Job = {
   uncertain: number;
 };
 type Item = {
+  author?: string | null;
   id: string;
   position: number;
   recordId: string | null;
@@ -498,8 +499,12 @@ export function CalibreJobDetail() {
     null,
   );
   const [itemDetail, setItemDetail] = useBookViewState("itemDetail", "");
-  const itemSearch = useJobItemSearch("file", t("calibreSend.file"), () =>
-    setPage(0),
+  const itemSearch = useJobItemSearch(
+    "file",
+    t("calibreSend.file"),
+    () => setPage(0),
+    undefined,
+    can("CATALOG_READ") ? t("catalog.author") : undefined,
   );
   const choice = usePageSizeChoice(size);
   const [selected, setSelected] = useState<string[]>([]);
@@ -553,6 +558,9 @@ export function CalibreJobDetail() {
       { field: "position", label: "calibreSend.position", width: 140 },
       { field: "eplId", label: "filters.eplId", width: 100 },
       { field: "name", label: "calibreSend.file", width: 420 },
+      ...(can("CATALOG_READ")
+        ? [{ field: "author", label: "catalog.author", width: 240 }]
+        : []),
       { field: "revision", label: "downloads.revision", width: 100 },
       { field: "state", label: "downloads.status", width: 180 },
       { field: "calibreId", label: "calibre.id", width: 100 },
@@ -571,6 +579,7 @@ export function CalibreJobDetail() {
       selection: retry.selectable,
       defaults: "position,asc",
       hidden: ["position"],
+      newColumnsAfter: { author: "name" },
     },
     (page + 1) * size,
   );
@@ -832,6 +841,25 @@ export function CalibreJobDetail() {
                               </span>
                             </div>
                           </td>,
+                          ...(can("CATALOG_READ")
+                            ? [
+                                <td>
+                                  {item.author?.trim() ? (
+                                    <button
+                                      type="button"
+                                      className="catalog-value-filter"
+                                      onClick={() =>
+                                        itemSearch.selectAuthor(item.author!)
+                                      }
+                                    >
+                                      {item.author}
+                                    </button>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>,
+                              ]
+                            : []),
                           <td>{revision(item.revision)}</td>,
                           <td>
                             <button

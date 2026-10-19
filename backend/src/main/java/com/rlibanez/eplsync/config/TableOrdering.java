@@ -27,8 +27,11 @@ public final class TableOrdering {
         return values == null ? fallback : String.join(";", values);
     }
     public static void validateParameters(jakarta.servlet.http.HttpServletRequest request) {
+        validateParameters(request,Set.of());
+    }
+    public static void validateParameters(jakarta.servlet.http.HttpServletRequest request,Set<String> multipleValues) {
         request.getParameterMap().forEach((key, values) -> {
-            if ((!key.equals("sort") && values.length != 1) || Arrays.stream(values).anyMatch((String entryValue) -> java.util.Objects.requireNonNull(entryValue).isBlank()))
+            if ((!key.equals("sort") && !multipleValues.contains(key) && values.length != 1) || Arrays.stream(values).anyMatch((String entryValue) -> java.util.Objects.requireNonNull(entryValue).isBlank()))
                 throw new UserInputException("Parámetro vacío o repetido");
         });
     }

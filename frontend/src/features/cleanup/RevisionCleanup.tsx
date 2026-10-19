@@ -79,6 +79,7 @@ interface Item {
   dispatched: boolean;
   blockingCalibreJobId?: string | null;
   blockingRequiresIntervention?: boolean | null;
+  author?: string | null;
 }
 const active = (job?: Job) =>
   !!job && ["QUEUED", "RUNNING"].includes(job.state);
@@ -570,6 +571,8 @@ function CleanupItems({
   rows,
   offset = 0,
   jobState,
+  showAuthor = false,
+  onAuthor,
   direct = false,
   selected,
   onSelect,
@@ -579,6 +582,8 @@ function CleanupItems({
   rows: Item[];
   offset?: number;
   jobState?: string;
+  showAuthor?: boolean;
+  onAuthor?: (author: string) => void;
   direct?: boolean;
   selected?: string[];
   onSelect?: (ids: string[]) => void;
@@ -604,6 +609,7 @@ function CleanupItems({
             <PreviewHeading field="title" order={order} toggle={toggle}>
               {t("revisionCleanup.book")}
             </PreviewHeading>
+            {showAuthor && <th>{t("catalog.author")}</th>}
             <PreviewHeading field="revision" order={order} toggle={toggle}>
               {t("revisionCleanup.remove")}
             </PreviewHeading>
@@ -624,7 +630,14 @@ function CleanupItems({
         <tbody>
           {!rows.length && (
             <tr>
-              <td colSpan={5 + (direct ? 0 : 1) + (onSelect ? 1 : 0)}>
+              <td
+                colSpan={
+                  5 +
+                  (direct ? 0 : 1) +
+                  (onSelect ? 1 : 0) +
+                  (showAuthor ? 1 : 0)
+                }
+              >
                 {t("revisionCleanup.empty")}
               </td>
             </tr>
@@ -655,6 +668,25 @@ function CleanupItems({
                   item.title
                 )}
               </td>
+              {showAuthor && (
+                <td>
+                  {item.author?.trim() ? (
+                    onAuthor ? (
+                      <button
+                        type="button"
+                        className="catalog-value-filter"
+                        onClick={() => onAuthor(item.author!)}
+                      >
+                        {item.author}
+                      </button>
+                    ) : (
+                      item.author
+                    )
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              )}
               <td>
                 {item.revision ? `r${item.revision}` : "—"}
                 <br />
@@ -761,6 +793,7 @@ export function CleanupJobs() {
   );
 }
 export function CleanupJob() {
+  const { can } = useAuth();
   const { id } = useParams();
   const { t } = useTranslation();
   const cache = useQueryClient();
@@ -770,8 +803,12 @@ export function CleanupJob() {
     "excludeState",
     false,
   );
-  const search = useJobItemSearch("book", t("downloads.book"), () =>
-    setPage(0),
+  const search = useJobItemSearch(
+    "book",
+    t("downloads.book"),
+    () => setPage(0),
+    undefined,
+    can("CATALOG_READ") ? t("catalog.author") : undefined,
   );
   const filters = new URLSearchParams(search.query);
   if (states.length) {
@@ -1086,6 +1123,8 @@ export function CleanupJob() {
         <>
           <CleanupItems
             rows={rows.data.items}
+            showAuthor={can("CATALOG_READ")}
+            onAuthor={search.selectAuthor}
             jobState={data.state}
             direct={data.directRemoval}
             offset={page * 20}

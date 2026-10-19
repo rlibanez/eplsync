@@ -33,6 +33,7 @@ export function useDownloadColumns(
     selection?: boolean;
     hidden?: string[];
     extraSort?: TableColumn[];
+    newColumnsAfter?: Record<string, string>;
   } = { defaults: "createdAt,desc" },
   lastRowNumber = 1,
 ) {
@@ -65,7 +66,12 @@ export function useDownloadColumns(
         fields.forEach((field) => {
           if (!order.includes(field)) {
             if (field === ROW_NUMBER) order.unshift(field);
-            else order.push(field);
+            else {
+              const previous = options.newColumnsAfter?.[field];
+              const index = previous ? order.indexOf(previous) : -1;
+              if (index >= 0) order.splice(index + 1, 0, field);
+              else order.push(field);
+            }
           }
         });
         const hidden = fields.filter(

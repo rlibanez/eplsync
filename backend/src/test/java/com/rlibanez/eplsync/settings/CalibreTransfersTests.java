@@ -275,6 +275,38 @@ class CalibreTransfersTests {
         catalogBooks.deleteAllInBatch();
         assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().coverUrl()).isNull();
     }
+    @Test @WithMockUser(authorities={"CALIBRE_SEND","DOWNLOADS_FILES_READ","CATALOG_READ"})
+    void authorFiltersCombineWithFilesStatesAndPaginationAndPreserveMissingCatalogEntries() throws Exception {
+        var job=create();catalogBooks.deleteAllInBatch();
+        for(int n=1;n<=3;n++) jdbc.update("INSERT INTO catalog_books(epl_id,title,author,revision) VALUES(?,'Book',?,1)",n,n==1?"Zeta Writer":n==2?"Alpha Writer":"Beta Writer");
+        for(int n=2;n<=4;n++) jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES(?,?,?,'record',?, ?,20,?,'1','FAILED')","author-"+n,job.id(),n,n,"file-"+n+".epub",n);
+        var filters=new org.springframework.util.LinkedMultiValueMap<String,String>();filters.add("author","alpha");filters.add("author","beta");
+        var result=transfers.items(job.id(),1,1,"","",List.of("author,asc"),"eq",filters);
+        var initialAuthentication=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        mvc.perform(get("/api/calibre/transfers/"+job.id()+"/items").param("author","alpha","beta").param("sort","author,asc").param("page","1").param("size","1"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2)).andExpect(jsonPath("$.items[0].author").value("Beta Writer"));
+        mvc.perform(get("/api/calibre/transfers/"+job.id()+"/items").param("author","alpha","beta").param("authorOperator","ne").param("state","FAILED").param("sort","position,asc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].eplId").value(4));
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(initialAuthentication);
+
+        assertThat(result.meta().totalItems()).isEqualTo(2);
+        assertThat(result.items()).singleElement().satisfies(item->{assertThat(item.eplId()).isEqualTo(3);assertThat(item.author()).isEqualTo("Beta Writer");});
+        filters.add("file","file-3");
+        assertThat(transfers.items(job.id(),0,20,"FAILED","",List.of("author,asc"),"eq",filters).items()).singleElement().satisfies(item->assertThat(item.eplId()).isEqualTo(3));
+        filters.remove("file");filters.set("authorOperator","ne");
+        var excluded=transfers.items(job.id(),0,20,"","",List.of("eplId,asc"),"eq",filters);
+        assertThat(excluded.items()).extracting(item->item.eplId()).containsExactly(1L,4L);
+        assertThat(excluded.items().getLast().author()).isNull();
+        filters.clear();filters.set("author","%' OR 1=1 --");
+        assertThat(transfers.items(job.id(),0,20,"","",List.of("author,asc"),"eq",filters).items()).isEmpty();
+    }
+    @Test void authorCannotBeReadFilteredOrSortedWithoutCatalogPermission() throws Exception {
+        var job=create();
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().author()).isNull();
+        var filters=new org.springframework.util.LinkedMultiValueMap<String,String>();filters.set("author","Writer");
+        assertThatThrownBy(()->transfers.items(job.id(),0,20,"","",List.of("position,asc"),"eq",filters)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(()->transfers.items(job.id(),0,20,List.of("author,asc"))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
     @Test void itemFiltersApplyMultipleIdsFileTermsAndStatesBeforePagination() throws Exception {
         var job=create();
         for(int n=2;n<=4;n++) jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,message) VALUES(?,?,?,'record',?, ?,20,?,'1',?,?)","filter-"+n,job.id(),n,n,n==2?"Another,Title.epub":"file-"+n+".epub",n,n==2?"ACCEPTED":"FAILED","detail");

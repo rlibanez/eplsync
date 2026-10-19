@@ -125,7 +125,7 @@ for (const kind of ["calibre", "downloads-cleanup", "calibre-cleanup"] as const)
         name: "Incluir valores seleccionados",
         exact: true,
       }),
-    ).toHaveCount(3);
+    ).toHaveCount(4);
     await id.fill("8");
     await id.press("Enter");
     await page.getByRole("button", { name: "Limpiar", exact: true }).click();

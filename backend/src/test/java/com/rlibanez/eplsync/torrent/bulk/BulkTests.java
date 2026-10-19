@@ -42,6 +42,7 @@ class BulkTests {
 
     @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired BulkStore store;
+    @Autowired org.springframework.web.context.WebApplicationContext context;
     @Autowired com.rlibanez.eplsync.security.AccountStore accounts;
     @Autowired com.rlibanez.eplsync.settings.WorkListings listings;
     @Autowired BulkJobRepository jobs;
@@ -565,6 +566,64 @@ class BulkTests {
         assertThat(store.details("filtered-job",0,20,null,"eplId,asc","eq",params).meta().totalItems()).isEqualTo(3);
         params.set("eplId","invalid");
         assertThatThrownBy(()->store.details("filtered-job",0,20,null,"eplId,asc","eq",params)).hasMessageContaining("EPL ID");
+    }
+
+    @Test void authorFilteringAndOrderingApplyBeforePaginationAndKeepMissingBooks() {
+        seedSortJob("author-job",3,1,1);
+        for(long id=1;id<=3;id++) {var book=books.findById(id).orElseThrow();book.setAuthor(id==1?"Zeta Writer":id==2?"Alpha Writer":"Beta Writer");books.save(book);}
+        var params=new org.springframework.util.LinkedMultiValueMap<String,String>();
+        params.add("author","alpha");params.add("author","beta");
+        var page=store.details("author-job",1,1,null,"author,asc","eq",params);
+        assertThat(page.meta().totalItems()).isEqualTo(2);
+        assertThat(page.items()).singleElement().satisfies(item->{assertThat(item.eplId()).isEqualTo(3L);assertThat(item.author()).isEqualTo("Beta Writer");});
+        params.set("book","Book 2");
+        // A second text filter combines with author rather than changing the matching page.
+        assertThat(store.details("author-job",0,20,null,"author,asc","eq",params).items()).singleElement().satisfies(item->assertThat(item.eplId()).isEqualTo(2L));
+        params.remove("book");params.set("authorOperator","ne");
+        assertThat(store.details("author-job",0,20,null,"author,asc","eq",params).items()).singleElement().satisfies(item->assertThat(item.author()).isEqualTo("Zeta Writer"));
+        params.clear();params.set("author","%' OR 1=1 --");
+        assertThat(store.details("author-job",0,20,null,"author,asc","eq",params).items()).isEmpty();
+        params.set("authorOperator","invalid");
+        assertThatThrownBy(()->store.details("author-job",0,20,null,"position,asc","eq",params)).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+    }
+
+    @Test @org.springframework.security.test.context.support.WithMockUser(authorities={"TORRENT_JOBS_MANAGE"})
+    void authorsRequireCatalogReadPermission() {
+        seedSortJob("author-private",1,1,0);
+        var params=new org.springframework.util.LinkedMultiValueMap<String,String>();
+        assertThat(store.details("author-private",0,20,null,"position,asc","eq",params).items().getFirst().author()).isNull();
+        params.set("author","Writer");
+        assertThatThrownBy(()->store.details("author-private",0,20,null,"position,asc","eq",params)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        params.clear();
+        assertThatThrownBy(()->store.details("author-private",0,20,null,"author,asc","eq",params)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
+
+    @Test void authorFiltersAreAcceptedByTheHttpEndpointBeforePagination() throws Exception {
+        seedSortJob("author-http",3,1,1);
+        for(long id=1;id<=3;id++) {var book=books.findById(id).orElseThrow();book.setAuthor(id==1?"Alpha Writer":id==2?"Beta Writer":"Gamma Writer");books.save(book);}
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context)
+            .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var auth=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/author-http/items").with(auth).param("author","Alpha Writer"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(1));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/author-http/items").with(auth)
+            .param("author","Alpha","Beta").param("eplId","1","2").param("book","Book 1","Book 2").param("page","1").param("size","1").param("sort","author,asc"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(2))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].author").value("Beta Writer"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/author-http/items").with(auth)
+            .param("author","Alpha","Beta").param("authorOperator","ne").param("status","PENDING").param("sort","author,desc"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].eplId").value(3));
+        for(var invalid:List.of(java.util.Map.entry("unknown","value"),java.util.Map.entry("author",""),java.util.Map.entry("authorOperator","invalid")))
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/author-http/items").with(auth).param(invalid.getKey(),invalid.getValue()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/author-http/items").with(auth).param("page","0","1"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/author-http/items")
+            .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("reader").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("TORRENT_JOBS_MANAGE")))
+            .param("author","Writer")).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
     }
 
     private void seedSortJob(String id,int total,int accepted,int failed) {

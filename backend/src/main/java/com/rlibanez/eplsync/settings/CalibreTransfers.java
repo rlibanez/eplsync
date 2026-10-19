@@ -36,7 +36,8 @@ public class CalibreTransfers {
     }
     public record Job(String id,String createdAt,String updatedAt,String username,String library,String state,String message,
         long total,long pending,long accepted,long skipped,long failed,long uncertain) {}
-    public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position) {
+    public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position,String author) {
+        public Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position) {this(id,recordId,index,name,size,eplId,revision,state,calibreId,message,identityComplete,downloadJobId,coverUrl,coverAvailable,position,null);}
         public Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId) {
             this(id,recordId,index,name,size,eplId,revision,state,calibreId,message,identityComplete,downloadJobId,null,null,0);
         }
@@ -284,16 +285,20 @@ public class CalibreTransfers {
         var where=new StringBuilder(" WHERE job_id=?");var args=new ArrayList<Object>();args.add(id);
         JobItemFilters.states(where,args,state,statusOperator,Set.of("PENDING","SENDING","ACCEPTED","SKIPPED","FAILED","UNCERTAIN","CANCELLED","WAITING_DOWNLOAD","BLOCKED_DOWNLOAD","CLEANUP_PENDING"));
         JobItemFilters.append(where,args,filters,"file","name");
+        String author="(SELECT b.author FROM catalog_books b WHERE b.epl_id=calibre_job_items.epl_id)";
+        if(filters.containsKey("author") || sort.stream().anyMatch(value->value.split(",")[0].equals("author"))) Permission.require(Permission.CATALOG_READ);
+        JobItemFilters.text(where,args,filters,"author",author);
+
         if(!detail.isBlank()) {where.append(" AND instr(lower(coalesce(message,'')),lower(?))>0");args.add(detail.trim());}
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items"+where,Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
-        var rows=jdbc.query("SELECT * FROM calibre_job_items"+where+" ORDER BY "+order(sort,Map.of("position","position","eplId","epl_id","revision","CAST(revision AS REAL)","name","name COLLATE EPL_TEXT","state","state","calibreId","calibre_id","message","message COLLATE EPL_TEXT"))+",position LIMIT ? OFFSET ?",CalibreTransfers::mapItem,args.toArray());
+        var rows=jdbc.query("SELECT * FROM calibre_job_items"+where+" ORDER BY "+order(sort,Map.of("position","position","eplId","epl_id","revision","CAST(revision AS REAL)","name","name COLLATE EPL_TEXT","author",author+" COLLATE EPL_TEXT","state","state","calibreId","calibre_id","message","message COLLATE EPL_TEXT"))+",position LIMIT ? OFFSET ?",CalibreTransfers::mapItem,args.toArray());
         if(Permission.has(Permission.CATALOG_READ) && !rows.isEmpty()) {
             var covers=new HashMap<Long,com.rlibanez.eplsync.model.CatalogBook>();
             catalogBooks.findAllById(rows.stream().map(item -> Objects.requireNonNull(item).eplId()).distinct().toList()).forEach(book->covers.put(book.getEplId(),book));
             rows=rows.stream().map(item->{
                 var book=covers.get(item.eplId());
-                return book==null?item:new Item(item.id(),item.recordId(),item.index(),item.name(),item.size(),item.eplId(),item.revision(),item.state(),item.calibreId(),item.message(),item.identityComplete(),item.downloadJobId(),book.getCoverUrl(),book.getCoverAvailable(),item.position());
+                return book==null?item:new Item(item.id(),item.recordId(),item.index(),item.name(),item.size(),item.eplId(),item.revision(),item.state(),item.calibreId(),item.message(),item.identityComplete(),item.downloadJobId(),book.getCoverUrl(),book.getCoverAvailable(),item.position(),book.getAuthor());
             }).toList();
         }
         return new Page<>(rows,meta(page,size,total));

@@ -73,8 +73,8 @@ public class BulkStore {
             MultipleHashes multipleHashes, long selectedTorrents, long processedTorrents,
             long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming, String username, boolean deleteHistory) {}
     public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {}
-    public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision) {
-        public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null); }
+    public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision, String author) {
+        public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null,null); }
     }
 
     @Transactional(timeout=120)
@@ -393,8 +393,9 @@ public class BulkStore {
         boolean exclude=com.rlibanez.eplsync.ordering.StateOperator.excluded(statusOperator);
         job(id);
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
-        var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, Set.of("position", "title", "eplId", "revision", "hash", "status", "attempts", "message"));
-        var orders = criteria.stream().map(order -> new Sort.Order(order.getDirection(), order.getProperty().equals("title") ? "catalogBook.title" : order.getProperty().equals("status") ? "state" : order.getProperty())).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, Set.of("position", "title", "author", "eplId", "revision", "hash", "status", "attempts", "message"));
+        if(params.containsKey("author") || criteria.stream().anyMatch(order->order.getProperty().equals("author"))) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.CATALOG_READ);
+        var orders = criteria.stream().map(order -> new Sort.Order(order.getDirection(), order.getProperty().equals("title") ? "catalogBook.title" : order.getProperty().equals("author") ? "catalogBook.author" : order.getProperty().equals("status") ? "state" : order.getProperty())).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         if (orders.stream().noneMatch(order -> order.getProperty().equals("position"))) orders.add(Sort.Order.asc("position"));
         var ids = new LinkedHashSet<Long>();
         for (String input : params.getOrDefault("eplId",List.of())) {
@@ -407,7 +408,7 @@ public class BulkStore {
         boolean excludeIds=com.rlibanez.eplsync.ordering.StateOperator.excluded(params.getFirst("eplIdOperator")==null?"eq":params.getFirst("eplIdOperator"));
         var textTerms=new LinkedHashMap<String,List<String>>();
         var textExcluded=new HashMap<String,Boolean>();
-        for(String key:List.of("book","detail")) {
+        for(String key:List.of("book","author","detail")) {
             textExcluded.put(key,com.rlibanez.eplsync.ordering.StateOperator.excluded(params.getFirst(key+"Operator")==null?"eq":params.getFirst(key+"Operator")));
             var terms=params.getOrDefault(key,List.of());
             if(terms.stream().anyMatch(value->value==null || value.length()>4096)) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro de texto inválido");
@@ -425,7 +426,7 @@ public class BulkStore {
             }
             for(var entry:textTerms.entrySet()) {
                 if(entry.getValue().isEmpty()) continue;
-                jakarta.persistence.criteria.Expression<String> column=entry.getKey().equals("book")?root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).get("title"):root.get("message");
+                jakarta.persistence.criteria.Expression<String> column=!entry.getKey().equals("detail")?root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).get(entry.getKey().equals("author")?"author":"title"):root.get("message");
                 var matches=entry.getValue().stream().map(term->cb.gt(cb.locate(cb.lower(cb.coalesce(column,"")),term.toLowerCase(java.util.Locale.ROOT)),0)).toArray(jakarta.persistence.criteria.Predicate[]::new);
                 var match=cb.or(matches);
                 predicates.add(textExcluded.get(entry.getKey())?cb.not(match):match);
@@ -438,7 +439,7 @@ public class BulkStore {
             var book = metadata.get(row.getEplId());
             if (book != null) { row.setTitle(book.title()); row.setCoverUrl(book.coverUrl()); row.setCoverAvailable(book.coverAvailable()); }
         });
-        return new PageResponse<>(result.map(i -> new ItemView(i.getId(), i.getEplId(), i.getHash(), i.getState(), i.getAttempts(), i.getMessage(), i.getTitle(), i.getCoverUrl(), i.getCoverAvailable(), i.getRevision())).getContent(),
+        return new PageResponse<>(result.map(i -> new ItemView(i.getId(), i.getEplId(), i.getHash(), i.getState(), i.getAttempts(), i.getMessage(), i.getTitle(), i.getCoverUrl(), i.getCoverAvailable(), i.getRevision(), com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.CATALOG_READ) && metadata.get(i.getEplId())!=null ? metadata.get(i.getEplId()).author() : null)).getContent(),
                 new PageResponse.PageMeta(page, size, result.getTotalElements(), result.getTotalPages(), result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
     }
 

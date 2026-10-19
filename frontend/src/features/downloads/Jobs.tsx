@@ -1,3 +1,4 @@
+import { useAuth } from "../auth/Auth";
 import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import {
@@ -440,6 +441,7 @@ export function Jobs() {
   );
 }
 interface Item {
+  author?: string | null;
   revision?: number | null;
   title?: string | null;
   coverUrl?: string | null;
@@ -452,6 +454,7 @@ interface Item {
   message: string | null;
 }
 export function JobDetail() {
+  const { can } = useAuth();
   const { id } = useParams();
   const { t } = useTranslation();
   const { date, status, number, revision } = useLocale();
@@ -469,6 +472,7 @@ export function JobDetail() {
     t("downloads.book"),
     () => setPage(0),
     t("calibreSend.detail"),
+    can("CATALOG_READ") ? t("catalog.author") : undefined,
   );
   useEffect(() => setSelected([]), [id, filter, excluded, sort, search.query]);
   const job = useQuery({
@@ -531,6 +535,9 @@ export function JobDetail() {
     [
       { field: "eplId", label: "filters.eplId", width: 100 },
       { field: "title", label: "downloads.book", width: 360 },
+      ...(can("CATALOG_READ")
+        ? [{ field: "author", label: "catalog.author", width: 240 }]
+        : []),
       { field: "hash", label: "downloads.hash", width: 340 },
       { field: "revision", label: "downloads.revision", width: 110 },
       { field: "status", label: "downloads.status", width: 180 },
@@ -545,6 +552,7 @@ export function JobDetail() {
     {
       selection: retry.selectable,
       defaults: "position,asc",
+      newColumnsAfter: { author: "title" },
       extraSort: [
         { field: "position", label: "tableControls.position", width: 100 },
       ],
@@ -891,6 +899,25 @@ export function JobDetail() {
                           <td className="catalog-title-cell">
                             <DownloadBook book={item} />
                           </td>,
+                          ...(can("CATALOG_READ")
+                            ? [
+                                <td>
+                                  {item.author?.trim() ? (
+                                    <button
+                                      type="button"
+                                      className="catalog-value-filter"
+                                      onClick={() =>
+                                        search.selectAuthor(item.author!)
+                                      }
+                                    >
+                                      {item.author}
+                                    </button>
+                                  ) : (
+                                    "—"
+                                  )}
+                                </td>,
+                              ]
+                            : []),
                           <td className="hash-text">{item.hash}</td>,
                           <td>
                             {item.revision == null

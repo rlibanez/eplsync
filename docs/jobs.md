@@ -143,3 +143,12 @@ un fallo o un borrado sin confirmar que no se está verificando sí requieren re
 El estado de espera no autoriza nuevos envíos ni borrados ni evita las comprobaciones
 de identidad y archivos compartidos. Una limpieza detenida puede necesitar un nuevo
 intento aunque el trabajo que la bloqueaba ya haya terminado.
+
+En las tablas de elementos de los trabajos de Descargas, Calibre y sus limpiezas, **Autor** se
+obtiene del Catálogo mediante el EPL ID y requiere permiso de lectura del Catálogo.
+La columna aparece después de Libro (Archivo en Calibre) y permite ordenar. El
+filtro Autor admite varios términos, negación y borrado rápido, y se combina con
+los demás filtros antes de paginar. Al pulsar el autor de una fila se aplica ese
+autor como filtro positivo, conservando los demás filtros y volviendo a la primera
+página. Si el libro ya no está en el Catálogo, el autor
+se muestra como «—»; los trabajos y archivos originales no se modifican.

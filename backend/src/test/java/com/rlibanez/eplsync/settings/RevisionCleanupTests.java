@@ -838,6 +838,41 @@ class RevisionCleanupTests {
     @Test void unchangedVerificationFailuresDoNotRepeatEvents() {var job=start(preview("calibre","BOOK"));cleanup.cycle();for(int n=0;n<3;n++) {cleanup.control(job.id(),"verify");cleanup.cycle();}assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE action='REVISION_CLEANUP' AND operation_id=?",Integer.class,job.id())).isLessThanOrEqualTo(2);}
     @Test void resetErasesPreviewsAndTheirItems() {preview("downloads","RECORD");reset.reset(false);assertThat(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs",Integer.class)).isZero();assertThat(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items",Integer.class)).isZero();}
     @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"downloads","calibre"})
+    void authorFiltersCombineBeforePaginationForBothCleanupSources(String source) throws Exception {
+        var job=start(preview(source,source.equals("downloads")?"RECORD":"BOOK"));
+        jdbc.update("INSERT OR REPLACE INTO catalog_books(epl_id,title,author,revision) VALUES(1,'Book','Alpha Writer',1)");
+        jdbc.update("INSERT OR REPLACE INTO catalog_books(epl_id,title,author,revision) VALUES(2,'Book','Beta Writer',1)");
+        jdbc.update("UPDATE revision_cleanup_items SET state='SUCCEEDED' WHERE job_id=?",job.id());
+        for(int n=2;n<=3;n++) jdbc.update("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,state) VALUES(?,?,?,?,'',?,'Book','1','2','FAILED')","author-"+n,job.id(),n,"old-"+n,n);
+        var filters=new org.springframework.util.LinkedMultiValueMap<String,String>();filters.add("author","alpha");filters.add("author","beta");
+        var result=cleanup.items(job.id(),1,1,filters);
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var auth=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(SecurityContextHolder.getContext().getAuthentication());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/revision-cleanups/"+job.id()+"/items").with(auth).param("author","alpha","beta").param("page","1").param("size","1"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(2))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].author").value("Beta Writer"));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/revision-cleanups/"+job.id()+"/items").with(auth).param("author","alpha","beta").param("authorOperator","ne").param("state","FAILED"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].eplId").value(3));
+        login(owner);
+
+        assertThat(result.meta().totalItems()).isEqualTo(2);
+        assertThat(result.items()).singleElement().satisfies(item->{assertThat(item.eplId()).isEqualTo(2L);assertThat(item.author()).isEqualTo("Beta Writer");});
+        filters.set("state","FAILED");filters.set("book","Book");
+        assertThat(cleanup.items(job.id(),0,20,filters).items()).singleElement().satisfies(item->assertThat(item.eplId()).isEqualTo(2L));
+        filters.remove("state");filters.remove("book");filters.set("authorOperator","ne");
+        assertThat(cleanup.items(job.id(),0,20,filters).items()).singleElement().satisfies(item->{assertThat(item.eplId()).isEqualTo(3L);assertThat(item.author()).isNull();});
+        filters.clear();filters.set("author","%' OR 1=1 --");assertThat(cleanup.items(job.id(),0,20,filters).items()).isEmpty();
+        var authentication=SecurityContextHolder.getContext().getAuthentication();
+        try {
+            var grants=owner.permissions().stream().filter(permission->permission!=Permission.CATALOG_READ).map(permission->new SimpleGrantedAuthority(permission.name())).toList();
+            SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,grants));
+            assertThat(cleanup.items(job.id(),0,20).items()).allSatisfy(item->assertThat(item.author()).isNull());
+            assertThatThrownBy(()->cleanup.items(job.id(),0,20,filters)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        } finally {SecurityContextHolder.getContext().setAuthentication(authentication);}
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"downloads","calibre"})
     void cleanupItemFiltersCombineMultipleTermsIdsStatesAndExclusions(String source) {
         var job=start(preview(source,source.equals("downloads")?"RECORD":"BOOK"));
         jdbc.update("UPDATE revision_cleanup_items SET title='Alpha book',state='SUCCEEDED' WHERE job_id=?",job.id());

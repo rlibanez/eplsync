@@ -10,6 +10,8 @@ type Search = {
   excludeText: boolean;
   details: string[];
   excludeDetail: boolean;
+  authors?: string[];
+  excludeAuthor?: boolean;
 };
 const empty: Search = {
   ids: [],
@@ -24,6 +26,7 @@ export function useJobItemSearch(
   textLabel: string,
   resetPage: () => void,
   detailLabel?: string,
+  authorLabel?: string,
 ) {
   const { t } = useTranslation();
   const [value, setValue] = useBookViewState<Search>("jobItemSearch", empty);
@@ -37,6 +40,11 @@ export function useJobItemSearch(
   if (value.ids.length && value.excludeIds) params.set("eplIdOperator", "ne");
   if (value.texts.length && value.excludeText)
     params.set(`${textKey}Operator`, "ne");
+  if (authorLabel) {
+    value.authors?.forEach((author) => params.append("author", author));
+    if (value.authors?.length && value.excludeAuthor)
+      params.set("authorOperator", "ne");
+  }
   if (detailLabel) {
     value.details?.forEach((text) => params.append("detail", text));
     if (value.details?.length && value.excludeDetail)
@@ -45,6 +53,10 @@ export function useJobItemSearch(
   return {
     query: params.toString(),
     clear: () => change(empty),
+    selectAuthor: (author: string) => {
+      if (authorLabel && author.trim())
+        change({ ...value, authors: [author.trim()], excludeAuthor: false });
+    },
     fields: (
       <>
         <TagsInput
@@ -90,6 +102,29 @@ export function useJobItemSearch(
             })
           }
         />
+        {authorLabel && (
+          <TagsInput
+            label={authorLabel}
+            value={value.authors ?? []}
+            clearable
+            splitChars={[]}
+            clearButtonProps={{
+              "aria-hidden": false,
+              tabIndex: 0,
+              "aria-label": `${t("catalog.clear")}: ${authorLabel}`,
+            }}
+            {...stateOperatorProps(value.excludeAuthor ?? false, () =>
+              change({ ...value, excludeAuthor: !value.excludeAuthor }),
+            )}
+            onChange={(authors) =>
+              change({
+                ...value,
+                authors,
+                excludeAuthor: authors.length ? value.excludeAuthor : false,
+              })
+            }
+          />
+        )}
         {detailLabel && (
           <TagsInput
             label={detailLabel}

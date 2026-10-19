@@ -12,7 +12,6 @@ final class JobItemFilters {
     private JobItemFilters() {}
     static void append(StringBuilder where,List<Object> args,MultiValueMap<String,String> params,String textKey,String textColumn) {
         boolean excludeIds=StateOperator.excluded(params.getFirst("eplIdOperator")==null?"eq":params.getFirst("eplIdOperator"));
-        boolean excludeText=StateOperator.excluded(params.getFirst(textKey+"Operator")==null?"eq":params.getFirst(textKey+"Operator"));
         var ids=new LinkedHashSet<Long>();
         for(String input:params.getOrDefault("eplId",List.of())) {
             if(input==null) throw new UserInputException("EPL ID inválido");
@@ -26,6 +25,10 @@ final class JobItemFilters {
             where.append(" AND coalesce(epl_id,0) ").append(excludeIds?"NOT IN":"IN").append(" (SELECT value FROM json_each(?))");
             args.add(JSON.writeValueAsString(ids));
         }
+        text(where,args,params,textKey,textColumn);
+    }
+    static void text(StringBuilder where,List<Object> args,MultiValueMap<String,String> params,String textKey,String textColumn) {
+        boolean excludeText=StateOperator.excluded(params.getFirst(textKey+"Operator")==null?"eq":params.getFirst(textKey+"Operator"));
         var terms=new LinkedHashSet<String>();
         for(String value:params.getOrDefault(textKey,List.of())) {
             if(value==null || value.length()>4096) throw new UserInputException("Filtro de texto inválido");
