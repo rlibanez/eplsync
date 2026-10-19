@@ -24,14 +24,14 @@ async function records(page: Page) {
     r.fulfill({ json: { items: rows, meta } }),
   );
 }
-async function jobRoutes(page: Page) {
+async function jobRoutes(page: Page, initialState = "QUEUED") {
   await page.route("https://example.org/custom-cover.jpg", (r) =>
     r.fulfill({
       contentType: "image/svg+xml",
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="30"><rect width="20" height="30" fill="green"/></svg>',
     }),
   );
-  let state = "QUEUED";
+  let state = initialState;
   const job = () => ({
     id: "job",
     createdAt: "2026-10-13T10:00:00Z",
@@ -447,7 +447,13 @@ test("filtra los elementos del trabajo por estado y detalle pulsando sus valores
     page.getByRole("textbox", { name: "Estado", exact: true }),
   ).toHaveValue("");
   const labels = await page.locator(".jobs-filters label").allTextContents();
-  expect(labels).toEqual(["EPL ID", "Archivo", "Estado", "Detalle contiene"]);
+  expect(labels).toEqual([
+    "EPL ID",
+    "Archivo",
+    "Autor",
+    "Estado",
+    "Detalle contiene",
+  ]);
 });
 
 test("repeating a direct send after a lost response keeps its request identifier", async ({
@@ -622,12 +628,15 @@ for (const allUnavailable of [false, true])
     }
   });
 
-for (const [state, label] of [
-  ["WAITING_DOWNLOAD", "Esperando automáticamente"],
-  ["BLOCKED_DOWNLOAD", "Requiere tu intervención"],
+for (const [state, label, jobState] of [
+  ["WAITING_DOWNLOAD", "Esperando automáticamente", "QUEUED"],
+  ["BLOCKED_DOWNLOAD", "Requiere tu intervención", "QUEUED"],
+  ["WAITING_DOWNLOAD", "Requiere tu intervención", "PAUSED"],
 ]) {
-  test(`Calibre explains ${state} with its download job`, async ({ page }) => {
-    await jobRoutes(page);
+  test(`Calibre explains ${state} (${jobState}) with its download job`, async ({
+    page,
+  }) => {
+    await jobRoutes(page, jobState);
     await page.route("**/api/calibre/transfers/job/items?**", (route) =>
       route.fulfill({
         json: {
@@ -653,7 +662,20 @@ for (const [state, label] of [
       }),
     );
     await page.goto("/calibre/jobs/job");
-    await expect(page.getByText(label, { exact: true })).toBeVisible();
+    if (label === "Esperando automáticamente") {
+      await expect(page.getByText(label, { exact: true })).toHaveCount(0);
+      const detail = page.locator(".job-item-detail");
+      await expect(detail.locator("br")).toHaveCount(0);
+      const reason = await detail
+        .getByRole("button", {
+          name: "EPUB pendiente de descarga",
+          exact: true,
+        })
+        .boundingBox();
+      const link = await detail.getByRole("link").boundingBox();
+      expect(link!.y - reason!.y - reason!.height).toBeGreaterThanOrEqual(0);
+      expect(link!.y - reason!.y - reason!.height).toBeLessThanOrEqual(5);
+    } else await expect(page.getByText(label, { exact: true })).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Ver trabajo de descargas", exact: true }),
     ).toHaveAttribute("href", "/downloads/jobs/download-job");
@@ -701,8 +723,11 @@ test("Calibre hides download work links without Torrent job permissions", async 
   );
   await page.goto("/calibre/jobs/job");
   await expect(
-    page.getByText("Esperando automáticamente", { exact: true }),
+    page.getByText("EPUB pendiente de descarga", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByText("Esperando automáticamente", { exact: true }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "Ver trabajo de descargas", exact: true }),
   ).toHaveCount(0);

@@ -2201,3 +2201,6 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 .download-removal-preview .hash-text { white-space: nowrap; overflow-wrap: normal; max-width: none; }
 
 .download-removal-preview td.hash-text { display: table-cell; vertical-align: middle; }
+
+.job-item-detail { display: grid; justify-items: start; gap: 4px; }
+.job-item-detail > .work-waiting { margin: 0; }

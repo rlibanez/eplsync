@@ -5,14 +5,16 @@ export function WorkWaiting({
   state,
   jobState,
   intervention,
+  hideAutomatic = false,
 }: {
   state: string;
   jobState?: string;
   intervention?: boolean | null;
+  hideAutomatic?: boolean;
 }) {
   const { t } = useTranslation();
   const mode = workWaitingMode(state, jobState, intervention);
-  if (!mode) return null;
+  if (!mode || (hideAutomatic && mode === "automatic")) return null;
   return <p className="muted work-waiting">{t(`workWaiting.${mode}`)}</p>;
 }
 

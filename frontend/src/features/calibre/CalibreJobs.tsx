@@ -878,48 +878,50 @@ export function CalibreJobDetail() {
                           </td>,
                           <td>{item.calibreId ?? "—"}</td>,
                           <td>
-                            {item.message?.trim() ? (
-                              <button
-                                type="button"
-                                className="catalog-value-filter"
-                                onClick={() => {
-                                  setItemDetail(item.message ?? "");
-                                  setPage(0);
-                                }}
-                              >
-                                {item.message}
-                              </button>
-                            ) : (
-                              "—"
-                            )}
-                            {item.state === "UNCERTAIN" &&
-                              ["PAUSED", "CANCELLED"].includes(value.state) &&
-                              can("CALIBRE_JOBS_MANAGE") &&
-                              can("CALIBRE_SEND") &&
-                              can("DOWNLOADS_FILES_READ") && (
-                                <>
-                                  <br />
-                                  <ResolveCalibreUpload
-                                    jobId={value.id}
-                                    itemId={item.id}
-                                  />
-                                </>
+                            <div className="job-item-detail">
+                              {item.message?.trim() ? (
+                                <button
+                                  type="button"
+                                  className="catalog-value-filter"
+                                  onClick={() => {
+                                    setItemDetail(item.message ?? "");
+                                    setPage(0);
+                                  }}
+                                >
+                                  {item.message}
+                                </button>
+                              ) : (
+                                "—"
                               )}
-                            <WorkWaiting
-                              state={item.state}
-                              jobState={value.state}
-                            />
-                            {item.downloadJobId &&
-                              can("TORRENT_JOBS_MANAGE") && (
-                                <>
-                                  <br />
+                              {item.state === "UNCERTAIN" &&
+                                ["PAUSED", "CANCELLED"].includes(value.state) &&
+                                can("CALIBRE_JOBS_MANAGE") &&
+                                can("CALIBRE_SEND") &&
+                                can("DOWNLOADS_FILES_READ") && (
+                                  <div>
+                                    <ResolveCalibreUpload
+                                      jobId={value.id}
+                                      itemId={item.id}
+                                    />
+                                  </div>
+                                )}
+                              <WorkWaiting
+                                state={item.state}
+                                jobState={value.state}
+                                hideAutomatic={
+                                  item.state === "WAITING_DOWNLOAD" &&
+                                  !!item.message?.trim()
+                                }
+                              />
+                              {item.downloadJobId &&
+                                can("TORRENT_JOBS_MANAGE") && (
                                   <Link
                                     to={`/downloads/jobs/${item.downloadJobId}`}
                                   >
                                     {t("calibreUpdateSend.downloadJob")}
                                   </Link>
-                                </>
-                              )}
+                                )}
+                            </div>
                           </td>,
                         ],
                         page * size + rowIndex + 1,
