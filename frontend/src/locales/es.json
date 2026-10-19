@@ -1989,5 +1989,12 @@
     "omit": "Omitir seguimiento",
     "controlHelp": "Pausar o cancelar este trabajo no pausa ni elimina los torrents ya enviados al cliente.",
     "homePending": "Descargas pendientes: {{count}}"
+  },
+  "jobCalibre": {
+    "column": "Calibre",
+    "related": "Trabajos de Calibre relacionados",
+    "none": "Sin trabajos de Calibre relacionados.",
+    "progress": "{{done}}/{{total}} completados",
+    "breakdown": "{{sent}} enviados · {{existing}} ya existentes · {{pending}} pendientes · {{failed}} con errores · {{uncertain}} sin confirmar · {{cancelled}} cancelados"
   }
 }

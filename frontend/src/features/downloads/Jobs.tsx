@@ -26,6 +26,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  Tooltip,
   Checkbox,
   Button,
   MultiSelect,
@@ -43,9 +44,40 @@ import {
   jobStates,
   itemStates,
   type Job,
+  type CalibreCounts,
   type Page,
 } from "./shared";
+function CalibreProgress({ counts }: { counts?: CalibreCounts | null }) {
+  const { t } = useTranslation();
+  const { number } = useLocale();
+  if (!counts?.total) return <>—</>;
+  const text = t("jobCalibre.progress", {
+    done: number(counts.sent + counts.existing),
+    total: number(counts.total),
+  });
+  const breakdown = t(
+    "jobCalibre.breakdown",
+    Object.fromEntries(
+      Object.entries(counts).map(([key, value]) => [key, number(value)]),
+    ),
+  );
+  return (
+    <Tooltip
+      label={breakdown}
+      multiline
+      w={340}
+      styles={{ tooltip: { maxWidth: "calc(100vw - 32px)" } }}
+      events={{ hover: true, focus: true, touch: false }}
+    >
+      <span tabIndex={0} aria-label={`${text}. ${breakdown}`}>
+        {text}
+      </span>
+    </Tooltip>
+  );
+}
 export function Jobs() {
+  const { can } = useAuth();
+  const canCalibre = can("CALIBRE_SEND") || can("CALIBRE_JOBS_MANAGE");
   const { notify } = useNotifications();
   const { t } = useTranslation();
   const { date, status, number } = useLocale();
@@ -180,6 +212,16 @@ export function Jobs() {
         width: 160,
       },
       { field: "failed", label: "downloads.failedCount", width: 120 },
+      ...(canCalibre
+        ? [
+            {
+              field: "calibre",
+              label: "jobCalibre.column",
+              width: 200,
+              sortable: false,
+            },
+          ]
+        : []),
 
       { field: "username", label: "events.user", width: 180 },
     ],
@@ -188,7 +230,11 @@ export function Jobs() {
       setSort(value);
       setPage(0);
     },
-    { defaults: "createdAt,desc", selection: deletion.visible },
+    {
+      defaults: "createdAt,desc",
+      selection: deletion.visible,
+      newColumnsAfter: { calibre: "failed" },
+    },
     (page + 1) * size,
   );
   return (
@@ -397,6 +443,19 @@ export function Jobs() {
                           <td>{number(job.selectedBooks)}</td>,
                           <td>{number(job.accepted)}</td>,
                           <td>{number(job.failed)}</td>,
+                          ...(canCalibre
+                            ? [
+                                <td>
+                                  <CalibreProgress
+                                    counts={
+                                      job.type === "CLEANUP"
+                                        ? undefined
+                                        : job.calibre?.counts
+                                    }
+                                  />
+                                </td>,
+                              ]
+                            : []),
                           <td>
                             {job.username ? (
                               <button
@@ -837,6 +896,46 @@ export function JobDetail() {
                       </dl>
                     </section>
                   ))}
+                  {(can("CALIBRE_SEND") || can("CALIBRE_JOBS_MANAGE")) && (
+                    <section className="job-report-group">
+                      <h3>{t("jobCalibre.related")}</h3>
+                      {data.calibre?.jobs.length ? (
+                        data.calibre.jobs.map((related) => (
+                          <dl
+                            className="import-summary related-calibre-job"
+                            key={related.id}
+                          >
+                            <div>
+                              <dt>{t("downloads.job")}</dt>
+                              <dd>
+                                <Link
+                                  to={`/calibre/jobs/${encodeURIComponent(related.id)}`}
+                                >
+                                  {related.id}
+                                </Link>
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>{t("calibreSend.library")}</dt>
+                              <dd>{related.library}</dd>
+                            </div>
+                            <div>
+                              <dt>{t("downloads.status")}</dt>
+                              <dd>{status(related.state)}</dd>
+                            </div>
+                            <div>
+                              <dt>{t("revisionCleanup.progressColumn")}</dt>
+                              <dd>
+                                <CalibreProgress counts={related.counts} />
+                              </dd>
+                            </div>
+                          </dl>
+                        ))
+                      ) : (
+                        <p className="muted">{t("jobCalibre.none")}</p>
+                      )}
+                    </section>
+                  )}
                 </div>
                 {data.message && <Alert>{data.message}</Alert>}
               </div>

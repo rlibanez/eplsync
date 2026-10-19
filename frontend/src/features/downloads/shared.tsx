@@ -145,7 +145,25 @@ export const itemStates = [
   "FAILED",
   "CANCELLED",
 ];
+export interface CalibreCounts {
+  total: number;
+  sent: number;
+  existing: number;
+  pending: number;
+  failed: number;
+  uncertain: number;
+  cancelled: number;
+}
 export interface Job {
+  calibre?: {
+    counts: CalibreCounts;
+    jobs: {
+      id: string;
+      library: string;
+      state: string;
+      counts: CalibreCounts;
+    }[];
+  } | null;
   download?: {
     selected: number;
     downloaded: number;

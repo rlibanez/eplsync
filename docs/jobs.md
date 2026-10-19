@@ -151,3 +151,18 @@ los demás filtros antes de paginar. Al pulsar el autor de una fila se aplica es
 autor como filtro positivo, conservando los demás filtros y volviendo a la primera
 página. Si el libro ya no está en el Catálogo, el autor
 se muestra como «—»; los trabajos y archivos originales no se modifican.
+
+## Envíos relacionados a Calibre
+
+El informe del trabajo de Descargas incluye **Trabajos de Calibre relacionados**,
+con enlaces, biblioteca, estado y progreso de los elementos vinculados. La columna
+opcional **Calibre** de la lista muestra los enviados y ya existentes sobre el
+número de elementos relacionados. Al pasar el cursor o enfocar el contador se ve
+el desglose de enviados, ya existentes, pendientes, errores, resultados sin
+confirmar y cancelados. Los trabajos de limpieza muestran un guion.
+
+Se utilizan los vínculos conservados por los trabajos, sin inferir relaciones por
+título o identificador del libro. Los elementos delegados a reintentos antiguos
+no se cuentan dos veces. Solo se muestran estos datos y enlaces con permiso de
+envío o gestión de trabajos de Calibre. El estado de los dos trabajos sigue siendo
+independiente: terminar la descarga no implica que termine su envío a Calibre.

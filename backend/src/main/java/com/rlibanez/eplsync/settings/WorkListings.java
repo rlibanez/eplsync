@@ -104,12 +104,17 @@ public class WorkListings {
         long total=jdbc.queryForObject("SELECT count(*) FROM ("+query.base()+")",Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
         var rows=jdbc.queryForList(query.base()+" ORDER BY "+query.order()+" LIMIT ? OFFSET ?",args.toArray());
+        var downloadViews=new HashMap<String,BulkStore.View>();
+        if(downloads) {
+            var ids=rows.stream().filter(row->"normal".equals(row.get("kind"))).map(row->Objects.requireNonNull(row.get("id")).toString()).toList();
+            if(!ids.isEmpty()) synchronized(bulk) {for(var view:bulk.views(ids)) downloadViews.put(view.jobId(),view);}
+        }
         var result=new ArrayList<Map<String,Object>>();
         for(var row:rows) {
             String id=(String)row.get("id");
             Map<String,Object> view;
             if(row.get("kind").equals("normal")) {
-                Object value;if(downloads) {synchronized(bulk) {value=bulk.view(id);}}else value=calibre.job(id);
+                Object value;if(downloads) {value=downloadViews.get(id);if(value==null) continue;}else value=calibre.job(id);
                 view=json.readValue(json.writeValueAsString(value),new tools.jackson.core.type.TypeReference<LinkedHashMap<String,Object>>() {});
                 view.put("type",row.get("type"));
             } else {

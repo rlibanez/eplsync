@@ -2205,3 +2205,6 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 
 .job-item-detail { display: grid; justify-items: start; gap: 4px; }
 .job-item-detail > .work-waiting { margin: 0; }
+
+.job-report-group .related-calibre-job + .related-calibre-job { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.related-calibre-job dd { overflow-wrap: anywhere; }

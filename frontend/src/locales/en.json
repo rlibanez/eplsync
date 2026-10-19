@@ -1989,5 +1989,12 @@
     "omit": "Omit tracking",
     "controlHelp": "Pausing or cancelling this job does not pause or delete torrents already submitted to the client.",
     "homePending": "Pending downloads: {{count}}"
+  },
+  "jobCalibre": {
+    "column": "Calibre",
+    "related": "Related Calibre jobs",
+    "none": "No related Calibre jobs.",
+    "progress": "{{done}}/{{total}} completed",
+    "breakdown": "{{sent}} sent · {{existing}} already existing · {{pending}} pending · {{failed}} with errors · {{uncertain}} unconfirmed · {{cancelled}} cancelled"
   }
 }

@@ -64,6 +64,7 @@ final class BulkSummaries {
             var row=(Object[])result;long total=number(row[1]),done=number(row[2]),attention=number(row[3]),ignored=number(row[4]);
             observations.put(row[0].toString(),new BulkStore.DownloadSummary(total,done,total-done-attention-ignored,attention,ignored));
         }
+        var related=relatedCalibre(em,ids);
         return jobs.stream().map(j -> {
             var c=counts.getOrDefault(j.getId(),Counts.EMPTY);
             var p=plans.get(j.getId());
@@ -76,8 +77,38 @@ final class BulkSummaries {
                     j.getBatchSize(),j.getConcurrency(),j.getIntervalMillis()+"ms",j.getCreatedAt(),j.getUpdatedAt(),j.getRetryAt(),j.getMessage(),
                     j.getMultipleHashes()==null ? MultipleHashes.SKIP : j.getMultipleHashes(),c.torrents,c.processedTorrents,
                     c.total,c.accepted+c.existing+c.skipped+c.failed,p==null ? BulkJob.Type.DOWNLOAD : BulkJob.Type.UPDATE,
-                    p==null ? null : p.policy,summary,p==null ? null : p.timing==null ? CleanupTiming.AFTER_DOWNLOAD : p.timing,j.getEventActorUsername(),p!=null && Boolean.TRUE.equals(p.deleteHistory),j.isTrackDownloads()?observations.getOrDefault(j.getId(),new BulkStore.DownloadSummary(0,0,0,0,0)):null);
+                    p==null ? null : p.policy,summary,p==null ? null : p.timing==null ? CleanupTiming.AFTER_DOWNLOAD : p.timing,j.getEventActorUsername(),p!=null && Boolean.TRUE.equals(p.deleteHistory),j.isTrackDownloads()?observations.getOrDefault(j.getId(),new BulkStore.DownloadSummary(0,0,0,0,0)):null,related.get(j.getId()));
         }).toList();
+    }
+    private static Map<String,BulkStore.CalibreSummary> relatedCalibre(EntityManager em,List<String> ids) {
+        var result=new HashMap<String,BulkStore.CalibreSummary>();
+        if(!com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.CALIBRE_SEND)
+                && !com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.CALIBRE_JOBS_MANAGE)) return result;
+        var grouped=new LinkedHashMap<String,List<BulkStore.RelatedCalibreJob>>();
+        for(Object value:em.createNativeQuery("""
+            WITH linked AS (
+                SELECT i.download_job_id,i.job_id,
+                    CASE WHEN i.state='CLEANUP_PENDING' THEN coalesce(i.completion_state,i.state) ELSE i.state END outcome
+                FROM calibre_job_items i WHERE i.download_job_id IN (:ids)
+                    AND i.id NOT IN (SELECT r.source_item_id FROM job_retry_items r WHERE r.kind='calibre')
+            )
+            SELECT i.download_job_id,j.id,j.library,j.state,count(*),
+                sum(i.outcome='ACCEPTED'),sum(i.outcome='SKIPPED'),
+                sum(i.outcome IN ('PENDING','SENDING','WAITING_DOWNLOAD','CLEANUP_PENDING')),
+                sum(i.outcome IN ('FAILED','BLOCKED_DOWNLOAD')),sum(i.outcome='UNCERTAIN'),sum(i.outcome='CANCELLED')
+            FROM linked i JOIN calibre_jobs j ON j.id=i.job_id
+            GROUP BY i.download_job_id,j.id,j.library,j.state ORDER BY j.created_at,j.id
+            """).setParameter("ids",ids).getResultList()) {
+            var row=(Object[])value;
+            var counts=new BulkStore.CalibreCounts(number(row[4]),number(row[5]),number(row[6]),number(row[7]),number(row[8]),number(row[9]),number(row[10]));
+            grouped.computeIfAbsent((String)row[0],ignored->new ArrayList<>()).add(new BulkStore.RelatedCalibreJob((String)row[1],(String)row[2],(String)row[3],counts));
+        }
+        grouped.forEach((id,linked)-> {
+            long[] totals=new long[7];
+            for(var job:linked) {var c=job.counts();totals[0]+=c.total();totals[1]+=c.sent();totals[2]+=c.existing();totals[3]+=c.pending();totals[4]+=c.failed();totals[5]+=c.uncertain();totals[6]+=c.cancelled();}
+            result.put(id,new BulkStore.CalibreSummary(new BulkStore.CalibreCounts(totals[0],totals[1],totals[2],totals[3],totals[4],totals[5],totals[6]),List.copyOf(linked)));
+        });
+        return result;
     }
     private static long number(Object value) { return value==null?0:((Number)value).longValue(); }
 }

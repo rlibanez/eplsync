@@ -72,7 +72,10 @@ public class BulkStore {
             long pending, long inFlight, long cancelled, int batchSize, int concurrency,
             String interval, Instant createdAt, Instant updatedAt, Instant retryAt, String message,
             MultipleHashes multipleHashes, long selectedTorrents, long processedTorrents,
-            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming, String username, boolean deleteHistory, DownloadSummary download) {}
+            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming, String username, boolean deleteHistory, DownloadSummary download, CalibreSummary calibre) {}
+    public record CalibreCounts(long total,long sent,long existing,long pending,long failed,long uncertain,long cancelled) {}
+    public record RelatedCalibreJob(String id,String library,String state,CalibreCounts counts) {}
+    public record CalibreSummary(CalibreCounts counts,List<RelatedCalibreJob> jobs) {}
     public record DownloadSummary(long selected,long downloaded,long pending,long attention,long ignored) {}
     public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {}
     public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision, String author, String downloadState, String downloadMessage) {
@@ -303,6 +306,8 @@ public class BulkStore {
         return view(job(id));
     }
 
+    @Transactional(readOnly=true)
+    public List<View> views(List<String> ids) {return BulkSummaries.load(em,jobs.findAllById(ids));}
     private View view(BulkJob j) {
         return BulkSummaries.load(em,List.of(j)).getFirst();
     }
