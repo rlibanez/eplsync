@@ -2007,5 +2007,28 @@
     "name": "Nombre",
     "deleteConfirm": "¿Eliminar la búsqueda «{{name}}»?",
     "loadError": "No se han podido cargar las búsquedas guardadas."
+  },
+  "libraryCleanup": {
+    "title": "Limpiar biblioteca",
+    "description": "Elimina duplicados o revisiones antiguas de Calibre. Los torrents, archivos y registros de Descargas se conservan.",
+    "oldRevisions": "Limpiar revisiones antiguas",
+    "duplicates": "Limpiar duplicados",
+    "retainedCopies": "Copias que se conservan",
+    "differentFormats": "Las copias tienen formatos diferentes. Elige explícitamente cuál conservar, aunque sea la ya seleccionada. Se eliminarán todos los formatos de las otras entradas.",
+    "reason": "Motivo",
+    "reasons": {
+      "OLD_REVISION": "Revisión antigua",
+      "DUPLICATE": "Duplicado"
+    },
+    "confirmCount": "Se eliminarán {{count}} entradas de Calibre y todos sus formatos.",
+    "jobTitle": "Trabajo de limpieza de biblioteca",
+    "action": "Borrar las entradas seleccionadas de Calibre y todos sus formatos",
+    "previewSummary": "{{ready}} entradas disponibles para limpiar · {{excluded}} excluidas por protección.",
+    "confirmSelection": "He revisado la selección y las copias que se conservarán.",
+    "count": "{{count}} entradas seleccionadas",
+    "backgroundInfo": "Se comprobarán los registros de la última sincronización por lotes en segundo plano. Sincroniza primero para incorporar cambios de Calibre.",
+    "preparing": "Preparando limpieza · {{processed}} de {{total}} libros analizados",
+    "groupPages": "Páginas de grupos de copias",
+    "copyPages": "Páginas de copias"
   }
 }

@@ -22,6 +22,7 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.revision-cleanup.worker-enabled=false","eplsync.calibre.transfers.worker-enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
 class RevisionCleanupTests {
     @Autowired RevisionCleanup cleanup;
+    @Autowired CalibreCleanupPreparation preparations;
     @Autowired CalibreTransfers transfers;
     @org.springframework.test.context.bean.override.mockito.MockitoSpyBean com.rlibanez.eplsync.torrent.updates.HistoryActions history;
     @Autowired com.rlibanez.eplsync.torrent.updates.UpdateCleanupRepository cleanups;
@@ -71,6 +72,103 @@ class RevisionCleanupTests {
     RevisionCleanup.Job calibreRemoval(long id) {return cleanup.previewCalibreRemoval(new RevisionCleanup.CalibreRemoval(List.of(id)));}
     void removeRemoteBook() {
         doAnswer(call->{long id=call.getArgument(1);when(client.book(any(),eq(id))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));return null;}).when(client).remove(any(),anyLong(),eq(true));
+    }
+    CalibreCleanupPreparation.Status prepared(CalibreCleanupPreparation.Status value) {
+        for(int i=0;i<200 && !Set.of("READY","FAILED","CANCELLED").contains(value.state());i++) {preparations.cycle();value=preparations.status(value.job().id());}
+        assertThat(value.state()).as("preparation: %s",value.message()).isEqualTo("READY");return value;
+    }
+    CalibreLibraryCleanup.Input libraryInput() {return new CalibreLibraryCleanup.Input(true,true,List.of(),Map.of(),null);}
+    @Test void backgroundLargeLibraryPagesSelectionsAndRecoveryDoNotDuplicateDeletes() {
+        for(long id=21;id<=1025;id++) calibre(id,1);
+        when(client.book(any(),anyLong())).thenAnswer(call->{long id=call.getArgument(1);return book(id,id==20?2:1);});
+        clearInvocations(client);
+        var initial=preparations.begin(libraryInput());String id=initial.job().id();
+        assertThat(initial.state()).isEqualTo("QUEUED");verifyNoInteractions(client);
+        preparations.cycle();preparations.cycle();preparations.recover();
+        var ready=prepared(preparations.status(id));
+        assertThat(ready.job().selected()).isEqualTo(1006);assertThat(ready.job().ready()).isEqualTo(1006);
+        var first=preparations.items(id,0,20,"eplId,asc",ready.version());
+        assertThat(first.items()).hasSize(20);assertThat(first.meta().totalItems()).isEqualTo(1006);
+        assertThat(preparations.items(id,50,20,"eplId,asc",ready.version()).items()).hasSize(6);
+        preparations.select(id,new CalibreCleanupPreparation.Selection(ready.version(),false,List.of(first.items().getFirst().id()),false));
+        assertThat(preparations.status(id).job().selected()).isEqualTo(1005);
+        assertThat(preparations.items(id,1,20,"eplId,asc",ready.version()).items()).allMatch(i->i.previewSelected());
+        preparations.select(id,new CalibreCleanupPreparation.Selection(ready.version(),true,List.of(),false));
+        assertThat(preparations.status(id).job().selected()).isZero();
+        preparations.select(id,new CalibreCleanupPreparation.Selection(ready.version(),false,List.of(first.items().get(1).id(),first.items().get(2).id()),true));
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        preparations.select(id,new CalibreCleanupPreparation.Selection(ready.version(),true,List.of(),true));
+        var confirmed=preparations.confirm(id,new CalibreCleanupPreparation.Confirmation(ready.version(),true,true));
+        assertThat(confirmed.pending()).isEqualTo(1006);assertThat(confirmed.selected()).isEqualTo(1006);
+        preparations.confirm(id,new CalibreCleanupPreparation.Confirmation(ready.version(),true,true));
+        removeRemoteBook();cleanup.cycle();assertThat(cleanup.get(id).succeeded()).isLessThanOrEqualTo(20);cleanup.recover();
+        for(int cycle=0;cycle<100 && cleanup.get(id).pending()>0;cycle++) cleanup.cycle();
+        assertThat(cleanup.get(id).succeeded()).isEqualTo(1006);
+        var sent=org.mockito.ArgumentCaptor.forClass(Long.class);verify(client,times(1006)).remove(any(),sent.capture(),eq(true));
+        assertThat(new HashSet<>(sent.getAllValues())).hasSize(1006);assertThat(sent.getAllValues()).doesNotContain(20L);
+    }
+    @Test void backgroundApiPagesSortsAndConfirmsDurableSelection() throws Exception {
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var auth=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(SecurityContextHolder.getContext().getAuthentication());
+        var response=mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/revision-cleanups/calibre-library/prepare").with(auth).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()).contentType("application/json").content("{\"oldRevisions\":true,\"duplicates\":true,\"ids\":[]}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.state").value("QUEUED")).andReturn();
+        var tree=tools.jackson.databind.json.JsonMapper.builder().build().readTree(response.getResponse().getContentAsString());String id=tree.get("job").get("id").asString();
+        login(owner);prepared(preparations.status(id));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/revision-cleanups/"+id+"/library-items").with(auth).param("version","1").param("size","1").param("sort","title,desc"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].previewSelected").value(true));
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/revision-cleanups/"+id+"/library-items").with(auth).param("version","1").param("sort","bad,asc"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/revision-cleanups/"+id+"/library-confirm").with(auth).contentType("application/json").content("{\"version\":1,\"confirm\":true,\"confirmDestructive\":true}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        login(owner);preparations.confirm(id,new CalibreCleanupPreparation.Confirmation(1,true,true));
+        var listed=listings.list("calibre",0,20,List.of(),"CLEANUP",null,null,null,"createdAt,desc");
+        assertThat(listed.items()).hasSize(1);assertThat(((Number)listed.items().getFirst().get("total")).intValue()).isEqualTo(1);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(strings={"formats","identity","pending"})
+    void backgroundDeletionRechecksProtectionsAfterConfirmation(String change) {
+        var ready=prepared(preparations.begin(libraryInput()));String id=ready.job().id();
+        preparations.confirm(id,new CalibreCleanupPreparation.Confirmation(1,true,true));
+        if(change.equals("formats")) when(client.formats(any(),eq(20L))).thenReturn(List.of("EPUB"));
+        if(change.equals("identity")) when(client.book(any(),eq(20L))).thenReturn(new CalibreClient.Book(20,"Changed",List.of("Author"),1L,BigDecimal.TWO,true));
+        if(change.equals("pending")) {
+            jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('protect-background','now','now','Owner','target','main','source','PAUSED')");
+            jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('protect-background-item','protect-background',0,'record',0,'book.epub',1,1,'2','PENDING')");
+        }
+        cleanup.cycle();assertThat(cleanup.get(id).blocked()).isEqualTo(1);verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void backgroundTransientCalibreBusyWaitsAndPreservesPermissions() throws Exception {
+        var initial=preparations.begin(libraryInput());preparations.cycle();
+        whileCalibreBusy(()->{preparations.cycle();assertThat(preparations.status(initial.job().id()).state()).isEqualTo("QUEUED");});
+        var ready=prepared(preparations.status(initial.job().id()));assertThat(ready.job().ready()).isEqualTo(1);
+        var other=new Account("other","Other","other@example.com","ADMIN","ACTIVE",false,null,0,owner.permissions(),Instant.now());login(other);
+        assertThatThrownBy(()->preparations.select(initial.job().id(),new CalibreCleanupPreparation.Selection(1,true,List.of(),true))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void backgroundCancellationAndChangedConnectionCannotDelete() {
+        var initial=preparations.begin(libraryInput());preparations.cancel(initial.job().id());preparations.cycle();
+        assertThat(preparations.status(initial.job().id()).state()).isEqualTo("CANCELLED");
+        assertThatThrownBy(()->preparations.confirm(initial.job().id(),new CalibreCleanupPreparation.Confirmation(1,true,true))).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        var ready=prepared(preparations.begin(libraryInput()));
+        settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"other"));
+        assertThatThrownBy(()->preparations.confirm(ready.job().id(),new CalibreCleanupPreparation.Confirmation(ready.version(),true,true))).hasMessageContaining("cambió");
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void backgroundDuplicateChoicesArePagedAndRequireFreshVersion() {
+        for(long id=21;id<=45;id++) calibre(id,2);
+        when(client.book(any(),anyLong())).thenAnswer(call->{long id=call.getArgument(1);return book(id,id==10?1:2);});
+        when(client.formats(any(),eq(21L))).thenReturn(List.of("EPUB"));
+        var ready=prepared(preparations.begin(libraryInput()));String id=ready.job().id();
+        assertThat(ready.reviewRequired()).isEqualTo(1);
+        assertThat(preparations.groups(id,0,5,ready.version()).items()).hasSize(1);
+        assertThat(preparations.copies(id,"1:2",0,20,"",ready.version()).items()).hasSize(20);
+        assertThat(preparations.copies(id,"1:2",1,20,"",ready.version()).items()).hasSize(6);
+        assertThatThrownBy(()->preparations.confirm(id,new CalibreCleanupPreparation.Confirmation(ready.version(),true,true))).hasMessageContaining("formatos");
+        var replanned=prepared(preparations.retain(id,new CalibreCleanupPreparation.Retained(ready.version(),"1:2","21")));
+        assertThat(replanned.reviewRequired()).isZero();assertThat(replanned.version()).isEqualTo(2);
+        assertThatThrownBy(()->preparations.confirm(id,new CalibreCleanupPreparation.Confirmation(ready.version(),true,true))).hasMessageContaining("cambió");
+        assertThat(preparations.items(id,0,100,"eplId,asc",replanned.version()).items()).allMatch(i->i.replacementId().equals("21") && !i.oldId().equals("21"));
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
     }
     @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
     void transientTorrentLockRetriesAfterRestartWithoutRepeatingRequestedDeletes(boolean dispatched) {
@@ -1112,6 +1210,109 @@ class RevisionCleanupTests {
         var job=start(preview("calibre","BOOK"));jdbc.update("UPDATE revision_cleanup_jobs SET action='EPUB',state='PAUSED' WHERE id=?",job.id());
         assertThatThrownBy(()->cleanup.control(job.id(),"continue")).hasMessageContaining("entradas completas");cleanup.control(job.id(),"cancel");cleanup.cycle();
         assertThat(cleanup.get(job.id()).state()).isEqualTo("CANCELLED");verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+
+    private void duplicateCalibre() {calibre(21,2);when(client.book(any(),eq(21L))).thenReturn(book(21,2));}
+    private RevisionCleanup.LibraryPreview library(boolean old,boolean duplicate,Map<String,String> retained,String reuse) {
+        return cleanup.previewLibrary(new CalibreLibraryCleanup.Input(old,duplicate,List.of(),retained,reuse));
+    }
+    private RevisionCleanup.Job startLibrary(RevisionCleanup.LibraryPreview preview) {
+        return cleanup.start(preview.job().id(),new RevisionCleanup.Confirmation(cleanup.items(preview.job().id(),0,1000).items().stream().filter(i->i.state().equals("READY")).map(i->i.id()).toList(),true,true));
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.CsvSource({"true,false,1","false,true,1","true,true,2"})
+    void libraryModesCreateOneCoherentPlanAndNeverDeleteRetainedCopy(boolean old,boolean duplicate,int count) {
+        duplicateCalibre();removeRemoteBook();var preview=library(old,duplicate,Map.of(),null);
+        assertThat(preview.job().ready()).isEqualTo(count);assertThat(preview.job().libraryCleanup()).isTrue();
+        var rows=cleanup.items(preview.job().id(),0,1000).items();
+        assertThat(rows).extracting(RevisionCleanup.Item::oldId).doesNotHaveDuplicates();
+        assertThat(rows).allSatisfy(row->{assertThat(row.replacementId()).isEqualTo("20");assertThat(row.reason()).isIn("OLD_REVISION","DUPLICATE");});
+        var job=startLibrary(preview);cleanup.cycle();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(count);
+        verify(client,never()).remove(any(),eq(20L),anyBoolean());
+        verify(client,times(old?1:0)).remove(any(),eq(10L),eq(true));
+        verify(client,times(duplicate?1:0)).remove(any(),eq(21L),eq(true));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE calibre_id=20",Integer.class)).isEqualTo(1);
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void explicitRetainedCopyIsUsedForBothDuplicatesAndOlderRevisions() {
+        duplicateCalibre();removeRemoteBook();var preview=library(true,true,Map.of("1:2","21"),null);
+        assertThat(cleanup.items(preview.job().id(),0,1000).items()).allSatisfy(row->assertThat(row.replacementId()).isEqualTo("21"));
+        startLibrary(preview);cleanup.cycle();
+        verify(client).remove(any(),eq(10L),eq(true));verify(client).remove(any(),eq(20L),eq(true));verify(client,never()).remove(any(),eq(21L),anyBoolean());
+    }
+    @Test void differentFormatsRequireExplicitChoiceAndFrozenFormatsAreRechecked() {
+        duplicateCalibre();when(client.formats(any(),eq(21L))).thenReturn(List.of("EPUB"));
+        var preview=library(false,true,Map.of(),null);
+        assertThat(preview.groups().getFirst().requiresChoice()).isTrue();assertThat(preview.job().excluded()).isEqualTo(1);
+        assertThatThrownBy(()->cleanup.start(preview.job().id(),new RevisionCleanup.Confirmation(List.of(item(preview.job()).id()),true,true))).hasMessageContaining("no puede eliminarse");
+        var chosen=library(false,true,Map.of("1:2","21"),preview.job().id());assertThat(chosen.job().id()).isEqualTo(preview.job().id());
+        assertThat(chosen.job().ready()).isEqualTo(1);assertThat(chosen.groups().getFirst().requiresChoice()).isFalse();
+        startLibrary(chosen);when(client.formats(any(),eq(21L))).thenReturn(List.of("EPUB","PDF"));cleanup.cycle();
+        assertThat(cleanup.get(chosen.job().id()).blocked()).isEqualTo(1);verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(longs={20,21})
+    void duplicateCleanupRejectsChangedMetadataOnEitherCopy(long changed) {
+        duplicateCalibre();var preview=library(false,true,Map.of(),null);startLibrary(preview);
+        when(client.book(any(),eq(changed))).thenReturn(new CalibreClient.Book(changed,"Changed title",List.of("Author"),1L,BigDecimal.TWO,true));
+        cleanup.cycle();assertThat(cleanup.get(preview.job().id()).blocked()).isEqualTo(1);verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void duplicateCleanupRecoversAnUncertainDeletionWithoutSendingAgain() {
+        duplicateCalibre();var job=startLibrary(library(false,true,Map.of(),null));
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING' WHERE id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',dispatched=1 WHERE job_id=?",job.id());
+        when(client.book(any(),eq(21L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        cleanup.recover();cleanup.cycle();cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void replanningReusesPreviewAndInvalidatesOldSelectionsWithoutDeletingAnything() {
+        duplicateCalibre();var preview=library(true,true,Map.of(),null);String oldItem=item(preview.job()).id();
+        for(int n=0;n<12;n++) preview=library(true,true,Map.of("1:2",n%2==0?"21":"20"),preview.job().id());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE library_plan IS NOT NULL",Long.class)).isEqualTo(1);
+        String id=preview.job().id();assertThatThrownBy(()->cleanup.start(id,new RevisionCleanup.Confirmation(List.of(oldItem),true,true))).hasMessageContaining("no puede eliminarse");
+        startLibrary(preview);assertThatThrownBy(()->library(true,true,Map.of(),id)).hasMessageContaining("previsualización");
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void libraryCleanupPreservesPendingCalibreProtectionsAndCannotChooseAnOlderKeeper() {
+        duplicateCalibre();assertThatThrownBy(()->library(true,true,Map.of("1:2","10"),null)).hasMessageContaining("no pertenece");
+        var preview=library(true,true,Map.of(),null);startLibrary(preview);
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('protect-lib','now','now','Owner','target','main','source','PAUSED')");
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('protect-lib-item','protect-lib',0,'record',0,'book.epub',1,1,'2','PENDING')");
+        cleanup.cycle();assertThat(cleanup.get(preview.job().id()).blocked()).isEqualTo(2);verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void duplicateDetectionDoesNotGroupUnidentifiedEntriesOrDifferentRevisions() {
+        jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,title,authors) VALUES('unknown-lib','generation',1,30,'Book','Author')");
+        var preview=library(false,true,Map.of(),null);assertThat(preview.job().total()).isZero();assertThat(preview.groups()).isEmpty();
+    }
+
+    @Test void formatsChangingDuringPreviewCannotBypassExplicitReview() {
+        duplicateCalibre();when(client.formats(any(),eq(21L))).thenReturn(List.of("EPUB","PDF"),List.of("EPUB","PDF","ZIP"));
+        var preview=library(false,true,Map.of(),null);
+        assertThat(preview.job().ready()).isZero();assertThat(preview.job().excluded()).isEqualTo(1);
+        assertThat(item(preview.job()).message()).contains("formatos cambiaron");verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void libraryPreviewRequiresCurrentPermissionsAndIsOwnedByItsCreator() {
+        duplicateCalibre();var preview=library(false,true,Map.of(),null);var owner=accounts.users().stream().filter(a->a.role().equals("ADMIN")).findFirst().orElseThrow();
+        accounts.policy(new AccountStore.Policy(true,false,30,12));accounts.register("library-reader","library@example.org","password for reader");
+        var user=accounts.users().stream().filter(a->a.username().equals("library-reader")).findFirst().orElseThrow();
+        login(accounts.find(user.id()));
+        assertThatThrownBy(()->library(false,true,Map.of(),null)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        accounts.update(user.id(),"USER","ACTIVE",Map.of("CALIBRE_READ","ALLOW","CALIBRE_DELETE","ALLOW"),owner.id());login(accounts.find(user.id()));
+        assertThatThrownBy(()->library(false,true,Map.of(),preview.job().id())).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void duplicateCleanupNeverDeletesWithoutTheRetainedEpub(boolean missing) {
+        duplicateCalibre();var preview=library(false,true,Map.of(),null);startLibrary(preview);
+        if(missing) when(client.book(any(),eq(20L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        else when(client.hasEpub(any(),eq(20L))).thenReturn(false);
+        cleanup.cycle();assertThat(cleanup.get(preview.job().id()).blocked()).isEqualTo(1);verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void libraryScopeAppliesOnlyToDeletionTargetsAndCannotDeleteTheKeeper() {
+        duplicateCalibre();removeRemoteBook();
+        var preview=cleanup.previewLibrary(new CalibreLibraryCleanup.Input(true,true,List.of("10"),Map.of(),null));
+        assertThat(preview.job().ready()).isEqualTo(1);assertThat(item(preview.job()).oldId()).isEqualTo("10");
+        startLibrary(preview);cleanup.cycle();verify(client).remove(any(),eq(10L),eq(true));
+        verify(client,never()).remove(any(),eq(20L),anyBoolean());verify(client,never()).remove(any(),eq(21L),anyBoolean());
     }
 
 }

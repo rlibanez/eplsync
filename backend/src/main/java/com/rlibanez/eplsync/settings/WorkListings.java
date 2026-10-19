@@ -57,8 +57,8 @@ public class WorkListings {
             """;
         String projection="""
             SELECT j.id,'cleanup' kind,j.created_at createdAt,'CLEANUP' type,j.state state,j.owner_username username,j.library,
-            CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) ELSE coalesce(json_array_length(j.confirmation),0) END selectedBooks,CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) ELSE coalesce(json_array_length(j.confirmation),0) END total,
-            coalesce(sum(i.state IN ('SUCCEEDED','BLOCKED','FAILED','UNCERTAIN','CANCELLED') OR i.state='SKIPPED' AND EXISTS(SELECT 1 FROM json_each(j.confirmation) chosen WHERE chosen.value=i.id)),0) processed,
+            CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(sum(i.preview_selected),0) ELSE coalesce(json_array_length(j.confirmation),0) END selectedBooks,CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(sum(i.preview_selected),0) ELSE coalesce(json_array_length(j.confirmation),0) END total,
+            coalesce(sum(i.state IN ('SUCCEEDED','BLOCKED','FAILED','UNCERTAIN','CANCELLED') OR i.state='SKIPPED' AND (i.preview_selected=1 OR EXISTS(SELECT 1 FROM json_each(j.confirmation) chosen WHERE chosen.value=i.id))),0) processed,
             coalesce(sum(i.state='SUCCEEDED'),0) accepted,coalesce(sum(i.state IN ('BLOCKED','FAILED','UNCERTAIN')),0) failed
             FROM revision_cleanup_jobs j LEFT JOIN revision_cleanup_items i ON i.job_id=j.id
             WHERE j.state<>'PREVIEW' AND j.source=? AND j.owner_id=? GROUP BY j.id

@@ -2218,3 +2218,6 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 @media (max-width: 1000px) {
   .catalog-search-footer > .saved-catalog-searches { flex-basis: 100%; }
 }
+
+.library-cleanup-copies { margin-bottom: 20px; max-height: 340px; overflow: auto; }
+.library-cleanup-copy + .library-cleanup-copy { margin-top: 16px; }

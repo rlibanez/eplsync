@@ -2007,5 +2007,28 @@
     "name": "Name",
     "deleteConfirm": "Delete the search “{{name}}”?",
     "loadError": "Could not load saved searches."
+  },
+  "libraryCleanup": {
+    "title": "Clean library",
+    "description": "Remove duplicates or older revisions from Calibre. Torrents, files and download records are preserved.",
+    "oldRevisions": "Clean older revisions",
+    "duplicates": "Clean duplicates",
+    "retainedCopies": "Copies to keep",
+    "differentFormats": "Copies have different formats. Explicitly choose which copy to keep, even if it is already selected. All formats of the other entries will be deleted.",
+    "reason": "Reason",
+    "reasons": {
+      "OLD_REVISION": "Older revision",
+      "DUPLICATE": "Duplicate"
+    },
+    "confirmCount": "{{count}} Calibre entries and all their formats will be deleted.",
+    "jobTitle": "Library cleanup job",
+    "action": "Delete the selected Calibre entries and all their formats",
+    "previewSummary": "{{ready}} entries available to clean · {{excluded}} excluded for safety.",
+    "confirmSelection": "I have reviewed the selection and the copies to keep.",
+    "count": "{{count}} entries selected",
+    "backgroundInfo": "Records from the last synchronization are checked in background batches. Synchronize first to include changes from Calibre.",
+    "preparing": "Preparing cleanup · {{processed}} of {{total}} books analyzed",
+    "groupPages": "Copy group pages",
+    "copyPages": "Copy pages"
   }
 }

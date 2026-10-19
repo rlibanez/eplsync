@@ -1,3 +1,4 @@
+import { LibraryCleanupWizard } from "./LibraryCleanupWizard";
 import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { togglePageSelection } from "../../components/pageSelection";
@@ -54,6 +55,7 @@ interface Job {
   allowUndownloaded?: boolean;
   deleteHistory?: boolean;
   directRemoval?: boolean;
+  libraryCleanup?: boolean;
   createdAt: number;
   total: number;
   selected: number;
@@ -80,6 +82,8 @@ interface Item {
   blockingCalibreJobId?: string | null;
   blockingRequiresIntervention?: boolean | null;
   author?: string | null;
+  reason?: "OLD_REVISION" | "DUPLICATE" | null;
+  previewSelected?: boolean;
 }
 const active = (job?: Job) =>
   !!job && ["QUEUED", "RUNNING"].includes(job.state);
@@ -130,16 +134,27 @@ export function CleanupLauncher({
         leftSection={<Eraser size={16} />}
         onClick={() => setOpened(true)}
       >
-        {t("revisionCleanup.title")}
+        {t(
+          source === "calibre"
+            ? "libraryCleanup.title"
+            : "revisionCleanup.title",
+        )}
       </Button>
-      {opened && (
-        <CleanupWizard
-          source={source}
-          selected={selected.map(String)}
-          actions={actions}
-          close={() => setOpened(false)}
-        />
-      )}
+      {opened &&
+        (source === "calibre" ? (
+          <LibraryCleanupWizard
+            selected={selected.map(String)}
+            close={() => setOpened(false)}
+            Table={CleanupItems}
+          />
+        ) : (
+          <CleanupWizard
+            source={source}
+            selected={selected.map(String)}
+            actions={actions}
+            close={() => setOpened(false)}
+          />
+        ))}
     </>
   );
 }
@@ -187,6 +202,7 @@ export function CalibreRemovalLauncher({
     </>
   );
 }
+export type { Job as CleanupJobData, Item as CleanupItem };
 function CleanupWizard({
   source,
   selected,
@@ -314,17 +330,7 @@ function CleanupWizard({
             )}
           </p>
           <p className="muted">{t("revisionCleanup.syncFirst")}</p>
-          {source === "calibre" ? (
-            <p>
-              <strong>
-                {t(
-                  direct
-                    ? "calibreRemoval.action"
-                    : "revisionCleanup.actions.BOOK",
-                )}
-              </strong>
-            </p>
-          ) : (
+          {source === "downloads" && (
             <>
               <Select
                 label={t("revisionCleanup.action")}
@@ -367,7 +373,11 @@ function CleanupWizard({
               label={t("revisionCleanup.scope")}
               value={scope}
               allowDeselect={false}
-              onChange={(value) => value && setScope(value)}
+              onChange={(value) => {
+                if (value) {
+                  setScope(value);
+                }
+              }}
               data={[
                 {
                   value: "selected",
@@ -547,7 +557,10 @@ function CleanupWizard({
             {t("revisionCleanup.preview")}
           </Button>
         ) : step === 1 ? (
-          <Button disabled={!checked.length} onClick={() => setStep(2)}>
+          <Button
+            disabled={busy || prepare.isError || !checked.length}
+            onClick={() => setStep(2)}
+          >
             {t("revisionCleanup.next")}
           </Button>
         ) : (
@@ -555,7 +568,10 @@ function CleanupWizard({
             color="red"
             loading={start.isPending}
             disabled={
-              !confirm || (["FILES", "BOOK"].includes(action) && !destructive)
+              busy ||
+              prepare.isError ||
+              !confirm ||
+              (["FILES", "BOOK"].includes(action) && !destructive)
             }
             onClick={() => start.mutate()}
           >
@@ -573,6 +589,8 @@ function CleanupItems({
   offset = 0,
   jobState,
   showAuthor = false,
+  showReason = false,
+  selectionDisabled = false,
   onAuthor,
   direct = false,
   selected,
@@ -584,6 +602,8 @@ function CleanupItems({
   offset?: number;
   jobState?: string;
   showAuthor?: boolean;
+  showReason?: boolean;
+  selectionDisabled?: boolean;
   onAuthor?: (author: string) => void;
   direct?: boolean;
   selected?: string[];
@@ -611,6 +631,7 @@ function CleanupItems({
               {t("revisionCleanup.book")}
             </PreviewHeading>
             {showAuthor && <th>{t("catalog.author")}</th>}
+            {showReason && <th>{t("libraryCleanup.reason")}</th>}
             <PreviewHeading field="revision" order={order} toggle={toggle}>
               {t("revisionCleanup.remove")}
             </PreviewHeading>
@@ -636,7 +657,8 @@ function CleanupItems({
                   5 +
                   (direct ? 0 : 1) +
                   (onSelect ? 1 : 0) +
-                  (showAuthor ? 1 : 0)
+                  (showAuthor ? 1 : 0) +
+                  (showReason ? 1 : 0)
                 }
               >
                 {t("revisionCleanup.empty")}
@@ -652,7 +674,7 @@ function CleanupItems({
                       title: item.title,
                     })}
                     checked={selected?.includes(item.id) || false}
-                    disabled={item.state !== "READY"}
+                    disabled={selectionDisabled || item.state !== "READY"}
                     onMouseDown={selectRange.preventTextSelection}
                     onChange={(event) => selectRange(item.id, event)}
                   />
@@ -686,6 +708,13 @@ function CleanupItems({
                   ) : (
                     "—"
                   )}
+                </td>
+              )}
+              {showReason && (
+                <td>
+                  {item.reason
+                    ? t(`libraryCleanup.reasons.${item.reason}`)
+                    : "—"}
                 </td>
               )}
               <td>
@@ -908,14 +937,18 @@ export function CleanupJob() {
             ? data.source === "calibre"
               ? "calibreRemoval.jobTitle"
               : "revisionCleanup.removalJobTitle"
-            : "revisionCleanup.jobTitle",
+            : data.libraryCleanup
+              ? "libraryCleanup.jobTitle"
+              : "revisionCleanup.jobTitle",
         )}
         description={t(
           data.directRemoval
             ? data.source === "calibre"
               ? "calibreRemoval.description"
               : "revisionCleanup.removalHelp"
-            : "revisionCleanup.protection",
+            : data.libraryCleanup
+              ? "libraryCleanup.description"
+              : "revisionCleanup.protection",
         )}
       />
       <p className="hash-text">{id}</p>
@@ -1015,9 +1048,11 @@ export function CleanupJob() {
                       {t(
                         data.directRemoval && data.source === "calibre"
                           ? "calibreRemoval.action"
-                          : data.action === "RECORD"
-                            ? "send.keepPrevious"
-                            : `revisionCleanup.actions.${data.action}`,
+                          : data.libraryCleanup
+                            ? "libraryCleanup.action"
+                            : data.action === "RECORD"
+                              ? "send.keepPrevious"
+                              : `revisionCleanup.actions.${data.action}`,
                       )}
                     </dd>
                   </div>
@@ -1128,6 +1163,7 @@ export function CleanupJob() {
             onAuthor={search.selectAuthor}
             jobState={data.state}
             direct={data.directRemoval}
+            showReason={data.libraryCleanup}
             offset={page * 20}
           />
           <Pager

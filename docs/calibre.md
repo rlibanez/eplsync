@@ -371,7 +371,7 @@ resultados. Vaciar el campo o pulsar **Limpiar** restablece el operador inicial.
 
 ## Limpieza manual de revisiones antiguas
 
-Consulta [Limpiar revisiones antiguas](limpieza-revisiones.md) para preparar una limpieza con previsualización, selección y seguimiento por trabajo.
+Utiliza **Limpiar biblioteca** para eliminar duplicados, revisiones antiguas o ambos, con previsualización, elección de la copia que se conserva y seguimiento por trabajo. Consulta la [guía de limpieza](limpieza-revisiones.md).
 
 ### Eliminar entradas de la biblioteca
 
@@ -454,3 +454,5 @@ El diagnóstico distingue entre ausencia de registros del cliente configurado, a
 El asistente permite **Cerrar** o usar Escape durante la comprobación o la aplicación. Cerrar también cancela el proceso en curso. Se detienen las siguientes entradas, se solicita la cancelación al servidor y se aborta la petición del navegador; las exportaciones en curso se interrumpen. Los cambios ya aplicados se conservan. Si se cierra durante una escritura, el libro en curso puede haberse completado: al reintentar se comprueba la misma entrada y no se vuelve a importar.
 
 La prueba opcional `CalibreIdentifiersRealTests` utiliza `calibredb` y `calibre-server` reales con una biblioteca temporal (`EPLSYNC_TEST_REAL_CALIBRE=1`). Importa un EPUB fuera de EPL Sync, comprueba el cambio de nombre y la transformación del servidor de contenido, verifica que la exportación original coincide byte por byte y ejecuta la previsualización, asignación y reintento sin simular la descarga de Calibre.
+
+**Limpiar biblioteca** permite combinar duplicados y revisiones antiguas; ambas opciones están activadas inicialmente. No hay un límite de 1000 entradas en esta limpieza: la preparación se realiza por lotes en segundo plano y la previsualización, la selección y las copias que conservar se paginan desde el servidor. Se puede cancelar durante la preparación y no se envían borrados hasta confirmar. Consulta [Limpieza de revisiones](limpieza-revisiones.md#preparación-de-bibliotecas-grandes) para conocer los límites de procesamiento y las protecciones.

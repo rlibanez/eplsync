@@ -36,9 +36,11 @@ public class RevisionCleanup {
     public record RetryInput(String requestId,boolean confirm,boolean confirmDestructive) {}
     public record Confirmation(List<String> ids,boolean confirm,boolean confirmDestructive) {}
     public record Job(String id,String source,String action,String state,String result,String message,String username,String library,
-        boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain) {}
+        boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain,boolean libraryCleanup) {}
     public record Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,
-        List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author) {
+        List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author,String reason,boolean previewSelected) {
+        public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author,String reason) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,blockingCalibreJobId,blockingRequiresIntervention,author,reason,false);}
+        public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,blockingCalibreJobId,blockingRequiresIntervention,author,null);}
         public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,blockingCalibreJobId,blockingRequiresIntervention,null);}
         public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,null,null);}
     }
@@ -46,13 +48,14 @@ public class RevisionCleanup {
     private static final int LIMIT=1000;
     private static final String SELECT="""
         SELECT j.*,count(i.id) total,
-        CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) ELSE coalesce(json_array_length(j.confirmation),0) END selected,
+        CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(sum(i.preview_selected),0) ELSE coalesce(json_array_length(j.confirmation),0) END selected,
         coalesce(sum(i.state='READY'),0) ready,coalesce(sum(i.state='EXCLUDED'),0) excluded,
         coalesce(sum(i.state IN ('PENDING','RUNNING','VERIFYING')),0) pending,
         coalesce(sum(i.state='SUCCEEDED'),0) succeeded,coalesce(sum(i.state='BLOCKED'),0) blocked,
         coalesce(sum(i.state='FAILED'),0) failed,coalesce(sum(i.state='UNCERTAIN'),0) uncertain
         FROM revision_cleanup_jobs j LEFT JOIN revision_cleanup_items i ON i.job_id=j.id
         """;
+    @org.springframework.beans.factory.annotation.Autowired private CalibreLibraryCleanup libraryCleanup;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
     private final AccountStore accounts;
@@ -154,18 +157,24 @@ public class RevisionCleanup {
         JobItemFilters.states(where,args,filters.getFirst("state")==null?"":filters.getFirst("state"),filters.getFirst("statusOperator")==null?"eq":filters.getFirst("statusOperator"),Set.of("READY","EXCLUDED","PENDING","RUNNING","VERIFYING","SUCCEEDED","BLOCKED","FAILED","UNCERTAIN","SKIPPED","CANCELLED"));
         long total=jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items"+where,Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
-        var pageRows=jdbc.query("SELECT *,"+(Permission.has(Permission.CATALOG_READ)?author:"NULL")+" AS item_author FROM revision_cleanup_items"+where+" ORDER BY position LIMIT ? OFFSET ?",(r,n)->withAuthor(item(r,n),r.getString("item_author")),args.toArray());
+        String order="position";
+        if(filters.getFirst("sort")!=null) {
+            var fields=Map.of("eplId","epl_id","title","title COLLATE EPL_TEXT","revision","CAST(revision AS NUMERIC)","replacementRevision","CAST(replacement_revision AS NUMERIC)","state","state");
+            var parsed=com.rlibanez.eplsync.config.TableOrdering.parse(filters.getFirst("sort"),fields.keySet());
+            order=String.join(",",parsed.stream().map(o->fields.get(o.getProperty())+(o.isAscending()?" ASC":" DESC")).toList())+",position";
+        }
+        var pageRows=jdbc.query("SELECT *,"+(Permission.has(Permission.CATALOG_READ)?author:"NULL")+" AS item_author FROM revision_cleanup_items"+where+" ORDER BY "+order+" LIMIT ? OFFSET ?",(r,n)->withAuthor(item(r,n),r.getString("item_author")),args.toArray());
         return new PageResponse<>(pageRows.stream().map(row->withAuthor(withBlocker(row,currentJob),row.author())).toList(),meta(page,size,total));
     }
     private static Item withAuthor(Item row,String author) {
-        return new Item(row.id(),row.eplId(),row.title(),row.revision(),row.oldId(),row.replacementId(),row.replacementRevision(),row.formats(),row.state(),row.message(),row.dispatched(),row.oldHash(),row.replacementHash(),row.blockingCalibreJobId(),row.blockingRequiresIntervention(),author);
+        return new Item(row.id(),row.eplId(),row.title(),row.revision(),row.oldId(),row.replacementId(),row.replacementRevision(),row.formats(),row.state(),row.message(),row.dispatched(),row.oldHash(),row.replacementHash(),row.blockingCalibreJobId(),row.blockingRequiresIntervention(),author,row.reason(),row.previewSelected());
     }
 
     private static PageResponse.PageMeta meta(int page,int size,long total) {int pages=(int)((total+size-1)/size);return new PageResponse.PageMeta(page,size,total,pages,page==0,page>=pages-1,page+1<pages,page>0);}
-    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"));}
+    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"),r.getString("library_plan")!=null);}
     private Item item(ResultSet r,int n) throws SQLException {
         var formats=new ArrayList<String>();for(var format:json.readTree(r.getString("formats"))) formats.add(format.asString());
-        return new Item(r.getString("id"),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title"),r.getString("revision"),r.getString("old_id"),r.getString("replacement_id"),r.getString("replacement_revision"),List.copyOf(formats),r.getString("state"),r.getString("message"),r.getBoolean("dispatched"),r.getString("old_hash"),r.getString("replacement_hash"));
+        return new Item(r.getString("id"),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title"),r.getString("revision"),r.getString("old_id"),r.getString("replacement_id"),r.getString("replacement_revision"),List.copyOf(formats),r.getString("state"),r.getString("message"),r.getBoolean("dispatched"),r.getString("old_hash"),r.getString("replacement_hash"),null,null,null,r.getString("cleanup_reason"),r.getBoolean("preview_selected"));
     }
     private Item withBlocker(Item row,Job job) {
         if(!"BLOCKED".equals(row.state()) || row.oldHash()==null || row.message()==null || !row.message().contains("Calibre")) return row;
@@ -289,8 +298,86 @@ public class RevisionCleanup {
         // Shared files, aliases and replacement torrents are checked again by CleanupQueue before dispatch.
         TorrentRemovalSafety.index(remote);
     }
+    Job createLibraryDraft() {
+        var owner=authorize(sessions.current().id(),"calibre","BOOK");
+        long now=Instant.now().toEpochMilli();String id=UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,library,state,library_plan,created_at,updated_at,expires_at) VALUES(?,'calibre','BOOK',?,?,?,?,'PREVIEW','{\"background\":true}',?,?,?)",id,owner.id(),owner.username(),context("calibre"),settings.connection().library(),now,now,now+Duration.ofMinutes(30).toMillis());
+        return get(id);
+    }
+    void requireLibraryDraft(String id) {
+        Permission.require(Permission.CALIBRE_READ);var rows=jdbc.queryForList("SELECT owner_id,source,state,context,library_plan FROM revision_cleanup_jobs WHERE id=?",id);
+        if(rows.isEmpty()) throw new UserInputException("La previsualización ya no existe");var row=rows.getFirst();
+        if(!Objects.equals(row.get("owner_id"),sessions.current().id())) throw new org.springframework.security.access.AccessDeniedException("La previsualización pertenece a otra cuenta");
+        authorize(sessions.current().id(),"calibre","BOOK");
+        if(row.get("library_plan")==null || !row.get("source").equals("calibre") || !row.get("state").equals("PREVIEW")) throw new UserInputException("La previsualización ya está confirmada o no es una limpieza de biblioteca");
+        if(!Objects.equals(context("calibre"),row.get("context"))) throw new UserInputException("La conexión o biblioteca cambió; prepara una nueva limpieza");
+    }
+    record LibraryCheck(List<String> formats,String state,String message,String oldIdentity,String retainedIdentity,String retainedFormats) {}
+    LibraryCheck checkLibraryCandidate(String id,String itemId,Runnable checkpoint) {
+        if(!lifecycle.tryLock()) throw new CalibreTransfers.OperationBusy();
+        try {return transfers.exclusive(()->{
+            checkpoint.run();requireLibraryDraft(id);
+            var item=jdbc.query("SELECT * FROM revision_cleanup_items WHERE job_id=? AND id=?",this::item,id,itemId).stream().findFirst().orElseThrow(java.util.concurrent.CancellationException::new);
+            var connection=settings.connection();List<String> formats=List.of();
+            try {
+                noPending(item,id,false,"BOOK",false,false);checkCalibre(item,connection,false);
+                formats=client.formats(connection,Long.parseLong(item.oldId()));
+                var old=client.book(connection,Long.parseLong(item.oldId()));var kept=client.book(connection,Long.parseLong(item.replacementId()));checkOldCalibre(item,old);
+                if(!Objects.equals(kept.eplId(),item.eplId()) || !sameRevision(kept.revision(),item.replacementRevision())) throw new UserInputException("La copia que se conserva cambió; vuelve a previsualizar");
+                var retainedFormats=client.formats(connection,kept.calibreId());
+                for(var copy:jdbc.queryForList("SELECT calibre_id,formats FROM calibre_cleanup_copies WHERE job_id=? AND calibre_id IN (?,?)",id,item.oldId(),item.replacementId())) {
+                    var expected=json.readValue((String)copy.get("formats"),new tools.jackson.core.type.TypeReference<List<String>>(){});
+                    var observed=copy.get("calibre_id").equals(item.oldId())?formats:retainedFormats;
+                    if(!new HashSet<>(expected).equals(new HashSet<>(observed))) throw new UserInputException("Los formatos cambiaron mientras se preparaba la limpieza; vuelve a previsualizar");
+                }
+                boolean review="DUPLICATE".equals(item.reason()) && jdbc.queryForObject("SELECT count(*) FROM calibre_cleanup_groups WHERE job_id=? AND retained_id=? AND requires_choice=1",Long.class,id,item.replacementId())>0;
+                checkpoint.run();requireLibraryDraft(id);
+                return new LibraryCheck(formats,review?"EXCLUDED":"READY",review?"Los duplicados tienen formatos diferentes; elige la copia que se conservará":null,json.writeValueAsString(old),json.writeValueAsString(kept),json.writeValueAsString(retainedFormats));
+            } catch(RuntimeException ex) {
+                if(ex instanceof java.util.concurrent.CancellationException || ex instanceof CalibreClient.TransientFailure || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
+                return new LibraryCheck(formats,"EXCLUDED",reason(ex),null,null,null);
+            }
+        });}finally {lifecycle.unlock();}
+    }
+    Job confirmLibrary(String id,long version,boolean confirm,boolean destructive) {
+        var owner=sessions.current();var created=new java.util.concurrent.atomic.AtomicBoolean();
+        tx.executeWithoutResult(status->{
+            var states=jdbc.queryForList("SELECT p.*,j.state job_state FROM calibre_cleanup_preparations p JOIN revision_cleanup_jobs j ON j.id=p.job_id WHERE p.job_id=?",id);
+            if(states.isEmpty()) throw new UserInputException("La previsualización ya no existe");
+            var prep=states.getFirst();if(((Number)prep.get("version")).longValue()!=version) throw new UserInputException("La previsualización cambió; actualiza la vista");
+            if(!"PREVIEW".equals(prep.get("job_state"))) {get(id);return;}
+            requireLibraryDraft(id);
+            if(jdbc.queryForObject("SELECT expires_at FROM revision_cleanup_jobs WHERE id=?",Long.class,id)<Instant.now().toEpochMilli()) throw new UserInputException("La previsualización caducó; vuelve a prepararla");
+            if(!confirm || !destructive || !"READY".equals(prep.get("state"))) throw new UserInputException("Espera a que termine la preparación y confirma la eliminación");
+            if(jdbc.queryForObject("SELECT count(*) FROM calibre_cleanup_groups WHERE job_id=? AND requires_choice=1",Long.class,id)>0) throw new UserInputException("Elige las copias con formatos diferentes antes de confirmar");
+            long selected=jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items WHERE job_id=? AND preview_selected=1 AND state='READY'",Long.class,id);
+            if(selected==0) throw new UserInputException("Selecciona al menos una entrada disponible");
+            if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items a JOIN revision_cleanup_items b ON b.job_id=a.job_id AND b.old_id=a.replacement_id WHERE a.job_id=? AND a.preview_selected=1 AND b.preview_selected=1",Long.class,id)>0) throw new UserInputException("La selección incluye una copia que debe conservarse");
+            if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE owner_id=? AND state IN ('QUEUED','RUNNING','PAUSED')",Long.class,owner.id())>=5) throw new UserInputException("Hay cinco limpiezas pendientes; espera a que terminen");
+            jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN preview_selected=1 THEN 'PENDING' ELSE 'SKIPPED' END WHERE job_id=? AND state='READY'",id);
+            jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',confirmation=?,updated_at=? WHERE id=?",json.writeValueAsString(Map.of("libraryVersion",version,"selected",selected)),Instant.now().toEpochMilli(),id);created.set(true);
+        });var result=get(id);
+        if(created.get()) events.live(new EventContext.Actor(owner.id(),owner.username(),"USER"),EventJournal.Category.JOB,"REVISION_CLEANUP",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,id,Map.of("selected",result.selected(),"source","calibre"));
+        return result;
+    }
+    public record LibraryPreview(Job job,List<CalibreLibraryCleanup.Group> groups) {}
+    public LibraryPreview previewLibrary(CalibreLibraryCleanup.Input input) {return exclusive(()->transfers.exclusive(()->{
+        authorize(sessions.current().id(),"calibre","BOOK");
+        String original=context("calibre");
+        if(input==null) throw new UserInputException("Selecciona una limpieza");
+        if(input.previewId()!=null) {
+            var job=get(input.previewId());
+            if(!job.source().equals("calibre") || !job.state().equals("PREVIEW") || !job.libraryCleanup()) throw new UserInputException("Solo puede cambiarse una previsualización de limpieza de biblioteca");
+            if(!Objects.equals(jdbc.queryForObject("SELECT context FROM revision_cleanup_jobs WHERE id=?",String.class,job.id()),original)) throw new UserInputException("La conexión o biblioteca cambió; prepara una nueva limpieza");
+        }
+        var plan=libraryCleanup.plan(input,settings.connection());
+        if(!original.equals(context("calibre"))) throw new UserInputException("La conexión o biblioteca cambió; vuelve a previsualizar");
+        var job=prepare(new PreviewInput("calibre","BOOK",input.ids()),plan,input.previewId());
+        return new LibraryPreview(job,plan.groups());
+    }));}
     public Job preview(PreviewInput input) {return exclusive(()->prepare(input));}
-    private Job prepare(PreviewInput input) {
+    private Job prepare(PreviewInput input) {return prepare(input,null,null);}
+    private Job prepare(PreviewInput input,CalibreLibraryCleanup.Plan libraryPlan,String reuseId) {
         if(input==null) throw new UserInputException("Selecciona una limpieza");
         String source=source(input.source()),requestedAction=input.action();
         if(source.equals("downloads") && "KEEP".equals(requestedAction) && !input.deleteHistory()) throw new UserInputException("Selecciona al menos una acción de limpieza");
@@ -300,32 +387,59 @@ public class RevisionCleanup {
         if(input.allowUndownloaded() && !source.equals("downloads")) throw new UserInputException("Esta opción solo está disponible para Descargas");
         var owner=authorize(sessions.current().id(),source,action);
         List<String> ids=input.ids()==null?List.of():input.ids();
-        if(ids.size()>LIMIT || ids.stream().anyMatch(id->id==null || id.isBlank() || id.length()>64) || new HashSet<>(ids).size()!=ids.size()) throw new UserInputException("Selecciona como máximo 1000 registros, sin duplicados");
+        if(libraryPlan==null && ids.size()>LIMIT || ids.stream().anyMatch(id->id==null || id.isBlank() || id.length()>64) || new HashSet<>(ids).size()!=ids.size()) throw new UserInputException("Selecciona como máximo 1000 registros, sin duplicados");
         long now=Instant.now().toEpochMilli(),deadline=System.nanoTime()+Duration.ofSeconds(90).toNanos();
-        jdbc.update("DELETE FROM revision_cleanup_jobs WHERE state='PREVIEW' AND expires_at<?",now);
-        if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE state='PREVIEW' AND owner_id=?",Long.class,owner.id())>=10) throw new UserInputException("Hay demasiadas previsualizaciones abiertas; espera a que caduquen");
-        String context=context(source),id=UUID.randomUUID().toString();
-        var candidates=candidates(source,ids);var prepared=new ArrayList<Item>();
+        jdbc.update("DELETE FROM revision_cleanup_jobs WHERE state='PREVIEW' AND expires_at<? AND NOT EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=revision_cleanup_jobs.id AND p.state IN ('QUEUED','RUNNING'))",now);
+        if(reuseId==null && jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE state='PREVIEW' AND owner_id=?",Long.class,owner.id())>=10) throw new UserInputException("Hay demasiadas previsualizaciones abiertas; espera a que caduquen");
+        String context=context(source),id=reuseId==null?UUID.randomUUID().toString():reuseId;
+        var candidates=libraryPlan==null?candidates(source,ids):libraryPlan.candidates().stream().map(c->new Item(UUID.randomUUID().toString(),c.eplId(),c.title(),c.revision(),c.oldId(),c.retainedId(),c.retainedRevision(),List.of(),"READY",c.problem(),false,null,null,null,null,null,c.reason())).toList();
+        var prepared=new ArrayList<Item>();
+        var identities=new HashMap<String,String[]>();
+        var displayedFormats=new HashMap<String,Set<String>>();
+        if(libraryPlan!=null) for(var group:libraryPlan.groups()) for(var copy:group.copies()) displayedFormats.put(copy.id(),new HashSet<>(copy.formats()));
         var connection=source.equals("calibre")?settings.connection():null;
         var accessible=new HashMap<String,String>();
         java.util.function.Consumer<List<RemoteTorrent>> evaluate=remote->{
             for(var item:candidates) {
-                if(Thread.currentThread().isInterrupted() || System.nanoTime()>deadline) throw new UserInputException("La previsualización ha tardado demasiado; selecciona menos registros");
-                List<String> formats=List.of();String problem=null;
+                if(Thread.currentThread().isInterrupted() || libraryPlan==null && System.nanoTime()>deadline) throw new UserInputException("La previsualización ha tardado demasiado; selecciona menos registros");
+                List<String> formats=List.of();String problem=item.message();
                 try {
                     noPending(item,id,input.allowUndownloaded(),action,false,input.deleteHistory() || action.equals("RECORD"));
                     if(source.equals("downloads")) checkDownload(item,action,remote,accessible,input.allowUndownloaded());
-                    else {checkCalibre(item,Objects.requireNonNull(connection),false);formats=client.formats(connection,Long.parseLong(item.oldId()));}
+                    else {
+                        checkCalibre(item,Objects.requireNonNull(connection),false);
+                        formats=client.formats(connection,Long.parseLong(item.oldId()));
+                        if(libraryPlan!=null) {
+                            var old=client.book(connection,Long.parseLong(item.oldId()));var retained=client.book(connection,Long.parseLong(item.replacementId()));
+                            checkOldCalibre(item,old);
+                            if(!Objects.equals(retained.eplId(),item.eplId()) || !sameRevision(retained.revision(),item.replacementRevision())) throw new UserInputException("La copia que se conserva cambió; vuelve a previsualizar");
+                            var retainedFormats=client.formats(connection,retained.calibreId());
+                            if(displayedFormats.containsKey(item.oldId()) && !displayedFormats.get(item.oldId()).equals(new HashSet<>(formats)) || displayedFormats.containsKey(item.replacementId()) && !displayedFormats.get(item.replacementId()).equals(new HashSet<>(retainedFormats))) throw new UserInputException("Los formatos cambiaron mientras se preparaba la limpieza; vuelve a previsualizar");
+                            identities.put(item.id(),new String[]{json.writeValueAsString(old),json.writeValueAsString(retained),json.writeValueAsString(retainedFormats)});
+                        }
+                    }
                 } catch(RuntimeException ex) {problem=reason(ex);}
-                prepared.add(new Item(item.id(),item.eplId(),item.title(),item.revision(),item.oldId(),item.replacementId(),item.replacementRevision(),formats,problem==null?"READY":"EXCLUDED",problem,false,item.oldHash(),item.replacementHash()));
+                prepared.add(new Item(item.id(),item.eplId(),item.title(),item.revision(),item.oldId(),item.replacementId(),item.replacementRevision(),formats,problem==null?"READY":"EXCLUDED",problem,false,item.oldHash(),item.replacementHash(),null,null,null,item.reason()));
             }
         };
         if(source.equals("downloads")) torrent.exclusiveClient(adapter->{evaluate.accept(adapter.listTorrents());return null;});else evaluate.accept(List.of());
         if(!context.equals(context(source))) throw new UserInputException("La conexión cambió; vuelve a preparar la limpieza");
         tx.executeWithoutResult(status->{
+            if(reuseId!=null) {
+                if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE id=? AND owner_id=? AND state='PREVIEW' AND library_plan IS NOT NULL AND context=?",Long.class,id,owner.id(),context)!=1) throw new UserInputException("La previsualización cambió o ya está confirmada");
+                jdbc.update("DELETE FROM revision_cleanup_items WHERE job_id=?",id);
+            }
+            if(reuseId==null)
             jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,library,allow_undownloaded,delete_history,state,created_at,updated_at,expires_at) VALUES(?,?,?,?,?,?,?,?,?,'PREVIEW',?,?,?)",id,source,action,owner.id(),owner.username(),context,connection==null?null:connection.library(),input.allowUndownloaded(),source.equals("downloads") && (action.equals("RECORD") || input.deleteHistory()),now,now,now+Duration.ofMinutes(30).toMillis());
             int position=0;
             for(var item:prepared) jdbc.update("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,old_hash,replacement_hash,formats,state,message) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",item.id(),id,position++,item.oldId(),item.replacementId(),item.eplId(),item.title(),item.revision(),item.replacementRevision(),item.oldHash(),item.replacementHash(),json.writeValueAsString(item.formats()),item.state(),item.message());
+            if(libraryPlan!=null) {
+                jdbc.update("UPDATE revision_cleanup_jobs SET library_plan=?,updated_at=?,expires_at=? WHERE id=?",json.writeValueAsString(Map.of("groups",libraryPlan.groups().size())),now,now+Duration.ofMinutes(30).toMillis(),id);
+                for(var item:prepared) {
+                    var identity=identities.get(item.id());
+                    jdbc.update("UPDATE revision_cleanup_items SET cleanup_reason=?,calibre_identity=?,retained_identity=?,retained_formats=? WHERE id=?",item.reason(),identity==null?null:identity[0],identity==null?null:identity[1],identity==null?null:identity[2],item.id());
+                }
+            }
         });
         return get(id);
     }
@@ -334,6 +448,7 @@ public class RevisionCleanup {
         if(confirmation==null || !confirmation.confirm() || confirmation.ids()==null || confirmation.ids().isEmpty() || (!job.directRemoval() && confirmation.ids().size()>LIMIT)
             || confirmation.ids().stream().anyMatch(value->value==null || value.length()!=36) || new HashSet<>(confirmation.ids()).size()!=confirmation.ids().size()) throw new UserInputException("Selecciona las revisiones y confirma la limpieza");
         if(Set.of("FILES","BOOK").contains(job.action()) && !confirmation.confirmDestructive()) throw new UserInputException("Confirma explícitamente la eliminación irreversible de archivos o de entradas completas");
+        if(jdbc.queryForObject("SELECT count(*) FROM calibre_cleanup_preparations WHERE job_id=?",Long.class,id)>0) throw new UserInputException("Confirma la selección desde la previsualización de la biblioteca");
         String signature=json.writeValueAsString(confirmation.ids().stream().sorted().toList());
         String current=context(job.source());
         boolean created=Boolean.TRUE.equals(tx.execute(status->{
@@ -345,6 +460,7 @@ public class RevisionCleanup {
             if(((Number)stored.get("expires_at")).longValue()<Instant.now().toEpochMilli() || !stored.get("context").equals(current)) throw new UserInputException("La previsualización caducó o cambió la conexión; vuelve a preparar la limpieza");
             if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE owner_id=? AND state IN ('QUEUED','RUNNING','PAUSED')",Long.class,owner.id())>=5) throw new UserInputException("Hay cinco limpiezas pendientes; termina o cancela alguna antes de crear otra");
             if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items WHERE id IN (SELECT value FROM json_each(?)) AND job_id=? AND state='READY'",Long.class,signature,id)!=confirmation.ids().size()) throw new UserInputException("La selección contiene una revisión que no puede eliminarse");
+            if(job.source().equals("calibre") && jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items a JOIN revision_cleanup_items b ON b.job_id=a.job_id AND b.old_id=a.replacement_id WHERE a.job_id=? AND a.id IN (SELECT value FROM json_each(?)) AND b.id IN (SELECT value FROM json_each(?))",Long.class,id,signature,signature)>0) throw new UserInputException("La selección incluye una copia que debe conservarse");
             jdbc.update("UPDATE revision_cleanup_items SET state='SKIPPED' WHERE job_id=? AND state='READY'",id);
             jdbc.update("UPDATE revision_cleanup_items SET state='PENDING' WHERE id IN (SELECT value FROM json_each(?)) AND job_id=?",signature,id);
             jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',confirmation=?,updated_at=? WHERE id=?",signature,Instant.now().toEpochMilli(),id);return true;
@@ -493,17 +609,33 @@ public class RevisionCleanup {
         var old=bookOrNull(c,Long.parseLong(item.oldId()));
         if(old==null) {if(allowAbsentOld) return;throw new UserInputException("La revisión antigua ya no existe en Calibre");}
         checkOldCalibre(item,old);
+        checkFrozenCalibre(item,c,old,false);
     }
     private void checkRetainedCalibre(Item item,CalibreSettings.Connection c) {
         long retained=Long.parseLong(item.replacementId());
-        if(item.oldId().equals(item.replacementId()) || new BigDecimal(item.revision()).compareTo(new BigDecimal(item.replacementRevision()))>=0)
+        if(item.oldId().equals(item.replacementId()) || !validRetainedRevision(item))
             throw new UserInputException("La revisión que se conserva debe ser distinta y estrictamente superior");
-        var newer=client.book(c,retained);
+        var newer=bookOrNull(c,retained);
+        if(newer==null) throw new UserInputException("La copia que se conserva ya no existe en Calibre; no se eliminará ninguna copia");
         if(newer.calibreId()!=retained || !Objects.equals(newer.eplId(),item.eplId()) || newer.revision()==null || newer.revision().compareTo(new BigDecimal(item.replacementRevision()))!=0 || !client.hasEpub(c,retained))
             throw new UserInputException("La revisión que se conserva no está verificada con EPUB e identificadores");
+        checkFrozenCalibre(item,c,newer,true);
+        if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE j.source='calibre' AND i.old_id=? AND (i.state='UNCERTAIN' OR j.state IN ('QUEUED','RUNNING','PAUSED') AND i.state IN ('PENDING','RUNNING','VERIFYING'))",Long.class,item.replacementId())>0) throw new UserInputException("La copia que se conserva tiene un borrado pendiente; no se eliminará ninguna copia");
+    }
+    private static boolean validRetainedRevision(Item item) {
+        int comparison=new BigDecimal(item.revision()).compareTo(new BigDecimal(item.replacementRevision()));
+        return comparison<0 && !"DUPLICATE".equals(item.reason()) || comparison==0 && "DUPLICATE".equals(item.reason());
+    }
+    private void checkFrozenCalibre(Item item,CalibreSettings.Connection connection,CalibreClient.Book book,boolean retained) {
+        var rows=jdbc.queryForList("SELECT cleanup_reason,calibre_identity,retained_identity,retained_formats,preview_checked FROM revision_cleanup_items WHERE id=?",item.id());
+        if(rows.isEmpty() || rows.getFirst().get("cleanup_reason")==null || !Boolean.TRUE.equals(rows.getFirst().get("preview_checked")) && !(rows.getFirst().get("preview_checked") instanceof Number n && n.intValue()!=0)) return;
+        var row=rows.getFirst();String snapshot=(String)row.get(retained?"retained_identity":"calibre_identity");
+        if(snapshot==null || !snapshot.equals(json.writeValueAsString(book))) throw new UserInputException("La entrada de Calibre cambió desde la previsualización; no se borrará");
+        var formats=retained?json.readValue((String)row.get("retained_formats"),new tools.jackson.core.type.TypeReference<List<String>>(){}):item.formats();
+        if(!new HashSet<>(formats).equals(new HashSet<>(client.formats(connection,book.calibreId())))) throw new UserInputException("Los formatos de Calibre cambiaron desde la previsualización; no se borrará");
     }
     private void checkOldCalibre(Item item,CalibreClient.Book old) {
-        if(old.calibreId()!=Long.parseLong(item.oldId()) || !Objects.equals(old.eplId(),item.eplId()) || old.revision()==null || old.revision().compareTo(new BigDecimal(item.revision()))!=0 || old.revision().compareTo(new BigDecimal(item.replacementRevision()))>=0)
+        if(old.calibreId()!=Long.parseLong(item.oldId()) || !Objects.equals(old.eplId(),item.eplId()) || old.revision()==null || old.revision().compareTo(new BigDecimal(item.revision()))!=0 || !validRetainedRevision(item))
             throw new UserInputException("Los metadatos de las revisiones cambiaron; no se eliminará el libro");
     }
     private CalibreClient.Book bookOrNull(CalibreSettings.Connection c,long id) {
@@ -604,7 +736,7 @@ public class RevisionCleanup {
             if(verify) {if(!removed(c,old,job.action())) throw new UserInputException("Calibre no confirma el borrado; no se ha repetido la orden");return null;}
             var current=bookOrNull(c,old);
             if(current==null) return null;
-            if(job.directRemoval()) checkDirectCalibre(item,c,false);else checkOldCalibre(item,current);
+            if(job.directRemoval()) checkDirectCalibre(item,c,false);else {checkOldCalibre(item,current);checkFrozenCalibre(item,c,current,false);}
             requireCurrentAction(job.source(),job.action());
             // Never discard a changed observation; revalidate the retained EPUB immediately before dispatch.
             if(!job.directRemoval()) checkRetainedCalibre(item,c);
@@ -640,7 +772,7 @@ public class RevisionCleanup {
     private static String reason(RuntimeException ex) {return ex instanceof UserInputException || ex instanceof org.springframework.security.access.AccessDeniedException || ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException?Objects.toString(ex.getMessage(),"No se pudo verificar la operación"):"No se pudo comprobar el cliente o completar la operación; revisa la conexión";}
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=3600000) public void retention() {
         if(!lifecycle.tryLock()) return;
-        try {jdbc.update("DELETE FROM revision_cleanup_jobs WHERE id IN (SELECT id FROM revision_cleanup_jobs WHERE state='PREVIEW' AND expires_at<? OR state IN ('COMPLETED','CANCELLED') AND updated_at<? AND NOT EXISTS(SELECT 1 FROM revision_cleanup_items i WHERE i.job_id=revision_cleanup_jobs.id AND i.state='UNCERTAIN') ORDER BY created_at LIMIT 100)",Instant.now().toEpochMilli(),Instant.now().minus(Duration.ofDays(90)).toEpochMilli());}finally {lifecycle.unlock();}
+        try {jdbc.update("DELETE FROM revision_cleanup_jobs WHERE id IN (SELECT id FROM revision_cleanup_jobs WHERE state='PREVIEW' AND expires_at<? AND NOT EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=revision_cleanup_jobs.id AND p.state IN ('QUEUED','RUNNING')) OR state IN ('COMPLETED','CANCELLED') AND updated_at<? AND NOT EXISTS(SELECT 1 FROM revision_cleanup_items i WHERE i.job_id=revision_cleanup_jobs.id AND i.state='UNCERTAIN') ORDER BY created_at LIMIT 100)",Instant.now().toEpochMilli(),Instant.now().minus(Duration.ofDays(90)).toEpochMilli());}finally {lifecycle.unlock();}
     }
     @jakarta.annotation.PreDestroy void close() {enabled=false;worker.shutdown();try {if(!worker.awaitTermination(65,TimeUnit.SECONDS)) worker.shutdownNow();}catch(InterruptedException ex) {worker.shutdownNow();Thread.currentThread().interrupt();}}
 }

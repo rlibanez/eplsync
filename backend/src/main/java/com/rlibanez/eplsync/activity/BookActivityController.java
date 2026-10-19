@@ -86,7 +86,7 @@ public class BookActivityController {
         var authentication=SecurityContextHolder.getContext().getAuthentication();
         if(authentication.getPrincipal() instanceof Account owner) for(String source:List.of("downloads","calibre")) {
             if(!Permission.has(source.equals("downloads")?Permission.TORRENT_SYNC:Permission.CALIBRE_READ)) continue;
-            queries.add("SELECT 'cleanup:'||i.id,j.created_at,CASE WHEN j.direct_removal=1 THEN ? ELSE ? END,i.revision,i.state,j.state,i.message,j.source,j.id,1 FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.source=? AND j.owner_id=? AND j.state<>'PREVIEW' AND (i.state NOT IN ('READY','EXCLUDED','SKIPPED') OR EXISTS(SELECT 1 FROM json_each(coalesce(j.confirmation,'[]')) c WHERE c.value=i.id))");
+            queries.add("SELECT 'cleanup:'||i.id,j.created_at,CASE WHEN j.direct_removal=1 THEN ? ELSE ? END,i.revision,i.state,j.state,i.message,j.source,j.id,1 FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.source=? AND j.owner_id=? AND j.state<>'PREVIEW' AND (i.state NOT IN ('READY','EXCLUDED','SKIPPED') OR i.preview_selected=1 OR EXISTS(SELECT 1 FROM json_each(coalesce(j.confirmation,'[]')) c WHERE c.value=i.id))");
             args.addAll(List.of(source.equals("downloads")?"DOWNLOAD_DELETE":"CALIBRE_DELETE",source.equals("downloads")?"DOWNLOAD_CLEANUP":"CALIBRE_CLEANUP",eplId,source,owner.id()));
         }
         if(queries.isEmpty()) return new PageResponse<>(List.of(),meta(page,size,0));

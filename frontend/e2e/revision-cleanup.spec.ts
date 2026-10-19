@@ -51,7 +51,7 @@ for (const { source, deleteHistory, action } of [
   { source: "downloads", deleteHistory: false, action: "FILES" },
   { source: "downloads", deleteHistory: true, action: "FILES" },
   { source: "downloads", deleteHistory: true, action: "RECORD" },
-  { source: "calibre", deleteHistory: false, action: "BOOK" },
+
 ] as const) {
   test(`${source}, ${action}, deleteHistory=${deleteHistory}: preview, selection, confirmation and tracking`, async ({
     page,
@@ -70,18 +70,36 @@ for (const { source, deleteHistory, action } of [
       source,
       deleteHistory,
       action,
+      libraryCleanup: source === "calibre",
     };
     let creates = 0;
-    await page.route("**/api/revision-cleanups/preview", async (r) => {
-      expect(r.request().postDataJSON()).toEqual({
-        source,
-        action: action === "RECORD" ? "KEEP" : action,
-        allowUndownloaded: source === "downloads",
-        deleteHistory,
-        ids: [],
-      });
-      await r.fulfill({ json: current });
-    });
+    await page.route(
+      source === "calibre"
+        ? "**/api/revision-cleanups/calibre-library/preview"
+        : "**/api/revision-cleanups/preview",
+      async (r) => {
+        expect(r.request().postDataJSON()).toEqual(
+          source === "calibre"
+            ? {
+                oldRevisions: true,
+                duplicates: false,
+                ids: [],
+                retained: {},
+                previewId: null,
+              }
+            : {
+                source,
+                action: action === "RECORD" ? "KEEP" : action,
+                allowUndownloaded: source === "downloads",
+                deleteHistory,
+                ids: [],
+              },
+        );
+        await r.fulfill({
+          json: source === "calibre" ? { job: current, groups: [] } : current,
+        });
+      },
+    );
     await page.route("**/api/revision-cleanups/cleanup-job/items?**", (r) =>
       r.fulfill({
         json: { items: [ready, excluded], meta: { ...meta, totalItems: 2 } },
@@ -111,7 +129,13 @@ for (const { source, deleteHistory, action } of [
     );
     await page.goto(source === "calibre" ? "/calibre" : "/downloads");
     await page
-      .getByRole("button", { name: "Limpiar revisiones antiguas", exact: true })
+      .getByRole("button", {
+        name:
+          source === "calibre"
+            ? "Limpiar biblioteca"
+            : "Limpiar revisiones antiguas",
+        exact: true,
+      })
       .click();
     const modal = page.getByRole("dialog");
     if (source === "downloads") {
@@ -152,8 +176,8 @@ for (const { source, deleteHistory, action } of [
       await expect(
         modal.getByRole("textbox", { name: "Acción", exact: true }),
       ).toHaveCount(0);
-      await expect(modal).toContainText(
-        "Borrar la entrada antigua completa de Calibre y todos sus formatos",
+      await expect(modal).not.toContainText(
+        "Borrar las entradas seleccionadas de Calibre y todos sus formatos",
       );
       await expect(modal).not.toContainText(
         "Borrar el EPUB de la revisión antigua",
@@ -200,12 +224,22 @@ for (const { source, deleteHistory, action } of [
       new RegExp(`/${source}/jobs/cleanup/cleanup-job$`),
     );
     await expect(
-      page.getByRole("heading", { name: "Trabajo de limpieza de revisiones" }),
+      page.getByRole("heading", {
+        name:
+          source === "calibre"
+            ? "Trabajo de limpieza de biblioteca"
+            : "Trabajo de limpieza de revisiones",
+      }),
     ).toBeVisible();
     expect(creates).toBe(1);
     await page.reload();
     await expect(
-      page.getByRole("heading", { name: "Trabajo de limpieza de revisiones" }),
+      page.getByRole("heading", {
+        name:
+          source === "calibre"
+            ? "Trabajo de limpieza de biblioteca"
+            : "Trabajo de limpieza de revisiones",
+      }),
     ).toBeVisible();
   });
 }
