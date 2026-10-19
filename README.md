@@ -173,6 +173,10 @@ Abre `http://localhost:8088` o la dirección y puerto que hayas configurado.
 Para acceso por red o mediante un proxy HTTPS, consulta la
 [guía de acceso y seguridad](docs/seguridad.md#acceso-remoto).
 
+También puedes [instalar EPL Sync como aplicación web (PWA)](docs/instalacion.md#instalar-como-aplicación-pwa)
+con un navegador compatible. Requiere HTTPS, salvo en `localhost` o `127.0.0.1`,
+y conexión con el servidor; no ofrece funcionamiento sin conexión.
+
 ## Ejecutar sin Docker
 
 Se recomienda la instalación mediante Docker. También puedes ejecutar el JAR

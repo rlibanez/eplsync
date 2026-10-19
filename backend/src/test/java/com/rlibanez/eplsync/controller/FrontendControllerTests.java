@@ -44,4 +44,17 @@ class FrontendControllerTests {
         org.junit.jupiter.api.Assertions.assertEquals("console.log('asset');",response.getContentAsString());
     }
 
+    @Test void manifestHasItsOwnMimeTypeAndRevalidationWithoutAnHtmlFallback() throws Exception {
+        var index = new org.springframework.core.io.FileSystemResource(directory.resolve("index.html"));
+        var mvc = MockMvcBuilders.standaloneSetup(new FrontendController(index)).build();
+        mvc.perform(get("/manifest.webmanifest")).andExpect(status().isNotFound());
+        java.nio.file.Files.writeString(directory.resolve("manifest.webmanifest"),"{\"name\":\"EPL Sync\",\"display\":\"standalone\"}");
+        var first = mvc.perform(get("/manifest.webmanifest")).andExpect(status().isOk())
+            .andExpect(content().contentTypeCompatibleWith("application/manifest+json"))
+            .andExpect(header().string("Cache-Control","no-cache"))
+            .andExpect(jsonPath("$.name").value("EPL Sync")).andReturn();
+        mvc.perform(get("/manifest.webmanifest").header("If-Modified-Since",first.getResponse().getHeader("Last-Modified")))
+            .andExpect(status().isNotModified());
+    }
+
 }

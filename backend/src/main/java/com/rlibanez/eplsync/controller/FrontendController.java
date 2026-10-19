@@ -30,4 +30,14 @@ public class FrontendController {
         if (!index.exists()) return ResponseEntity.notFound().cacheControl(CacheControl.noCache()).build();
         return ResponseEntity.ok().cacheControl(CacheControl.noCache()).lastModified(index.lastModified()).body(index);
     }
+    /** Explicit MIME type: servlet containers do not consistently recognize .webmanifest. */
+    @GetMapping(value="/manifest.webmanifest", produces="application/manifest+json")
+    public ResponseEntity<Resource> manifest() throws IOException {
+        var manifest = index.createRelative("manifest.webmanifest");
+        if (!manifest.exists()) return ResponseEntity.notFound().cacheControl(CacheControl.noCache()).build();
+        return ResponseEntity.ok().cacheControl(CacheControl.noCache())
+            .contentType(org.springframework.http.MediaType.parseMediaType("application/manifest+json"))
+            .lastModified(manifest.lastModified()).body(manifest);
+    }
+
 }

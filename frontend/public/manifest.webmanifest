@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "EPL Sync",
+  "short_name": "EPL Sync",
+  "description": "Catálogo de ePubLibre, descargas torrent y biblioteca de Calibre.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#121615",
+  "theme_color": "#121615",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/brand/eplsync-app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/eplsync-app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

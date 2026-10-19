@@ -191,3 +191,35 @@ publicadas no se modifican ni se renombran.
 
 La versión 1.6.3 mantiene el esquema `1.5.0.13`: al actualizar desde la 1.6.2 no
 se aplican nuevas migraciones. Se conservan los datos, trabajos y configuraciones.
+
+## Instalar como aplicación (PWA)
+
+EPL Sync puede instalarse desde un navegador compatible y abrirse en una ventana
+independiente, sin la barra de direcciones ni las pestañas habituales. Utiliza el
+icono de instalación de la barra de direcciones o la opción **Instalar EPL Sync**
+del menú del navegador. El texto y la disponibilidad dependen del navegador y del
+sistema operativo. En iPhone/iPad utiliza **Añadir a pantalla de inicio** desde
+el menú de compartir cuando esté disponible.
+
+La instalación requiere **HTTPS con un certificado válido y reconocido por el
+dispositivo**. Las direcciones locales `http://localhost:8088` y
+`http://127.0.0.1:8088` son excepciones admitidas para pruebas en el mismo equipo.
+Una dirección de red como `http://192.168.1.50:8088` no cumple este requisito:
+configura HTTPS mediante un [proxy inverso](seguridad.md#acceso-remoto) y accede
+siempre por esa dirección HTTPS. En un móvil, `localhost` se refiere al propio
+móvil, no al servidor donde está EPL Sync.
+
+Los navegadores basados en Chromium ofrecen instalación en equipos de escritorio;
+otros navegadores y plataformas pueden ofrecer opciones distintas o únicamente
+accesos directos. Si no aparece la opción, comprueba HTTPS, si la aplicación ya
+está instalada y la compatibilidad del navegador. Puedes seguir usando EPL Sync
+desde una pestaña normal.
+
+**No hay funcionamiento sin conexión:** el servidor debe estar encendido y
+accesible. No se registra ningún service worker ni se añade caché para uso sin
+conexión. La aplicación instalada utiliza la misma autenticación y los mismos
+permisos que la web; instalarla no concede permisos adicionales. La instalación
+está asociada a la dirección del servidor y al perfil del navegador. Desinstalarla
+no elimina la base de datos ni los trabajos del servidor.
+
+Consulta los [requisitos de instalación de PWA en MDN](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
