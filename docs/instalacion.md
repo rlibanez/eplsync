@@ -188,3 +188,6 @@ servicios opcionales independientes.
 La versión 1.6.2 aplica `V1_5_0_13` al actualizar desde la 1.6.1, hasta el esquema
 `1.5.0.13`, conservando los datos y el historial existente. Las migraciones ya
 publicadas no se modifican ni se renombran.
+
+La versión 1.6.3 mantiene el esquema `1.5.0.13`: al actualizar desde la 1.6.2 no
+se aplican nuevas migraciones. Se conservan los datos, trabajos y configuraciones.
