@@ -115,13 +115,50 @@ for (const width of [1440, 390])
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
+    const facts = await tasks
+      .locator(".home-task-facts > div")
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const label = element.querySelector("dt")!;
+          const value = element.querySelector("dd")!;
+          const range = document.createRange();
+          range.selectNodeContents(value);
+          return {
+            label: label.getBoundingClientRect().left,
+            value: range.getBoundingClientRect().left,
+            align: getComputedStyle(value).textAlign,
+          };
+        }),
+      );
+    for (const fact of facts) {
+      expect(fact.align).toBe("left");
+      expect(Math.abs(fact.label - fact.value)).toBeLessThan(1);
+    }
     if (width >= 1200) {
-      const columns = await tasks.locator(".home-task-list > li").evaluateAll(rows => rows.map(row => Array.from(row.querySelectorAll(".home-task-name, .mantine-Badge-root, .home-task-facts > div"), cell => cell.getBoundingClientRect().left)));
-      for (const row of columns.slice(1)) row.forEach((left,index) => expect(Math.abs(left-columns[0][index])).toBeLessThan(1));
+      const columns = await tasks
+        .locator(".home-task-list > li")
+        .evaluateAll((rows) =>
+          rows.map((row) =>
+            Array.from(
+              row.querySelectorAll(
+                ".home-task-name, .mantine-Badge-root, .home-task-facts > div",
+              ),
+              (cell) => cell.getBoundingClientRect().left,
+            ),
+          ),
+        );
+      for (const row of columns.slice(1))
+        row.forEach((left, index) =>
+          expect(Math.abs(left - columns[0][index])).toBeLessThan(1),
+        );
       for (const row of await tasks.locator(".home-task-list > li").all()) {
         const box = await row.boundingBox();
         expect(box!.height).toBeLessThan(100);
-        const cells = await row.locator(".home-task-name, .home-task-facts > div").evaluateAll(elements => elements.map(el => el.getBoundingClientRect().top));
+        const cells = await row
+          .locator(".home-task-name, .home-task-facts > div")
+          .evaluateAll((elements) =>
+            elements.map((el) => el.getBoundingClientRect().top),
+          );
         expect(Math.max(...cells) - Math.min(...cells)).toBeLessThan(30);
       }
     }

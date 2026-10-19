@@ -2184,7 +2184,7 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 .home-task-facts { display: contents; font-size: 14px; }
 .home-task-facts > div { display: block; min-width: 0; border: 0; padding: 0; }
 .home-task-facts dt { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
-.home-task-facts dd { margin: 0; overflow-wrap: anywhere; }
+.home-task-facts dd { margin: 0; text-align: left; overflow-wrap: anywhere; }
 @media (max-width: 1100px) {
   .home-task-list { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; }
   .home-task-list > li { row-gap: 10px; }
