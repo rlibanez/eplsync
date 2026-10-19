@@ -58,6 +58,12 @@ final class BulkSummaries {
                 .setParameter("ids",plans.keySet()).getResultList())
             cleanup.computeIfAbsent((String)row[0],ignored -> new EnumMap<>(UpdateCleanup.State.class))
                 .put((UpdateCleanup.State)row[1],(Long)row[2]);
+        var observations=new HashMap<String,BulkStore.DownloadSummary>();
+        var trackedIds=jobs.stream().filter((BulkJob entryValue)->Objects.requireNonNull(entryValue).isTrackDownloads()).map(job->Objects.requireNonNull(job).getId()).toList();
+        if(!trackedIds.isEmpty()) for(Object result:em.createNativeQuery("SELECT job_id,count(*),sum(download_state='DOWNLOADED'),sum(download_state IN ('ERROR','NOT_FOUND','PAUSED')),sum(download_state='IGNORED') FROM torrent_bulk_items WHERE job_id IN (:ids) AND state IN ('ACCEPTED','ALREADY_EXISTS') GROUP BY job_id").setParameter("ids",trackedIds).getResultList()) {
+            var row=(Object[])result;long total=number(row[1]),done=number(row[2]),attention=number(row[3]),ignored=number(row[4]);
+            observations.put(row[0].toString(),new BulkStore.DownloadSummary(total,done,total-done-attention-ignored,attention,ignored));
+        }
         return jobs.stream().map(j -> {
             var c=counts.getOrDefault(j.getId(),Counts.EMPTY);
             var p=plans.get(j.getId());
@@ -70,8 +76,8 @@ final class BulkSummaries {
                     j.getBatchSize(),j.getConcurrency(),j.getIntervalMillis()+"ms",j.getCreatedAt(),j.getUpdatedAt(),j.getRetryAt(),j.getMessage(),
                     j.getMultipleHashes()==null ? MultipleHashes.SKIP : j.getMultipleHashes(),c.torrents,c.processedTorrents,
                     c.total,c.accepted+c.existing+c.skipped+c.failed,p==null ? BulkJob.Type.DOWNLOAD : BulkJob.Type.UPDATE,
-                    p==null ? null : p.policy,summary,p==null ? null : p.timing==null ? CleanupTiming.AFTER_DOWNLOAD : p.timing,j.getEventActorUsername(),p!=null && Boolean.TRUE.equals(p.deleteHistory));
+                    p==null ? null : p.policy,summary,p==null ? null : p.timing==null ? CleanupTiming.AFTER_DOWNLOAD : p.timing,j.getEventActorUsername(),p!=null && Boolean.TRUE.equals(p.deleteHistory),j.isTrackDownloads()?observations.getOrDefault(j.getId(),new BulkStore.DownloadSummary(0,0,0,0,0)):null);
         }).toList();
     }
-    private static long number(Object value) { return ((Number)value).longValue(); }
+    private static long number(Object value) { return value==null?0:((Number)value).longValue(); }
 }

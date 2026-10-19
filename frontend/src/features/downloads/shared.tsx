@@ -130,6 +130,7 @@ export const jobStates = [
   "QUEUED",
   "RUNNING",
   "RETRY_WAIT",
+  "DOWNLOAD_WAIT",
   "CLEANUP_WAIT",
   "PAUSED",
   "COMPLETED",
@@ -145,6 +146,13 @@ export const itemStates = [
   "CANCELLED",
 ];
 export interface Job {
+  download?: {
+    selected: number;
+    downloaded: number;
+    pending: number;
+    attention: number;
+    ignored: number;
+  } | null;
   type?: "DOWNLOAD" | "UPDATE" | "CLEANUP";
   deleteHistory?: boolean;
   previousVersions?: string | null;
@@ -178,4 +186,14 @@ export interface Job {
   updatedAt: string;
   retryAt: string | null;
   message: string | null;
+}
+
+export function completedWorkItems(job: Job) {
+  return job.download
+    ? job.download.downloaded +
+        job.download.ignored +
+        job.failed +
+        job.skipped +
+        job.cancelled
+    : job.processedItems;
 }

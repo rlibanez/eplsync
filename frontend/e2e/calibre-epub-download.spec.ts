@@ -115,6 +115,24 @@ for (const path of ["/calibre", "/catalog/1"]) {
     await expect(openAction).toHaveAttribute("target", "_blank");
     await expect(openAction).toHaveAttribute("rel", "noopener noreferrer");
     await expect(openAction).toHaveText("");
+    const actions = row
+      .locator(".mantine-Group-root")
+      .filter({
+        has: page.getByRole("link", { name: "Ver en Calibre", exact: true }),
+      });
+    await expect(actions.locator("button, a")).toHaveCount(4);
+    expect(
+      await actions
+        .locator("button, a")
+        .evaluateAll((elements) =>
+          elements.map((el) => el.getAttribute("aria-label")),
+        ),
+    ).toEqual([
+      "Descargar EPUB",
+      "Ver en Calibre",
+      "Completar identificadores",
+      "Eliminar",
+    ]);
     await openAction.focus();
     await expect(
       page.getByRole("tooltip", { name: "Ver en Calibre", exact: true }),

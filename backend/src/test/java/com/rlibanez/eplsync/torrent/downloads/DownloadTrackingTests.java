@@ -410,9 +410,9 @@ class DownloadTrackingTests {
         try {
             worker.recover();
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-            while (bulk.job(job.jobId()).getState() != com.rlibanez.eplsync.torrent.bulk.BulkJob.State.COMPLETED
+            while (bulk.job(job.jobId()).getState() != com.rlibanez.eplsync.torrent.bulk.BulkJob.State.DOWNLOAD_WAIT
                     && System.nanoTime() < deadline) { worker.tick(); Thread.sleep(10); }
-            assertThat(bulk.job(job.jobId()).getState()).isEqualTo(com.rlibanez.eplsync.torrent.bulk.BulkJob.State.COMPLETED);
+            assertThat(bulk.job(job.jobId()).getState()).isEqualTo(com.rlibanez.eplsync.torrent.bulk.BulkJob.State.DOWNLOAD_WAIT);
             assertThat(only().getRevision()).isEqualTo(1.0);
             assertThat(only().getHash()).isEqualTo(HASH);
             assertThat(only().getStatus()).isEqualTo(DownloadStatus.SUBMITTED);

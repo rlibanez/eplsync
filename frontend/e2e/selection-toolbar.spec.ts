@@ -53,6 +53,18 @@ for (const calibre of [false, true]) {
       );
       await page.goto(calibre ? "/calibre" : "/downloads");
       await expect(page.locator("tbody tr")).toHaveCount(2);
+      const rowDelete = page
+        .locator("tbody")
+        .getByRole("button", { name: "Eliminar", exact: true })
+        .first();
+      await expect(rowDelete.locator("svg")).toHaveAttribute("width", "16");
+      const redChannels = await rowDelete.evaluate((el) =>
+        getComputedStyle(el)
+          .color.match(/[\d.]+/g)!
+          .map(Number),
+      );
+      expect(redChannels[0]).toBeGreaterThan(redChannels[1]);
+      expect(redChannels[0]).toBeGreaterThan(redChannels[2]);
       const table = page.locator("table");
       const top = () =>
         table.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
@@ -66,6 +78,20 @@ for (const calibre of [false, true]) {
       await expect(
         page.getByRole("button", { name: "Quitar selección (1)", exact: true }),
       ).toBeVisible();
+      const selectionDelete = page
+        .locator(".selection-toolbar-actions")
+        .getByRole("button", { name: "Eliminar", exact: true });
+      await expect(selectionDelete.locator("svg")).toHaveAttribute(
+        "width",
+        "16",
+      );
+      const selectionChannels = await selectionDelete.evaluate((el) =>
+        getComputedStyle(el)
+          .color.match(/[\d.]+/g)!
+          .map(Number),
+      );
+      expect(selectionChannels[0]).toBeGreaterThan(selectionChannels[1]);
+      expect(selectionChannels[0]).toBeGreaterThan(selectionChannels[2]);
       expect(await top()).toBe(y);
       expect(await controlsTop()).toBe(controlsY);
       await page.locator("tbody input[type=checkbox]").last().check();

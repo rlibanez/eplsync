@@ -255,7 +255,7 @@ export function SyncReport({
           aria-label={t("syncReport.close")}
           onClick={onClose}
         >
-          <X size={20} />
+          <X size={16} />
         </ActionIcon>
       </Tooltip>
       <details className="report-collapse" key={report.checkedAt}>

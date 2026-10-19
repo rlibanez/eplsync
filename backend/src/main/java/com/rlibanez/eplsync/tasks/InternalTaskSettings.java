@@ -13,7 +13,7 @@ import com.rlibanez.eplsync.exception.UserInputException;
 @Service
 @org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 public class InternalTaskSettings {
-    public static final String CALIBRE = "calibre-download-check", CLEANUP = "torrent-cleanup";
+    public static final String CALIBRE = "calibre-download-check", CLEANUP = "torrent-cleanup", DOWNLOADS = "torrent-download-check";
     private static final String PREFIX = "tasks.internal.";
     public record Period(String id, String interval) {}
     private final JdbcTemplate jdbc;
@@ -22,14 +22,15 @@ public class InternalTaskSettings {
     private final Map<String,Duration> installation;
     public InternalTaskSettings(JdbcTemplate jdbc, PlatformTransactionManager manager,
         @Value("${eplsync.calibre.transfers.download-check-interval:30s}") String calibre,
-        @Value("${eplsync.torrent.cleanup.interval:30s}") String cleanup) {
+        @Value("${eplsync.torrent.cleanup.interval:30s}") String cleanup,
+        @Value("${eplsync.torrent.bulk.download-check-interval:30s}") String downloads) {
         this.jdbc=jdbc; tx=new TransactionTemplate(manager);
         var values=new HashMap<String,Duration>();
-        values.put(CALIBRE,parse(calibre));values.put(CLEANUP,parse(cleanup));
+        values.put(CALIBRE,parse(calibre));values.put(CLEANUP,parse(cleanup));values.put(DOWNLOADS,parse(downloads));
         installation=Map.copyOf(values);
-        jdbc.query("SELECT setting_key,setting_value FROM app_settings WHERE setting_key IN (?,?)", (org.springframework.jdbc.core.RowCallbackHandler) r -> {
+        jdbc.query("SELECT setting_key,setting_value FROM app_settings WHERE setting_key IN (?,?,?)", (org.springframework.jdbc.core.RowCallbackHandler) r -> {
             values.put(r.getString(1).substring(PREFIX.length()),parse(r.getString(2)));
-        },PREFIX+CALIBRE,PREFIX+CLEANUP);
+        },PREFIX+CALIBRE,PREFIX+CLEANUP,PREFIX+DOWNLOADS);
         periods=Map.copyOf(values);
     }
     public static Duration parse(String text) {
@@ -43,21 +44,24 @@ public class InternalTaskSettings {
         var value=periods.get(id);if(value==null) throw new UserInputException("Proceso interno desconocido");return value;
     }
     public synchronized void resetAfterCommit() {periods=installation;}
-    public List<Period> view() {return List.of(new Period(CLEANUP,format(interval(CLEANUP))),new Period(CALIBRE,format(interval(CALIBRE))));}
+    public List<Period> view() {return List.of(new Period(CLEANUP,format(interval(CLEANUP))),new Period(CALIBRE,format(interval(CALIBRE))),new Period(DOWNLOADS,format(interval(DOWNLOADS))));}
     private static String format(Duration value) {return value.toMillis()%1000==0 ? value.toSeconds()+"s" : value.toMillis()+"ms";}
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.config.SqliteWriteCoordinator writer;
     private <T> T coordinated(java.util.function.Supplier<T> work) {return writer==null?work.get():writer.write(work);}
     public Period restore(String id) {return coordinated(()->restoreLocked(id));}
     private synchronized Period restoreLocked(String id) {
         interval(id);
-        tx.executeWithoutResult(s -> jdbc.update("DELETE FROM app_settings WHERE setting_key=?",PREFIX+id));
+        tx.executeWithoutResult(s -> {jdbc.update("DELETE FROM app_settings WHERE setting_key=?",PREFIX+id);rescheduleDownloads(id);});
         var copy=new HashMap<>(periods);copy.put(id,installation.get(id));periods=Map.copyOf(copy);
         return new Period(id,format(interval(id)));
+    }
+    private void rescheduleDownloads(String id) {
+        if(DOWNLOADS.equals(id)) jdbc.update("UPDATE torrent_bulk_jobs SET next_download_check=0 WHERE track_downloads=1 AND state IN ('QUEUED','RUNNING','DOWNLOAD_WAIT','CLEANUP_WAIT') AND next_download_check<>0");
     }
     public Period save(String id,String text) {return coordinated(()->saveLocked(id,text));}
     private synchronized Period saveLocked(String id,String text) {
         interval(id); var value=parse(text);var stored=format(value);
-        tx.executeWithoutResult(s -> jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value",PREFIX+id,stored));
+        tx.executeWithoutResult(s -> {jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES(?,?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value",PREFIX+id,stored);rescheduleDownloads(id);});
         var copy=new HashMap<>(periods);copy.put(id,value);periods=Map.copyOf(copy);
         return new Period(id,stored);
     }

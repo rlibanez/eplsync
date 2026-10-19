@@ -1,3 +1,5 @@
+import { Trash2 } from "lucide-react";
+import { TableAction } from "../../components/TableAction";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import {
   pageSelection,
@@ -39,6 +41,7 @@ type HistoryItem = Pick<
 export function BookHistory({ id }: { id: number }) {
   const { t } = useTranslation();
   const { can } = useAuth();
+  const canRemove = can("DOWNLOADS_DELETE") || can("TORRENT_CLEANUP");
   const selectable =
     can("DOWNLOADS_FILES_READ") ||
     can("TORRENT_SYNC") ||
@@ -63,7 +66,7 @@ export function BookHistory({ id }: { id: number }) {
       {
         field: "actions",
         label: "historyActions.actions",
-        width: 120,
+        width: 140,
         sortable: false,
       },
     ],
@@ -75,7 +78,7 @@ export function BookHistory({ id }: { id: number }) {
     {
       defaults: "revision,desc",
       selection: selectable,
-      hidden: can("DOWNLOADS_FILES_READ") ? [] : ["actions"],
+      hidden: can("DOWNLOADS_FILES_READ") || canRemove ? [] : ["actions"],
     },
     (page + 1) * size,
   );
@@ -89,6 +92,7 @@ export function BookHistory({ id }: { id: number }) {
         signal,
       ),
   });
+  const rows = result.data?.items ?? [];
   const selectRange = useRangeSelection(
     result.data?.items.map((row) => row.id) ?? [],
     (ids, checked) =>
@@ -121,8 +125,12 @@ export function BookHistory({ id }: { id: number }) {
               }}
               eplId={id}
               selected={selected}
-              rows={result.data.items}
-              onDone={() => setSelected([])}
+              rows={rows}
+              onDone={(ids) =>
+                setSelected((current) =>
+                  current.filter((selectedId) => !ids.includes(selectedId)),
+                )
+              }
               extraActions={
                 <>
                   {can("DOWNLOADS_FILES_READ") && (
@@ -131,84 +139,101 @@ export function BookHistory({ id }: { id: number }) {
                   <SendToCalibre ids={selected} />
                 </>
               }
-            />
-            <div className="table-scroll">
-              <table
-                className="download-record-table"
-                style={{ width: columns.width }}
-              >
-                {columns.colgroup}
-                <caption className="sr-only">{t("detail.history")}</caption>
-                <thead>
-                  {columns.selectionHeadings(
-                    selectable && (
-                      <th className="history-selection">
-                        <Checkbox
-                          aria-label={t("historyActions.selectPage")}
-                          {...pageSelection(
-                            selected,
-                            result.data.items.map((row) => row.id),
+            >
+              {({ pending, removeRow }) => (
+                <div className="table-scroll">
+                  <table
+                    className="download-record-table"
+                    style={{ width: columns.width }}
+                  >
+                    {columns.colgroup}
+                    <caption className="sr-only">{t("detail.history")}</caption>
+                    <thead>
+                      {columns.selectionHeadings(
+                        selectable && (
+                          <th className="history-selection">
+                            <Checkbox
+                              aria-label={t("historyActions.selectPage")}
+                              {...pageSelection(
+                                selected,
+                                rows.map((row) => row.id),
+                              )}
+                              disabled={!rows.length}
+                              onChange={(e) => {
+                                const checked = e.currentTarget.checked;
+                                const ids = rows.map((row) => row.id);
+                                setSelected((current) =>
+                                  togglePageSelection(current, ids, checked),
+                                );
+                              }}
+                            />
+                          </th>
+                        ),
+                      )}
+                    </thead>
+                    <tbody>
+                      {rows.map((item, rowIndex) => (
+                        <tr key={item.id}>
+                          {selectable && (
+                            <td className="history-selection">
+                              <Checkbox
+                                aria-label={t("historyActions.selectRevision", {
+                                  revision: revision(item.revision),
+                                })}
+                                checked={selected.includes(item.id)}
+                                onMouseDown={selectRange.preventTextSelection}
+                                onChange={(e) => selectRange(item.id, e)}
+                              />
+                            </td>
                           )}
-                          disabled={!result.data.items.length}
-                          onChange={(e) => {
-                            const checked = e.currentTarget.checked;
-                            const ids = result.data.items.map((row) => row.id);
-                            setSelected((current) =>
-                              togglePageSelection(current, ids, checked),
-                            );
-                          }}
-                        />
-                      </th>
-                    ),
-                  )}
-                </thead>
-                <tbody>
-                  {result.data.items.map((item, rowIndex) => (
-                    <tr key={item.id}>
-                      {selectable && (
-                        <td className="history-selection">
-                          <Checkbox
-                            aria-label={t("historyActions.selectRevision", {
-                              revision: revision(item.revision),
-                            })}
-                            checked={selected.includes(item.id)}
-                            onMouseDown={selectRange.preventTextSelection}
-                            onChange={(e) => selectRange(item.id, e)}
-                          />
-                        </td>
-                      )}
-                      {columns.cells(
-                        [
-                          <td>{revision(item.revision)}</td>,
-                          <td>
-                            <span className="badge">{status(item.status)}</span>
-                          </td>,
-                          <td title={item.clientInstanceId}>
-                            {item.client || "—"}
-                            <small className="hash-text">{item.origin}</small>
-                          </td>,
-                          <td>{date(item.lastCheckedAt)}</td>,
-                          <td>{date(item.completedAt)}</td>,
-                          <td>
-                            <small className="hash-text" title={item.hash}>
-                              {item.hash || "—"}
-                            </small>
-                          </td>,
-                          <td>{item.lastError || "—"}</td>,
-                          <td>
-                            <Group gap={4} wrap="nowrap">
-                              <EpubDownload id={item.id} />
-                              <SendToCalibre ids={[item.id]} inline />
-                            </Group>
-                          </td>,
-                        ],
-                        page * size + rowIndex + 1,
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                          {columns.cells(
+                            [
+                              <td>{revision(item.revision)}</td>,
+                              <td>
+                                <span className="badge">
+                                  {status(item.status)}
+                                </span>
+                              </td>,
+                              <td title={item.clientInstanceId}>
+                                {item.client || "—"}
+                                <small className="hash-text">
+                                  {item.origin}
+                                </small>
+                              </td>,
+                              <td>{date(item.lastCheckedAt)}</td>,
+                              <td>{date(item.completedAt)}</td>,
+                              <td>
+                                <small className="hash-text" title={item.hash}>
+                                  {item.hash || "—"}
+                                </small>
+                              </td>,
+                              <td>{item.lastError || "—"}</td>,
+                              <td>
+                                <Group gap={4} wrap="nowrap">
+                                  <EpubDownload id={item.id} />
+                                  <SendToCalibre ids={[item.id]} inline />
+                                  {canRemove && (
+                                    <TableAction
+                                      color="red"
+                                      label={t("historyActions.delete")}
+                                      disabled={pending}
+                                      onClick={() => removeRow(item)}
+                                    >
+                                      <Trash2 size={16} aria-hidden="true" />
+                                    </TableAction>
+                                  )}
+                                </Group>
+                              </td>,
+                            ],
+                            page * size + rowIndex + 1,
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </DownloadActions>
             <Paging
               choice={pageSizeChoice}
               meta={result.data.meta}

@@ -226,6 +226,18 @@ class ScheduledTasksTests {
         assertThatThrownBy(()->internal.save(InternalTaskSettings.CALIBRE,"0s")).hasMessageContaining("10s");
         assertThatThrownBy(()->internal.save("other","30s")).hasMessageContaining("desconocido");
     }
+    @Test void downloadCheckIntervalPersistsAcrossRestartAndRestoresItsDefault() {
+        internal.restore(InternalTaskSettings.DOWNLOADS);
+        assertThat(internal.interval(InternalTaskSettings.DOWNLOADS)).isEqualTo(Duration.ofSeconds(30));
+        assertThat(internal.view()).hasSize(3);
+        assertThat(internal.save(InternalTaskSettings.DOWNLOADS,"2m").interval()).isEqualTo("120s");
+        var reloaded=new InternalTaskSettings(jdbc,new org.springframework.jdbc.support.JdbcTransactionManager(jdbc.getDataSource()),"30s","30s","30s");
+        assertThat(reloaded.interval(InternalTaskSettings.DOWNLOADS)).isEqualTo(Duration.ofMinutes(2));
+        assertThatThrownBy(()->internal.save(InternalTaskSettings.DOWNLOADS,"9s")).hasMessageContaining("10s");
+        assertThat(internal.interval(InternalTaskSettings.DOWNLOADS)).isEqualTo(Duration.ofMinutes(2));
+        assertThat(internal.restore(InternalTaskSettings.DOWNLOADS).interval()).isEqualTo("30s");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_settings WHERE setting_key='tasks.internal.torrent-download-check'",Long.class)).isZero();
+    }
     @Test void intervalsDefaultToSecondsAndRejectAnythingBelowTenSeconds() {
         assertThat(internal.save(InternalTaskSettings.CALIBRE,"30").interval()).isEqualTo("30s");
         assertThat(internal.save(InternalTaskSettings.CALIBRE,"10").interval()).isEqualTo("10s");
@@ -262,7 +274,7 @@ class ScheduledTasksTests {
         assertThat(internal.restore(InternalTaskSettings.CALIBRE).interval()).isEqualTo("30s");
         assertThat(internal.interval(InternalTaskSettings.CLEANUP)).isEqualTo(Duration.ofMinutes(2));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM app_settings WHERE setting_key='tasks.internal.calibre-download-check'",Long.class)).isZero();
-        var configured=new InternalTaskSettings(jdbc,new org.springframework.jdbc.support.JdbcTransactionManager(jdbc.getDataSource()),"45s","30s");
+        var configured=new InternalTaskSettings(jdbc,new org.springframework.jdbc.support.JdbcTransactionManager(jdbc.getDataSource()),"45s","30s","30s");
         configured.save(InternalTaskSettings.CALIBRE,"1m");
         assertThat(configured.restore(InternalTaskSettings.CALIBRE).interval()).isEqualTo("45s");
         assertThatThrownBy(()->configured.restore("unknown")).hasMessageContaining("desconocido");

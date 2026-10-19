@@ -203,9 +203,9 @@ export function useDownloadColumns(
             {criterion && (
               <>
                 {criterion.endsWith(",asc") ? (
-                  <ArrowUp size={14} aria-hidden="true" />
+                  <ArrowUp size={16} aria-hidden="true" />
                 ) : (
-                  <ArrowDown size={14} aria-hidden="true" />
+                  <ArrowDown size={16} aria-hidden="true" />
                 )}
                 {values.length > 1 && (
                   <span className="catalog-sort-priority">{priority + 1}</span>

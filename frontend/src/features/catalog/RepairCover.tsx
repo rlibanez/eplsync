@@ -110,7 +110,7 @@ export function RepairCover({ book }: { book: Book }) {
         >
           <Button
             variant="light"
-            leftSection={<Wrench size={17} />}
+            leftSection={<Wrench size={16} />}
             loading={check.isPending}
             disabled={pending || !book.coverUrl}
             onClick={() => {

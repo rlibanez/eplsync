@@ -1,6 +1,6 @@
 # Tareas programadas
 
-En **Ajustes → Tareas programadas**, los administradores pueden crear, editar,
+En **Ajustes → Tareas**, los administradores pueden crear, editar,
 activar y desactivar tareas. La configuración es compartida por toda la instalación.
 
 ## Sincronizaciones con cron
@@ -97,7 +97,10 @@ Son procesos distintos de las tareas con cron. Permiten editar su intervalo:
 - **Descargas pendientes para Calibre**: comprueba si los EPUB que espera un trabajo
   ya están descargados y accesibles.
 
-Ambos usan inicialmente `30s`, con un mínimo de `10s`. Los valores sin unidad
+- **Seguimiento de trabajos de descarga**: consulta el estado de los torrents
+  enviados por trabajos de Descargas, hasta completar la descarga.
+
+Los tres usan inicialmente `30s`, con un mínimo de `10s`. Los valores sin unidad
 se interpretan en segundos. Puedes introducir duraciones como `30s`, `1m` o `5m`.
 **Restablecer** recupera el valor de instalación para ese intervalo y elimina
 su modificación guardada.

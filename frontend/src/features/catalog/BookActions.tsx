@@ -56,7 +56,7 @@ export function BookActions({ book }: { book: Book }) {
                   <Button
                     variant="light"
                     disabled={pending}
-                    leftSection={<Download size={17} />}
+                    leftSection={<Download size={16} />}
                   >
                     {t("send.fromBook")}
                   </Button>
@@ -73,7 +73,7 @@ export function BookActions({ book }: { book: Book }) {
             ) : (
               <Button
                 variant="light"
-                leftSection={<Download size={17} />}
+                leftSection={<Download size={16} />}
                 disabled={pending || magnets.isPending || !hashes.length}
                 onClick={() => setHash(hashes[0])}
               >
@@ -86,14 +86,14 @@ export function BookActions({ book }: { book: Book }) {
               component="a"
               href={links[0]}
               variant="light"
-              leftSection={<Magnet size={17} />}
+              leftSection={<Magnet size={16} />}
             >
               {t("detail.openMagnet")}
             </Button>
           ) : links.length > 1 ? (
             <Menu>
               <Menu.Target>
-                <Button variant="light" leftSection={<Magnet size={17} />}>
+                <Button variant="light" leftSection={<Magnet size={16} />}>
                   {t("detail.openMagnet")}
                 </Button>
               </Menu.Target>
@@ -109,7 +109,7 @@ export function BookActions({ book }: { book: Book }) {
               </Menu.Dropdown>
             </Menu>
           ) : (
-            <Button variant="light" disabled leftSection={<Magnet size={17} />}>
+            <Button variant="light" disabled leftSection={<Magnet size={16} />}>
               {t("detail.openMagnet")}
             </Button>
           )}
@@ -119,7 +119,7 @@ export function BookActions({ book }: { book: Book }) {
             target="_blank"
             rel="noopener noreferrer"
             variant="light"
-            leftSection={<ExternalLink size={17} />}
+            leftSection={<ExternalLink size={16} />}
           >
             {t("detail.epublibre")}
           </Button>

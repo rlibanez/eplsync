@@ -63,7 +63,7 @@ export function TorrentSettings() {
           type="button"
           variant="light"
           title={t("torrent.description")}
-          leftSection={<Network size={18} />}
+          leftSection={<Network size={16} />}
           loading={check.isPending}
           onClick={() => check.mutate(values)}
         >

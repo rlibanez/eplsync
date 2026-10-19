@@ -113,11 +113,12 @@ class SecurityIntegrationTests {
     }
     @Test void scheduledTaskSettingsRequireAdministratorAndNeverAllowDisablingInternalChecks() throws Exception {
         var session=admin();
-        mvc.perform(get("/api/settings/tasks").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.internal.length()").value(2));
+        mvc.perform(get("/api/settings/tasks").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.internal.length()").value(3));
         mvc.perform(get("/api/settings/tasks/cron").param("cron","0 5 * * *").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$.executions.length()").value(5)).andExpect(jsonPath("$.expression").value("0 0 5 * * *"));
         mvc.perform(get("/api/settings/tasks/cron").param("cron","bad").session(session)).andExpect(status().isBadRequest());
         mvc.perform(post("/api/settings/tasks").session(session).with(csrf()).contentType("application/json").content(json(Map.of("name","Own task","operation","CALIBRE_SYNC","cron","0 5 * * *","ownerId","forged-user","enabled",true))))
             .andExpect(status().isOk()).andExpect(jsonPath("$.ownerId").value(initial.user().id()));
+        mvc.perform(put("/api/settings/tasks/internal/torrent-download-check").session(session).with(csrf()).contentType("application/json").content("{\"interval\":\"1m\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.interval").value("60s"));
         mvc.perform(put("/api/settings/tasks/internal/calibre-download-check").session(session).with(csrf()).contentType("application/json").content("{\"interval\":\"1m\"}")).andExpect(status().isOk()).andExpect(jsonPath("$.interval").value("60s"));
         mvc.perform(put("/api/settings/tasks/internal/calibre-download-check").session(session).with(csrf()).contentType("application/json").content("{\"enabled\":false}")).andExpect(status().isBadRequest());
         mvc.perform(delete("/api/settings/tasks/internal/calibre-download-check").session(session).with(csrf())).andExpect(status().isMethodNotAllowed());

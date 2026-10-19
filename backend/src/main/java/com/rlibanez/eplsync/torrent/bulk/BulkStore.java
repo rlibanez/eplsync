@@ -52,6 +52,7 @@ public class BulkStore {
 
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.context.ApplicationEventPublisher publisher;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.jobs.RetryAuthorization retryAuthorization;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.tasks.InternalTaskSettings internalSettings;
     private final BulkJobRepository jobs;
     private final BulkItemRepository items;
     private final TorrentDownloadService downloads;
@@ -71,10 +72,11 @@ public class BulkStore {
             long pending, long inFlight, long cancelled, int batchSize, int concurrency,
             String interval, Instant createdAt, Instant updatedAt, Instant retryAt, String message,
             MultipleHashes multipleHashes, long selectedTorrents, long processedTorrents,
-            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming, String username, boolean deleteHistory) {}
+            long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming, String username, boolean deleteHistory, DownloadSummary download) {}
+    public record DownloadSummary(long selected,long downloaded,long pending,long attention,long ignored) {}
     public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {}
-    public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision, String author) {
-        public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null,null); }
+    public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision, String author, String downloadState, String downloadMessage) {
+        public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null,null,null,null); }
     }
 
     @Transactional(timeout=120)
@@ -234,7 +236,7 @@ public class BulkStore {
         if (batchSize < 1 || batchSize > 1000) throw new com.rlibanez.eplsync.exception.UserInputException("batchSize debe estar entre 1 y 1000");
         if (concurrency < 1 || concurrency > 16) throw new com.rlibanez.eplsync.exception.UserInputException("concurrency debe estar entre 1 y 16");
         if (interval < 0 || interval > 60_000) throw new com.rlibanez.eplsync.exception.UserInputException("interval debe estar entre 0ms y 60s");
-        var job = new BulkJob();
+        var job = new BulkJob(); job.setTrackDownloads(true);
         job.setEventOrigin(com.rlibanez.eplsync.events.EventContext.origin().name());
         var actor = com.rlibanez.eplsync.events.EventContext.actor();
         job.setEventActorId(actor.id()); job.setEventActorUsername(actor.username()); job.setEventActorKind(actor.kind());
@@ -393,7 +395,7 @@ public class BulkStore {
         boolean exclude=com.rlibanez.eplsync.ordering.StateOperator.excluded(statusOperator);
         job(id);
         com.rlibanez.eplsync.config.QueryLimits.page(page, size);
-        var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, Set.of("position", "title", "author", "eplId", "revision", "hash", "status", "attempts", "message"));
+        var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, Set.of("position", "title", "author", "eplId", "revision", "hash", "status", "downloadState", "attempts", "message"));
         if(params.containsKey("author") || criteria.stream().anyMatch(order->order.getProperty().equals("author"))) com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.CATALOG_READ);
         var orders = criteria.stream().map(order -> new Sort.Order(order.getDirection(), order.getProperty().equals("title") ? "catalogBook.title" : order.getProperty().equals("author") ? "catalogBook.author" : order.getProperty().equals("status") ? "state" : order.getProperty())).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         if (orders.stream().noneMatch(order -> order.getProperty().equals("position"))) orders.add(Sort.Order.asc("position"));
@@ -426,7 +428,7 @@ public class BulkStore {
             }
             for(var entry:textTerms.entrySet()) {
                 if(entry.getValue().isEmpty()) continue;
-                jakarta.persistence.criteria.Expression<String> column=!entry.getKey().equals("detail")?root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).get(entry.getKey().equals("author")?"author":"title"):root.get("message");
+                jakarta.persistence.criteria.Expression<String> column=!entry.getKey().equals("detail")?root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).get(entry.getKey().equals("author")?"author":"title"):cb.concat(cb.concat(cb.coalesce(root.get("message"),"")," "),cb.coalesce(root.get("downloadMessage"),""));
                 var matches=entry.getValue().stream().map(term->cb.gt(cb.locate(cb.lower(cb.coalesce(column,"")),term.toLowerCase(java.util.Locale.ROOT)),0)).toArray(jakarta.persistence.criteria.Predicate[]::new);
                 var match=cb.or(matches);
                 predicates.add(textExcluded.get(entry.getKey())?cb.not(match):match);
@@ -439,7 +441,7 @@ public class BulkStore {
             var book = metadata.get(row.getEplId());
             if (book != null) { row.setTitle(book.title()); row.setCoverUrl(book.coverUrl()); row.setCoverAvailable(book.coverAvailable()); }
         });
-        return new PageResponse<>(result.map(i -> new ItemView(i.getId(), i.getEplId(), i.getHash(), i.getState(), i.getAttempts(), i.getMessage(), i.getTitle(), i.getCoverUrl(), i.getCoverAvailable(), i.getRevision(), com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.CATALOG_READ) && metadata.get(i.getEplId())!=null ? metadata.get(i.getEplId()).author() : null)).getContent(),
+        return new PageResponse<>(result.map(i -> new ItemView(i.getId(), i.getEplId(), i.getHash(), i.getState(), i.getAttempts(), i.getMessage(), i.getTitle(), i.getCoverUrl(), i.getCoverAvailable(), i.getRevision(), com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.CATALOG_READ) && metadata.get(i.getEplId())!=null ? metadata.get(i.getEplId()).author() : null, i.getDownloadState(), i.getDownloadMessage())).getContent(),
                 new PageResponse.PageMeta(page, size, result.getTotalElements(), result.getTotalPages(), result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
     }
 
@@ -460,7 +462,7 @@ public class BulkStore {
                         "El cliente o su URL han cambiado; restaura el destino original");
                 if (job.getState() != BulkJob.State.PAUSED && job.getState() != BulkJob.State.RETRY_WAIT)
                     throw new TorrentOperationException(HttpStatus.CONFLICT, "El trabajo no está pausado");
-                job.setState(BulkJob.State.QUEUED); job.setRetryAt(null); job.setMessage(null);
+                job.setState(BulkJob.State.QUEUED); job.setRetryAt(null); job.setMessage(null); job.setNextDownloadCheck(0);
             }
             case "cancel" -> {
                 job.setState(BulkJob.State.CANCELLED);
@@ -490,8 +492,8 @@ public class BulkStore {
                 event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.RECOVERED);
             }
         }
-        for (var job : jobs.findByStateOrderByCreatedAtAsc(BulkJob.State.CLEANUP_WAIT, Pageable.unpaged()))
-            complete(job);
+        for(var state:List.of(BulkJob.State.DOWNLOAD_WAIT,BulkJob.State.CLEANUP_WAIT))
+            for (var job : jobs.findByStateOrderByCreatedAtAsc(state, Pageable.unpaged())) {job.setNextDownloadCheck(0);complete(job);}
         // Los elementos en vuelo de trabajos cancelados tampoco se vuelven a enviar.
         for (var job : jobs.findByStateOrderByCreatedAtAsc(BulkJob.State.CANCELLED, Pageable.unpaged()))
             items.transition(job.getId(), BulkItem.State.PENDING, BulkItem.State.CANCELLED);
@@ -596,20 +598,61 @@ public class BulkStore {
         if (id!=null) jobs.findById(id).ifPresent(this::complete);
     }
     private void complete(BulkJob job) {
-        if (!List.of(BulkJob.State.RUNNING,BulkJob.State.QUEUED,BulkJob.State.CLEANUP_WAIT).contains(job.getState())
+        if (!List.of(BulkJob.State.RUNNING,BulkJob.State.QUEUED,BulkJob.State.DOWNLOAD_WAIT,BulkJob.State.CLEANUP_WAIT).contains(job.getState())
                 || count(job.getId(), BulkItem.State.PENDING)>0 || count(job.getId(), BulkItem.State.IN_FLIGHT)>0) return;
         long unfinishedCleanup=job.getType()==BulkJob.Type.UPDATE ? em.createQuery(
             "select count(c) from UpdateCleanup c where c.jobId=:job and c.state in :pending",Long.class)
             .setParameter("job",job.getId()).setParameter("pending",com.rlibanez.eplsync.torrent.updates.CleanupQueue.PENDING)
             .getSingleResult() : 0;
         boolean failedReplacement=unfinishedCleanup>0 && count(job.getId(),BulkItem.State.FAILED)>0;
-        var state=failedReplacement ? BulkJob.State.PAUSED : unfinishedCleanup>0 ? BulkJob.State.CLEANUP_WAIT : BulkJob.State.COMPLETED;
+        long waitingDownloads=job.isTrackDownloads()?em.createQuery("select count(i) from BulkItem i where i.jobId=:job and i.state in :accepted and (i.downloadState is null or i.downloadState not in ('DOWNLOADED','IGNORED'))",Long.class)
+            .setParameter("job",job.getId()).setParameter("accepted",List.of(BulkItem.State.ACCEPTED,BulkItem.State.ALREADY_EXISTS)).getSingleResult():0;
+        var state=failedReplacement ? BulkJob.State.PAUSED : waitingDownloads>0 ? BulkJob.State.DOWNLOAD_WAIT : unfinishedCleanup>0 ? BulkJob.State.CLEANUP_WAIT : BulkJob.State.COMPLETED;
         if (job.getState()==state) return;
         job.setState(state); job.setUpdatedAt(Instant.now()); job.setMessage(failedReplacement ? "Falló el envío de una revisión de sustitución; reintenta los elementos fallidos para continuar la limpieza" : null); job.setRetryAt(null);
         jobs.saveAndFlush(job);
         if(failedReplacement) event(job,com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED);
-        if(state==BulkJob.State.COMPLETED) event(job, count(job.getId(), BulkItem.State.FAILED)>0
+        if(state==BulkJob.State.COMPLETED) log.info("Trabajo de descargas finalizado: trabajo={}, seguimientoDescargas={}",job.getId(),job.isTrackDownloads());
+        if(state==BulkJob.State.COMPLETED) event(job, count(job.getId(), BulkItem.State.FAILED)>0 || em.createQuery("select count(i) from BulkItem i where i.jobId=:job and i.downloadState='IGNORED'",Long.class).setParameter("job",job.getId()).getSingleResult()>0
             ? com.rlibanez.eplsync.events.EventJournal.Outcome.PARTIAL : com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
+    }
+    /** Called only after a successful client observation, never from a GET request. */
+    @Transactional public void refreshDownloads(String id) {refreshDownloads(id,null);}
+    @Transactional public void refreshDownloads(String id,String observedInstance) {
+        var job=job(id);
+        if(observedInstance!=null && !Objects.equals(observedInstance,job.getTargetFingerprint())) return;
+        if(!job.isTrackDownloads() || job.getState()==BulkJob.State.PAUSED || job.getState()==BulkJob.State.CANCELLED || job.getState()==BulkJob.State.COMPLETED) return;
+        em.flush();
+        String observed="(SELECT d.status FROM torrent_downloads d WHERE d.client_instance_id=:instance AND d.epl_id=i.epl_id AND d.hash=i.hash AND d.revision=i.revision)";
+        int changed=em.createNativeQuery("UPDATE torrent_bulk_items AS i SET download_state="+observed+",download_message=CASE "+observed+" WHEN 'ERROR' THEN 'El cliente torrent indica un error; revisa Estado de las descargas' WHEN 'NOT_FOUND' THEN 'El torrent ya no está disponible; restaura la descarga u omite su seguimiento' WHEN 'PAUSED' THEN 'El torrent está pausado en el cliente' ELSE NULL END,download_checked_at=:now WHERE i.job_id=:job AND i.state IN ('ACCEPTED','ALREADY_EXISTS') AND coalesce(i.download_state,'') NOT IN ('DOWNLOADED','IGNORED') AND "+observed+" IS NOT NULL AND i.download_state IS NOT "+observed)
+            .setParameter("job",id).setParameter("instance",job.getTargetFingerprint()).setParameter("now",Instant.now()).executeUpdate();
+        changed+=em.createNativeQuery("UPDATE torrent_bulk_items AS i SET download_state='NOT_FOUND',download_message='No se conserva el registro de la descarga; restaura la descarga u omite su seguimiento',download_checked_at=:now WHERE i.job_id=:job AND i.state IN ('ACCEPTED','ALREADY_EXISTS') AND coalesce(i.download_state,'') NOT IN ('DOWNLOADED','IGNORED','NOT_FOUND') AND NOT EXISTS(SELECT 1 FROM torrent_downloads d WHERE d.client_instance_id=:instance AND d.epl_id=i.epl_id AND d.hash=i.hash AND d.revision=i.revision)")
+            .setParameter("job",id).setParameter("instance",job.getTargetFingerprint()).setParameter("now",Instant.now()).executeUpdate();
+        em.clear();job=job(id);if(changed>0) job.setUpdatedAt(Instant.now());job.setNextDownloadCheck(Instant.now().plus(internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.DOWNLOADS)).toEpochMilli());
+        if(job.getMessage()!=null && job.getMessage().startsWith("No se pudo comprobar")) job.setMessage(null);
+        complete(job);
+    }
+    @Transactional public void deferDownloadCheck(String id) {
+        var job=job(id);
+        if(!List.of(BulkJob.State.QUEUED,BulkJob.State.RUNNING,BulkJob.State.DOWNLOAD_WAIT,BulkJob.State.CLEANUP_WAIT).contains(job.getState())) return;
+        job.setNextDownloadCheck(Instant.now().plus(internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.DOWNLOADS)).toEpochMilli());
+        job.setMessage("No se pudo comprobar el cliente torrent; se reintentará automáticamente");
+    }
+    @Transactional public void suspendDownloads(String id,String reason) {
+        var job=job(id);
+        if(List.of(BulkJob.State.COMPLETED,BulkJob.State.CANCELLED,BulkJob.State.PAUSED).contains(job.getState())) return;
+        job.setState(BulkJob.State.PAUSED);job.setMessage(reason);job.setUpdatedAt(Instant.now());jobs.saveAndFlush(job);
+        event(job,com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED);
+    }
+    @Transactional public void omitDownload(String id,String itemId) {
+        var job=job(id);
+        var item=items.findById(itemId).orElseThrow(()->new com.rlibanez.eplsync.exception.UserInputException("Elemento inexistente"));
+        if(item.getJobId().equals(id) && "IGNORED".equals(item.getDownloadState())) return;
+        if(!job.isTrackDownloads() || List.of(BulkJob.State.COMPLETED,BulkJob.State.CANCELLED).contains(job.getState())) throw new com.rlibanez.eplsync.exception.UserInputException("El trabajo ya ha finalizado");
+        if(!item.getJobId().equals(id) || !List.of("ERROR","NOT_FOUND").contains(Objects.toString(item.getDownloadState(),""))) throw new com.rlibanez.eplsync.exception.UserInputException("Solo se puede omitir una descarga con error o ausente");
+        item.setDownloadState("IGNORED");item.setDownloadMessage("Seguimiento omitido por el usuario; no se ha eliminado ni reenviado el torrent");
+        items.saveAndFlush(item);complete(job);
+        log.info("Seguimiento de descarga omitido: trabajo={}, elemento={}",id,itemId);
     }
     public BulkJob job(String id) { return jobs.findById(id).orElseThrow(() -> new TorrentOperationException(HttpStatus.NOT_FOUND, "Trabajo torrent inexistente")); }
     private long count(String id, BulkItem.State state) { return items.countByJobIdAndState(id, state); }

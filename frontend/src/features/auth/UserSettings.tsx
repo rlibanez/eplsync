@@ -249,7 +249,7 @@ export function UserSettings() {
                             )
                           }
                         >
-                          <UserCheck size={18} />
+                          <UserCheck size={16} />
                         </ActionIcon>
                       )}
 
@@ -264,7 +264,7 @@ export function UserSettings() {
                           setEditing(user);
                         }}
                       >
-                        <Pencil size={18} />
+                        <Pencil size={16} />
                       </ActionIcon>
                       <ActionIcon
                         variant="subtle"
@@ -280,7 +280,7 @@ export function UserSettings() {
                           setResetting(user);
                         }}
                       >
-                        <KeyRound size={18} />
+                        <KeyRound size={16} />
                       </ActionIcon>
                       <ActionIcon
                         variant="subtle"
@@ -302,7 +302,7 @@ export function UserSettings() {
                           setDeleting(user);
                         }}
                       >
-                        <Trash2 size={18} />
+                        <Trash2 size={16} />
                       </ActionIcon>
                     </div>
                   </td>
@@ -314,7 +314,7 @@ export function UserSettings() {
         {users.length === 0 && <p>{t("auth.noUsers")}</p>}
         <div className="action-row">
           <Button
-            leftSection={<Plus size={17} />}
+            leftSection={<Plus size={16} />}
             disabled={pending}
             onClick={() => {
               setUsername("");

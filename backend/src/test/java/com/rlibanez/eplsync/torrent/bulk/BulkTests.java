@@ -69,6 +69,127 @@ class BulkTests {
                 .links(String.format("%040X", id)).build());
     }
     @AfterEach void close() { if (worker != null) worker.close(); properties.effective().setEnabled(false); }
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService tracking;
+    @Autowired com.rlibanez.eplsync.maintenance.MaintenanceGate maintenance;
+    @Autowired com.rlibanez.eplsync.jobs.RetryAuthorization authorization;
+    private BulkDownloadMonitor monitor(com.rlibanez.eplsync.torrent.TorrentClient adapter) {
+        when(client.exclusiveClient(any())).thenAnswer(invocation -> {
+            java.util.function.Function<com.rlibanez.eplsync.torrent.TorrentClient,Object> action=invocation.getArgument(0);
+            return action.apply(adapter);
+        });
+        return new BulkDownloadMonitor(jdbc,store,client,tracking,maintenance,authorization);
+    }
+    private com.rlibanez.eplsync.torrent.downloads.RemoteTorrent remote(BulkItem item,com.rlibanez.eplsync.torrent.downloads.DownloadStatus status) {
+        return new com.rlibanez.eplsync.torrent.downloads.RemoteTorrent(item.getHash(),status,status==com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADED?Instant.now():null);
+    }
+    private void downloadRecord(BulkItem item) {
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at,submitted_at) VALUES(?,?,?,?,?,?,'SUBMITTED','EPLSYNC',0,0)",item.getId(),item.getEplId(),item.getRevision(),item.getHash(),"qbittorrent",tracking.instanceId());
+    }
+    @Test void lifecycleWaitsForRealCompletionAndRecoversErrorsWithoutResending() throws Exception {
+        var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);
+        var monitor=monitor(adapter);
+        try {
+            var job=create(null);start();until(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
+            var rows=items.findByJobIdOrderByPosition(job.jobId(),PageRequest.of(0,20)).getContent();
+            rows.forEach(this::downloadRecord);
+            when(adapter.listTorrents(anySet())).thenReturn(rows.stream().map(row->remote(row,com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADING)).toList());
+            monitor.tick();
+            assertThat(store.view(job.jobId()).download().pending()).isEqualTo(5);
+            assertThat(store.view(job.jobId()).download().downloaded()).isZero();
+            jdbc.update("UPDATE torrent_bulk_jobs SET next_download_check=0 WHERE id=?",job.jobId());
+            when(adapter.listTorrents(anySet())).thenReturn(rows.stream().map(row->remote(row,com.rlibanez.eplsync.torrent.downloads.DownloadStatus.ERROR)).toList());
+            monitor.tick();assertThat(store.view(job.jobId()).download().attention()).isEqualTo(5);
+            assertThat(store.details(job.jobId(),0,20).items()).allSatisfy(row->assertThat(row.downloadMessage()).contains("error"));
+            store.recover();assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.DOWNLOAD_WAIT);
+            when(adapter.listTorrents(anySet())).thenReturn(rows.stream().map(row->remote(row,com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADED)).toList());
+            monitor.tick();
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
+            assertThat(store.view(job.jobId()).download().downloaded()).isEqualTo(5);
+            jdbc.update("DELETE FROM torrent_downloads");store.recover();monitor.tick();
+            assertThat(store.view(job.jobId()).download().downloaded()).isEqualTo(5);
+            verify(client,times(5)).addTorrent(any(),any());
+            verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        } finally {monitor.close();jdbc.update("DELETE FROM torrent_downloads");}
+    }
+    @Test void lifecyclePausesAndCancelsLocallyAndOmissionNeverDeletesTorrents() throws Exception {
+        var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);var monitor=monitor(adapter);
+        try {
+            var job=create(null);start();until(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
+            store.control(job.jobId(),"pause");store.recover();monitor.tick();
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);
+            verifyNoInteractions(adapter);
+            store.control(job.jobId(),"resume");
+            // No record is retained: report an actionable absence instead of waiting forever.
+            when(adapter.listTorrents(anySet())).thenReturn(List.of());monitor.tick();
+            assertThat(store.view(job.jobId()).download().attention()).isEqualTo(5);
+            for(var row:items.findByJobIdOrderByPosition(job.jobId(),PageRequest.of(0,20))) store.omitDownload(job.jobId(),row.getId());
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
+            assertThat(store.view(job.jobId()).download().ignored()).isEqualTo(5);
+            store.omitDownload(job.jobId(),items.findByJobIdOrderByPosition(job.jobId(),PageRequest.of(0,20)).getContent().getFirst().getId());
+            var second=create(null);until(()->store.view(second.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
+            store.control(second.jobId(),"cancel");store.recover();clearInvocations(adapter);monitor.tick();
+            assertThat(store.view(second.jobId()).status()).isEqualTo(BulkJob.State.CANCELLED);
+            verifyNoInteractions(adapter);verify(client,times(10)).addTorrent(any(),any());
+        } finally {monitor.close();jdbc.update("DELETE FROM torrent_downloads");}
+    }
+    @Autowired com.rlibanez.eplsync.tasks.InternalTaskSettings internalSettings;
+    @Test void downloadMonitorUsesLiveIntervalsForChecksAndTransientFailures() throws Exception {
+        var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);var monitor=monitor(adapter);
+        try {
+            var job=create(null);start();until(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
+            var rows=items.findByJobIdOrderByPosition(job.jobId(),PageRequest.of(0,20)).getContent();rows.forEach(this::downloadRecord);
+            when(adapter.listTorrents(anySet())).thenReturn(rows.stream().map(row->remote(row,com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADING)).toList());
+            internalSettings.save(com.rlibanez.eplsync.tasks.InternalTaskSettings.DOWNLOADS,"2m");monitor.tick();
+            assertThat(store.job(job.jobId()).getNextDownloadCheck()-System.currentTimeMillis()).isBetween(115000L,120000L);
+            internalSettings.save(com.rlibanez.eplsync.tasks.InternalTaskSettings.DOWNLOADS,"10s");
+            assertThat(store.job(job.jobId()).getNextDownloadCheck()).isZero();
+            doThrow(new IllegalStateException("unavailable")).when(adapter).listTorrents(anySet());monitor.tick();
+            assertThat(store.job(job.jobId()).getNextDownloadCheck()-System.currentTimeMillis()).isBetween(5000L,10000L);
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.DOWNLOAD_WAIT);
+            store.control(job.jobId(),"pause");var pausedDue=store.job(job.jobId()).getNextDownloadCheck();
+            internalSettings.restore(com.rlibanez.eplsync.tasks.InternalTaskSettings.DOWNLOADS);
+            assertThat(store.job(job.jobId()).getNextDownloadCheck()).isEqualTo(pausedDue);
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);
+            store.control(job.jobId(),"resume");
+            doReturn(rows.stream().map(row->remote(row,com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADING)).toList()).when(adapter).listTorrents(anySet());monitor.tick();
+            assertThat(store.job(job.jobId()).getNextDownloadCheck()-System.currentTimeMillis()).isBetween(25000L,30000L);
+            verify(client,times(5)).addTorrent(any(),any());verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        } finally {monitor.close();jdbc.update("DELETE FROM torrent_downloads");internalSettings.restore(com.rlibanez.eplsync.tasks.InternalTaskSettings.DOWNLOADS);}
+    }
+    @Test void lifecycleChecksLargeJobsWithOneRemoteSnapshotAndDoesNotHoldTheSubmissionQueue() {
+        var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);var monitor=monitor(adapter);
+        try {
+            var catalog=new java.util.ArrayList<CatalogBook>();
+            for(long id=6;id<=1105;id++) catalog.add(CatalogBook.builder().eplId(id).revision(1.0).title("Book "+id).author("Author").links(String.format("%040X",id)).build());
+            books.saveAll(catalog);var job=create(null);
+            jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED' WHERE job_id=?",job.jobId());store.completeIfEmpty(job.jobId());
+            jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at,submitted_at) SELECT id,epl_id,revision,hash,'qbittorrent',?,'SUBMITTED','EPLSYNC',0,0 FROM torrent_bulk_items WHERE job_id=?",tracking.instanceId(),job.jobId());
+            var rows=items.findByJobIdOrderByPosition(job.jobId(),PageRequest.of(0,2000)).getContent();
+            when(adapter.listTorrents()).thenReturn(rows.stream().map(row->remote(row,com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADED)).toList());
+            var other=create(null);assertThat(java.util.Objects.requireNonNull(store.next()).getId()).isEqualTo(other.jobId());
+            monitor.tick();assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
+            assertThat(store.view(job.jobId()).download().downloaded()).isEqualTo(1105);
+            verify(adapter,times(1)).listTorrents();verify(adapter,never()).listTorrents(anySet());
+            verify(client,never()).addTorrent(any(),any());verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        } finally {monitor.close();jdbc.update("DELETE FROM torrent_downloads");}
+    }
+    @Test void lifecycleConnectionFailuresWaitAndDestinationChangesRequireIntervention() throws Exception {
+        var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);var monitor=monitor(adapter);
+        try {
+            var job=create(null);start();until(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
+            when(adapter.listTorrents(anySet())).thenThrow(new IllegalStateException("connection unavailable"));monitor.tick();
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.DOWNLOAD_WAIT);
+            assertThat(store.view(job.jobId()).message()).contains("automáticamente");
+            var calls=mockingDetails(adapter).getInvocations().size();monitor.tick();
+            assertThat(mockingDetails(adapter).getInvocations()).hasSize(calls);
+            properties.effective().setBaseUrl("http://changed.example");
+            jdbc.update("UPDATE torrent_bulk_jobs SET next_download_check=0 WHERE id=?",job.jobId());monitor.tick();
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);
+            assertThat(store.view(job.jobId()).message()).contains("destino original");
+            verify(client,times(5)).addTorrent(any(),any());
+        } finally {monitor.close();}
+    }
     @Test void detailsArePagedAndHashesAreDeduplicatedAcrossInternalBatches() {
         books.deleteAll();
         for(long id=1;id<=205;id++) books.save(CatalogBook.builder().eplId(id).revision(1.0)
@@ -159,7 +280,7 @@ class BulkTests {
         assertThat(jobs.findById(job.jobId()).orElseThrow().eventActor()).isEqualTo(actor);
         worker = new BulkWorker(store, client, properties);
         worker.start();
-        awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+        awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.DOWNLOAD_WAIT);
         assertThat(events.after(cursor, 20)).isEmpty();
         assertThat(jobs.findById(job.jobId()).orElseThrow().eventActor()).isEqualTo(actor);
     }
@@ -176,7 +297,7 @@ class BulkTests {
         worker = new BulkWorker(store, client, properties);
         worker.start();
         worker.start(); // El evento repetido no crea otro coordinador ni recupera envíos activos.
-        awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+        awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.DOWNLOAD_WAIT);
         assertThat(starts).hasSize(5);
         assertThat(events.after(cursor,20)).isEmpty();
         for (int i = 1; i < starts.size(); i++)
@@ -202,7 +323,7 @@ class BulkTests {
             awaitAutomatic(() -> store.view(job.jobId()).inFlight() == 0);
             assertThat(calls.get()).isEqualTo(2);
             synchronized (store) { store.control(job.jobId(), "resume"); }
-            awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+            awaitAutomatic(() -> store.view(job.jobId()).status() == BulkJob.State.DOWNLOAD_WAIT);
             assertThat(calls.get()).isEqualTo(5);
             worker.close();
             synchronized (store) { create(null); }
@@ -295,7 +416,7 @@ class BulkTests {
         worker=new BulkWorker(store,client,properties);worker.start();
         awaitAutomatic(()->!idleProbe().ready());
         var job=create(null);
-        awaitAutomatic(()->store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        awaitAutomatic(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
         verify(client,times(5)).addTorrent(any());
     }
     @Test void automaticCoordinatorDetectsResumeAfterIdleWithoutRepeatingCompletedItems() throws Exception {
@@ -307,7 +428,7 @@ class BulkTests {
         awaitAutomatic(()->!idleProbe().ready());
         verify(client,never()).addTorrent(any());
         store.control(job.jobId(),"resume");
-        awaitAutomatic(()->store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        awaitAutomatic(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
         assertThat(store.view(job.jobId()).accepted()).isEqualTo(5);
         verify(client,times(4)).addTorrent(any());
     }
@@ -317,7 +438,7 @@ class BulkTests {
         worker=new BulkWorker(store,client,properties);worker.start();
         awaitAutomatic(()->!idleProbe().ready());
         verify(client,never()).addTorrent(any());
-        awaitAutomatic(()->store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        awaitAutomatic(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
         verify(client,times(5)).addTorrent(any());
     }
 
@@ -332,7 +453,7 @@ class BulkTests {
         assertThat(entered.await(2, TimeUnit.SECONDS)).isTrue();
         assertThat(maximum.get()).isEqualTo(2);
         release.countDown();
-        until(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+        until(() -> store.view(job.jobId()).status() == BulkJob.State.DOWNLOAD_WAIT);
         assertThat(store.view(job.jobId()).accepted()).isEqualTo(5); assertThat(maximum.get()).isEqualTo(2);
         verify(client, times(5)).addTorrent(any());
     }
@@ -372,7 +493,7 @@ class BulkTests {
                 .thenReturn(TorrentDownloadResult.Status.ALREADY_EXISTS);
         var job=create(null);start();until(()->store.view(job.jobId()).status()==BulkJob.State.RETRY_WAIT);
         var persisted=jobs.findById(job.jobId()).orElseThrow();persisted.setRetryAt(Instant.now().minusSeconds(1));jobs.save(persisted);
-        until(()->store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        until(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
         assertThat(store.view(job.jobId()).alreadyExists()).isEqualTo(5);
     }
 
@@ -383,7 +504,7 @@ class BulkTests {
         until(() -> store.view(job.jobId()).status() == BulkJob.State.RETRY_WAIT);
         assertThat(store.view(job.jobId()).retryAt()).isAfter(Instant.now());
         var persisted = jobs.findById(job.jobId()).orElseThrow(); persisted.setRetryAt(Instant.now().minusSeconds(1)); jobs.save(persisted);
-        until(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+        until(() -> store.view(job.jobId()).status() == BulkJob.State.DOWNLOAD_WAIT);
         assertThat(store.view(job.jobId()).alreadyExists()).isEqualTo(5);
         assertThat(store.view(job.jobId()).retryAt()).isNull();
     }
@@ -716,7 +837,7 @@ class BulkTests {
             times.add(System.nanoTime()); return TorrentDownloadResult.Status.ACCEPTED;
         });
         var job = create(new BulkRequest(null, 5, 3, "100ms")); start();
-        until(() -> store.view(job.jobId()).status() == BulkJob.State.COMPLETED);
+        until(() -> store.view(job.jobId()).status() == BulkJob.State.DOWNLOAD_WAIT);
         assertThat(times).hasSize(5);
         for (int n = 1; n < times.size(); n++)
             assertThat(TimeUnit.NANOSECONDS.toMillis(times.get(n) - times.get(n - 1))).isGreaterThanOrEqualTo(90);
@@ -733,7 +854,7 @@ class BulkTests {
         assertThat(store.view(second.jobId()).status()).isEqualTo(BulkJob.State.QUEUED);
         verify(client, times(1)).addTorrent(any());
         release.countDown();
-        until(() -> store.view(second.jobId()).status() == BulkJob.State.COMPLETED);
+        until(() -> store.view(second.jobId()).status() == BulkJob.State.DOWNLOAD_WAIT);
         assertThat(store.view(first.jobId()).accepted()).isEqualTo(1);
         assertThat(store.view(first.jobId()).cancelled()).isEqualTo(4);
         var contexts = org.mockito.ArgumentCaptor.forClass(com.rlibanez.eplsync.torrent.TorrentSubmissionContext.class);
@@ -865,7 +986,7 @@ class BulkTests {
         properties.effective().setClient(originalClient);
         }
         store.control(job.jobId(),"resume");
-        until(() -> store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        until(() -> store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
         verify(client,times(5)).addTorrent(any());
     }
     @Test void claimingAnItemAlsoChecksTheCurrentConfiguration() {
@@ -889,7 +1010,7 @@ class BulkTests {
             properties.effective().setEnabled(false);worker.tick();
             assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.RUNNING);
         } finally { release.countDown(); }
-        until(() -> store.view(job.jobId()).status()==BulkJob.State.COMPLETED);
+        until(() -> store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
         assertThat(store.view(job.jobId()).accepted()).isEqualTo(5);
     }
 

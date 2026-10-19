@@ -37,9 +37,13 @@ export function workWaitingMode(
   const manual =
     ["PAUSED", "CANCELLED"].includes(jobState ?? "") ||
     (intervention ??
-      (!["QUEUED", "RUNNING", "RETRY_WAIT", "CLEANUP_WAIT"].includes(
-        jobState ?? "",
-      ) ||
+      (![
+        "QUEUED",
+        "RUNNING",
+        "RETRY_WAIT",
+        "DOWNLOAD_WAIT",
+        "CLEANUP_WAIT",
+      ].includes(jobState ?? "") ||
         ["BLOCKED_DOWNLOAD", "FAILED", "BLOCKED"].includes(state) ||
         (state === "UNCERTAIN" &&
           !["QUEUED", "RUNNING"].includes(jobState ?? ""))));

@@ -158,6 +158,7 @@ export function CalibreRemovalLauncher({
     <>
       {inline ? (
         <TableAction
+          color="red"
           label={t("calibreRemoval.delete")}
           onClick={() => setOpened(true)}
         >

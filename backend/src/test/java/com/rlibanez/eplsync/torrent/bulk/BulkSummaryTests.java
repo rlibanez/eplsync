@@ -80,6 +80,16 @@ class BulkSummaryTests {
         assertThat(store.list(10,20,null).items()).isEmpty();
     }
 
+    @Test void trackedDownloadSummariesRemainBoundedForOneAndTwentyJobs() {
+        for(int i=0;i<20;i++) {seed("tracked-"+i,false);var job=jobs.findById("tracked-"+i).orElseThrow();job.setTrackDownloads(true);jobs.save(job);}
+        var stats=factory.unwrap(SessionFactory.class).getStatistics();boolean enabled=stats.isStatisticsEnabled();stats.setStatisticsEnabled(true);
+        try {
+            stats.clear();var single=store.list(0,1,null);long queries=stats.getPrepareStatementCount();
+            stats.clear();var many=store.list(0,20,null);assertThat(stats.getPrepareStatementCount()).isEqualTo(queries);
+            assertThat(queries).isEqualTo(5);assertThat(single.items().getFirst().download().pending()).isEqualTo(3);
+            assertThat(many.items()).allSatisfy(view->assertThat(view.download().selected()).isEqualTo(3));
+        } finally {stats.setStatisticsEnabled(enabled);}
+    }
     @Test void fixedQueryCountForOneAndTwentyJobsAndComputedOrdering() {
         for(int i=0;i<30;i++) seed("job-"+i,true);
         var stats=factory.unwrap(SessionFactory.class).getStatistics();

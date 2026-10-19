@@ -138,7 +138,7 @@ function HomeSettingsForm({ initial }: { initial: HomePreferences }) {
                   })}
                   onClick={() => move(section.id, index - 1)}
                 >
-                  <ArrowUp size={18} />
+                  <ArrowUp size={16} />
                 </ActionIcon>
                 <ActionIcon
                   variant="subtle"
@@ -150,7 +150,7 @@ function HomeSettingsForm({ initial }: { initial: HomePreferences }) {
                   })}
                   onClick={() => move(section.id, index + 1)}
                 >
-                  <ArrowDown size={18} />
+                  <ArrowDown size={16} />
                 </ActionIcon>
               </Group>
             </li>

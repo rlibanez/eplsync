@@ -234,6 +234,12 @@ export function CalibreTable({
                           inline
                         />
                       )}
+                      <TableAction
+                        label={t("calibre.open")}
+                        href={`/api/calibre/books/${book.calibreId}/open`}
+                      >
+                        <ExternalLink size={16} aria-hidden="true" />
+                      </TableAction>
                       <CompleteCalibreIdentifiers
                         selected={[book.calibreId]}
                         inline
@@ -242,12 +248,6 @@ export function CalibreTable({
                         selected={[book.calibreId]}
                         inline
                       />
-                      <TableAction
-                        label={t("calibre.open")}
-                        href={`/api/calibre/books/${book.calibreId}/open`}
-                      >
-                        <ExternalLink size={16} aria-hidden="true" />
-                      </TableAction>
                     </Group>
                   </td>,
                   <td>

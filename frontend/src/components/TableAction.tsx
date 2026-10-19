@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 export function TableAction({
   label,
+  color,
   children,
   href,
   loading,
@@ -10,6 +11,7 @@ export function TableAction({
   onClick,
 }: {
   label: string;
+  color?: "red";
   children: ReactNode;
   href?: string;
   loading?: boolean;
@@ -24,6 +26,7 @@ export function TableAction({
           href={href}
           target="_blank"
           rel="noopener noreferrer"
+          color={color}
           variant="subtle"
           size="md"
           aria-label={label}
@@ -32,6 +35,7 @@ export function TableAction({
         </ActionIcon>
       ) : (
         <ActionIcon
+          color={color}
           variant="subtle"
           size="md"
           aria-label={label}

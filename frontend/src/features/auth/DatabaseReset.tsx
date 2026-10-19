@@ -68,7 +68,7 @@ export function DatabaseReset() {
               aria-label={t("reset.closeResult")}
               onClick={() => setResult(undefined)}
             >
-              <X size={18} />
+              <X size={16} />
             </ActionIcon>
           </div>
           <dl className="import-summary">

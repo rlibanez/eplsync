@@ -1,3 +1,4 @@
+import { completedWorkItems } from "./shared";
 import { useAuth } from "../auth/Auth";
 import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
@@ -390,7 +391,7 @@ export function Jobs() {
                             </button>
                           </td>,
                           <td>
-                            {number(job.processedItems)} /{" "}
+                            {number(completedWorkItems(job))} /{" "}
                             {number(job.selectedItems)}
                           </td>,
                           <td>{number(job.selectedBooks)}</td>,
@@ -452,6 +453,8 @@ interface Item {
   status: string;
   attempts: number;
   message: string | null;
+  downloadState?: string | null;
+  downloadMessage?: string | null;
 }
 export function JobDetail() {
   const { can } = useAuth();
@@ -541,6 +544,7 @@ export function JobDetail() {
       { field: "hash", label: "downloads.hash", width: 340 },
       { field: "revision", label: "downloads.revision", width: 110 },
       { field: "status", label: "downloads.status", width: 180 },
+      { field: "downloadState", label: "downloadLifecycle.phase", width: 300 },
       { field: "attempts", label: "downloads.attempts", width: 120 },
       { field: "message", label: "downloads.message", width: 320 },
     ],
@@ -552,7 +556,7 @@ export function JobDetail() {
     {
       selection: retry.selectable,
       defaults: "position,asc",
-      newColumnsAfter: { author: "title" },
+      newColumnsAfter: { author: "title", downloadState: "status" },
       extraSort: [
         { field: "position", label: "tableControls.position", width: 100 },
       ],
@@ -560,6 +564,19 @@ export function JobDetail() {
     (page + 1) * size,
   );
   const data = job.data;
+  const omitDownload = useMutation({
+    mutationFn: (itemId: string) =>
+      post<Job>(
+        `/torrent/jobs/${encodeURIComponent(id!)}/items/${encodeURIComponent(itemId)}/omit-download`,
+      ),
+    retry: false,
+    onSuccess: (value) => {
+      cache.setQueryData(["job", id], value);
+      void cache.invalidateQueries({ queryKey: ["job-items", id] });
+      void cache.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+
   const selectRange = useRangeSelection(
     items.data?.items.map((row) => row.id) ?? [],
     (ids, checked) =>
@@ -590,9 +607,13 @@ export function JobDetail() {
             <div className="job-controls-heading">
               <div className="action-row">
                 {retry.failedAction}
-                {["QUEUED", "RUNNING", "RETRY_WAIT", "CLEANUP_WAIT"].includes(
-                  data.status,
-                ) && (
+                {[
+                  "QUEUED",
+                  "RUNNING",
+                  "RETRY_WAIT",
+                  "DOWNLOAD_WAIT",
+                  "CLEANUP_WAIT",
+                ].includes(data.status) && (
                   <Button
                     disabled={control.isPending}
                     onClick={() => control.mutate("pause")}
@@ -636,7 +657,7 @@ export function JobDetail() {
                   aria-label={t("downloads.progress")}
                   value={
                     data.selectedItems
-                      ? (100 * data.processedItems) / data.selectedItems
+                      ? (100 * completedWorkItems(data)) / data.selectedItems
                       : 0
                   }
                 />
@@ -691,6 +712,35 @@ export function JobDetail() {
                         ]),
                       ],
                     },
+                    ...(data.download
+                      ? [
+                          {
+                            title: "downloadLifecycle.phase",
+                            values: [
+                              [
+                                "downloadLifecycle.selected",
+                                number(data.download.selected),
+                              ],
+                              [
+                                "downloadLifecycle.downloaded",
+                                number(data.download.downloaded),
+                              ],
+                              [
+                                "downloadLifecycle.pending",
+                                number(data.download.pending),
+                              ],
+                              [
+                                "downloadLifecycle.attention",
+                                number(data.download.attention),
+                              ],
+                              [
+                                "downloadLifecycle.ignored",
+                                number(data.download.ignored),
+                              ],
+                            ],
+                          },
+                        ]
+                      : []),
                     {
                       title: "send.options",
                       values: [
@@ -793,6 +843,18 @@ export function JobDetail() {
             </details>
           </section>
         )
+      )}
+      {data?.download && (
+        <p className="muted">{t("downloadLifecycle.controlHelp")}</p>
+      )}
+      {omitDownload.isError && (
+        <Failure
+          error={omitDownload.error}
+          retry={() => {
+            if (omitDownload.variables)
+              omitDownload.mutate(omitDownload.variables);
+          }}
+        />
       )}
       <div className="filters jobs-filters">
         {search.fields}
@@ -936,6 +998,48 @@ export function JobDetail() {
                             >
                               {status(item.status)}
                             </button>
+                          </td>,
+                          <td>
+                            <div className="job-item-detail">
+                              {data?.download &&
+                              ["ACCEPTED", "ALREADY_EXISTS"].includes(
+                                item.status,
+                              ) ? (
+                                <>
+                                  <span>
+                                    {item.downloadState === "IGNORED"
+                                      ? t("downloadLifecycle.ignored")
+                                      : item.downloadState
+                                        ? status(item.downloadState)
+                                        : t("downloadLifecycle.checking")}
+                                  </span>
+                                  {item.downloadMessage && (
+                                    <span className="muted">
+                                      {item.downloadMessage}
+                                    </span>
+                                  )}
+                                  {!["COMPLETED", "CANCELLED"].includes(
+                                    data.status,
+                                  ) &&
+                                    ["ERROR", "NOT_FOUND"].includes(
+                                      item.downloadState ?? "",
+                                    ) && (
+                                      <Button
+                                        size="compact-xs"
+                                        variant="subtle"
+                                        disabled={omitDownload.isPending}
+                                        onClick={() =>
+                                          omitDownload.mutate(item.id)
+                                        }
+                                      >
+                                        {t("downloadLifecycle.omit")}
+                                      </Button>
+                                    )}
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </div>
                           </td>,
                           <td>{item.attempts}</td>,
                           <td>

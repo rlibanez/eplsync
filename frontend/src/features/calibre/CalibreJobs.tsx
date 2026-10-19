@@ -98,7 +98,7 @@ function Controls({ job }: { job: Job }) {
           <Button
             variant="light"
             size="xs"
-            leftSection={<Pause size={14} />}
+            leftSection={<Pause size={16} />}
             disabled={control.isPending}
             onClick={() => control.mutate("pause")}
           >
@@ -110,7 +110,7 @@ function Controls({ job }: { job: Job }) {
           <Button
             variant="light"
             size="xs"
-            leftSection={<Play size={14} />}
+            leftSection={<Play size={16} />}
             disabled={control.isPending}
             onClick={() => control.mutate("resume")}
           >
@@ -122,7 +122,7 @@ function Controls({ job }: { job: Job }) {
             variant="light"
             color="red"
             size="xs"
-            leftSection={<X size={14} />}
+            leftSection={<X size={16} />}
             disabled={control.isPending}
             onClick={() => setCancel(true)}
           >

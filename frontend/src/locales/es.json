@@ -152,6 +152,7 @@
       "CALIBRE_UPDATE_SEARCH": "Buscar actualizaciones de Calibre"
     },
     "internal": {
+      "torrent-download-check": "Seguimiento de trabajos de descarga",
       "torrent-cleanup": "Limpieza de revisiones torrent",
       "calibre-download-check": "Descargas pendientes para Calibre"
     },
@@ -495,10 +496,11 @@
     "ACCEPTED": "Aceptado",
     "SKIPPED": "Omitido",
     "FAILED": "Fallido",
-    "CLEANUP_WAIT": "Pendiente de limpieza"
+    "CLEANUP_WAIT": "Pendiente de limpieza",
+    "DOWNLOAD_WAIT": "Esperando descargas"
   },
   "settings": {
-    "tasks": "Tareas programadas",
+    "tasks": "Tareas",
     "home": "Pantalla inicial",
     "description": "Preferencias de la interfaz para este navegador.",
     "language": "Idioma de la interfaz",
@@ -701,7 +703,7 @@
     "empty": "No hay resultados.",
     "refresh": "Actualizar vista",
     "report": "Informe del trabajo",
-    "jobNote": "Controlan los envíos de EPL Sync. Un envío aceptado no implica una descarga terminada. Pausar o cancelar un trabajo no detiene torrents ya enviados.",
+    "jobNote": "Controlan el envío y la descarga de los libros, y la limpieza de las versiones anteriores cuando corresponde.",
     "job": "Trabajo",
     "progress": "Progreso de envío",
     "selectedBooks": "Libros seleccionados",
@@ -1975,5 +1977,17 @@
   "workWaiting": {
     "automatic": "Esperando automáticamente",
     "intervention": "Requiere tu intervención"
+  },
+  "downloadLifecycle": {
+    "phase": "Descarga",
+    "selected": "Torrents aceptados",
+    "downloaded": "Descargados",
+    "pending": "Pendientes de descarga",
+    "attention": "Requieren atención",
+    "ignored": "Seguimiento omitido",
+    "checking": "Esperando comprobación de la descarga",
+    "omit": "Omitir seguimiento",
+    "controlHelp": "Pausar o cancelar este trabajo no pausa ni elimina los torrents ya enviados al cliente.",
+    "homePending": "Descargas pendientes: {{count}}"
   }
 }

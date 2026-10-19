@@ -66,6 +66,11 @@ public class BulkController {
         synchronized (store) { return store.details(id,page,size,states,sort,statusOperator,filters); }
     }
 
+    @PostMapping("/jobs/{id}/items/{itemId}/omit-download")
+    public BulkStore.View omitDownload(@PathVariable String id,@PathVariable String itemId) {
+        synchronized(store) {store.omitDownload(id,itemId);return store.view(id);}
+    }
+
     @PostMapping("/jobs/{id}/pause")
     public BulkStore.View pause(@PathVariable String id) { return control(id, "pause"); }
     @PostMapping("/jobs/{id}/resume")

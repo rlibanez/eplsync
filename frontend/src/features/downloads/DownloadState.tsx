@@ -556,6 +556,7 @@ function DownloadHistory() {
                                       {(auth.can("DOWNLOADS_DELETE") ||
                                         auth.can("TORRENT_CLEANUP")) && (
                                         <TableAction
+                                          color="red"
                                           label={t("historyActions.delete")}
                                           disabled={pending}
                                           onClick={() => removeRow(d)}

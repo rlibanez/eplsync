@@ -58,7 +58,7 @@ public class JobRetryHistory {
         jdbc.update("UPDATE job_retry_attempts SET finished_at=?,result='COMPLETED' WHERE id=?",Instant.now().toEpochMilli(),attempt);
     }
     private boolean pausedBoundary(String kind,String job) {
-        return kind.equals("downloads") && Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM torrent_bulk_jobs j WHERE j.id=? AND j.state='PAUSED' AND j.type='UPDATE' AND EXISTS(SELECT 1 FROM torrent_bulk_items i WHERE i.job_id=j.id AND i.state='FAILED') AND NOT EXISTS(SELECT 1 FROM torrent_bulk_items i WHERE i.job_id=j.id AND i.state IN ('PENDING','IN_FLIGHT')))",Boolean.class,job));
+        return kind.equals("downloads") && Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM torrent_bulk_jobs j WHERE j.id=? AND (j.state='DOWNLOAD_WAIT' OR j.state='PAUSED' AND j.type='UPDATE') AND EXISTS(SELECT 1 FROM torrent_bulk_items i WHERE i.job_id=j.id AND i.state='FAILED') AND NOT EXISTS(SELECT 1 FROM torrent_bulk_items i WHERE i.job_id=j.id AND i.state IN ('PENDING','IN_FLIGHT')))",Boolean.class,job));
     }
     private Map<String,Object> snapshot(String kind,String job,Map<String,Object> row) {
         var result=new LinkedHashMap<>(row);

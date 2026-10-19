@@ -221,7 +221,7 @@ export function Catalog() {
                         <PanelsTopLeft size={16} />
                       )
                     }
-                    rightSection={<ChevronDown size={14} />}
+                    rightSection={<ChevronDown size={16} />}
                     aria-label={t("catalog.viewSelector")}
                   >
                     {t(
@@ -418,10 +418,10 @@ export function Catalog() {
                         >
                           {t(columnLabels[key])}
                           {ordering.includes(`${key},asc`) && (
-                            <ArrowUp size={14} aria-hidden="true" />
+                            <ArrowUp size={16} aria-hidden="true" />
                           )}
                           {ordering.includes(`${key},desc`) && (
-                            <ArrowDown size={14} aria-hidden="true" />
+                            <ArrowDown size={16} aria-hidden="true" />
                           )}
                           {ordering.length > 1 &&
                             ordering.some((value) =>

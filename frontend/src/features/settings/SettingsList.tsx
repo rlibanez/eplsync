@@ -44,6 +44,7 @@ export function SettingsList({
           />
           <ActionIcon
             type="button"
+            color="red"
             variant="subtle"
             disabled={disabled}
             aria-label={t("serverSettings.removeRow", {
@@ -61,7 +62,7 @@ export function SettingsList({
         type="button"
         variant="subtle"
         size="compact-sm"
-        leftSection={<Plus size={14} />}
+        leftSection={<Plus size={16} />}
         disabled={disabled || values.length >= 100}
         onClick={() => onChange([...values, ""])}
       >

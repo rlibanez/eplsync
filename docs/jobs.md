@@ -1,9 +1,12 @@
-# Trabajos de envío
+# Trabajos de descargas y Calibre
 
 [Guías](README.md) · [Inicio](../README.md)
 
-Los trabajos controlan los envíos de libros y actualizaciones a qBittorrent.
-Un envío aceptado no implica una descarga terminada.
+Los trabajos de Descargas controlan el envío, la descarga y, en las actualizaciones, la limpieza de versiones anteriores. Un envío aceptado no implica una descarga terminada: el trabajo permanece **Esperando descargas** hasta comprobar su resultado. El informe separa las cifras del envío y de la descarga.
+
+Las descargas se comprueban automáticamente, sin reenviar torrents. El intervalo inicial es de 30 segundos y se configura en **Ajustes → Tareas → Comprobaciones de trabajos → Seguimiento de trabajos de descarga**, con un mínimo de 10 segundos y sin reiniciar la aplicación. Un error o un torrent ausente aparece por elemento y se vuelve a comprobar; puedes corregirlo en el cliente u **Omitir seguimiento** si no quieres esperar esa descarga. Omitir no borra archivos ni torrents y no autoriza la limpieza de una revisión de sustitución que no esté verificada.
+
+Pausar o cancelar detiene las operaciones pendientes de EPL Sync, sin pausar ni borrar los torrents ya enviados al cliente. La pantalla inicial incluye tanto los trabajos que esperan descargas como el número de descargas pendientes. Los trabajos ya cerrados antes de esta funcionalidad conservan su estado.
 
 ## Consultar trabajos
 
@@ -22,9 +25,8 @@ original, mientras **#** numera las filas según el orden y filtro actuales.
 
 ## Fases de una actualización
 
-Los trabajos de actualización reúnen dos fases: **Envío** y **Limpieza**.
-Al finalizar los envíos, el trabajo sigue **Pendiente de limpieza** si quedan
-borrados por resolver. Un bloqueo de seguridad se muestra en el informe y no
+Los trabajos de actualización reúnen tres fases: **Envío**, **Descarga** y **Limpieza**.
+Al terminar las descargas, el trabajo sigue **Pendiente de limpieza** si quedan borrados por resolver. El momento elegido para el borrado se respeta: una limpieza inmediata puede ejecutarse mientras la nueva revisión continúa descargándose. Un bloqueo de seguridad se muestra en el informe y no
 da el trabajo por terminado. La ausencia del torrent debe confirmarse antes
 de considerar completado su borrado.
 
@@ -74,7 +76,7 @@ los torrents ni sus archivos.
 
 En las fichas de **Trabajos de descargas** y **Trabajos de Calibre** puedes usar
 **Reintentar fallidos** o marcar filas y pulsar **Reintentar seleccionados**.
-El trabajo debe estar terminado o cancelado y sin operaciones en curso. Para
+El trabajo debe estar terminado o cancelado y sin operaciones en curso; también se pueden reintentar fallos de envío mientras espera otras descargas. Para
 continuar un trabajo pausado, utiliza **Reanudar**.
 
 El diálogo resume los envíos, verificaciones, esperas y limpiezas recuperables.
@@ -82,10 +84,7 @@ Los elementos sin nada pendiente o con problemas se excluyen y se indica el
 motivo. Los cambios de conexión o archivo requieren confirmación; los borrados
 y los envíos inciertos requieren restaurar su conexión original.
 
-El nuevo trabajo conserva la revisión y las opciones originales y enlaza con su
-padre y con el trabajo inicial. El original mantiene sus resultados y muestra
-los reintentos creados. Repetir una petición no crea dos trabajos; para volver a
-intentar un elemento ya transferido a otro trabajo, continúa desde ese reintento.
+Los reintentos se realizan dentro del mismo trabajo y conservan el historial de intentos, la revisión y las opciones originales. Los enlaces a trabajos de reintento antiguos siguen disponibles.
 
 Antes de enviar se comprueba si el torrent o la revisión con EPUB ya existen.
 Un envío incierto de Calibre solo se verifica: si no puede confirmarse, queda

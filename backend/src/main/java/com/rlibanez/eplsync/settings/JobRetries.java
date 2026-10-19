@@ -54,7 +54,7 @@ public class JobRetries {
         if(rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Trabajo no encontrado");return rows.getFirst();
     }
     private boolean terminal(String kind,String id,Map<String,Object> job) {
-        boolean replacementFailed=kind.equals("downloads") && "PAUSED".equals(job.get("state")) && "UPDATE".equals(job.get("type"))
+        boolean replacementFailed=kind.equals("downloads") && ("DOWNLOAD_WAIT".equals(job.get("state")) || "PAUSED".equals(job.get("state")) && "UPDATE".equals(job.get("type")))
             && jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state='FAILED'",Long.class,id)>0
             && jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state IN ('PENDING','IN_FLIGHT')",Long.class,id)==0;
         if(!Set.of("COMPLETED","CANCELLED").contains(job.get("state")) && !replacementFailed) return false;

@@ -61,9 +61,9 @@ export function PreviewHeading({
           {children}
           {active &&
             (order.descending ? (
-              <ArrowDown size={14} />
+              <ArrowDown size={16} />
             ) : (
-              <ArrowUp size={14} />
+              <ArrowUp size={16} />
             ))}
         </button>
       ) : (

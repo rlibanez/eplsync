@@ -31,7 +31,7 @@ export function OpenInCalibre({ book }: { book: Book }) {
         target="_blank"
         rel="noopener noreferrer"
         variant="light"
-        leftSection={<ExternalLink size={17} />}
+        leftSection={<ExternalLink size={16} />}
       >
         {t("calibre.open")}
       </Button>
@@ -39,7 +39,7 @@ export function OpenInCalibre({ book }: { book: Book }) {
   return (
     <Menu opened={opened} onChange={setOpened} position="bottom-start">
       <Menu.Target>
-        <Button variant="light" leftSection={<ExternalLink size={17} />}>
+        <Button variant="light" leftSection={<ExternalLink size={16} />}>
           {t("calibre.open")}
         </Button>
       </Menu.Target>

@@ -163,12 +163,12 @@ class CalibreTorrentConcurrencyTests {
                 return null;
             });
             start.countDown();long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(90);
-            while(!store.view(torrentJob.jobId()).status().equals(BulkJob.State.COMPLETED) && System.nanoTime()<deadline) {worker.tick();Thread.sleep(2);}
+            while(!store.view(torrentJob.jobId()).status().equals(BulkJob.State.DOWNLOAD_WAIT) && System.nanoTime()<deadline) {worker.tick();Thread.sleep(2);}
             sending.get(90,TimeUnit.SECONDS);maintenance.get(90,TimeUnit.SECONDS);
             torrentSync.get(90,TimeUnit.SECONDS);calibreSync.get(90,TimeUnit.SECONDS);
             assertThat(syncMaximum.get()).isEqualTo(1);assertThat(readerChecks.get()).isGreaterThan(4);
             for(var held:contention) held.get(5,TimeUnit.SECONDS);
-            assertThat(store.view(torrentJob.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
+            assertThat(store.view(torrentJob.jobId()).status()).isEqualTo(BulkJob.State.DOWNLOAD_WAIT);
             assertThat(store.view(torrentJob.jobId()).accepted()).isEqualTo(1000);
             assertThat(transfers.job(calibreJob.id()).state()).isEqualTo("COMPLETED");
             assertThat(transfers.job(calibreJob.id()).accepted()).isEqualTo(1000);

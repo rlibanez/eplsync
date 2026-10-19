@@ -152,7 +152,7 @@ export function ImportWizard({
               accept=".zip"
               value={file}
               onChange={setFile}
-              leftSection={<Upload size={17} />}
+              leftSection={<Upload size={16} />}
               clearable
               error={file && !validFile ? t("import.invalidZip") : undefined}
             />
@@ -205,7 +205,7 @@ export function ImportWizard({
                           .catch(() => setCopy("hashCopyFailed"));
                       }}
                     >
-                      <Copy size={17} />
+                      <Copy size={16} />
                     </ActionIcon>
                   </Tooltip>
                 </dd>

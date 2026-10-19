@@ -15,7 +15,6 @@ import {
   ActionIcon,
   Group,
   Stack,
-  Switch,
   Select,
   TextInput,
   Alert,
@@ -141,7 +140,9 @@ export function ScheduledTaskSettings() {
       sortable: false,
     })),
     "",
-    () => {}, undefined, query.data?.tasks.length ?? 1,
+    () => {},
+    undefined,
+    query.data?.tasks.length ?? 1,
   );
   const [editing, setEditing] = useState<{ id?: string; input: Input } | null>(
     null,
@@ -263,7 +264,14 @@ export function ScheduledTaskSettings() {
                 {columns.visible.map((column) => (
                   <col
                     key={column.field}
-                    style={{ width: column.field === "rowNumber" ? column.width : column.field === "name" ? "auto" : "1%" }}
+                    style={{
+                      width:
+                        column.field === "rowNumber"
+                          ? column.width
+                          : column.field === "name"
+                            ? "auto"
+                            : "1%",
+                    }}
                   />
                 ))}
               </colgroup>
@@ -354,7 +362,7 @@ export function ScheduledTaskSettings() {
                           )}
                         </td>,
                         <td>
-                          <Switch
+                          <Checkbox
                             aria-label={t("scheduledTasks.toggle", {
                               name: task.name,
                             })}
@@ -369,7 +377,7 @@ export function ScheduledTaskSettings() {
                           />
                         </td>,
                         <td>
-                          <Switch
+                          <Checkbox
                             aria-label={t(
                               "scheduledTasks.toggleNotifications",
                               {
@@ -387,7 +395,7 @@ export function ScheduledTaskSettings() {
                           />
                         </td>,
                         <td>
-                          <Group gap="xs" wrap="nowrap">
+                          <Group gap={4} wrap="nowrap">
                             {query.data.automations?.[task.id]?.cycle?.state !==
                               undefined &&
                               query.data.automations[task.id].cycle!.state !==
@@ -403,7 +411,7 @@ export function ScheduledTaskSettings() {
                                   aria-label={t("automation.close")}
                                   title={t("automation.close")}
                                 >
-                                  <SquareCheck size={18} />
+                                  <SquareCheck size={16} aria-hidden="true" />
                                 </ActionIcon>
                               )}
                             <ActionIcon
@@ -414,7 +422,7 @@ export function ScheduledTaskSettings() {
                               aria-label={t("scheduledTasks.runNow")}
                               title={t("scheduledTasks.runNow")}
                             >
-                              <Play size={18} />
+                              <Play size={16} aria-hidden="true" />
                             </ActionIcon>
                             <ActionIcon
                               size="sm"
@@ -424,7 +432,7 @@ export function ScheduledTaskSettings() {
                               aria-label={t("scheduledTasks.edit")}
                               title={t("scheduledTasks.edit")}
                             >
-                              <Pencil size={18} />
+                              <Pencil size={16} aria-hidden="true" />
                             </ActionIcon>
                             <ActionIcon
                               size="sm"
@@ -443,7 +451,7 @@ export function ScheduledTaskSettings() {
                               aria-label={t("scheduledTasks.delete")}
                               title={t("scheduledTasks.delete")}
                             >
-                              <Trash2 size={18} />
+                              <Trash2 size={16} aria-hidden="true" />
                             </ActionIcon>
                           </Group>{" "}
                         </td>,
@@ -875,7 +883,7 @@ function TaskEditor({
               </>
             }
           />
-          <Switch
+          <Checkbox
             label={t("scheduledTasks.enabled")}
             checked={value.enabled}
             onChange={(e) => change("enabled", e.currentTarget.checked)}

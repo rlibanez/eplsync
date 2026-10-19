@@ -97,7 +97,7 @@ export function ImportCatalog({ guided = false }: { guided?: boolean }) {
                     disabled={pending}
                     onClick={dismissPreview}
                   >
-                    <X size={18} />
+                    <X size={16} />
                   </ActionIcon>
                 </Tooltip>
               </div>
@@ -177,7 +177,7 @@ export function ImportCatalog({ guided = false }: { guided?: boolean }) {
                       aria-label={t("import.closeResult")}
                       onClick={dismissResult}
                     >
-                      <X size={18} />
+                      <X size={16} />
                     </ActionIcon>
                   </Tooltip>
                 </div>
@@ -206,7 +206,7 @@ export function ImportCatalog({ guided = false }: { guided?: boolean }) {
             )}
           <div className="action-row">
             <Button
-              leftSection={<Download size={17} />}
+              leftSection={<Download size={16} />}
               disabled={pending}
               onClick={() => setWizard(true)}
             >

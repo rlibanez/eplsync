@@ -152,6 +152,7 @@
       "CALIBRE_UPDATE_SEARCH": "Check Calibre updates"
     },
     "internal": {
+      "torrent-download-check": "Download job tracking",
       "torrent-cleanup": "Torrent revision cleanup",
       "calibre-download-check": "Pending downloads for Calibre"
     },
@@ -495,10 +496,11 @@
     "ACCEPTED": "Accepted",
     "SKIPPED": "Skipped",
     "FAILED": "Failed",
-    "CLEANUP_WAIT": "Waiting for cleanup"
+    "CLEANUP_WAIT": "Waiting for cleanup",
+    "DOWNLOAD_WAIT": "Waiting for downloads"
   },
   "settings": {
-    "tasks": "Scheduled tasks",
+    "tasks": "Tasks",
     "home": "Home screen",
     "description": "Interface preferences for this browser.",
     "language": "Interface language",
@@ -701,7 +703,7 @@
     "empty": "No results.",
     "refresh": "Refresh view",
     "report": "Job report",
-    "jobNote": "These jobs control EPL Sync submissions. An accepted submission does not mean a completed download. Pausing or cancelling a job does not stop torrents already submitted.",
+    "jobNote": "Track book submission, downloading and cleanup of previous revisions when applicable.",
     "job": "Job",
     "progress": "Submission progress",
     "selectedBooks": "Selected books",
@@ -1975,5 +1977,17 @@
   "workWaiting": {
     "automatic": "Waiting automatically",
     "intervention": "Requires your attention"
+  },
+  "downloadLifecycle": {
+    "phase": "Download",
+    "selected": "Accepted torrents",
+    "downloaded": "Downloaded",
+    "pending": "Pending downloads",
+    "attention": "Require attention",
+    "ignored": "Tracking omitted",
+    "checking": "Waiting for download verification",
+    "omit": "Omit tracking",
+    "controlHelp": "Pausing or cancelling this job does not pause or delete torrents already submitted to the client.",
+    "homePending": "Pending downloads: {{count}}"
   }
 }

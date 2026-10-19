@@ -20,6 +20,9 @@ public class BulkItem {
     private Double revision;
     @Enumerated(EnumType.STRING) @Column(nullable = false) private State state;
     public enum State { PENDING, IN_FLIGHT, ACCEPTED, ALREADY_EXISTS, SKIPPED, FAILED, CANCELLED }
+    private String downloadState;
+    @Column(columnDefinition="TEXT") private String downloadMessage;
+    private java.time.Instant downloadCheckedAt;
     private int attempts;
     private String message;
     @Column(columnDefinition = "TEXT") private String commandJson;

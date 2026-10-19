@@ -3,7 +3,13 @@ import { workWaitingMode } from "./WorkWaiting";
 
 describe("worker waiting explanations", () => {
   it("only promises automatic progress for active workers", () => {
-    for (const job of ["QUEUED", "RUNNING", "RETRY_WAIT", "CLEANUP_WAIT"])
+    for (const job of [
+      "QUEUED",
+      "RUNNING",
+      "RETRY_WAIT",
+      "DOWNLOAD_WAIT",
+      "CLEANUP_WAIT",
+    ])
       for (const item of ["PENDING", "WAITING_DOWNLOAD", "CLEANUP_PENDING"])
         expect(workWaitingMode(item, job)).toBe("automatic");
     expect(workWaitingMode("PENDING")).toBe("intervention");

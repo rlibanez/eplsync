@@ -212,3 +212,28 @@ test("Calibre overview cards stay hidden without permissions", async ({
   await page.goto("/");
   await expect(page.locator(".home-stats article")).toHaveCount(1);
 });
+
+test("home counts download and cleanup waits as active and shows pending torrents", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.route("**/api/home/summary", (r) =>
+    r.fulfill({
+      json: {
+        catalog: { total: 0 },
+        downloads: {
+          total: 10,
+          byStatus: { DOWNLOADED: 4, QUEUED: 3, DOWNLOADING: 2, ERROR: 1 },
+        },
+        jobs: { byStatus: { DOWNLOAD_WAIT: 2, CLEANUP_WAIT: 1, COMPLETED: 7 } },
+      },
+    }),
+  );
+  await page.goto("/");
+  await expect(
+    page.locator(".home-stats article").nth(2).locator(".home-count"),
+  ).toHaveText("3");
+  await expect(
+    page.getByText("Descargas pendientes: 5", { exact: true }),
+  ).toBeVisible();
+});

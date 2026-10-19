@@ -35,7 +35,14 @@ const bookSectionParams = (status: string | null) =>
   status
     ? `publicationStatus=${status}&sort=publicationDate%2Cdesc&sort=eplId%2Cdesc`
     : "sort=insertDate%2Cdesc&sort=eplId%2Cdesc";
-const activeStates = ["QUEUED", "RUNNING", "RETRY_WAIT", "PAUSED"];
+const activeStates = [
+  "QUEUED",
+  "RUNNING",
+  "RETRY_WAIT",
+  "DOWNLOAD_WAIT",
+  "CLEANUP_WAIT",
+  "PAUSED",
+];
 export function Home() {
   const { t } = useTranslation();
   const auth = useAuth();
@@ -132,7 +139,7 @@ export function Home() {
         onClick={dismissHero}
         disabled={savePreferences.isPending}
       >
-        <X size={20} />
+        <X size={16} />
       </ActionIcon>
       <div>
         <h1>
@@ -211,6 +218,16 @@ export function Home() {
                 {summary.data?.downloads?.total ?? 0}
               </strong>
               <span className="muted">{t("home.downloadsCount")}</span>
+              <span className="muted">
+                {t("downloadLifecycle.homePending", {
+                  count: Object.entries(summary.data?.downloads?.byStatus ?? {})
+                    .filter(
+                      ([state]) =>
+                        !["DOWNLOADED", "ERROR", "NOT_FOUND"].includes(state),
+                    )
+                    .reduce((total, [, count]) => total + count, 0),
+                })}
+              </span>
               <div className="home-statuses">
                 {Object.entries(summary.data?.downloads?.byStatus ?? {})
                   .filter(([, count]) => count > 0)

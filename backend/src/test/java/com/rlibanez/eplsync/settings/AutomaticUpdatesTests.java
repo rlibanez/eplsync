@@ -26,6 +26,7 @@ class AutomaticUpdatesTests {
     @Autowired AccountStore accounts;
     @Autowired CalibreSettings calibre;
     @Autowired DownloadTrackingService tracking;
+    @Autowired DownloadRepository downloads;
     @Autowired BulkStore bulk;
     @Autowired CalibreTransfers transfers;
     @Autowired JdbcTemplate jdbc;
@@ -58,6 +59,11 @@ class AutomaticUpdatesTests {
         var task=tasks.save(null,new ScheduledTasks.Input("Automation",op,"0 5 * * *",owner.id(),true));automations.save(task,config(changes));return task;
     }
     Map<String,Object> execute(ScheduledTasks.Task task) {return EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(EventContext.Origin.SCHEDULED,()->automations.execute(task)));}
+    private void completeDownload(String job,BulkItem item) {
+        var row=new DownloadRecord();row.setEplId(item.getEplId());row.setRevision(item.getRevision());row.setHash(item.getHash());
+        row.setClient("qbittorrent");row.setClientInstanceId(bulk.job(job).getTargetFingerprint());row.setOrigin(DownloadRecord.Origin.EPLSYNC);
+        row.setStatus(DownloadStatus.DOWNLOADED);row.setCreatedAt(java.time.Instant.now());downloads.save(row);bulk.refreshDownloads(job);
+    }
     @Test void idleAutomationWorkerDetectsNewCycleAndJpaCompletion() {
         automations.refresh();
         var probe=(com.rlibanez.eplsync.config.WorkerActivity.Probe)org.springframework.test.util.ReflectionTestUtils.getField(automations,"idleProbe");
@@ -67,6 +73,7 @@ class AutomaticUpdatesTests {
         String job=automations.latest(task.id()).jobs().getFirst().id();
         bulk.next();var item=bulk.claim(job,bulk.pending(job,1).getFirst());
         bulk.finish(item.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        completeDownload(job,item);
         org.springframework.test.util.ReflectionTestUtils.setField(automations,"workerEnabled",true);
         try {
             automations.tick();
@@ -86,6 +93,7 @@ class AutomaticUpdatesTests {
         assertThatThrownBy(()->automations.save(task,config(Map.of()))).hasMessageContaining("ciclo pendiente");
         bulk.next();var item=bulk.claim(job,bulk.pending(job,1).getFirst());bulk.finish(item.getId(),BulkItem.State.ACCEPTED,null,false,false);
         automations.refresh();assertThat(automations.latest(task.id()).state()).isEqualTo("WAITING");
+        completeDownload(job,item);
         jdbc.update("UPDATE torrent_update_cleanup SET state='REMOVED' WHERE job_id=?",job);bulk.cleanupChanged(job);automations.refresh();
         assertThat(automations.latest(task.id()).state()).isEqualTo("COMPLETED");
     }
@@ -188,6 +196,8 @@ class AutomaticUpdatesTests {
         EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(origin,()->automations.execute(task)));
         String job=automations.latest(task.id()).jobs().getFirst().id();
         bulk.next();var item=bulk.claim(job,bulk.pending(job,1).getFirst());bulk.finish(item.getId(),BulkItem.State.ACCEPTED,"ok",false,false);
+        assertThat(bulk.view(job).status()).isEqualTo(BulkJob.State.DOWNLOAD_WAIT);
+        completeDownload(job,item);
         assertThat(bulk.view(job).status()).isEqualTo(BulkJob.State.COMPLETED);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE operation_id=?",Long.class,job)).isZero();
     }

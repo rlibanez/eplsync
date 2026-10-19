@@ -87,8 +87,9 @@ export function MissingBooks({ disabled }: { disabled: boolean }) {
   return (
     <>
       <Button
-        variant="default"
-        leftSection={<Trash2 size={17} />}
+        color="red"
+        variant="light"
+        leftSection={<Trash2 size={16} />}
         disabled={disabled || busy}
         loading={busy && !preview}
         onClick={() => void perform("preview")}

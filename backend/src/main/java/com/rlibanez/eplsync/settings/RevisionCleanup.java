@@ -267,7 +267,7 @@ public class RevisionCleanup {
     private void checkDirectPending(Item item,String id,Job job,boolean retry) {
         var blocker=history.blockingCalibre(item.oldHash(),tracking.instanceId());
         if(blocker!=null) throw new UserInputException(blocker.message());
-        if(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.state NOT IN ('COMPLETED','CANCELLED','CLEANUP_WAIT')",Long.class,item.eplId())>0) throw new UserInputException("Este libro tiene un envío torrent pendiente; resuélvelo antes de borrarlo");
+        if(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.state NOT IN ('COMPLETED','CANCELLED','DOWNLOAD_WAIT','CLEANUP_WAIT')",Long.class,item.eplId())>0) throw new UserInputException("Este libro tiene un envío torrent pendiente; resuélvelo antes de borrarlo");
         if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND i.job_id<>? AND (i.state='UNCERTAIN' OR j.state IN ('QUEUED','RUNNING','PAUSED') AND i.state IN ('PENDING','RUNNING','VERIFYING'))",Long.class,item.eplId(),id)>0) throw new UserInputException("Este libro tiene otra limpieza pendiente; resuélvela antes de borrarlo");
         for(var pending:jdbc.queryForList("SELECT * FROM torrent_update_cleanup WHERE epl_id=? AND state IN ('WAITING','BLOCKED','REQUESTED') AND job_id<>?",item.eplId(),"revision:"+id)) {
             if(pending.get("target_hashes")!=null) for(var target:json.readTree(pending.get("target_hashes").toString()))
@@ -396,7 +396,7 @@ public class RevisionCleanup {
         });return get(id);
     }
     private void noPending(Item item,String job,boolean force,String action,boolean explicitRetry,boolean deleteHistory) {
-        long active=jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.state NOT IN ('COMPLETED','CANCELLED') AND (?=0 OR j.state<>'CLEANUP_WAIT')",Long.class,item.eplId(),force);
+        long active=jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.state NOT IN ('COMPLETED','CANCELLED') AND (?=0 OR j.state NOT IN ('CLEANUP_WAIT','DOWNLOAD_WAIT'))",Long.class,item.eplId(),force);
         active+=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND (j.state IN ('QUEUED','RUNNING','PAUSED') OR i.state IN ('SENDING','UNCERTAIN','CLEANUP_PENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD'))",Long.class,item.eplId());
         for(var pending:jdbc.queryForList("SELECT * FROM torrent_update_cleanup WHERE epl_id=? AND state IN ('WAITING','BLOCKED','REQUESTED') AND coalesce(job_id,'')<>?",item.eplId(),"revision:"+job)) {
             // Only an identical automatic deletion, including its local-record choice, can be fulfilled early.

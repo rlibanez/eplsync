@@ -7,6 +7,7 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   const internal = [
     { id: "torrent-cleanup", interval: "30s" },
     { id: "calibre-download-check", interval: "30s" },
+    { id: "torrent-download-check", interval: "30s" },
   ];
   const changes: Record<string, unknown>[] = [];
   await page.route("**/api/settings/tasks**", async (route) => {
@@ -94,7 +95,7 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   });
   await page.goto("/settings/tasks");
   await expect(
-    page.getByRole("link", { name: "Tareas programadas", exact: true }),
+    page.getByRole("link", { name: "Tareas", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("No hay tareas programadas.")).toBeVisible();
   const required = page.locator(".settings-section").filter({
@@ -142,6 +143,22 @@ test("creates, edits and toggles cron tasks and changes required check periods",
       name: "Descargas pendientes para Calibre",
     }),
   ).toHaveValue("30s");
+  const downloadsPeriod = required.getByRole("textbox", {
+    name: "Seguimiento de trabajos de descarga",
+    exact: true,
+  });
+  await expect(downloadsPeriod).toHaveValue("30s");
+  await downloadsPeriod.fill("1m");
+  await required
+    .getByRole("button", { name: "Guardar", exact: true })
+    .nth(2)
+    .click();
+  await expect(downloadsPeriod).toHaveValue("60s");
+  await required
+    .getByRole("button", { name: "Restablecer", exact: true })
+    .nth(2)
+    .click();
+  await expect(downloadsPeriod).toHaveValue("30s");
   await page.getByRole("button", { name: "Crear tarea", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await expect(
@@ -222,11 +239,36 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   await expect(dialog).toBeHidden();
   const row = page.locator("tbody tr").filter({ hasText: "Calibre nocturno" });
   await expect(row).toContainText("admin");
+  await expect(
+    page.getByRole("heading", { name: "Tareas programadas", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Comprobaciones de trabajos",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(row.getByRole("switch")).toHaveCount(0);
+  for (const checkbox of await row.locator(".mantine-Checkbox-root").all()) {
+    await expect(checkbox).toHaveCSS("margin-top", "0px");
+    await expect(checkbox).toHaveCSS("margin-bottom", "0px");
+  }
+  expect((await row.boundingBox())!.height).toBeLessThanOrEqual(64);
+  expect(
+    (await row
+      .getByRole("button", { name: "Editar tarea", exact: true })
+      .boundingBox())!.height,
+  ).toBeLessThanOrEqual(24);
+  await expect(
+    row
+      .getByRole("button", { name: "Editar tarea", exact: true })
+      .locator("svg"),
+  ).toHaveAttribute("width", "16");
   await row
-    .getByRole("switch", { name: /^Activar o desactivar (?!Telegram)/ })
+    .getByRole("checkbox", { name: /^Activar o desactivar (?!Telegram)/ })
     .press("Space");
   await expect(
-    row.getByRole("switch", { name: /^Activar o desactivar (?!Telegram)/ }),
+    row.getByRole("checkbox", { name: /^Activar o desactivar (?!Telegram)/ }),
   ).not.toBeChecked();
   await expect(
     page.getByRole("columnheader", { name: "Zona horaria", exact: true }),
@@ -234,7 +276,7 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   await expect(
     page.getByRole("columnheader", { name: /^Notificaciones/ }),
   ).toBeVisible();
-  const notificationToggle = row.getByRole("switch", {
+  const notificationToggle = row.getByRole("checkbox", {
     name: /Activar o desactivar Telegram/,
   });
   await expect(notificationToggle).not.toBeChecked();
@@ -261,12 +303,12 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   await expect(page.locator("tbody tr")).toContainText("Calibre semanal");
   await page
     .locator("tbody tr")
-    .getByRole("switch", { name: /^Activar o desactivar (?!Telegram)/ })
+    .getByRole("checkbox", { name: /^Activar o desactivar (?!Telegram)/ })
     .press("Space");
   await expect(
     page
       .locator("tbody tr")
-      .getByRole("switch", { name: /^Activar o desactivar (?!Telegram)/ }),
+      .getByRole("checkbox", { name: /^Activar o desactivar (?!Telegram)/ }),
   ).toBeChecked();
   expect(
     changes.some((change) => change.operation === "CALIBRE_SYNC"),
@@ -316,8 +358,12 @@ test("creates, edits and toggles cron tasks and changes required check periods",
       .toBeLessThan(155);
   }
   const index = table.locator("tbody td.row-number").first();
-  await expect.poll(async () => (await index.boundingBox())!.width).toBeLessThan(65);
-  await expect(table.locator('th[data-table-column="rowNumber"] .column-resizer')).toHaveCount(0);
+  await expect
+    .poll(async () => (await index.boundingBox())!.width)
+    .toBeLessThan(65);
+  await expect(
+    table.locator('th[data-table-column="rowNumber"] .column-resizer'),
+  ).toHaveCount(0);
   const header = page.locator('th[data-table-column="name"]');
   const before = (await header.boundingBox())!.width;
   const handle = header.getByRole("button", {
@@ -340,9 +386,13 @@ test("creates, edits and toggles cron tasks and changes required check periods",
   const resized = (await header.boundingBox())!.width;
   await page.reload();
   await expect
-    .poll(async () => Math.abs(((await header.boundingBox())?.width ?? 0) - resized))
+    .poll(async () =>
+      Math.abs(((await header.boundingBox())?.width ?? 0) - resized),
+    )
     .toBeLessThan(2);
-  await expect.poll(async () => (await index.boundingBox())!.width).toBeLessThan(65);
+  await expect
+    .poll(async () => (await index.boundingBox())!.width)
+    .toBeLessThan(65);
   await page.screenshot({
     path: "/tmp/eplsync-scheduled-tasks.png",
     fullPage: true,
@@ -366,7 +416,7 @@ test("task settings are restricted to administrators", async ({ page }) => {
     page.getByText("No tienes permiso para acceder a este apartado"),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Tareas programadas", exact: true }),
+    page.getByRole("link", { name: "Tareas", exact: true }),
   ).toHaveCount(0);
 });
 

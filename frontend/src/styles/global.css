@@ -2116,6 +2116,7 @@ summary {
   .telegram-connection-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
 }
 
+.settings-section .scheduled-tasks-table .mantine-Checkbox-root { margin: 0; }
 .scheduled-tasks-table th {
   white-space: nowrap;
   overflow-wrap: normal;

@@ -45,7 +45,7 @@ public class WorkListings {
         String normalSql=downloads?"""
             SELECT j.id,'normal' kind,CASE WHEN typeof(j.created_at) IN ('integer','real') THEN j.created_at ELSE cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) END createdAt,
             coalesce(j.type,'DOWNLOAD') type,j.state state,j.event_actor_username username,NULL library,j.selected_books selectedBooks,
-            count(i.id) total,coalesce(sum(i.state IN ('ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED')),0) processed,
+            count(i.id) total,coalesce(sum(CASE WHEN j.track_downloads=1 THEN i.state IN ('SKIPPED','FAILED','CANCELLED') OR i.download_state IN ('DOWNLOADED','IGNORED') ELSE i.state IN ('ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED') END),0) processed,
             coalesce(sum(i.state='ACCEPTED'),0) accepted,coalesce(sum(i.state='FAILED'),0) failed
             FROM torrent_bulk_jobs j LEFT JOIN torrent_bulk_items i ON i.job_id=j.id GROUP BY j.id
             """:"""
@@ -66,7 +66,7 @@ public class WorkListings {
         var args=new ArrayList<Object>(List.of(source,owner));
         String base="WITH work AS ("+(normal?normalSql+" UNION ALL ":"")+projection+") SELECT * FROM work WHERE 1=1";
         if(states!=null && !states.isEmpty()) {
-            var valid=downloads?Set.of("QUEUED","RUNNING","PAUSED","COMPLETED","CANCELLED","RETRY_WAIT","CLEANUP_WAIT"):Set.of("QUEUED","RUNNING","PAUSED","COMPLETED","CANCELLED");
+            var valid=downloads?Set.of("QUEUED","RUNNING","PAUSED","COMPLETED","CANCELLED","RETRY_WAIT","DOWNLOAD_WAIT","CLEANUP_WAIT"):Set.of("QUEUED","RUNNING","PAUSED","COMPLETED","CANCELLED");
             if(!valid.containsAll(states)) throw new UserInputException("Estado de trabajo inválido");
             base+=" AND state "+(exclude?"NOT IN (":"IN (")+String.join(",",Collections.nCopies(states.size(),"?"))+")";args.addAll(states);
         }

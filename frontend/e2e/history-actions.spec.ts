@@ -128,7 +128,10 @@ test("history refreshes selected records and removes through a confirmed dialog 
   await section
     .getByRole("checkbox", { name: "Seleccionar registros de esta página" })
     .check();
-  await section.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await section
+    .locator(".selection-toolbar-actions")
+    .getByRole("button", { name: "Eliminar", exact: true })
+    .click();
   await page
     .getByRole("dialog")
     .getByRole("textbox", { name: "En el cliente torrent", exact: true })
@@ -196,7 +199,10 @@ test("history actions respect permissions and show errors inside the confirmatio
   await expect(
     section.getByRole("button", { name: "Actualizar estado", exact: true }),
   ).toHaveCount(0);
-  await section.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await section
+    .locator(".selection-toolbar-actions")
+    .getByRole("button", { name: "Eliminar", exact: true })
+    .click();
   await page
     .getByRole("dialog")
     .getByRole("textbox", { name: "En el cliente torrent", exact: true })
@@ -321,7 +327,10 @@ test("history deletion confirms pending cleanup and removes only selected databa
   await section
     .getByRole("checkbox", { name: "Seleccionar revisión 1", exact: true })
     .check();
-  await section.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await section
+    .locator(".selection-toolbar-actions")
+    .getByRole("button", { name: "Eliminar", exact: true })
+    .click();
   const dialog = page.getByRole("dialog");
   await dialog
     .getByRole("checkbox", {
@@ -374,3 +383,131 @@ test("history deletion confirms pending cleanup and removes only selected databa
     }),
   ).toBeVisible();
 });
+
+test("history row deletion targets only that revision and keeps other selected rows", async ({
+  page,
+}) => {
+  const data = await history(page);
+  let removed: unknown,
+    requests = 0;
+  await page.route(
+    "**/api/torrent/downloads/delete-history?preview=true",
+    (route) => {
+      expect(route.request().postDataJSON()).toEqual({ eplId: 1, ids: ["r1"] });
+      return route.fulfill({ json: { pendingCleanup: 0 } });
+    },
+  );
+  await page.route("**/api/revision-cleanups/removals", (route) => {
+    requests++;
+    removed = route.request().postDataJSON().removal;
+    data.setRows(data.rows.filter((row) => row.id !== "r1"));
+    return route.fulfill({
+      json: {
+        items: [
+          {
+            id: "r1",
+            status: "SUBMITTED",
+            cleanupState: null,
+            message: null,
+            historyDeleted: true,
+          },
+        ],
+      },
+    });
+  });
+  await page.goto("/catalog/1");
+  const section = page.locator(".book-history");
+  await section
+    .getByRole("checkbox", { name: "Seleccionar revisión 2", exact: true })
+    .check();
+  const rowDelete = section
+    .locator("tbody tr")
+    .filter({
+      has: page.getByRole("checkbox", {
+        name: "Seleccionar revisión 1",
+        exact: true,
+      }),
+    })
+    .getByRole("button", { name: "Eliminar", exact: true });
+  await expect(rowDelete.locator("svg")).toHaveAttribute("width", "16");
+  const channels = await rowDelete.evaluate((el) =>
+    getComputedStyle(el)
+      .color.match(/[\d.]+/g)!
+      .map(Number),
+  );
+  expect(channels[0]).toBeGreaterThan(channels[1]);
+  expect(channels[0]).toBeGreaterThan(channels[2]);
+  await rowDelete.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator("tbody tr")).toHaveCount(1);
+  await expect(dialog).toContainText("A".repeat(40));
+  await dialog
+    .getByRole("checkbox", {
+      name: "Eliminar el registro del historial",
+      exact: true,
+    })
+    .check();
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await dialog
+    .getByRole("checkbox", {
+      name: "Confirmo el borrado irreversible de los elementos seleccionados.",
+      exact: true,
+    })
+    .check();
+  await dialog.getByRole("button", { name: "Eliminar", exact: true }).click();
+  await expect
+    .poll(() => removed)
+    .toEqual({
+      eplId: 1,
+      ids: ["r1"],
+      clientAction: "keep",
+      deleteHistory: true,
+      confirm: true,
+      confirmFiles: false,
+    });
+  expect(requests).toBe(1);
+  await expect(
+    section.getByRole("checkbox", {
+      name: "Seleccionar revisión 2",
+      exact: true,
+    }),
+  ).toBeChecked();
+  await expect(
+    section.getByRole("button", { name: "Quitar selección (1)", exact: true }),
+  ).toBeVisible();
+});
+
+for (const permissions of [
+  ["DOWNLOADS_FILES_READ"],
+  ["DOWNLOADS_DELETE"],
+  ["TORRENT_CLEANUP"],
+]) {
+  test(`history row deletion respects ${permissions[0]} without requiring file access`, async ({
+    page,
+  }) => {
+    await history(page);
+    await page.route("**/api/auth/me", (route) =>
+      route.fulfill({
+        json: {
+          id: "reader",
+          username: "reader",
+          role: "USER",
+          mustChangePassword: false,
+          permissions: ["CATALOG_READ", "BOOK_HISTORY_READ", ...permissions],
+        },
+      }),
+    );
+    await page.goto("/catalog/1");
+    const section = page.locator(".book-history");
+    await expect(section.locator("tbody tr")).toHaveCount(2);
+    await expect(
+      section
+        .locator("tbody")
+        .getByRole("button", { name: "Eliminar", exact: true }),
+    ).toHaveCount(permissions[0] === "DOWNLOADS_FILES_READ" ? 0 : 2);
+    if (permissions[0] !== "DOWNLOADS_FILES_READ")
+      await expect(
+        section.getByRole("columnheader", { name: /^Acciones/ }),
+      ).toBeVisible();
+  });
+}
