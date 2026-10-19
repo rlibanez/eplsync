@@ -1,3 +1,4 @@
+import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
 import { OpenInCalibre } from "../calibre/OpenInCalibre";
 import { useAuth } from "../auth/Auth";
 import type { Book } from "../../api/catalog";
@@ -36,102 +37,111 @@ export function BookActions({ book }: { book: Book }) {
   ];
   const pending = useIsMutating({ mutationKey: ["send-books"] }) > 0;
   return (
-    <section className="book-actions" aria-label={t("detail.actions")}>
-      {hash && (
-        <SendSelection
-          single={{ eplId, hash }}
-          filters={{ eplId: [eplId] }}
-          count={1}
-          allResults={false}
-          onClose={() => setHash(null)}
-        />
-      )}
-      <div className="action-row">
-        {auth.can("TORRENT_SEND") &&
-          (hashes.length > 1 ? (
+    <CalibreSendProvider>
+      <section className="book-actions" aria-label={t("detail.actions")}>
+        {hash && (
+          <SendSelection
+            single={{ eplId, hash }}
+            filters={{ eplId: [eplId] }}
+            count={1}
+            allResults={false}
+            onClose={() => setHash(null)}
+          />
+        )}
+        <div className="action-row">
+          {auth.can("TORRENT_SEND") &&
+            (hashes.length > 1 ? (
+              <Menu>
+                <Menu.Target>
+                  <Button
+                    variant="light"
+                    disabled={pending}
+                    leftSection={<Download size={17} />}
+                  >
+                    {t("send.fromBook")}
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  {hashes.map((value, index) => (
+                    <Menu.Item key={value} onClick={() => setHash(value)}>
+                      {t("detail.magnetNumber", { number: index + 1 })} ·{" "}
+                      {value}
+                    </Menu.Item>
+                  ))}
+                </Menu.Dropdown>
+              </Menu>
+            ) : (
+              <Button
+                variant="light"
+                leftSection={<Download size={17} />}
+                disabled={pending || magnets.isPending || !hashes.length}
+                onClick={() => setHash(hashes[0])}
+              >
+                {t("send.fromBook")}
+              </Button>
+            ))}
+          <SendToCalibre filters={{ selectedIds: [eplId] }} count={1} />
+          {links.length === 1 ? (
+            <Button
+              component="a"
+              href={links[0]}
+              variant="light"
+              leftSection={<Magnet size={17} />}
+            >
+              {t("detail.openMagnet")}
+            </Button>
+          ) : links.length > 1 ? (
             <Menu>
               <Menu.Target>
-                <Button disabled={pending} leftSection={<Download size={17} />}>
-                  {t("send.fromBook")}
+                <Button variant="light" leftSection={<Magnet size={17} />}>
+                  {t("detail.openMagnet")}
                 </Button>
               </Menu.Target>
               <Menu.Dropdown>
-                {hashes.map((value, index) => (
-                  <Menu.Item key={value} onClick={() => setHash(value)}>
-                    {t("detail.magnetNumber", { number: index + 1 })} · {value}
+                {links.map((link, index) => (
+                  <Menu.Item component="a" href={link} key={link}>
+                    {t("detail.magnetNumber", { number: index + 1 })} ·{" "}
+                    {new URLSearchParams(link.split("?")[1])
+                      .get("xt")
+                      ?.replace("urn:btih:", "")}
                   </Menu.Item>
                 ))}
               </Menu.Dropdown>
             </Menu>
           ) : (
-            <Button
-              leftSection={<Download size={17} />}
-              disabled={pending || magnets.isPending || !hashes.length}
-              onClick={() => setHash(hashes[0])}
-            >
-              {t("send.fromBook")}
+            <Button variant="light" disabled leftSection={<Magnet size={17} />}>
+              {t("detail.openMagnet")}
             </Button>
-          ))}
-        {links.length === 1 ? (
+          )}
           <Button
             component="a"
-            href={links[0]}
+            href={`https://www.epublibre.org/libro/detalle/${eplId}`}
+            target="_blank"
+            rel="noopener noreferrer"
             variant="light"
-            leftSection={<Magnet size={17} />}
+            leftSection={<ExternalLink size={17} />}
           >
-            {t("detail.openMagnet")}
+            {t("detail.epublibre")}
           </Button>
-        ) : links.length > 1 ? (
-          <Menu>
-            <Menu.Target>
-              <Button variant="light" leftSection={<Magnet size={17} />}>
-                {t("detail.openMagnet")}
-              </Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              {links.map((link, index) => (
-                <Menu.Item component="a" href={link} key={link}>
-                  {t("detail.magnetNumber", { number: index + 1 })} ·{" "}
-                  {new URLSearchParams(link.split("?")[1])
-                    .get("xt")
-                    ?.replace("urn:btih:", "")}
-                </Menu.Item>
-              ))}
-            </Menu.Dropdown>
-          </Menu>
-        ) : (
-          <Button variant="light" disabled leftSection={<Magnet size={17} />}>
-            {t("detail.openMagnet")}
-          </Button>
+          {auth.can("CALIBRE_READ") && <OpenInCalibre book={book} />}
+          {auth.can("COVERS_MANAGE") && <RepairCover book={book} />}
+        </div>
+        {magnets.isError && (
+          <Alert color="yellow">
+            {t("detail.magnetError")}{" "}
+            <Button
+              variant="subtle"
+              size="xs"
+              onClick={() => void magnets.refetch()}
+            >
+              {t("feedback.retry")}
+            </Button>
+          </Alert>
         )}
-        <Button
-          component="a"
-          href={`https://www.epublibre.org/libro/detalle/${eplId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="light"
-          leftSection={<ExternalLink size={17} />}
-        >
-          {t("detail.epublibre")}
-        </Button>
-        {auth.can("CALIBRE_READ") && <OpenInCalibre book={book} />}
-        {auth.can("COVERS_MANAGE") && <RepairCover book={book} />}
-      </div>
-      {magnets.isError && (
-        <Alert color="yellow">
-          {t("detail.magnetError")}{" "}
-          <Button
-            variant="subtle"
-            size="xs"
-            onClick={() => void magnets.refetch()}
-          >
-            {t("feedback.retry")}
-          </Button>
-        </Alert>
-      )}
-      {magnets.isSuccess && !hashes.length && (
-        <p className="muted">{t("send.noHash")}</p>
-      )}
-    </section>
+        {magnets.isSuccess && !hashes.length && (
+          <p className="muted">{t("send.noHash")}</p>
+        )}
+      </section>
+    </CalibreSendProvider>
   );
 }
