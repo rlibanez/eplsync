@@ -2208,3 +2208,13 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 
 .job-report-group .related-calibre-job + .related-calibre-job { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .related-calibre-job dd { overflow-wrap: anywhere; }
+
+.catalog-search-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; }
+.catalog-search-footer > .action-row,
+.saved-catalog-searches > .action-row { margin-top: 0; align-items: center; }
+.saved-catalog-searches { margin-left: auto; flex-shrink: 0; max-width: 100%; }
+.saved-catalog-searches > .action-row { justify-content: flex-end; }
+.saved-catalog-searches .mantine-Select-root { width: 320px; max-width: 100%; }
+@media (max-width: 1000px) {
+  .catalog-search-footer > .saved-catalog-searches { flex-basis: 100%; }
+}

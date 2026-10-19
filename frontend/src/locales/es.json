@@ -1996,5 +1996,16 @@
     "none": "Sin trabajos de Calibre relacionados.",
     "progress": "{{done}}/{{total}} completados",
     "breakdown": "{{sent}} enviados · {{existing}} ya existentes · {{pending}} pendientes · {{failed}} con errores · {{uncertain}} sin confirmar · {{cancelled}} cancelados"
+  },
+  "savedSearches": {
+    "heading": "Búsquedas guardadas",
+    "save": "Guardar búsqueda",
+    "manage": "Gestionar",
+    "update": "Actualizar con los filtros actuales",
+    "rename": "Renombrar",
+    "delete": "Eliminar búsqueda",
+    "name": "Nombre",
+    "deleteConfirm": "¿Eliminar la búsqueda «{{name}}»?",
+    "loadError": "No se han podido cargar las búsquedas guardadas."
   }
 }

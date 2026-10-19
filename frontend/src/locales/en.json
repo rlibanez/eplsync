@@ -1996,5 +1996,16 @@
     "none": "No related Calibre jobs.",
     "progress": "{{done}}/{{total}} completed",
     "breakdown": "{{sent}} sent · {{existing}} already existing · {{pending}} pending · {{failed}} with errors · {{uncertain}} unconfirmed · {{cancelled}} cancelled"
+  },
+  "savedSearches": {
+    "heading": "Saved searches",
+    "save": "Save search",
+    "manage": "Manage",
+    "update": "Update with current filters",
+    "rename": "Rename",
+    "delete": "Delete search",
+    "name": "Name",
+    "deleteConfirm": "Delete the search “{{name}}”?",
+    "loadError": "Could not load saved searches."
   }
 }

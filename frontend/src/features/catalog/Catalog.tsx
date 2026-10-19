@@ -1,3 +1,4 @@
+import { applySavedFilters } from "./SavedCatalogSearches";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { rowNumberWidth } from "../../components/RowNumber";
 import type { Metadata } from "../maintenance/CatalogMetadata";
@@ -92,6 +93,8 @@ export function Catalog() {
   };
   const magnetExport = useMagnetExport();
   const filtersOpen = useRef(false);
+  const [savedApplication, setSavedApplication] = useState(0);
+  const [savedSearch, setSavedSearch] = useState<string | null>(null);
   const resize = useRef<{
     key: Column;
     x: number;
@@ -179,11 +182,19 @@ export function Catalog() {
         </p>
       )}
       <CatalogFilters
+        savedSearch={savedSearch}
+        onSavedSearch={setSavedSearch}
+        onApplySaved={(filters) => {
+          selection.clear();
+          setSavedApplication((value) => value + 1);
+          filtersOpen.current = true;
+          setSearch(applySavedFilters(params, filters));
+        }}
         initiallyOpen={filtersOpen.current}
         onToggle={(open) => {
           filtersOpen.current = open;
         }}
-        key={search.toString()}
+        key={`${search.toString()}:${savedApplication}`}
         params={params}
         onChange={setSearch}
       />

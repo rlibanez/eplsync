@@ -91,6 +91,9 @@ export const test = base.extend<{ eventTransport: void }>({
             })
           : route.fallback(),
       );
+      await context.route("**/api/catalog/saved-searches", (route) =>
+        route.fulfill({ json: [] }),
+      );
       await context.route("**/api/settings/setup", (route) =>
         route.fulfill({
           json: {

@@ -1,3 +1,4 @@
+import { SavedCatalogSearches, type SavedSearch } from "./SavedCatalogSearches";
 import {
   stateOperatorProps,
   textOperatorProps,
@@ -114,9 +115,15 @@ export function filterRequest(params: URLSearchParams) {
 export function CatalogFilters({
   params,
   onChange,
+  savedSearch,
+  onSavedSearch,
+  onApplySaved,
   initiallyOpen = false,
   onToggle,
 }: {
+  savedSearch: string | null;
+  onSavedSearch: (id: string | null) => void;
+  onApplySaved: (filters: SavedSearch["filters"]) => void;
   initiallyOpen?: boolean;
   onToggle?: (open: boolean) => void;
   params: URLSearchParams;
@@ -257,6 +264,37 @@ export function CatalogFilters({
     setValues((v) => ({ ...v, [from]: "", [to]: "" }));
     setEqual((v) => ({ ...v, [from]: false }));
   }
+  function captureFilters(): URLSearchParams | null {
+    const merged = { ...multi };
+    const invalid: Record<string, string> = {};
+    for (const key of multiKeys) {
+      const values = normalizeFilterValues(key, drafts[key] || "");
+      if (values === null) invalid[key] = t("filters.invalidValue");
+      else merged[key] = [...new Set([...merged[key], ...values])];
+    }
+    setErrors(invalid);
+    if (Object.keys(invalid).length) return null;
+    setMulti(merged);
+    setDrafts({});
+    const next = new URLSearchParams(params);
+    filterKeys.forEach((key) => {
+      next.delete(key);
+      if (
+        values[key] &&
+        !multiKeys.includes(key) &&
+        (!key.endsWith("Operator") || merged[key.slice(0, -8)]?.length)
+      )
+        next.set(key, values[key]);
+    });
+    multiKeys.forEach((key) =>
+      merged[key].forEach((value) => next.append(key, value)),
+    );
+    // Exact filters from directory links become equivalent editable ranges.
+    next.delete("publicationYear");
+    next.delete("publicationDate");
+    next.set("page", "0");
+    return next;
+  }
   return (
     <details
       className="catalog-search panel"
@@ -291,6 +329,7 @@ export function CatalogFilters({
               if (details) details.open = false;
               setOpen(false);
               onToggle?.(false);
+              onSavedSearch(null);
               const next = new URLSearchParams(params);
               filterKeys.forEach((key) => next.delete(key));
               next.set("page", "0");
@@ -304,34 +343,8 @@ export function CatalogFilters({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          const merged = { ...multi };
-          const invalid: Record<string, string> = {};
-          for (const key of multiKeys) {
-            const values = normalizeFilterValues(key, drafts[key] || "");
-            if (values === null) invalid[key] = t("filters.invalidValue");
-            else merged[key] = [...new Set([...merged[key], ...values])];
-          }
-          setErrors(invalid);
-          if (Object.keys(invalid).length) return;
-          setMulti(merged);
-          setDrafts({});
-          const next = new URLSearchParams(params);
-          filterKeys.forEach((key) => {
-            next.delete(key);
-            if (
-              values[key] &&
-              !multiKeys.includes(key) &&
-              (!key.endsWith("Operator") || merged[key.slice(0, -8)]?.length)
-            )
-              next.set(key, values[key]);
-          });
-          multiKeys.forEach((key) =>
-            merged[key].forEach((value) => next.append(key, value)),
-          );
-          // Exact filters from directory links become equivalent editable ranges.
-          next.delete("publicationYear");
-          next.delete("publicationDate");
-          next.set("page", "0");
+          const next = captureFilters();
+          if (!next) return;
           const details = event.currentTarget.closest("details");
           if (details) {
             details.open = false;
@@ -602,21 +615,32 @@ export function CatalogFilters({
               </fieldset>
             ))}
         </div>
-        <div className="action-row">
-          <Button type="submit">{t("catalog.search")}</Button>
-          <Button
-            variant="subtle"
-            onClick={() => {
-              setValues(Object.fromEntries(filterKeys.map((key) => [key, ""])));
-              setMulti(Object.fromEntries(multiKeys.map((key) => [key, []])));
-              setDrafts({});
-              setErrors({});
-              setEqual({});
-              onChange(new URLSearchParams());
-            }}
-          >
-            {t("catalog.clear")}
-          </Button>
+        <div className="catalog-search-footer">
+          <div className="action-row">
+            <Button type="submit">{t("catalog.search")}</Button>
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setValues(
+                  Object.fromEntries(filterKeys.map((key) => [key, ""])),
+                );
+                setMulti(Object.fromEntries(multiKeys.map((key) => [key, []])));
+                setDrafts({});
+                setErrors({});
+                setEqual({});
+                onSavedSearch(null);
+                onChange(new URLSearchParams());
+              }}
+            >
+              {t("catalog.clear")}
+            </Button>
+          </div>
+          <SavedCatalogSearches
+            selected={savedSearch}
+            onSelect={onSavedSearch}
+            capture={captureFilters}
+            apply={onApplySaved}
+          />
         </div>
       </form>
     </details>

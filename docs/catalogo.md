@@ -31,6 +31,18 @@ del servidor o del proxy, divide los identificadores en grupos más pequeños.
 Los errores de validación o de tamaño requieren corregir la búsqueda y no ofrecen
 «Reintentar»; los errores temporales de conexión o del servidor sí lo permiten.
 
+### Búsquedas guardadas
+
+Dentro de la Búsqueda avanzada puedes guardar los filtros actuales con un nombre.
+Las búsquedas son personales y están disponibles para ese usuario desde cualquier
+navegador. Al elegir una búsqueda en el selector se aplica automáticamente; en **Gestionar** puedes
+actualizarla con los filtros actuales, renombrarla o eliminarla.
+
+Solo se guardan los filtros, incluidos sus valores múltiples y operadores.
+Aplicar una búsqueda sustituye los filtros actuales, vuelve a la primera página
+y quita la selección de libros. La ordenación, las columnas, el tamaño de página
+y la vista elegida se conservan. Los resultados se consultan de nuevo, no se guardan.
+
 Las vistas de tabla, cuadrícula y mosaico presentan los mismos resultados.
 Abre un libro para consultar su ficha, enlaces y, si tienes permiso, el historial
 asociado. Selecciona libros para enviarlos al cliente torrent, enviarlos a Calibre
