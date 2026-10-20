@@ -23,6 +23,7 @@ class DatabaseMigrationTests {
                 .ignoreMigrationPatterns(new String[0]).baselineOnMigrate(false).validateOnMigrate(true).cleanDisabled(true).load();
     }
     private void stripDownloadLifecycle(String table,java.util.Map<String,Object> row) {
+        if(table.equals("calibre_job_items")) assertNull(row.remove("cancelled_by_download_job_id"));
         if(table.equals("revision_cleanup_jobs")) assertNull(row.remove("library_plan"));
         if(table.equals("revision_cleanup_items")) {assertEquals(1,row.remove("preview_checked"));assertEquals(0,row.remove("preview_selected"));assertNull(row.remove("cleanup_reason"));assertNull(row.remove("retained_identity"));assertNull(row.remove("retained_formats"));}
         if(table.equals("torrent_bulk_jobs")) {
@@ -40,7 +41,7 @@ class DatabaseMigrationTests {
             jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,state,command_json) VALUES(?,?,0,1,'ACCEPTED','original-command')",state,state);
         }
         jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,created_at,snapshot) VALUES('CLEANUP_WAIT','client','KEEP',0,'{}')");
-        var upgrade=flyway("classpath:db/migration");assertEquals(4,upgrade.migrate().migrationsExecuted);
+        var upgrade=flyway("classpath:db/migration");assertEquals(7,upgrade.migrate().migrationsExecuted);
         for(var row:jdbc.queryForList("SELECT * FROM torrent_bulk_jobs")) {
             assertEquals(row.get("id"),row.get("state"));
             assertEquals(java.util.List.of("COMPLETED","CANCELLED").contains(row.get("state"))?0:1,row.get("track_downloads"));
@@ -83,8 +84,8 @@ class DatabaseMigrationTests {
             before.put(table,jdbc.queryForList("SELECT * FROM "+table+" ORDER BY rowid"));
         var history=jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank");
         var upgrade=flyway("classpath:db/migration");
-        assertEquals(11,upgrade.migrate().migrationsExecuted);
-        assertEquals("1.7.0.3",upgrade.info().current().getVersion().toString());
+        assertEquals(14,upgrade.migrate().migrationsExecuted);
+        assertEquals("1.7.0.6",upgrade.info().current().getVersion().toString());
         for(var entry:before.entrySet()) {
             var after=jdbc.queryForList("SELECT * FROM "+entry.getKey()+" ORDER BY rowid");
             for(var row:after) stripDownloadLifecycle(entry.getKey(),row);
@@ -110,7 +111,7 @@ class DatabaseMigrationTests {
         jdbc.update("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,state,dispatched) VALUES('item','cleanup',0,'old','new',1,'Book','1','2','UNCERTAIN',1)");
         var before=new java.util.LinkedHashMap<String,java.util.List<java.util.Map<String,Object>>>();
         for(var table:jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('flyway_schema_history','sqlite_sequence') ORDER BY name",String.class)) before.put(table,jdbc.queryForList("SELECT * FROM "+table+" ORDER BY rowid"));
-        var upgrade=flyway("classpath:db/migration");assertEquals(6,upgrade.migrate().migrationsExecuted);
+        var upgrade=flyway("classpath:db/migration");assertEquals(9,upgrade.migrate().migrationsExecuted);
         for(var entry:before.entrySet()) {
             var after=jdbc.queryForList("SELECT * FROM "+entry.getKey()+" ORDER BY rowid");
             for(var row:after) stripDownloadLifecycle(entry.getKey(),row);
@@ -129,9 +130,9 @@ class DatabaseMigrationTests {
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('job','now','now','alice','target','main','source','PAUSED')");
         jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,calibre_id,epub_identity) VALUES('item','job',0,'record',0,'book.epub',1,1,'1.1','UNCERTAIN',9,json_object('eplId',NULL,'revision',NULL))");
         var before=jdbc.queryForMap("SELECT * FROM calibre_job_items WHERE id='item'");
-        assertEquals(5,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(8,flyway("classpath:db/migration").migrate().migrationsExecuted);
         var after=jdbc.queryForMap("SELECT * FROM calibre_job_items WHERE id='item'");
-        assertNull(after.remove("calibre_uuid"));assertEquals(0,after.remove("identifiers_completed"));assertEquals(0,after.remove("identifier_completion_pending"));
+        assertNull(after.remove("cancelled_by_download_job_id"));assertNull(after.remove("calibre_uuid"));assertEquals(0,after.remove("identifiers_completed"));assertEquals(0,after.remove("identifier_completion_pending"));
         assertEquals(before,after);assertEquals("PAUSED",jdbc.queryForObject("SELECT state FROM calibre_jobs WHERE id='job'",String.class));
     }
     @Test void jobCoordinationMigrationPreservesPausedAndUncertainWork() {
@@ -139,7 +140,7 @@ class DatabaseMigrationTests {
         var jdbc=jdbc();
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('job','now','now','alice','target','main','source','PAUSED')");
         jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,calibre_id,epub_identity) VALUES('item','job',0,'record',0,'book.epub',20,1,'1.1','UNCERTAIN',9,'{\"eplId\":1,\"revision\":1.1}')");
-        assertEquals(7,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(10,flyway("classpath:db/migration").migrate().migrationsExecuted);
         assertEquals("PAUSED",jdbc.queryForObject("SELECT state FROM calibre_jobs WHERE id='job'",String.class));
         var item=jdbc.queryForMap("SELECT * FROM calibre_job_items WHERE id='item'");
         assertEquals("UNCERTAIN",item.get("state"));assertEquals(9,((Number)item.get("calibre_id")).intValue());assertEquals(0,item.get("transient_attempts"));
@@ -153,7 +154,7 @@ class DatabaseMigrationTests {
         jdbc.update("INSERT INTO job_retry_jobs VALUES('calibre','child','parent','parent','request','owner',1)");
         jdbc.update("INSERT INTO job_retry_items VALUES('calibre','child','parent','original-item','child-item','VERIFY')");
         var jobs=jdbc.queryForList("SELECT * FROM job_retry_jobs");var items=jdbc.queryForList("SELECT * FROM job_retry_items");
-        assertEquals(8,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(11,flyway("classpath:db/migration").migrate().migrationsExecuted);
         assertEquals(jobs,jdbc.queryForList("SELECT * FROM job_retry_jobs"));assertEquals(items,jdbc.queryForList("SELECT * FROM job_retry_items"));
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts",Integer.class));
         assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
@@ -163,7 +164,7 @@ class DatabaseMigrationTests {
         var jdbc=jdbc();
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('prior','now','now','alice','destination','main','source','PAUSED')");
         jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,identity_complete,calibre_id) VALUES('item','prior',0,'record',0,'book.epub',20,85481,'1','UNCERTAIN',1,9)");
-        assertEquals(9,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(12,flyway("classpath:db/migration").migrate().migrationsExecuted);
         var row=jdbc.queryForMap("SELECT * FROM calibre_job_items WHERE id='item'");
         assertNull(row.get("epub_identity"));assertEquals("UNCERTAIN",row.get("state"));
         assertEquals(9,((Number)row.get("calibre_id")).intValue());assertEquals("1",row.get("revision"));
@@ -175,7 +176,7 @@ class DatabaseMigrationTests {
         jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('owner','alice','alice','alice@example.org','hash','USER','ACTIVE','now','now')");
         jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,state,created_at,updated_at,expires_at) VALUES('prior','calibre','BOOK','owner','alice','context','PAUSED',1,2,3)");
         jdbc.update("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,formats,state,dispatched) VALUES('item','prior',0,'10','20',123,'Book','1','2','[\"EPUB\"]','UNCERTAIN',1)");
-        assertEquals(10,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(13,flyway("classpath:db/migration").migrate().migrationsExecuted);
         assertEquals("UNCERTAIN",jdbc.queryForObject("SELECT state FROM revision_cleanup_items WHERE id='item'",String.class));
         assertEquals(1,jdbc.queryForObject("SELECT dispatched FROM revision_cleanup_items WHERE id='item'",Integer.class));
         jdbc.update("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,state) VALUES('unidentified','prior',1,'30','',NULL,'Unknown','','','READY')");
@@ -188,7 +189,7 @@ class DatabaseMigrationTests {
         var jdbc=jdbc();
         jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('owner','alice','alice','alice@example.org','hash','USER','ACTIVE','now','now')");
         jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,state,created_at,updated_at,expires_at) VALUES('prior','downloads','FILES','owner','alice','context','PAUSED',1,2,3)");
-        assertEquals(11,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(14,flyway("classpath:db/migration").migrate().migrationsExecuted);
         assertEquals(0,jdbc.queryForObject("SELECT direct_removal FROM revision_cleanup_jobs WHERE id='prior'",Integer.class));
         assertEquals("PAUSED",jdbc.queryForObject("SELECT state FROM revision_cleanup_jobs WHERE id='prior'",String.class));
         assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
@@ -196,7 +197,7 @@ class DatabaseMigrationTests {
     @Test void release150Preserves142DataWithoutNewMigrations() {
         var previous=flyway("classpath:db/migration");
         previous.migrate();
-        assertEquals("1.7.0.3",previous.info().current().getVersion().toString());
+        assertEquals("1.7.0.6",previous.info().current().getVersion().toString());
         var jdbc=jdbc();
         jdbc.update("INSERT INTO app_settings VALUES('release-marker','preserved')");
         jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(123,1.2,'Preserved book','Author')");
@@ -222,7 +223,7 @@ class DatabaseMigrationTests {
         var before=jdbc.queryForMap("SELECT * FROM telegram_settings");
         var columnsBefore=jdbc.queryForList("PRAGMA table_info(telegram_settings)");
         assertEquals(8,columnsBefore.size());
-        assertEquals(17,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(20,flyway("classpath:db/migration").migrate().migrationsExecuted);
         assertEquals(8,jdbc.queryForList("PRAGMA table_info(telegram_settings)").size());
         var after=jdbc.queryForMap("SELECT * FROM telegram_settings");
         assertFalse(after.containsKey("base_url"));
@@ -231,7 +232,7 @@ class DatabaseMigrationTests {
     @Test void upgrades141WithoutChangingExistingRowsAndCreatesPrivateCleanupJobs() {
         Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()))).locations("classpath:db/migration").target("1.5.0.2").load().migrate();
         var jdbc=jdbc();jdbc.update("INSERT INTO app_settings VALUES('retained','value')");
-        assertEquals(15,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(18,flyway("classpath:db/migration").migrate().migrationsExecuted);
         assertEquals("value",jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='retained'",String.class));
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs",Integer.class));
         assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
@@ -241,7 +242,7 @@ class DatabaseMigrationTests {
         var jdbc=jdbc();
         jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('owner','alice','alice','a@b.c','hash','ADMIN','ACTIVE','now','now')");
         jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,state,created_at,updated_at,expires_at) VALUES('existing','downloads','FILES','owner','alice','context','PAUSED',1,2,3)");
-        assertEquals(14,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(17,flyway("classpath:db/migration").migrate().migrationsExecuted);
         assertEquals(0,jdbc.queryForObject("SELECT allow_undownloaded FROM revision_cleanup_jobs WHERE id='existing'",Integer.class));
         assertEquals("PAUSED",jdbc.queryForObject("SELECT state FROM revision_cleanup_jobs WHERE id='existing'",String.class));
         assertEquals(1,jdbc.queryForObject("SELECT delete_history FROM revision_cleanup_jobs WHERE id='existing'",Integer.class));
@@ -249,10 +250,10 @@ class DatabaseMigrationTests {
     }
     @Test void createsCompleteSchemaAndDoesNotRepeatMigrations() {
         var migration = flyway("classpath:db/migration");
-        assertEquals(25,migration.migrate().migrationsExecuted);
-        assertEquals("1.7.0.3", migration.info().current().getVersion().toString());
+        assertEquals(28,migration.migrate().migrationsExecuted);
+        assertEquals("1.7.0.6", migration.info().current().getVersion().toString());
         var jdbc = jdbc();
-        assertEquals(38, jdbc.queryForObject("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT IN ('sqlite_sequence','flyway_schema_history')", Integer.class));
+        assertEquals(39, jdbc.queryForObject("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT IN ('sqlite_sequence','flyway_schema_history')", Integer.class));
         var indexes = jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='index'", String.class);
         assertTrue(indexes.containsAll(java.util.List.of("idx_catalog_title", "idx_events_operation",
                 "idx_bulk_item_queue", "idx_cleanup_state_checked", "uk_download_identity", "uq_cleanup_job_download")));
@@ -275,8 +276,8 @@ class DatabaseMigrationTests {
         jdbc().update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('user','alice','alice','alice@example.org','hash','USER','ACTIVE','now','now')");
         jdbc().update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('history',123,1,'hash','qbittorrent','client','DOWNLOADED','EPLSYNC',0)");
         var upgrade=flyway("classpath:db/migration");
-        assertEquals(24,upgrade.migrate().migrationsExecuted);
-        assertEquals("1.7.0.3",upgrade.info().current().getVersion().toString());
+        assertEquals(27,upgrade.migrate().migrationsExecuted);
+        assertEquals("1.7.0.6",upgrade.info().current().getVersion().toString());
         assertEquals("value",jdbc().queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='preserved'",String.class));
         assertEquals(0,jdbc().queryForObject("SELECT count(*) FROM calibre_books",Integer.class));
         assertEquals("Preserved book",jdbc().queryForObject("SELECT title FROM catalog_books WHERE epl_id=123",String.class));
@@ -293,8 +294,8 @@ class DatabaseMigrationTests {
         jdbc.update("INSERT INTO app_settings VALUES('calibre.connection','preserved-settings')");
         jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('book','generation',1,9,123,1.2,'Preserved Calibre book','Author')");
         var upgrade=flyway("classpath:db/migration");
-        assertEquals(23,upgrade.migrate().migrationsExecuted);
-        assertEquals("1.7.0.3",upgrade.info().current().getVersion().toString());
+        assertEquals(26,upgrade.migrate().migrationsExecuted);
+        assertEquals("1.7.0.6",upgrade.info().current().getVersion().toString());
         assertEquals("Preserved Calibre book",jdbc.queryForObject("SELECT title FROM calibre_books WHERE calibre_id=9",String.class));
         assertEquals("preserved-settings",jdbc.queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='calibre.connection'",String.class));
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('job','now','now','Owner','destination','main','source','QUEUED')");
@@ -327,14 +328,14 @@ class DatabaseMigrationTests {
         var before=new java.util.LinkedHashMap<String,java.util.List<java.util.Map<String,Object>>>();
         for(var table:jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('flyway_schema_history','sqlite_sequence') ORDER BY name",String.class))
             before.put(table,jdbc.queryForList("SELECT * FROM "+table+" ORDER BY rowid"));
-        var upgrade=flyway("classpath:db/migration");assertEquals(21,upgrade.migrate().migrationsExecuted);
+        var upgrade=flyway("classpath:db/migration");assertEquals(24,upgrade.migrate().migrationsExecuted);
         assertEquals("EPUB",jdbc.queryForObject("SELECT requested_cleanup_policy FROM calibre_job_items WHERE id='item'",String.class));
         assertEquals("[8]",jdbc.queryForObject("SELECT requested_cleanup_ids FROM calibre_job_items WHERE id='item'",String.class));
         assertEquals("CLEANUP_PENDING",jdbc.queryForObject("SELECT state FROM calibre_job_items WHERE id='item'",String.class));
         assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM job_retry_jobs",Integer.class));
         for(var entry:before.entrySet()) {
             var columns=jdbc.queryForList("PRAGMA table_info("+entry.getKey()+")").stream().map(row->row.get("name").toString())
-                .filter(column->!java.util.Set.of("requested_cleanup_policy","requested_cleanup_ids","cleanup_cancelled","event_signature","telegram_notifications","delete_history","epub_identity","transient_attempts","last_served_at","calibre_uuid","identifiers_completed","identifier_completion_pending","track_downloads","next_download_check","download_state","download_message","download_checked_at").contains(column)).toList();
+                .filter(column->!java.util.Set.of("requested_cleanup_policy","requested_cleanup_ids","cleanup_cancelled","event_signature","telegram_notifications","delete_history","epub_identity","transient_attempts","last_served_at","calibre_uuid","identifiers_completed","identifier_completion_pending","track_downloads","next_download_check","download_state","download_message","download_checked_at","cancelled_by_download_job_id").contains(column)).toList();
             assertEquals(entry.getValue(),jdbc.queryForList("SELECT "+String.join(",",columns)+" FROM "+entry.getKey()+" ORDER BY rowid"),"Datos alterados en "+entry.getKey());
         }
         assertEquals("ok",jdbc.queryForObject("PRAGMA integrity_check",String.class));
@@ -373,7 +374,7 @@ class DatabaseMigrationTests {
         var before=new java.util.LinkedHashMap<String,java.util.List<java.util.Map<String,Object>>>();
         for(var table:jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('flyway_schema_history','sqlite_sequence') ORDER BY name",String.class))
             before.put(table,jdbc.queryForList("SELECT * FROM "+table+" ORDER BY rowid"));
-        var upgrade=flyway("classpath:db/migration");assertEquals(release141?15:18,upgrade.migrate().migrationsExecuted);
+        var upgrade=flyway("classpath:db/migration");assertEquals(release141?18:21,upgrade.migrate().migrationsExecuted);
         for(var entry:before.entrySet()) {
             var after=jdbc.queryForList("SELECT * FROM "+entry.getKey()+" ORDER BY rowid");
             for(var row:after) stripDownloadLifecycle(entry.getKey(),row);
@@ -479,7 +480,7 @@ class DatabaseMigrationTests {
         jdbc.update("INSERT INTO app_settings VALUES(?,?)","tasks.update-search.calibre.bob","broken JSON");
         jdbc.update("INSERT INTO app_settings VALUES(?,?)","tasks.update-search.downloads.deleted",downloads);
         jdbc.update("INSERT INTO app_settings VALUES('tasks.internal.torrent-cleanup','60s')");
-        var migration=flyway("classpath:db/migration");assertEquals(22,migration.migrate().migrationsExecuted);
+        var migration=flyway("classpath:db/migration");assertEquals(25,migration.migrate().migrationsExecuted);
         assertEquals(3,jdbc.queryForObject("SELECT count(*) FROM update_search_results",Integer.class));
         assertEquals(123L,jdbc.queryForObject("SELECT searched_at FROM update_search_results WHERE user_id='alice' AND search_type='downloads'",Long.class));
         assertEquals("MANUAL",jdbc.queryForObject("SELECT origin FROM update_search_results WHERE user_id='alice' AND search_type='downloads'",String.class));
@@ -506,7 +507,7 @@ class DatabaseMigrationTests {
         jdbc().update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('owner','alice','alice','a@b.c','hash','ADMIN','ACTIVE','now','now')");
         jdbc().update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES('job','now','now','owner','alice','target','main','DOWNLOADS','PAUSED')");
         jdbc().update("INSERT INTO app_settings VALUES('tasks.internal.calibre-download-check','60s')");
-        assertEquals(22,flyway("classpath:db/migration").migrate().migrationsExecuted);
+        assertEquals(25,flyway("classpath:db/migration").migrate().migrationsExecuted);
         assertEquals("PAUSED",jdbc().queryForObject("SELECT state FROM calibre_jobs WHERE id='job'",String.class));
         assertEquals("60s",jdbc().queryForObject("SELECT setting_value FROM app_settings WHERE setting_key='tasks.internal.calibre-download-check'",String.class));
         assertEquals(0,jdbc().queryForObject("SELECT count(*) FROM scheduled_tasks",Integer.class));
@@ -551,6 +552,13 @@ class DatabaseMigrationTests {
         assertThrows(FlywayException.class, () -> flyway("classpath:db/migration", "filesystem:" + scripts).migrate());
         assertEquals("original", jdbc().queryForObject("SELECT setting_value FROM app_settings", String.class));
         assertEquals(0, jdbc().queryForObject("SELECT count(*) FROM sqlite_master WHERE name='test_partial'", Integer.class));
-        assertEquals("1.7.0.3", flyway("classpath:db/migration").info().current().getVersion().toString());
+        assertEquals("1.7.0.6", flyway("classpath:db/migration").info().current().getVersion().toString());
     }
+    @Test void cancellationMigrationPreservesAnExistingPreparationAndItsCursor() {
+        Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url()))).locations("classpath:db/migration").target("1.7.0.4").load().migrate();
+        var jdbc=jdbc();jdbc.update("INSERT INTO calibre_preparation_operations(id,owner_id,owner_username,kind,state,phase,processed,total,cursor,context,input,signature,calibre_job_id,download_job_id,created_at,updated_at) VALUES('op','owner','Owner','SEND','RUNNING','CREATING_JOBS',500,1501,500,'context','{}','signature','calibre','torrent',1,2)");
+        var before=jdbc.queryForMap("SELECT * FROM calibre_preparation_operations");assertEquals(2,flyway("classpath:db/migration").migrate().migrationsExecuted);assertEquals(before,jdbc.queryForMap("SELECT * FROM calibre_preparation_operations"));
+        jdbc.update("UPDATE calibre_preparation_operations SET state='CANCELLED' WHERE id='op'");assertEquals(500,jdbc.queryForObject("SELECT cursor FROM calibre_preparation_operations",Integer.class));assertTrue(jdbc.queryForList("PRAGMA foreign_key_check").isEmpty());
+    }
+
 }

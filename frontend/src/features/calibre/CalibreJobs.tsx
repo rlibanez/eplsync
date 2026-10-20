@@ -56,6 +56,7 @@ type Job = {
   skipped: number;
   failed: number;
   uncertain: number;
+  cancelled?: number;
 };
 type Item = {
   author?: string | null;
@@ -65,6 +66,7 @@ type Item = {
   coverUrl?: string | null;
   coverAvailable?: boolean | null;
   downloadJobId?: string | null;
+  cancelledByDownloadJobId?: string | null;
   index: number;
   name: string;
   size: number;
@@ -630,7 +632,11 @@ export function CalibreJobDetail() {
               aria-label={t("calibreSend.progress")}
               value={
                 value.total
-                  ? (100 * (value.accepted + value.skipped + value.failed)) /
+                  ? (100 *
+                      (value.accepted +
+                        value.skipped +
+                        value.failed +
+                        (value.cancelled ?? 0))) /
                     value.total
                   : 0
               }
@@ -651,12 +657,16 @@ export function CalibreJobDetail() {
                   values: [
                     [
                       "calibreSend.progress",
-                      `${number(value.accepted + value.skipped + value.failed)}/${number(value.total)}`,
+                      `${number(value.accepted + value.skipped + value.failed + (value.cancelled ?? 0))}/${number(value.total)}`,
                     ],
                     ["calibreSend.accepted", number(value.accepted)],
                     ["calibreSend.skipped", number(value.skipped)],
                     ["calibreSend.failedCount", number(value.failed)],
                     ["calibreSend.uncertain", number(value.uncertain)],
+                    [
+                      "calibreSend.cancelledCount",
+                      number(value.cancelled ?? 0),
+                    ],
                   ],
                 },
               ].map((group) => (
@@ -913,10 +923,11 @@ export function CalibreJobDetail() {
                                   !!item.message?.trim()
                                 }
                               />
-                              {item.downloadJobId &&
+                              {(item.cancelledByDownloadJobId ??
+                                item.downloadJobId) &&
                                 can("TORRENT_JOBS_MANAGE") && (
                                   <Link
-                                    to={`/downloads/jobs/${item.downloadJobId}`}
+                                    to={`/downloads/jobs/${item.cancelledByDownloadJobId ?? item.downloadJobId}`}
                                   >
                                     {t("calibreUpdateSend.downloadJob")}
                                   </Link>

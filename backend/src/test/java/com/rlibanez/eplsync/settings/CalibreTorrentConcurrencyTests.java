@@ -30,7 +30,7 @@ import static org.mockito.Mockito.*;
 
 /** Real workers, JPA/JDBC and a two-connection WAL database; only network/file adapters are simulated. */
 @SpringBootTest(properties={"spring.datasource.hikari.maximum-pool-size=2",
-    "eplsync.calibre.transfers.worker-enabled=false","eplsync.torrent.bulk.worker-enabled=false"})
+    "eplsync.calibre.transfers.worker-enabled=false","eplsync.torrent.bulk.worker-enabled=false","eplsync.revision-cleanup.worker-enabled=false"})
 @WithMockUser(authorities={"ROLE_ADMIN","CALIBRE_SEND","DOWNLOADS_FILES_READ"})
 class CalibreTorrentConcurrencyTests {
     @TempDir static Path directory;

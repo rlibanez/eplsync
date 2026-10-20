@@ -70,10 +70,14 @@ test("editable URL wizard closes while importing and result survives navigation"
 }) => {
   let release!: () => void;
   let requests = 0;
+  let importProgress = {
+    active: true,
+    phase: "DOWNLOADING",
+    processedRows: 0,
+    totalRows: 0,
+  };
   await page.route("**/api/catalog/import/progress", (route) =>
-    route.fulfill({
-      json: { active: true, phase: "IMPORTING", processedRows: 12300 },
-    }),
+    route.fulfill({ json: importProgress }),
   );
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -106,6 +110,18 @@ test("editable URL wizard closes while importing and result survives navigation"
     .getByRole("button", { name: "Update catalog", exact: true })
     .click();
   await expect(dialog).toBeHidden();
+  const progressBar = page.getByRole("progressbar", {
+    name: "Catalog update progress",
+  });
+  await expect(progressBar).toBeVisible();
+  await expect(progressBar).not.toHaveAttribute("aria-valuenow");
+  importProgress = {
+    active: true,
+    phase: "IMPORTING",
+    processedRows: 12300,
+    totalRows: 20000,
+  };
+
   await expect(
     page.getByRole("button", { name: "Import catalog", exact: true }),
   ).toBeDisabled();
@@ -121,8 +137,11 @@ test("editable URL wizard closes while importing and result survives navigation"
     "Updating catalog",
   );
   await expect(page.locator(".import-progress")).toContainText(
-    "12,300 records processed",
+    "12,300 of 20,000 records processed",
   );
+  await expect(
+    page.getByRole("progressbar", { name: "Catalog update progress" }),
+  ).toHaveAttribute("aria-valuenow", "61.5");
   release();
   await expect(
     page.getByRole("heading", { name: "Update results", exact: true }),

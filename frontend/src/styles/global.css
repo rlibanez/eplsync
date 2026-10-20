@@ -1533,7 +1533,7 @@ summary {
 .event-details dd { margin: 0; font-variant-numeric: tabular-nums; }
 
 
-.import-progress { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin: 12px 0 18px; background: var(--surface); border-left: 3px solid var(--accent); border-radius: 6px; }
+.import-progress { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 16px; margin: 12px 0 18px; background: var(--surface); border-left: 3px solid var(--accent); border-radius: 6px; }
 .notification-preferences-grid { margin-top: 36px; }
 .notification-preference-block { min-width: 0; }
 .notification-preference-block + .notification-preference-block { border-left: 1px solid var(--line); padding-left: 28px; }
@@ -2228,3 +2228,18 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 
 .library-cleanup-copies { margin-bottom: 20px; max-height: 340px; overflow: auto; }
 .library-cleanup-copy + .library-cleanup-copy { margin-top: 16px; }
+
+.calibre-preparation-feedback {
+  margin-block: var(--mantine-spacing-md);
+}
+
+.import-progress [data-indeterminate] .import-progress-indicator {
+  animation: import-progress-pending 1.4s ease-in-out infinite;
+}
+@keyframes import-progress-pending {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .import-progress [data-indeterminate] .import-progress-indicator { animation: none; }
+}

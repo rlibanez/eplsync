@@ -612,7 +612,9 @@
       "FINALIZING": "Finalizando",
       "EXTRACTING": "Descomprimiendo ZIP"
     },
-    "processedProgress": "{{number}} registros procesados"
+    "processedProgress": "{{number}} registros procesados",
+    "progressLabel": "Progreso de actualización del catálogo",
+    "countProgress": "{{processed}} de {{total}} registros procesados"
   },
   "breadcrumbs": {
     "label": "Ruta de navegación",
@@ -1234,7 +1236,9 @@
       "retainedZip": "ZIP guardado",
       "userId": "Identificador de usuario",
       "actorId": "Administrador que realizó la operación",
-      "username": "Nombre de usuario"
+      "username": "Nombre de usuario",
+      "downloadJobId": "Trabajo de descarga",
+      "cancelledItems": "Elementos cancelados"
     },
     "unread": "{{count}} ejecuciones con novedades",
     "startedAt": "Inicio",
@@ -1781,7 +1785,8 @@
     "remoteId": "ID de la entrada en Calibre",
     "resolveConfirmBook": "He comprobado que esta entrada corresponde al EPUB enviado.",
     "resolveConfirmAbsent": "He comprobado que el envío no está en Calibre. Entiendo que podría duplicarse si ya existe sin identificadores.",
-    "resolveApply": "Aplicar resolución"
+    "resolveApply": "Aplicar resolución",
+    "cancelledCount": "Cancelados"
   },
   "calibreUpdateSend": {
     "open": "Enviar actualizaciones ({{count}})",
@@ -2030,5 +2035,25 @@
     "preparing": "Preparando limpieza · {{processed}} de {{total}} libros analizados",
     "groupPages": "Páginas de grupos de copias",
     "copyPages": "Páginas de copias"
+  },
+  "calibrePreparation": {
+    "loading": "Preparando la selección",
+    "creating": "Creando los trabajos",
+    "progress": "Progreso de preparación",
+    "count": "{{processed}} de {{total}} libros procesados",
+    "elapsed": "Tiempo transcurrido: {{seconds}} s",
+    "phases": {
+      "QUEUED": "Esperando el inicio de la preparación…",
+      "CATALOG": "Consultando los libros del catálogo…",
+      "TORRENT_STATE": "Comprobando el estado de las descargas…",
+      "CALIBRE_CONNECTION": "Comprobando la biblioteca de Calibre…",
+      "DOWNLOAD_RECORDS": "Consultando los registros de descarga…",
+      "FILES": "Comprobando los EPUB disponibles…",
+      "CREATING_JOBS": "Preparando los trabajos de Torrent y Calibre por lotes…",
+      "RECOVERING": "Recuperando el avance conservado…",
+      "WAITING": "Esperando automáticamente a que la operación en curso termine…",
+      "READY": "Preparación completada."
+    },
+    "cancelFailed": "No se pudo confirmar la cancelación. Puedes volver a intentarlo."
   }
 }

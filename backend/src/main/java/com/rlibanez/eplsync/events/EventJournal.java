@@ -49,6 +49,7 @@ public class EventJournal {
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.rlibanez.eplsync.settings.TelegramNotifications> telegram;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
+    private final TransactionTemplate retentionTransactions;
     private final EventSettings settings;
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final CopyOnWriteArrayList<Runnable> listeners = new CopyOnWriteArrayList<>();
@@ -75,12 +76,13 @@ public class EventJournal {
 
     public EventJournal(JdbcTemplate jdbc, PlatformTransactionManager manager, EventSettings settings) {
         this.jdbc = jdbc; this.transactions = new TransactionTemplate(manager); this.settings = settings;
+        this.retentionTransactions = new TransactionTemplate(manager); this.retentionTransactions.setTimeout(1);
     }
 
     @jakarta.annotation.PostConstruct
     void initialize() {
         maintenance.scheduleWithFixedDelay(() -> {
-            try { prune(); } catch (Exception ex) { log.warn("No se pudo limpiar el registro de eventos", ex); }
+            try { prune(); } catch (Exception ex) { if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) log.debug("Limpieza de eventos aplazada por contención SQLite; se reintentará en el siguiente ciclo");else log.warn("No se pudo limpiar el registro de eventos", ex); }
         }, 1, 60, TimeUnit.SECONDS);
     }
 
@@ -333,7 +335,7 @@ public class EventJournal {
         int batch;
         long removed = 0;
         do {
-            batch = transactions.execute(tx -> {
+            batch = retentionTransactions.execute(tx -> {
                 return jdbc.update("""
                     DELETE FROM app_events WHERE id IN (
                       SELECT id FROM app_events WHERE created_at < ? OR id < COALESCE(

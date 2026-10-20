@@ -161,7 +161,7 @@ public class TelegramNotifications {
     @jakarta.annotation.PostConstruct void start() {
         if(workerEnabled) {
             jdbc.update("UPDATE telegram_deliveries SET state='FAILED' WHERE state='SENDING'");
-            worker.scheduleWithFixedDelay(()->{try {if(idleProbe.ready()) deliver();}catch(RuntimeException ex) {log.warn("No se pudo procesar la cola de Telegram: tipo={}",ex.getClass().getSimpleName());}},1,1,TimeUnit.SECONDS);
+            worker.scheduleWithFixedDelay(()->{try {if(idleProbe.ready()) deliver();}catch(RuntimeException ex) {if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) log.debug("Cola de Telegram aplazada por contención SQLite; se reintentará automáticamente");else log.warn("No se pudo procesar la cola de Telegram: tipo={}",ex.getClass().getSimpleName());}},1,1,TimeUnit.SECONDS);
         }
     }
     private final com.rlibanez.eplsync.config.WorkerActivity.Probe idleProbe=new com.rlibanez.eplsync.config.WorkerActivity.Probe();

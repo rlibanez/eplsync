@@ -33,6 +33,7 @@ final class CatalogCsvValidator {
                 if (row.length != header.length)
                     throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV contiene una fila con un número de columnas incorrecto");
             }
+            CatalogOperationBudget.totalRows(rows);
             if (rows == 0) throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV no contiene libros");
         } catch (java.nio.charset.CharacterCodingException ex) {
             throw new com.rlibanez.eplsync.exception.CatalogValidationException("El CSV debe ser un archivo de texto UTF-8 válido", ex);

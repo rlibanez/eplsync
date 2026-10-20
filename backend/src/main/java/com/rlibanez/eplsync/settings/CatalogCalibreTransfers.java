@@ -45,22 +45,31 @@ public class CatalogCalibreTransfers {
     public Prepared prepare(Selection selection) {
         require();
         if(selection==null || selection.filters()==null) throw new UserInputException("Selecciona libros del catálogo");
+        CalibrePreparationContext.update("CATALOG",0,0);
         var books=books(selection.filters());
         if(books.isEmpty()) throw new UserInputException("Selecciona libros del catálogo");
+        CalibrePreparationContext.update("TORRENT_STATE",0,books.size());
         if(Permission.has(Permission.TORRENT_SYNC)) dependencies.refresh(books.stream().map(book -> Objects.requireNonNull(book).eplId()).toList());
+        CalibrePreparationContext.update("TORRENT_STATE",books.size(),books.size());
+        CalibrePreparationContext.update("CALIBRE_CONNECTION",0,books.size());
         var connection=settings.connection();var check=client.check(connection);
+        CalibrePreparationContext.update("CALIBRE_CONNECTION",books.size(),books.size());
         var candidates=new ArrayList<CalibreTransfers.Candidate>();var missing=new ArrayList<Book>();var deferred=new ArrayList<Book>();var deferredIds=new HashMap<Long,String>();
         var records=new HashMap<Long,List<DownloadRecord>>();
         for(int offset=0;offset<books.size();offset+=500) {
             var ids=books.subList(offset,Math.min(offset+500,books.size())).stream().map(book -> Objects.requireNonNull(book).eplId()).toList();
             for(var d:downloads.findByEplIdIn(ids)) records.computeIfAbsent(d.getEplId(),ignored->new ArrayList<>()).add(d);
+            CalibrePreparationContext.update("DOWNLOAD_RECORDS",Math.min(offset+500,books.size()),books.size());
         }
         String instance=tracking.instanceId();
+        int inspected=0;
+        CalibrePreparationContext.update("FILES",0,books.size());
         for(var b:books) {
+            inspected++;if(inspected%500==0 || inspected==books.size()) CalibrePreparationContext.update("FILES",inspected,books.size());
             var ready=records.getOrDefault(b.eplId(),List.of()).stream().filter(d->Double.compare(d.getRevision(),b.revision())==0 && instance.equals(d.getClientInstanceId()) && d.getStatus()==DownloadStatus.DOWNLOADED).toList();
             if(ready.isEmpty()) {missing.add(b);continue;}
             // Large selections are prepared locally. File discovery belongs to the worker.
-            if(books.size()>1000) {deferred.add(b);deferredIds.put(b.eplId(),ready.getFirst().getId());continue;}
+            if(books.size()>1000 || CalibrePreparationContext.staged()) {deferred.add(b);deferredIds.put(b.eplId(),ready.getFirst().getId());continue;}
             for(var d:ready) for(var f:epub.list(d.getId())) {
                 if(f.size()>268435456) throw new UserInputException("El EPUB supera 256 MiB");
                 candidates.add(new CalibreTransfers.Candidate(d.getId(),f.index(),f.name(),f.size(),b.eplId(),b.revision(),f.expectedSize()));
@@ -71,18 +80,10 @@ public class CatalogCalibreTransfers {
     }
     private List<Book> books(CatalogBookFilter filter) {
         var result=new ArrayList<Book>();
-        if(filter.getSelectedIds()!=null && filter.getSelectedIds().length>500) {
-            var ids=filter.getSelectedIds();
-            for(int offset=0;offset<ids.length;offset+=500) {
-                var chunk=json.readValue(json.writeValueAsString(filter),CatalogBookFilter.class);
-                chunk.setSelectedIds(Arrays.copyOfRange(ids,offset,Math.min(offset+500,ids.length)));
-                result.addAll(books(chunk));
-            }
-            result.sort(Comparator.comparingLong(book -> Objects.requireNonNull(book).eplId()));return List.copyOf(result);
-        }
         for(int page=0;;page++) {
             var batch=catalog.search(filter,PageRequest.of(page,500,Sort.by("eplId")));
             batch.forEach(b->result.add(new Book(b.getEplId(),b.getRevision(),b.getTitle())));
+            CalibrePreparationContext.update("CATALOG",result.size(),batch.getTotalElements());
             if(!batch.hasNext()) break;
         }
         return List.copyOf(result);
@@ -91,7 +92,9 @@ public class CatalogCalibreTransfers {
         try {return "sha256:"+HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(request)));}
         catch(java.security.NoSuchAlgorithmException ex) {throw new IllegalStateException(ex);}
     }
-    public CalibreTransfers.Job create(Request request) {
+    public CalibreTransfers.Job create(Request request) {return create(request,id->{});}
+    CalibreTransfers.Job createStagedBatch(Request request,java.util.function.Consumer<String> stage) {return create(request,stage);}
+    private CalibreTransfers.Job create(Request request,java.util.function.Consumer<String> stage) {
         require();
         if(request==null || request.id()==null || !request.id().matches("[a-zA-Z0-9-]{1,100}") || request.books()==null || request.books().isEmpty() || request.books().stream().anyMatch(Objects::isNull) || request.files()==null || request.files().stream().anyMatch(Objects::isNull)) throw new UserInputException("Selección de Calibre inválida");
         if(request.pending()==null || request.pending().stream().anyMatch(Objects::isNull) || new HashSet<>(request.pending()).size()!=request.pending().size() || !new HashSet<>(request.books().stream().map(book -> Objects.requireNonNull(book).eplId()).toList()).containsAll(request.pending())) throw new UserInputException("Selección de descargas pendientes inválida");
@@ -149,11 +152,13 @@ public class CatalogCalibreTransfers {
                 var waiting=waits.stream().map(b->new CalibreUpdateFlow.Book(0,b.eplId(),b.title(),b.revision(),List.of(),List.of(),null)).toList();
                 String id=transfers.enqueueCatalog(connection,request.library(),selected,waiting,cleanup,downloadId,dependencies,deferredRecords);
                 jdbc.update("INSERT INTO calibre_update_requests(id,owner_id,payload,result,created_at) VALUES(?,?,?,?,?)","catalog:"+request.id(),EventContext.actor().id(),signature(request),json.writeValueAsString(id),java.time.Instant.now().toString());
-                return transfers.job(id);
+                var result=transfers.job(id);
+                stage.accept(id);
+                return result;
             });
         });
     }
-    private CalibreTransfers.Job existing(Request request) {
+    CalibreTransfers.Job existing(Request request) {
         var rows=jdbc.queryForList("SELECT owner_id,payload,result FROM calibre_update_requests WHERE id=?","catalog:"+request.id());
         if(rows.isEmpty()) return null;
         var row=rows.getFirst();

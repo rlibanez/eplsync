@@ -612,7 +612,9 @@
       "FINALIZING": "Finalizing",
       "EXTRACTING": "Extracting ZIP"
     },
-    "processedProgress": "{{number}} records processed"
+    "processedProgress": "{{number}} records processed",
+    "progressLabel": "Catalog update progress",
+    "countProgress": "{{processed}} of {{total}} records processed"
   },
   "breadcrumbs": {
     "label": "Breadcrumbs",
@@ -1234,7 +1236,9 @@
       "retainedZip": "Saved ZIP",
       "userId": "User ID",
       "actorId": "Administrator ID",
-      "username": "Username"
+      "username": "Username",
+      "downloadJobId": "Download job",
+      "cancelledItems": "Cancelled items"
     },
     "unread": "{{count}} operations with updates",
     "startedAt": "Started",
@@ -1781,7 +1785,8 @@
     "remoteId": "Calibre entry ID",
     "resolveConfirmBook": "I checked that this entry corresponds to the uploaded EPUB.",
     "resolveConfirmAbsent": "I checked that the upload is absent from Calibre. It could be duplicated if it already exists without identifiers.",
-    "resolveApply": "Apply resolution"
+    "resolveApply": "Apply resolution",
+    "cancelledCount": "Cancelled"
   },
   "calibreUpdateSend": {
     "open": "Send updates ({{count}})",
@@ -2030,5 +2035,25 @@
     "preparing": "Preparing cleanup · {{processed}} of {{total}} books analyzed",
     "groupPages": "Copy group pages",
     "copyPages": "Copy pages"
+  },
+  "calibrePreparation": {
+    "loading": "Preparing selection",
+    "creating": "Creating jobs",
+    "progress": "Preparation progress",
+    "count": "{{processed}} of {{total}} books processed",
+    "elapsed": "Elapsed time: {{seconds}} s",
+    "phases": {
+      "QUEUED": "Waiting to start preparation…",
+      "CATALOG": "Reading catalog books…",
+      "TORRENT_STATE": "Checking download status…",
+      "CALIBRE_CONNECTION": "Checking the Calibre library…",
+      "DOWNLOAD_RECORDS": "Reading download records…",
+      "FILES": "Checking available EPUB files…",
+      "CREATING_JOBS": "Preparing Torrent and Calibre jobs in batches…",
+      "RECOVERING": "Recovering saved progress…",
+      "WAITING": "Waiting automatically for the current operation to finish…",
+      "READY": "Preparation completed."
+    },
+    "cancelFailed": "Cancellation could not be confirmed. You can try again."
   }
 }

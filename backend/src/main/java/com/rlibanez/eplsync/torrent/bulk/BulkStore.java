@@ -28,6 +28,7 @@ import java.util.*;
 public class BulkStore {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.specification.CatalogLibraryFilters libraryFilters;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.settings.DownloadCancellation cancellation;
     private void event(BulkJob job, com.rlibanez.eplsync.events.EventJournal.Outcome outcome) {
         if (events == null) return;
         var summary = view(job);
@@ -164,7 +165,7 @@ public class BulkStore {
                     item.setState(BulkItem.State.SKIPPED);
                     item.setMessage(hashes.isEmpty() ? "El libro no tiene hashes torrent válidos"
                             : "Libro omitido por multipleHashes=skip: tiene varios hashes");
-                    if (!dryRun) items.save(item);
+                    if (!dryRun) em.persist(item);
                     if (item.getState() == BulkItem.State.SKIPPED) skipped++;
                     if (dryRun && includeDetails && item.getPosition()>=(long)detailPage*detailSize && item.getPosition()<((long)detailPage+1)*detailSize) details.add(new ItemView(null,item.getEplId(),item.getHash(),item.getState(),0,item.getMessage()));
                     continue;
@@ -187,7 +188,7 @@ public class BulkStore {
                             item.setState(BulkItem.State.SKIPPED); item.setMessage(safeMessage(ex));
                         }
                     }
-                    if (!dryRun) items.save(item);
+                    if (!dryRun) em.persist(item);
                     if (item.getState() == BulkItem.State.SKIPPED) skipped++;
                     if (dryRun && includeDetails && item.getPosition()>=(long)detailPage*detailSize && item.getPosition()<((long)detailPage+1)*detailSize) details.add(new ItemView(null,item.getEplId(),item.getHash(),item.getState(),0,item.getMessage()));
                 }
@@ -198,7 +199,7 @@ public class BulkStore {
             if (totalBooks > 0) {
                 int progressPercent = (int) (selectedBooks * 100 / totalBooks);
                 int checkpointPercent = progressPercent / 10 * 10;
-                if (checkpointPercent >= 10 && checkpointPercent > lastProgressCheckpoint) {
+                if (!com.rlibanez.eplsync.settings.CalibrePreparationContext.staged() && checkpointPercent >= 10 && checkpointPercent > lastProgressCheckpoint) {
                     log.info("Preparación bulk en progreso: dryRun={}, jobId={}, progreso={}%, librosProcesados={}/{}, itemsPreparados={}",
                             dryRun, job.getId(), progressPercent, selectedBooks, totalBooks, position);
                     lastProgressCheckpoint = checkpointPercent;
@@ -215,8 +216,9 @@ public class BulkStore {
         job.setSelectedBooks(selectedBooks);
         if (items.countByJobIdAndState(job.getId(), BulkItem.State.PENDING) == 0) job.setState(BulkJob.State.COMPLETED);
         jobs.saveAndFlush(job);
-        event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED);
-        if (job.getState() == BulkJob.State.COMPLETED) event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
+        if(com.rlibanez.eplsync.settings.CalibrePreparationContext.staged()) {com.rlibanez.eplsync.settings.CalibrePreparationContext.createdDownload(job.getId());job.setState(BulkJob.State.PAUSED);jobs.saveAndFlush(job);}
+        else event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.STARTED);
+        if (!com.rlibanez.eplsync.settings.CalibrePreparationContext.staged() && job.getState() == BulkJob.State.COMPLETED) event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.SUCCEEDED);
         return view(job.getId());
     }
 
@@ -465,6 +467,7 @@ public class BulkStore {
     @Transactional
     public View control(String id, String action) {
         var job = job(id);
+        if(((Number)em.createNativeQuery("SELECT count(*) FROM calibre_preparation_operations WHERE download_job_id=:id AND state IN ('QUEUED','RUNNING')").setParameter("id",id).getSingleResult()).longValue()>0) throw new com.rlibanez.eplsync.exception.UserInputException("El trabajo se está preparando; espera a que termine la creación");
         if (job.getState() == BulkJob.State.COMPLETED || job.getState() == BulkJob.State.CANCELLED)
             throw new TorrentOperationException(HttpStatus.CONFLICT, "El trabajo ya ha finalizado");
         var previousState = job.getState();
@@ -491,6 +494,7 @@ public class BulkStore {
             default -> throw new com.rlibanez.eplsync.exception.UserInputException("Acción desconocida");
         }
         job.setUpdatedAt(Instant.now()); jobs.saveAndFlush(job);
+        if (action.equals("cancel")) cancellation.propagate(id);
         if (previousState != job.getState()) event(job, switch (action) {
             case "pause" -> com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED;
             case "resume" -> com.rlibanez.eplsync.events.EventJournal.Outcome.RESUMED;

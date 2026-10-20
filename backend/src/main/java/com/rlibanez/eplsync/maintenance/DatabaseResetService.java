@@ -88,6 +88,7 @@ public class DatabaseResetService {
                     delete("CalibreBook");
                     em.createNativeQuery("DELETE FROM app_settings WHERE setting_key='calibre.snapshot'").executeUpdate();
                     em.createNativeQuery("DELETE FROM app_settings WHERE setting_key LIKE 'downloads.last-sync.%'").executeUpdate();
+                    em.createNativeQuery("DELETE FROM calibre_preparation_operations").executeUpdate();
                     em.createNativeQuery("DELETE FROM calibre_jobs").executeUpdate();
                     em.createNativeQuery("DELETE FROM calibre_update_requests").executeUpdate();
                     em.createNativeQuery("DELETE FROM update_search_results").executeUpdate();

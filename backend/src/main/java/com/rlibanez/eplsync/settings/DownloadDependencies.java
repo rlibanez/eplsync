@@ -35,6 +35,7 @@ public class DownloadDependencies {
             var rows=jdbc.queryForList("""
                 SELECT i.epl_id,i.revision,i.job_id FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id
                 WHERE j.target_fingerprint=? AND j.state<>'CANCELLED'
+                AND NOT EXISTS (SELECT 1 FROM calibre_preparation_operations p WHERE p.download_job_id=j.id AND p.state IN ('QUEUED','RUNNING'))
                 AND (i.state IN ('PENDING','IN_FLIGHT') OR (i.state IN ('ACCEPTED','ALREADY_EXISTS') AND EXISTS(
                     SELECT 1 FROM torrent_downloads d WHERE d.client_instance_id=j.target_fingerprint AND d.hash=i.hash AND d.status NOT IN ('ERROR','NOT_FOUND'))))
                 AND i.epl_id IN ("""+String.join(",",Collections.nCopies(batch.size(),"?"))+") ORDER BY j.created_at DESC,j.id DESC",args.toArray());

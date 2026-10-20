@@ -732,3 +732,10 @@ test("Calibre hides download work links without Torrent job permissions", async 
     page.getByRole("link", { name: "Ver trabajo de descargas", exact: true }),
   ).toHaveCount(0);
 });
+
+test("partial download cancellation shows actual totals and the cause link",async({page})=>{
+  await jobRoutes(page,"COMPLETED");
+  await page.route("**/api/calibre/transfers/job",route=>route.fulfill({json:{id:"job",createdAt:"2026-10-13T10:00:00Z",updatedAt:"2026-10-13T10:00:00Z",username:"Owner",library:"main",state:"COMPLETED",message:null,total:3,pending:0,accepted:2,skipped:0,failed:0,uncertain:0,cancelled:1}}));
+  await page.route("**/api/calibre/transfers/job/items?**",route=>route.fulfill({json:{items:[{id:"cancelled",position:0,recordId:null,index:0,name:"Libro cancelado",size:0,eplId:1,revision:"1",state:"CANCELLED",calibreId:null,message:"El trabajo de descarga relacionado se canceló. No se enviará este elemento a Calibre",downloadJobId:"original",cancelledByDownloadJobId:"cancelled-parent",coverAvailable:false}],meta:{...meta,totalItems:1}}}));
+  await page.goto("/calibre/jobs/job");await page.locator("details.report-collapse summary").click();const report=page.locator(".report-collapse-body");await expect(report).toContainText("3/3");await expect(report.getByText("Cancelados",{exact:true})).toBeVisible();await expect(page.getByRole("progressbar",{name:"Progreso",exact:true})).toHaveAttribute("aria-valuenow","100");await expect(page.getByRole("link",{name:"Ver trabajo de descargas",exact:true})).toHaveAttribute("href","/downloads/jobs/cancelled-parent");
+});

@@ -266,7 +266,7 @@ public class JobRetries {
             var row=work.row();
             if(work.phase().equals("SEND")) jdbc.update("UPDATE calibre_job_items SET calibre_uuid=NULL,identifiers_completed=0,identifier_completion_pending=0 WHERE id=?",work.id());
             String state=switch(work.phase()) {case "VERIFY"->"UNCERTAIN";case "WAIT"->"WAITING_DOWNLOAD";case "CLEANUP"->"CLEANUP_PENDING";default->"PENDING";};
-            jdbc.update("UPDATE calibre_job_items SET state=?,name=?,size=?,calibre_id=?,next_check=0,transient_attempts=0,wait_until=?,completion_state=?,cleanup_policy=?,cleanup_ids=?,cleanup_cancelled=0,message=? WHERE id=? AND job_id=?",state,row.get("name"),row.get("size"),work.phase().equals("SEND")?null:row.get("calibre_id"),Instant.now().plus(Duration.ofDays(30)).toEpochMilli(),row.get("completion_state"),row.get("retry_policy"),row.get("retry_cleanup_ids"),bool(row.get("retry_size_warning"))?CalibreTransfers.SIZE_WARNING:null,work.id(),id);
+            jdbc.update("UPDATE calibre_job_items SET state=?,name=?,size=?,calibre_id=?,next_check=0,transient_attempts=0,wait_until=?,completion_state=?,cleanup_policy=?,cleanup_ids=?,cleanup_cancelled=0,cancelled_by_download_job_id=NULL,message=? WHERE id=? AND job_id=?",state,row.get("name"),row.get("size"),work.phase().equals("SEND")?null:row.get("calibre_id"),Instant.now().plus(Duration.ofDays(30)).toEpochMilli(),row.get("completion_state"),row.get("retry_policy"),row.get("retry_cleanup_ids"),bool(row.get("retry_size_warning"))?CalibreTransfers.SIZE_WARNING:null,work.id(),id);
         }
         jdbc.update("UPDATE calibre_jobs SET state='QUEUED',message=NULL,next_check=0,next_probe=0,updated_at=? WHERE id=?",Instant.now().toString(),id);
     }

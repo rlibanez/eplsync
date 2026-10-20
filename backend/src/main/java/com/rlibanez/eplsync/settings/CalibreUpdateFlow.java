@@ -223,6 +223,7 @@ public class CalibreUpdateFlow {
         if(!Objects.equals(newest.eplId(),item.eplId()) || newest.revision()==null || newest.revision().compareTo(new BigDecimal(item.revision()))!=0 || !client.hasEpub(c,newest.calibreId())) throw new UserInputException("La nueva revisión no está verificada con EPUB e identificadores; no se eliminará ninguna revisión anterior");
         List<Long> ids=new ArrayList<>();for(var id:json.readTree((String)row.get("cleanup_ids"))) ids.add(id.asLong());
         for(long id:new ArrayList<>(ids)) {
+            if(cleanupWasCancelled(item.id())) return;
             transfers.requireCleanupAllowed(job,c);
             if(id==newest.calibreId()) throw new UserInputException("No se puede eliminar la nueva revisión");
             CalibreClient.Book old=null;
@@ -230,6 +231,8 @@ public class CalibreUpdateFlow {
             if(old!=null) {
                 if(!Objects.equals(old.eplId(),item.eplId()) || old.revision()==null || old.revision().compareTo(newest.revision())>=0) throw new UserInputException("Los metadatos de la revisión anterior cambiaron; no se eliminará");
                 if(policy.equals("BOOK") || client.hasEpub(c,id)) {
+                    if(cleanupWasCancelled(item.id())) return;
+                    transfers.requireCleanupAllowed(job,c);
                     try {client.remove(c,id,policy.equals("BOOK"));}catch(RuntimeException ex) {if(!removed(c,id,policy)) throw ex;}
                     if(!removed(c,id,policy)) throw new UserInputException("Calibre no confirmó el borrado de la revisión anterior");
                 }
@@ -239,6 +242,7 @@ public class CalibreUpdateFlow {
             ids.remove(id);jdbc.update("UPDATE calibre_job_items SET cleanup_ids=? WHERE id=?",json.writeValueAsString(ids),item.id());
         }
     }
+    private boolean cleanupWasCancelled(String item) {return Boolean.TRUE.equals(jdbc.queryForObject("SELECT cleanup_cancelled OR cleanup_policy='KEEP' OR state<>'CLEANUP_PENDING' FROM calibre_job_items WHERE id=?",Boolean.class,item));}
     private boolean removed(CalibreSettings.Connection c,long id,String policy) {
         try {if(policy.equals("BOOK")) {client.book(c,id);return false;}return !client.hasEpub(c,id);}catch(org.springframework.web.server.ResponseStatusException ex) {if(ex.getStatusCode().value()==404) return true;throw ex;}
     }

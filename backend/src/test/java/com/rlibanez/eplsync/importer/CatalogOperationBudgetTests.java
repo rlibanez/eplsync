@@ -12,7 +12,7 @@ class CatalogOperationBudgetTests {
         try (var _ = new CatalogOperationBudget(Duration.ofMinutes(1))) {
             CatalogOperationBudget.progress("IMPORTING", 12300);
             assertThat(java.util.concurrent.CompletableFuture.supplyAsync(CatalogOperationBudget::progress).get())
-                    .isEqualTo(new CatalogOperationBudget.Progress(true, "IMPORTING", 12300));
+                    .isEqualTo(new CatalogOperationBudget.Progress(true, "IMPORTING", 12300, 0));
             try (var _ = new CatalogOperationBudget(Duration.ofSeconds(10))) {
                 CatalogOperationBudget.progress("VALIDATING", 0);
             }
@@ -46,4 +46,12 @@ class CatalogOperationBudgetTests {
             assertThatThrownBy(() -> reader.read(new char[128])).isInstanceOf(CatalogOperationException.class);
         }
     }
+    @Test void validatedTotalIsSharedWithImportProgressAndResetForAnotherFile() {
+        try(var _=new CatalogOperationBudget(Duration.ofSeconds(10))) {
+            CatalogOperationBudget.totalRows(20000);CatalogOperationBudget.progress("IMPORTING",12000);
+            assertThat(CatalogOperationBudget.progress().totalRows()).isEqualTo(20000);
+            CatalogOperationBudget.progress("VALIDATING",0);assertThat(CatalogOperationBudget.progress().totalRows()).isZero();
+        }
+    }
+
 }

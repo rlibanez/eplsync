@@ -1,3 +1,9 @@
+import {
+  preparationOperation,
+  PreparationFailure,
+  PreparationCancelled,
+  type PreparationProgress,
+} from "./preparationOperation";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { togglePageSelection } from "../../components/pageSelection";
 import { PreviewHeading, usePreviewSort } from "../../components/PreviewSort";
@@ -7,16 +13,27 @@ import {
   useContext,
   useMemo,
   useState,
+  useRef,
+  useEffect,
   type ReactNode,
 } from "react";
-import { Alert, Button, Checkbox, Group, Select, Stack } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Group,
+  Select,
+  Stack,
+  Progress,
+  Text,
+} from "@mantine/core";
 import { Upload } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AppModal, ModalActions } from "../../components/AppModal";
 import { TableAction } from "../../components/TableAction";
-import { Loading, Failure } from "../../components/Feedback";
+import { Failure } from "../../components/Feedback";
 import { useAuth } from "../auth/Auth";
 import { post } from "../downloads/shared";
 import { useLocale } from "../../locales/useLocale";
@@ -47,7 +64,10 @@ type Prepared = {
   deferredRecords?: string[];
   missing?: { eplId: number; revision: number; title: string }[];
 };
-type Selection = { ids: string[] } | { filters: Record<string, unknown> };
+type Selection = ({ ids: string[] } | { filters: Record<string, unknown> }) & {
+  count?: number;
+  operationId?: string;
+};
 const Sender = createContext<((selection: Selection) => void) | null>(null);
 const requestIdentifier = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -63,19 +83,57 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
   const chosenSet = useMemo(() => new Set(chosen), [chosen]);
   const { t } = useTranslation();
   const auth = useAuth();
-  const { revision } = useLocale();
+  const { revision, number } = useLocale();
   const navigate = useNavigate();
   const cache = useQueryClient();
+  const [progress, setProgress] = useState<PreparationProgress | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const activeOperation = useRef("");
   const prepare = useMutation({
-    mutationFn: (selected: Selection) =>
-      post<Prepared>(
-        "filters" in selected
-          ? "/calibre/transfers/catalog/prepare"
-          : "/calibre/transfers/prepare",
-        selected,
-      ),
+    mutationFn: (selected: Selection) => {
+      const id = selected.operationId ?? requestIdentifier();
+      activeOperation.current = id;
+      setProgress(null);
+      setElapsed(0);
+      return "filters" in selected && (selected.count ?? 0) > 1000
+        ? preparationOperation<Prepared>(
+            "/calibre/transfers/catalog/operations/prepare",
+            { id, selection: { filters: selected.filters } },
+            (value) => {
+              if (activeOperation.current === id) setProgress(value);
+            },
+          )
+        : post<Prepared>(
+            "filters" in selected
+              ? "/calibre/transfers/catalog/prepare"
+              : "/calibre/transfers/prepare",
+            "filters" in selected
+              ? { filters: selected.filters }
+              : { ids: selected.ids },
+          );
+    },
     retry: false,
-    onSuccess: (data) => {
+    onError: (error, selected) => {
+      if (error instanceof PreparationCancelled) {
+        if (activeOperation.current === selected.operationId) setOpened(false);
+        return;
+      }
+      if (
+        error instanceof PreparationFailure &&
+        activeOperation.current === selected.operationId
+      )
+        setSelection((current) =>
+          current.operationId === selected.operationId
+            ? { ...current, operationId: requestIdentifier() }
+            : current,
+        );
+    },
+    onSuccess: (data, selected) => {
+      if (
+        selected.operationId &&
+        activeOperation.current !== selected.operationId
+      )
+        return;
       setChosen(data.files.map(key));
       setLibrary(
         data.libraries.some((l) => l.id === data.library)
@@ -108,8 +166,22 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
     `${opened}:${filePage}:${JSON.stringify(sorting.order)}`,
   );
   const send = useMutation({
-    mutationFn: () =>
-      post<{ id: string }>(
+    mutationFn: () => {
+      activeOperation.current = requestId;
+      setProgress(null);
+      setElapsed(0);
+      const execute =
+        "filters" in selection && (prepare.data?.books?.length ?? 0) > 1000
+          ? (_path: string, body: unknown) =>
+              preparationOperation<{ id: string }>(
+                "/calibre/transfers/catalog/operations/send",
+                body,
+                (value) => {
+                  if (activeOperation.current === requestId) setProgress(value);
+                },
+              )
+          : (path: string, body: unknown) => post<{ id: string }>(path, body);
+      return execute(
         "filters" in selection
           ? "/calibre/transfers/catalog"
           : "/calibre/transfers",
@@ -136,39 +208,129 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
             .filter((f) => chosenSet.has(key(f)))
             .map((f) => ({ recordId: f.recordId, index: f.index })),
         },
-      ),
+      );
+    },
     retry: false,
+    onError: (error) => {
+      if (error instanceof PreparationCancelled) {
+        if (activeOperation.current === requestId) setOpened(false);
+        return;
+      }
+      // Only a confirmed server failure permits a fresh request. An unknown
+      // network outcome keeps the same ID and resumes its existing operation.
+      if (error instanceof PreparationFailure)
+        setRequestId(requestIdentifier());
+    },
     onSuccess: (job) => {
       setOpened(false);
       void cache.invalidateQueries({ queryKey: ["calibre-jobs"] });
       navigate(`/calibre/jobs/${job.id}`);
     },
   });
+  const cancel = useMutation({
+    mutationFn: () =>
+      post<PreparationProgress>(
+        `/calibre/transfers/catalog/operations/${encodeURIComponent(progress?.id ?? activeOperation.current)}/cancel`,
+      ),
+    retry: false,
+    onSuccess: (operation) => {
+      setOpened(false);
+      activeOperation.current = "";
+      if (operation.state === "COMPLETED" && operation.kind === "SEND") {
+        const result = operation.result as { id: string };
+        navigate(`/calibre/jobs/${result.id}`);
+      }
+    },
+  });
+  const working = prepare.isPending || send.isPending;
+  const asynchronous =
+    progress != null ||
+    (prepare.isPending
+      ? "filters" in selection && (selection.count ?? 0) > 1000
+      : send.isPending &&
+        "filters" in selection &&
+        (prepare.data?.books?.length ?? 0) > 1000);
+  const close = () => {
+    if (cancel.isPending) return;
+    if (
+      asynchronous &&
+      (working || (progress && ["QUEUED", "RUNNING"].includes(progress.state)))
+    ) {
+      // Wait for the initial POST receipt before requesting cancellation. The
+      // receipt is quick and supplies a server-owned operation to cancel.
+      if (progress) cancel.mutate();
+    } else if (!send.isPending) setOpened(false);
+  };
+  useEffect(() => {
+    if (!working) return;
+    const started = Date.now();
+    const timer = window.setInterval(
+      () => setElapsed(Math.floor((Date.now() - started) / 1000)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [working]);
+  const feedback = (
+    <Stack gap="xs" role="status" aria-live="polite">
+      <Text fw={600}>
+        {t(
+          send.isPending
+            ? "calibrePreparation.creating"
+            : "calibrePreparation.loading",
+        )}
+      </Text>
+      <Text>
+        {t(`calibrePreparation.phases.${progress?.phase ?? "QUEUED"}`)}
+      </Text>
+      {!!progress?.total && (
+        <>
+          <Progress
+            value={Math.min(100, (progress.processed * 100) / progress.total)}
+            animated
+            aria-label={t("calibrePreparation.progress")}
+          />
+          <Text size="sm">
+            {t("calibrePreparation.count", {
+              processed: number(progress.processed),
+              total: number(progress.total),
+            })}
+          </Text>
+        </>
+      )}
+      {progress?.message && <Text size="sm">{progress.message}</Text>}
+      <Text size="sm" c="dimmed">
+        {t("calibrePreparation.elapsed", { seconds: elapsed })}
+      </Text>
+    </Stack>
+  );
   return (
     <Sender.Provider
       value={(selected) => {
-        setSelection(selected);
+        const next = { ...selected, operationId: requestIdentifier() };
+        activeOperation.current = next.operationId;
+        setProgress(null);
+        setElapsed(0);
+        setSelection(next);
         setDownload(false);
         setFilePage(0);
         setRequestId(requestIdentifier());
         prepare.reset();
         send.reset();
+        cancel.reset();
         setOpened(true);
-        prepare.mutate(selected);
+        prepare.mutate(next);
       }}
     >
       {children}
       <AppModal
         width="wide"
         opened={opened}
-        onClose={() => {
-          if (!send.isPending) setOpened(false);
-        }}
+        onClose={close}
         title={t("calibreSend.title")}
         icon={Upload}
       >
         {prepare.isPending ? (
-          <Loading />
+          feedback
         ) : prepare.isError ? (
           <Failure
             error={prepare.error}
@@ -349,6 +511,12 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
             </Stack>
           )
         )}
+        {cancel.isError && (
+          <Alert color="red">{t("calibrePreparation.cancelFailed")}</Alert>
+        )}
+        {send.isPending && (
+          <div className="calibre-preparation-feedback">{feedback}</div>
+        )}
         <ModalActions
           summary={
             prepare.isSuccess
@@ -365,13 +533,15 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
         >
           <Button
             variant="default"
-            onClick={() => setOpened(false)}
-            disabled={send.isPending}
+            onClick={close}
+            loading={cancel.isPending}
+            disabled={working && (asynchronous ? !progress : send.isPending)}
           >
             {t("common.cancel")}
           </Button>
           <Button
             disabled={
+              cancel.isPending ||
               !prepare.isSuccess ||
               !library ||
               (!chosen.length &&
@@ -414,7 +584,11 @@ export function SendToCalibre({
   return inline ? (
     <TableAction
       label={t("calibreSend.title")}
-      onClick={() => open(filters ? { filters } : { ids: ids ?? [] })}
+      onClick={() =>
+        open(
+          filters ? { filters, count } : { ids: ids ?? [], count: ids?.length },
+        )
+      }
     >
       <Upload size={16} aria-hidden="true" />
     </TableAction>
@@ -422,7 +596,11 @@ export function SendToCalibre({
     <Button
       variant="light"
       leftSection={<Upload size={16} />}
-      onClick={() => open(filters ? { filters } : { ids: ids ?? [] })}
+      onClick={() =>
+        open(
+          filters ? { filters, count } : { ids: ids ?? [], count: ids?.length },
+        )
+      }
     >
       {t("calibreSend.title")}
     </Button>

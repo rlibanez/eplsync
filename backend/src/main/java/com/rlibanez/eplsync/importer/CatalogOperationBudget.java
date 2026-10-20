@@ -11,16 +11,17 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public final class CatalogOperationBudget implements AutoCloseable {
     private static final ThreadLocal<CatalogOperationBudget> CURRENT = new ThreadLocal<>();
     private static final java.util.concurrent.atomic.AtomicReference<CatalogOperationBudget> LIVE = new java.util.concurrent.atomic.AtomicReference<>();
-    public record Progress(boolean active, String phase, long processedRows) {}
-    private volatile Progress progress = new Progress(true, "PREPARING", 0);
+    public record Progress(boolean active, String phase, long processedRows, long totalRows) {}
+    private volatile Progress progress = new Progress(true, "PREPARING", 0, 0);
     public static Progress progress() {
         var current = LIVE.get();
-        return current == null ? new Progress(false, "IDLE", 0) : current.progress;
+        return current == null ? new Progress(false, "IDLE", 0, 0) : current.progress;
     }
     public static void progress(String phase, long rows) {
         var current = CURRENT.get();
-        if (current != null) current.progress = new Progress(true, phase, rows);
+        if (current != null) current.progress = new Progress(true, phase, rows, phase.equals("VALIDATING") ? 0 : current.progress.totalRows());
     }
+    public static void totalRows(long rows) {var current=CURRENT.get();if(current!=null) current.progress=new Progress(true,current.progress.phase(),current.progress.processedRows(),rows);}
     private final CatalogOperationBudget previous;
     private final LongSupplier clock;
     private final long deadline;

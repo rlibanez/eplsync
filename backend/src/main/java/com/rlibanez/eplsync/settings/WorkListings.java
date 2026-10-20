@@ -47,13 +47,13 @@ public class WorkListings {
             coalesce(j.type,'DOWNLOAD') type,j.state state,j.event_actor_username username,NULL library,j.selected_books selectedBooks,
             count(i.id) total,coalesce(sum(CASE WHEN j.track_downloads=1 THEN i.state IN ('SKIPPED','FAILED','CANCELLED') OR i.download_state IN ('DOWNLOADED','IGNORED') ELSE i.state IN ('ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED') END),0) processed,
             coalesce(sum(i.state='ACCEPTED'),0) accepted,coalesce(sum(i.state='FAILED'),0) failed
-            FROM torrent_bulk_jobs j LEFT JOIN torrent_bulk_items i ON i.job_id=j.id GROUP BY j.id
+            FROM torrent_bulk_jobs j LEFT JOIN torrent_bulk_items i ON i.job_id=j.id WHERE NOT EXISTS(SELECT 1 FROM calibre_preparation_operations p WHERE p.download_job_id=j.id AND p.state IN ('QUEUED','RUNNING')) GROUP BY j.id
             """:"""
             SELECT j.id,'normal' kind,cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) createdAt,
             'SEND' type,j.state state,j.owner_username username,j.library,count(i.id) selectedBooks,count(i.id) total,
             coalesce(sum(i.state IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED')),0) processed,
             coalesce(sum(i.state='ACCEPTED'),0) accepted,coalesce(sum(i.state='FAILED'),0) failed
-            FROM calibre_jobs j LEFT JOIN calibre_job_items i ON i.job_id=j.id GROUP BY j.id
+            FROM calibre_jobs j LEFT JOIN calibre_job_items i ON i.job_id=j.id WHERE NOT EXISTS(SELECT 1 FROM calibre_preparation_operations p WHERE p.calibre_job_id=j.id AND p.state IN ('QUEUED','RUNNING')) GROUP BY j.id
             """;
         String projection="""
             SELECT j.id,'cleanup' kind,j.created_at createdAt,'CLEANUP' type,j.state state,j.owner_username username,j.library,
