@@ -211,6 +211,13 @@ class CalibreCatalogTests {
             .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1)).andExpect(jsonPath("$.items[0].calibreId").value(4));
         mvc.perform(get("/api/calibre/books").param("eplIdOperator","ne").param("comparisonOperator","ne").param("presenceOperator","ne"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4));
+        mvc.perform(get("/api/calibre/books").param("eplId","1; 99 1").param("size","1").param("page","2").param("sort","calibreId,asc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3)).andExpect(jsonPath("$.items[0].calibreId").value(3));
+        mvc.perform(get("/api/calibre/books").param("eplId","1,99").param("eplIdOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].calibreId").value(4));
+        var ids=java.util.stream.LongStream.rangeClosed(1,1200).mapToObj(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+        mvc.perform(get("/api/calibre/books").param("eplId",ids)).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3));
+        for(String invalid:List.of("1,0","1,-1","1,wrong","9223372036854775808")) mvc.perform(get("/api/calibre/books").param("eplId",invalid)).andExpect(status().isBadRequest());
         for(String operator:java.util.List.of("eplIdOperator","comparisonOperator","presenceOperator"))
             mvc.perform(get("/api/calibre/books").param(operator,"invalid")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/calibre/books").param("comparison","CURRENT,invalid")).andExpect(status().isBadRequest());

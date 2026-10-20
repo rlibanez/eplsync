@@ -27,6 +27,7 @@ export function useJobItemSearch(
   resetPage: () => void,
   detailLabel?: string,
   authorLabel?: string,
+  separateDetail = false,
 ) {
   const { t } = useTranslation();
   const [value, setValue] = useBookViewState<Search>("jobItemSearch", empty);
@@ -50,8 +51,32 @@ export function useJobItemSearch(
     if (value.details?.length && value.excludeDetail)
       params.set("detailOperator", "ne");
   }
+  const detailField = detailLabel && (
+    <TagsInput
+      label={detailLabel}
+      value={value.details ?? []}
+      clearable
+      splitChars={[]}
+      clearButtonProps={{
+        "aria-hidden": false,
+        tabIndex: 0,
+        "aria-label": `${t("catalog.clear")}: ${detailLabel}`,
+      }}
+      {...stateOperatorProps(value.excludeDetail ?? false, () =>
+        change({ ...value, excludeDetail: !value.excludeDetail }),
+      )}
+      onChange={(details) =>
+        change({
+          ...value,
+          details,
+          excludeDetail: details.length ? value.excludeDetail : false,
+        })
+      }
+    />
+  );
   return {
     query: params.toString(),
+    detailField,
     clear: () => change(empty),
     selectAuthor: (author: string) => {
       if (authorLabel && author.trim())
@@ -125,29 +150,7 @@ export function useJobItemSearch(
             }
           />
         )}
-        {detailLabel && (
-          <TagsInput
-            label={detailLabel}
-            value={value.details ?? []}
-            clearable
-            splitChars={[]}
-            clearButtonProps={{
-              "aria-hidden": false,
-              tabIndex: 0,
-              "aria-label": `${t("catalog.clear")}: ${detailLabel}`,
-            }}
-            {...stateOperatorProps(value.excludeDetail ?? false, () =>
-              change({ ...value, excludeDetail: !value.excludeDetail }),
-            )}
-            onChange={(details) =>
-              change({
-                ...value,
-                details,
-                excludeDetail: details.length ? value.excludeDetail : false,
-              })
-            }
-          />
-        )}
+        {!separateDetail && detailField}
       </>
     ),
   };

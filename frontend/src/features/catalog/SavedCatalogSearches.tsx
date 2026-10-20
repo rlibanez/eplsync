@@ -90,6 +90,11 @@ export function SavedCatalogSearches({
           aria-label={t("savedSearches.heading")}
           placeholder={t("savedSearches.heading")}
           clearable
+          clearButtonProps={{
+            "aria-hidden": false,
+            tabIndex: 0,
+            "aria-label": `${t("catalog.clear")}: ${t("savedSearches.heading")}`,
+          }}
           searchable
           value={selected}
           disabled={pending}

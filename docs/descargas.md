@@ -8,6 +8,8 @@
 varias revisiones o hashes. Utiliza los filtros y los controles **Ordenar** y
 **Columnas** para adaptar la tabla.
 
+El filtro **EPL ID** admite varios identificadores, añadidos con Intro o pegados separados por comas, punto y coma o espacios. Incluye **= / ≠** y una X para vaciarlo; se conserva al paginar y al seleccionar todos los resultados.
+
 Los estados de envío indican el resultado de enviar un torrent. Los estados como
 En cola, Descargando, Pausado o Descargado proceden de las comprobaciones del cliente.
 **No encontrado** indica que el torrent no aparece en la última comprobación;

@@ -48,7 +48,7 @@ public class BulkController {
     public PageResponse<BulkStore.ItemView> items(@PathVariable String id,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size,
             @RequestParam(defaultValue = "position,asc") String sort, @RequestParam(defaultValue="eq") String statusOperator,@RequestParam(required = false) String status, jakarta.servlet.http.HttpServletRequest request) {
-        if (!java.util.Set.of("page", "size", "status", "statusOperator", "sort", "eplId", "eplIdOperator", "book", "bookOperator", "author", "authorOperator", "detail", "detailOperator").containsAll(request.getParameterMap().keySet()))
+        if (!java.util.Set.of("page", "size", "status", "statusOperator", "sort", "eplId", "eplIdOperator", "book", "bookOperator", "author", "authorOperator", "detail", "detailOperator", "downloadState", "downloadStateOperator").containsAll(request.getParameterMap().keySet()))
             throw new com.rlibanez.eplsync.exception.UserInputException("Parámetro de filtro u ordenación desconocido");
         com.rlibanez.eplsync.config.TableOrdering.validateParameters(request,java.util.Set.of("eplId","book","author","detail"));
         java.util.List<BulkItem.State> states = null;

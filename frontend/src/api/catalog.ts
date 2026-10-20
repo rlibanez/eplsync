@@ -166,6 +166,11 @@ export function catalogParams(
     ["torrentStatus", 24],
     ["statusOperator", 2],
     ["titleOperator", 2],
+    ["eplIdOperator", 2],
+    ["collectionOperator", 2],
+    ["genresOperator", 2],
+    ["revisionOperator", 2],
+
     ["authorOperator", 2],
     ["languageOperator", 2],
     ["publicationStatusOperator", 2],

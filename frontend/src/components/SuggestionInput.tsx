@@ -6,7 +6,14 @@ import {
   type ClipboardEvent,
   type ReactNode,
 } from "react";
-import { Combobox, PillsInput, Pill, useCombobox, Button } from "@mantine/core";
+import {
+  Combobox,
+  PillsInput,
+  Pill,
+  useCombobox,
+  Button,
+  CloseButton,
+} from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -29,6 +36,7 @@ export function SuggestionInput({
   name,
   maxLength,
   operator,
+  onClear,
 }: {
   kind?: SuggestionKind;
   label: string;
@@ -43,6 +51,7 @@ export function SuggestionInput({
   name?: string;
   maxLength?: number;
   operator?: ReactNode;
+  onClear?: () => void;
 }) {
   const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
@@ -108,6 +117,21 @@ export function SuggestionInput({
         <PillsInput
           leftSection={operator}
           leftSectionPointerEvents="auto"
+          rightSectionPointerEvents="auto"
+          rightSection={
+            onClear ? (
+              <CloseButton
+                size="sm"
+                aria-label={`${t("catalog.clear")}: ${label}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setDismissed(true);
+                  onClear();
+                }}
+              />
+            ) : undefined
+          }
           label={label}
           error={error}
           onClick={() => {

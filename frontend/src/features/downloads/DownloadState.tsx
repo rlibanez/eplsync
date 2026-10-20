@@ -38,6 +38,7 @@ import {
   Group,
   Select,
   MultiSelect,
+  TagsInput,
   TextInput,
 } from "@mantine/core";
 import { Link } from "react-router-dom";
@@ -65,6 +66,7 @@ export interface Download {
 }
 const initialFilters = {
   eplId: "",
+  eplIdOperator: "eq",
   title: "",
   titleOperator: "eq",
   status: "",
@@ -86,7 +88,6 @@ function DownloadHistory() {
   const syncPending = useIsMutating({ mutationKey: ["torrent-sync"] }) > 0;
   const [filters, setFilters] = useBookViewState("filters", initialFilters);
   const [draftTitle, setDraftTitle] = useBookViewState("draftTitle", "");
-  const [draftEplId, setDraftEplId] = useBookViewState("draftEplId", "");
   const [page, setPage] = useBookViewState("page", 0);
   const [size, setSize] = useBookViewState("size", 20);
   const pageSizeChoice = usePageSizeChoice(size);
@@ -98,15 +99,6 @@ function DownloadHistory() {
     auth.can("TORRENT_CLEANUP");
   const [selected, setSelected] = useState<string[]>([]);
   useEffect(() => setSelected([]), [filters]);
-  useEffect(() => {
-    if (draftEplId === filters.eplId) return;
-    if (draftEplId !== "" && !/^[1-9]\d*$/.test(draftEplId)) return;
-    const timer = window.setTimeout(() => {
-      setFilters((current) => ({ ...current, eplId: draftEplId }));
-      setPage(0);
-    }, 400);
-    return () => window.clearTimeout(timer);
-  }, [draftEplId, filters.eplId]);
 
   useEffect(() => {
     const title = draftTitle.trim();
@@ -129,7 +121,7 @@ function DownloadHistory() {
         ordering(value).forEach((sort) => params.append("sort", sort));
       else if (
         !key.endsWith("Operator") ||
-        (filters[key.slice(0, -8) as "status" | "origin" | "title"] &&
+        (filters[key.slice(0, -8) as "status" | "origin" | "title" | "eplId"] &&
           value === "ne")
       )
         params.set(key, value);
@@ -264,27 +256,36 @@ function DownloadHistory() {
           className="filters jobs-filters"
           onSubmit={(e) => e.preventDefault()}
         >
-          <TextInput
+          <TagsInput
             name="eplId"
             label={t("filters.eplId")}
-            type="number"
-            min={1}
-            value={draftEplId}
-            rightSectionPointerEvents="auto"
-            rightSection={
-              draftEplId ? (
-                <CloseButton
-                  size="sm"
-                  aria-label={`${t("catalog.clear")}: ${t("filters.eplId")}`}
-                  onClick={() => {
-                    setDraftEplId("");
-                    setFilters((current) => ({ ...current, eplId: "" }));
-                    setPage(0);
-                  }}
-                />
-              ) : undefined
+            value={
+              filters.eplId
+                ? filters.eplId.split(/[,;\s]+/).filter(Boolean)
+                : []
             }
-            onChange={(e) => setDraftEplId(e.currentTarget.value)}
+            inputMode="numeric"
+            splitChars={[",", ";", " "]}
+            clearable
+            clearButtonProps={{
+              "aria-hidden": false,
+              tabIndex: 0,
+              "aria-label": `${t("catalog.clear")}: ${t("filters.eplId")}`,
+            }}
+            {...stateOperatorProps(filters.eplIdOperator === "ne", () =>
+              filter(
+                "eplIdOperator",
+                filters.eplIdOperator === "ne" ? "eq" : "ne",
+              ),
+            )}
+            onChange={(ids) => {
+              setFilters((current) => ({
+                ...current,
+                eplId: ids.join(","),
+                eplIdOperator: ids.length ? current.eplIdOperator : "eq",
+              }));
+              setPage(0);
+            }}
           />
           <TextInput
             name="title"
@@ -375,7 +376,6 @@ function DownloadHistory() {
             type="button"
             variant="subtle"
             onClick={() => {
-              setDraftEplId("");
               setFilters(initialFilters);
               setDraftTitle("");
               setPage(0);

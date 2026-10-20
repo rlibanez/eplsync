@@ -421,11 +421,23 @@ public class BulkStore {
             if(terms.stream().anyMatch(value->value==null || value.length()>4096)) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro de texto inválido");
             textTerms.put(key,terms.stream().map(value -> Objects.requireNonNull(value).trim()).filter(value->!value.isEmpty()).distinct().toList());
         }
+        boolean excludeDownload=com.rlibanez.eplsync.ordering.StateOperator.excluded(params.getFirst("downloadStateOperator")==null?"eq":params.getFirst("downloadStateOperator"));
+        var downloadStates=new ArrayList<String>();
+        String downloadFilter=params.getFirst("downloadState");
+        if(downloadFilter!=null) {
+            var allowed=new HashSet<String>();for(var state:com.rlibanez.eplsync.torrent.downloads.DownloadStatus.values()) allowed.add(state.name());allowed.addAll(Set.of("IGNORED","WAITING"));
+            for(String state:downloadFilter.split(",",-1)) {state=state.trim();if(!allowed.contains(state)) throw new com.rlibanez.eplsync.exception.UserInputException("Estado de descarga inválido");if(!downloadStates.contains(state)) downloadStates.add(state);}
+        }
         // One bound numeric set avoids SQLite's parameter limit for large ID selections.
         String idSet=","+ids.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","))+",";
         org.springframework.data.jpa.domain.Specification<BulkItem> filter=(root,query,cb)-> {
             var predicates=new ArrayList<jakarta.persistence.criteria.Predicate>();
             predicates.add(cb.equal(root.get("jobId"),id));
+            if(!downloadStates.isEmpty()) {
+                jakarta.persistence.criteria.Predicate match=cb.coalesce(root.<String>get("downloadState"),"").in(downloadStates);
+                if(downloadStates.contains("WAITING")) match=cb.or(match,cb.and(cb.isNull(root.get("downloadState")),root.get("state").in(BulkItem.State.ACCEPTED,BulkItem.State.ALREADY_EXISTS)));
+                predicates.add(excludeDownload?cb.not(match):match);
+            }
             if(states!=null) predicates.add(exclude?cb.not(root.get("state").in(states)):root.get("state").in(states));
             if(!ids.isEmpty()) {
                 var match=cb.gt(cb.locate(cb.literal(idSet),cb.concat(cb.concat(",",root.get("eplId").as(String.class)),",")),0);

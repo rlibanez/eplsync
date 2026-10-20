@@ -71,6 +71,14 @@ export function FilterTokens({
     <SuggestionInput
       operator={operator}
       label={label}
+      onClear={
+        values.length || draft
+          ? () => {
+              onChange([]);
+              onDraft("");
+            }
+          : undefined
+      }
       error={error}
       kind={suggestionKind}
       value={draft}
@@ -108,7 +116,10 @@ export function FilterTokens({
           e.preventDefault();
           if (draft.trim()) commit();
           else e.currentTarget.form?.requestSubmit();
-        } else if (e.key === "Tab" && !e.shiftKey && draft.trim()) {
+        } else if (
+          ((e.key === "Tab" && !e.shiftKey) || (allowList && e.key === " ")) &&
+          draft.trim()
+        ) {
           e.preventDefault();
           commit();
         }

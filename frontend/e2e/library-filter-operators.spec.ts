@@ -52,8 +52,11 @@ test("Calibre exclusion filters survive pagination and selecting all, and each f
   const field = (label: string) =>
     filters
       .locator(".mantine-InputWrapper-root")
-      .filter({ has: page.getByLabel(label, { exact: true }) });
-  await page.getByLabel("EPL ID", { exact: true }).fill("1");
+      .filter({ has: page.getByRole("textbox", { name: label, exact: true }) });
+  await page.getByRole("textbox", { name: "EPL ID", exact: true }).fill("1,3");
+  await page
+    .getByRole("textbox", { name: "EPL ID", exact: true })
+    .press("Enter");
   await field("EPL ID")
     .getByRole("button", { name: "Incluir valores seleccionados", exact: true })
     .click();
@@ -79,7 +82,9 @@ test("Calibre exclusion filters survive pagination and selecting all, and each f
   const expected = books
     .filter(
       (b) =>
-        b.eplId !== 1 && b.comparison !== "CURRENT" && b.presence !== "MISSING",
+        ![1, 3].includes(b.eplId) &&
+        b.comparison !== "CURRENT" &&
+        b.presence !== "MISSING",
     )
     .map((b) => b.calibreId);
   await expect
@@ -107,7 +112,9 @@ test("Calibre exclusion filters survive pagination and selecting all, and each f
   await page
     .getByRole("button", { name: "Limpiar: EPL ID", exact: true })
     .click();
-  await expect(page.getByLabel("EPL ID", { exact: true })).toHaveValue("");
+  await expect(
+    page.getByRole("textbox", { name: "EPL ID", exact: true }),
+  ).toHaveValue("");
   await expect
     .poll(() => requests.at(-1)?.searchParams.has("eplIdOperator"))
     .toBe(false);
@@ -156,15 +163,20 @@ test("Downloads origin has no operator and EPL ID can be cleared", async ({
       name: "Incluir valores seleccionados",
       exact: true,
     }),
-  ).toHaveCount(1);
-  await page.getByLabel("EPL ID", { exact: true }).fill("123");
+  ).toHaveCount(2);
+  await page.getByRole("textbox", { name: "EPL ID", exact: true }).fill("123");
+  await page
+    .getByRole("textbox", { name: "EPL ID", exact: true })
+    .press("Enter");
   await expect
     .poll(() => requests.at(-1)?.searchParams.get("eplId"))
     .toBe("123");
   await page
     .getByRole("button", { name: "Limpiar: EPL ID", exact: true })
     .click();
-  await expect(page.getByLabel("EPL ID", { exact: true })).toHaveValue("");
+  await expect(
+    page.getByRole("textbox", { name: "EPL ID", exact: true }),
+  ).toHaveValue("");
   await page.getByRole("textbox", { name: "Origen", exact: true }).click();
   await page.getByRole("option", { name: "EPL Sync", exact: true }).click();
   await expect

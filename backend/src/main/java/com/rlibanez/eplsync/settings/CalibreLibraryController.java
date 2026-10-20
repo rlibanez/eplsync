@@ -33,20 +33,21 @@ public class CalibreLibraryController {
     @GetMapping
     @Transactional(readOnly=true)
     public Page books(@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,
-                      @RequestParam(defaultValue="eq") String titleOperator,@RequestParam(defaultValue="eq") String authorOperator,@RequestParam(defaultValue="") String title,@RequestParam(defaultValue="") String author,@RequestParam(required=false) Long eplId,@RequestParam(defaultValue="") String comparison,
+                      @RequestParam(defaultValue="eq") String titleOperator,@RequestParam(defaultValue="eq") String authorOperator,@RequestParam(defaultValue="") String title,@RequestParam(defaultValue="") String author,@RequestParam(required=false) String eplId,@RequestParam(defaultValue="") String comparison,
                       @RequestParam(defaultValue="") String presence,@RequestParam(defaultValue="eq") String eplIdOperator,@RequestParam(defaultValue="eq") String comparisonOperator,@RequestParam(defaultValue="eq") String presenceOperator,@RequestParam(defaultValue="false") boolean updatesOnly, jakarta.servlet.http.HttpServletRequest request) {
         boolean excludeTitle=com.rlibanez.eplsync.ordering.StateOperator.excluded(titleOperator),excludeAuthor=com.rlibanez.eplsync.ordering.StateOperator.excluded(authorOperator);
+        var ids=com.rlibanez.eplsync.filter.EplIds.parse(eplId);
         boolean excludeId=com.rlibanez.eplsync.ordering.StateOperator.excluded(eplIdOperator);
         var excluded=Map.of("comparison",com.rlibanez.eplsync.ordering.StateOperator.excluded(comparisonOperator),"presence",com.rlibanez.eplsync.ordering.StateOperator.excluded(presenceOperator));
         var sort=request.getParameterValues("sort")==null ? List.of("title,asc") : Arrays.asList(request.getParameterValues("sort"));
-        if(page<0 || size<1 || size>1000 || title.length()>256 || author.length()>256 || (eplId!=null && eplId<=0) || sort.size()>8)
+        if(page<0 || size<1 || size>1000 || title.length()>256 || author.length()>256 || sort.size()>8)
             throw new UserInputException("Paginación o búsqueda de Calibre inválida");
         String latest=updatesOnly ? CalibreCatalogService.updatesPredicate() : "";
         String base=" FROM (SELECT b.*, c.revision AS catalog_revision, c.cover_url, c.cover_available, CASE WHEN b.epl_id IS NULL THEN 'UNIDENTIFIED' WHEN c.epl_id IS NULL THEN 'MISSING' ELSE 'PRESENT' END AS presence, CASE WHEN c.epl_id IS NULL OR b.revision IS NULL THEN 'UNKNOWN' WHEN b.revision<c.revision THEN 'OUTDATED' WHEN b.revision>c.revision THEN 'NEWER' ELSE 'CURRENT' END AS comparison FROM calibre_books b LEFT JOIN catalog_books c ON c.epl_id=b.epl_id WHERE b.active=true"+latest+") WHERE 1=1";
         var args=new ArrayList<Object>();
         if(!title.isBlank()) { base+=" AND instr(lower(coalesce(title,'')),lower(?))"+(excludeTitle?"=0":">0"); args.add(title.trim()); }
         if(!author.isBlank()) { base+=" AND instr(lower(coalesce(authors,'')),lower(?))"+(excludeAuthor?"=0":">0"); args.add(author.trim()); }
-        if(eplId!=null) { base+=excludeId?" AND (epl_id IS NULL OR epl_id<>?)":" AND epl_id=?"; args.add(eplId); }
+        if(!ids.isEmpty()) {base+=excludeId?" AND (epl_id IS NULL OR epl_id NOT IN (SELECT value FROM json_each(?)))":" AND epl_id IN (SELECT value FROM json_each(?))";args.add(ids.toString());}
         for (var filter : Map.of("comparison", comparison, "presence", presence).entrySet()) {
             if (filter.getValue().isEmpty()) continue;
             var allowed = filter.getKey().equals("comparison") ? Set.of("UNKNOWN","OUTDATED","NEWER","CURRENT") : Set.of("UNIDENTIFIED","MISSING","PRESENT");

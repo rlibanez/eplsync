@@ -25,7 +25,7 @@ de título, autor, idioma, género y otros campos. Puedes ordenar por las cabece
 o mediante **Ordenar**; **Columnas** permite mostrar, ocultar y reordenar campos.
 Los anchos de las columnas se ajustan arrastrando sus separadores.
 
-EPL ID admite listas sin un límite fijo de valores en la aplicación; el resto de
+En EPL ID puedes confirmar cada valor con Espacio, Tab o Intro. Este campo admite listas sin un límite fijo de valores en la aplicación; el resto de
 campos mantiene el máximo de 100 valores. Si la solicitud supera los límites HTTP
 del servidor o del proxy, divide los identificadores en grupos más pequeños.
 Los errores de validación o de tamaño requieren corregir la búsqueda y no ofrecen
@@ -54,10 +54,12 @@ En las tablas con selector **Columnas** puede ocultarse y reordenarse.
 
 ### Incluir y excluir valores
 
-El botón **= / ≠** dentro de Estado, Estado de publicación e Idioma incluye o
-excluye los valores seleccionados. En Título y Autor significa **Contiene** o
+El botón **= / ≠** dentro de EPL ID, Revisión, Estado, Estado de publicación e Idioma incluye o
+excluye los valores seleccionados. En Título, Autor, Colección y Género significa **Contiene** o
 **No contiene**: con varios textos, la negación excluye los libros que contengan
 cualquiera de ellos. Los campos vacíos no restringen resultados.
+
+La X de cada campo borra sus valores y el texto pendiente de añadir. En los rangos, cada extremo se vacía por separado; al borrar un extremo se desactiva la vinculación **=** y se conserva el otro.
 
 Los distintos campos se combinan con **Y**. Los operadores se conservan en la URL,
 la paginación, la selección de todos los resultados y sus exclusiones. **Limpiar**

@@ -48,7 +48,18 @@ test("advanced filters are collapsed and convert complete local days across DST"
   await expect(dates.getByLabel("Hasta", { exact: true })).toHaveValue(
     "2026-02-20",
   );
-  await dates.getByRole("button", { name: "Limpiar intervalo", exact: true }).click();
+  await dates
+    .getByRole("button", {
+      name: "Limpiar: Publicado en EPL · Desde",
+      exact: true,
+    })
+    .click();
+  await dates
+    .getByRole("button", {
+      name: "Limpiar: Publicado en EPL · Hasta",
+      exact: true,
+    })
+    .click();
   await expect(
     dates.getByRole("button", { name: "Igualar fechas" }),
   ).toHaveAttribute("aria-pressed", "false");
@@ -59,10 +70,16 @@ test("advanced filters are collapsed and convert complete local days across DST"
   const added = page
     .locator("fieldset")
     .filter({ has: page.locator("legend", { hasText: "Añadido a EPL Sync" }) });
-  await added.getByLabel("Desde").fill("2026-03-29");
-  await expect(added.getByLabel("Hasta")).toHaveAttribute("min", "2026-03-29");
-  await added.getByLabel("Hasta").fill("2026-03-29");
-  await expect(added.getByLabel("Desde")).toHaveAttribute("max", "2026-03-29");
+  await added.getByLabel("Desde", { exact: true }).fill("2026-03-29");
+  await expect(added.getByLabel("Hasta", { exact: true })).toHaveAttribute(
+    "min",
+    "2026-03-29",
+  );
+  await added.getByLabel("Hasta", { exact: true }).fill("2026-03-29");
+  await expect(added.getByLabel("Desde", { exact: true })).toHaveAttribute(
+    "max",
+    "2026-03-29",
+  );
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await expect
     .poll(() => queries.at(-1)?.get("insertDateBefore"))
@@ -79,7 +96,9 @@ test("advanced filters are collapsed and convert complete local days across DST"
     .not.toBe(normalColor);
   await page.reload();
   await page.locator("summary").click();
-  await expect(added.getByLabel("Desde")).toHaveValue("2026-03-29");
+  await expect(added.getByLabel("Desde", { exact: true })).toHaveValue(
+    "2026-03-29",
+  );
   await page
     .locator(".catalog-search .action-row")
     .getByRole("button", { name: "Limpiar", exact: true })
@@ -162,7 +181,10 @@ test("multiple text values commit with Enter, Tab and Search and survive reload"
   await author.fill("Asimov");
   await author.press("Enter");
   await author.fill("García Márquez, Gabriel");
-  const revision = page.locator(".catalog-filter-grid").first().getByLabel("Revisión", { exact: true });
+  const revision = page
+    .locator(".catalog-filter-grid")
+    .first()
+    .getByLabel("Revisión", { exact: true });
   await revision.fill("1,4");
   await revision.press("Tab");
   await page.getByRole("button", { name: "Buscar", exact: true }).click();

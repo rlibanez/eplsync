@@ -3,9 +3,14 @@ import {
   stateOperatorProps,
   textOperatorProps,
 } from "../../components/StateOperator";
-import { X } from "lucide-react";
 import { Fragment, useState } from "react";
-import { Button, TextInput, MultiSelect, Select } from "@mantine/core";
+import {
+  Button,
+  TextInput,
+  MultiSelect,
+  Select,
+  CloseButton,
+} from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import {
   FilterTokens,
@@ -29,6 +34,11 @@ export const multiKeys = [
   "torrentStatus",
 ];
 export const filterKeys = [
+  "eplIdOperator",
+  "collectionOperator",
+  "genresOperator",
+  "revisionOperator",
+
   "titleOperator",
   "authorOperator",
   "languageOperator",
@@ -76,6 +86,10 @@ export function filterRequest(params: URLSearchParams) {
   else if (result.getAll("torrentStatus").some(Boolean))
     result.set("torrentPresence", "PRESENT");
   for (const key of [
+    "eplId",
+    "collection",
+    "genres",
+    "revision",
     "title",
     "author",
     "language",
@@ -210,14 +224,14 @@ export function CatalogFilters({
                   : undefined
         }
         operator={
-          key === "title" || key === "author"
-            ? textOperatorProps(values[`${key}Operator`] === "ne", () =>
-                set(
-                  `${key}Operator`,
-                  values[`${key}Operator`] === "ne" ? "" : "ne",
-                ),
-              ).leftSection
-            : undefined
+          (key === "eplId" || key === "revision"
+            ? stateOperatorProps
+            : textOperatorProps)(values[`${key}Operator`] === "ne", () =>
+            set(
+              `${key}Operator`,
+              values[`${key}Operator`] === "ne" ? "" : "ne",
+            ),
+          ).leftSection
         }
         allowList={key === "eplId"}
         label={t(key === "revision" ? "catalog.revision" : `filters.${key}`)}
@@ -260,9 +274,30 @@ export function CatalogFilters({
       setValues((v) => ({ ...v, [from]: value || "", [to]: value || "" }));
     else set(key, value);
   }
-  function clearRange(from: string, to: string) {
-    setValues((v) => ({ ...v, [from]: "", [to]: "" }));
-    setEqual((v) => ({ ...v, [from]: false }));
+  function clearButtonProps(label: string) {
+    return {
+      "aria-hidden": false,
+      tabIndex: 0,
+      "aria-label": `${t("catalog.clear")}: ${label}`,
+    };
+  }
+  function boundLabel(label: string, index: number) {
+    return `${t(`filters.${label}`)} · ${t(label === "pages" ? (index ? "filters.maximum" : "filters.minimum") : index ? "filters.to" : "filters.from")}`;
+  }
+  function clearBound(from: string, key: string, label: string) {
+    return {
+      rightSectionPointerEvents: "auto" as const,
+      rightSection: values[key] ? (
+        <CloseButton
+          size="sm"
+          aria-label={`${t("catalog.clear")}: ${label}`}
+          onClick={() => {
+            set(key, "");
+            setEqual((current) => ({ ...current, [from]: false }));
+          }}
+        />
+      ) : undefined,
+    };
   }
   function captureFilters(): URLSearchParams | null {
     const merged = { ...multi };
@@ -367,6 +402,7 @@ export function CatalogFilters({
               ),
             )}
             value={multi.language}
+            clearButtonProps={clearButtonProps(t("catalog.language"))}
             onChange={(v) => setMultiValue("language", v)}
             clearable
             data={languages.map((value) => ({ value, label: language(value) }))}
@@ -375,6 +411,7 @@ export function CatalogFilters({
             searchable
             label={t("filters.status")}
             value={multi.status}
+            clearButtonProps={clearButtonProps(t("filters.status"))}
             {...stateOperatorProps(values.statusOperator === "ne", () =>
               set("statusOperator", values.statusOperator === "ne" ? "" : "ne"),
             )}
@@ -389,6 +426,7 @@ export function CatalogFilters({
             searchable
             label={t("filters.publicationStatus")}
             value={multi.publicationStatus}
+            clearButtonProps={clearButtonProps(t("filters.publicationStatus"))}
             {...stateOperatorProps(
               values.publicationStatusOperator === "ne",
               () =>
@@ -410,7 +448,7 @@ export function CatalogFilters({
         <div className="catalog-filter-grid catalog-range-grid">
           {ranges.map(([from, to, label]) => (
             <fieldset
-              className="catalog-date-range catalog-compact-range"
+              className={`catalog-date-range catalog-compact-range${label === "published" || label === "added" ? " catalog-calendar-range" : ""}`}
               key={from}
             >
               <legend>{t(`filters.${label}`)}</legend>
@@ -451,6 +489,7 @@ export function CatalogFilters({
                       type="number"
                       label={t(index ? "filters.maximum" : "filters.minimum")}
                       value={values[key]}
+                      {...clearBound(from, key, boundLabel(label, index))}
                       step={1}
                       min={
                         !equal[from] && index && values[from]
@@ -471,6 +510,7 @@ export function CatalogFilters({
                       type="number"
                       label={t(index ? "filters.to" : "filters.from")}
                       value={values[key]}
+                      {...clearBound(from, key, boundLabel(label, index))}
                       step={1}
                       min={
                         !equal[from] && index && values[from]
@@ -491,6 +531,7 @@ export function CatalogFilters({
                       type="date"
                       label={t(index ? "filters.to" : "filters.from")}
                       value={values[key]}
+                      {...clearBound(from, key, boundLabel(label, index))}
                       onChange={(e) =>
                         setRange(from, to, key, e.currentTarget.value)
                       }
@@ -504,16 +545,6 @@ export function CatalogFilters({
                   )}
                 </Fragment>
               ))}
-              <Button
-                variant="subtle"
-                size="compact-sm"
-                aria-label={t("filters.clearRange")}
-                title={t("filters.clearRange")}
-                disabled={!values[from] && !values[to]}
-                onClick={() => clearRange(from, to)}
-              >
-                <X size={16} aria-hidden="true" />
-              </Button>
             </fieldset>
           ))}
         </div>
@@ -584,6 +615,9 @@ export function CatalogFilters({
                     searchable
                     label={t("filters.status")}
                     value={multi.torrentStatus}
+                    clearButtonProps={clearButtonProps(
+                      `${t("filters.libraries.torrent")} · ${t("filters.status")}`,
+                    )}
                     {...stateOperatorProps(
                       values.torrentStatusOperator === "ne",
                       () =>

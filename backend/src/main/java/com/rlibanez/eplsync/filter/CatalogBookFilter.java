@@ -94,6 +94,11 @@ public class CatalogBookFilter {
     private Set<BookStatus> status;
     private String statusOperator;
     private String titleOperator;
+    private String eplIdOperator;
+    private String collectionOperator;
+    private String genresOperator;
+    private String revisionOperator;
+
     private String authorOperator;
     private String languageOperator;
     private String publicationStatusOperator;
@@ -141,6 +146,10 @@ public class CatalogBookFilter {
 
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(eplIdOperator);
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(collectionOperator);
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(genresOperator);
+        com.rlibanez.eplsync.ordering.StateOperator.excluded(revisionOperator);
         com.rlibanez.eplsync.ordering.StateOperator.excluded(titleOperator);
         com.rlibanez.eplsync.ordering.StateOperator.excluded(authorOperator);
         com.rlibanez.eplsync.ordering.StateOperator.excluded(languageOperator);

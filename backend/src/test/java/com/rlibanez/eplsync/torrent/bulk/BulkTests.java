@@ -660,6 +660,25 @@ class BulkTests {
             .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
     }
 
+    @Test void downloadStateFiltersSupportMultipleValuesExclusionAndPaging() throws Exception {
+        seedSortJob("download-filter",3,1,1);
+        var rows=items.findByJobIdOrderByPosition("download-filter",PageRequest.of(0,20)).getContent();
+        for(var row:rows) {row.setDownloadState(row.getEplId()==1?"DOWNLOADED":row.getEplId()==2?"DOWNLOADING":null);if(row.getDownloadState()==null) row.setState(BulkItem.State.ACCEPTED);items.save(row);}
+        var params=new org.springframework.util.LinkedMultiValueMap<String,String>();params.set("downloadState","DOWNLOADED,DOWNLOADING");
+        var page=store.details("download-filter",1,1,null,"eplId,asc","eq",params);
+        assertThat(page.meta().totalItems()).isEqualTo(2);assertThat(page.items().getFirst().eplId()).isEqualTo(2);
+        params.set("downloadStateOperator","ne");
+        assertThat(store.details("download-filter",0,20,null,"eplId,asc","eq",params).items()).singleElement().satisfies(item->assertThat(item.eplId()).isEqualTo(3));
+        params.set("downloadState","DOWNLOADED");params.set("eplId","2");
+        assertThat(store.details("download-filter",0,20,null,"eplId,asc","eq",params).items()).singleElement().satisfies(item->assertThat(item.eplId()).isEqualTo(2));
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings)).setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs/download-filter/items").param("downloadState","DOWNLOADED,DOWNLOADING").param("downloadStateOperator","ne"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.meta.totalItems").value(1));
+        params.clear();params.set("downloadState","WAITING");
+        assertThat(store.details("download-filter",0,20,null,"eplId,asc","eq",params).items()).singleElement().satisfies(item->assertThat(item.eplId()).isEqualTo(3));
+        params.set("downloadState","invalid");assertThatThrownBy(()->store.details("download-filter",0,20,null,"eplId,asc","eq",params)).hasMessageContaining("descarga");
+    }
+
     @Test void itemFiltersCombineBeforePaginationWithMultipleTermsAndNegation() {
         seedSortJob("filtered-job",3,1,1);
         var book=books.findById(1L).orElseThrow(); book.setTitle("Alpha, beta"); books.save(book);

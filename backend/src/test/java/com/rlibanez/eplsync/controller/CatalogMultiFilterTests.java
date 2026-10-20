@@ -38,6 +38,31 @@ class CatalogMultiFilterTests {
    .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4))
    .andExpect(jsonPath("$.items[0].eplId").value(4)).andExpect(jsonPath("$.items[1].eplId").value(5));
  }
+ @Test void numericAndCollectionNegationCombinesWithSelectionAndLiteralText() throws Exception {
+  for(long id=1;id<=5;id++) {var book=books.findById(id).orElseThrow();book.setGenres(id==3?null:id==4?"Sci-fi":id==2?"Fantasy":"Drama");book.setCollection(id==3?null:id==4?"100%_literal":id==2?"Other":"Series");book.setLinks(String.format("%040X",id));books.saveAndFlush(book);}
+  mvc.perform(get("/api/catalog/books").param("eplId","1","2").param("eplIdOperator","ne").param("size","1").param("page","1").param("sort","eplId,asc"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3)).andExpect(jsonPath("$.items[0].eplId").value(4));
+  mvc.perform(get("/api/catalog/books").param("genres","Drama","Fantasy").param("genresOperator","ne"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].eplId",org.hamcrest.Matchers.containsInAnyOrder(3,4)));
+  mvc.perform(get("/api/catalog/books").param("collection","Series","Other").param("collectionOperator","ne"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].eplId",org.hamcrest.Matchers.containsInAnyOrder(3,4)));
+  mvc.perform(get("/api/catalog/books").param("revision","2","3").param("revisionOperator","ne"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items[*].eplId",org.hamcrest.Matchers.containsInAnyOrder(1)));
+  for(String field:java.util.List.of("eplId","genres","collection","revision")) {
+   mvc.perform(get("/api/catalog/books").param(field+"Operator","ne")).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(5));
+   mvc.perform(get("/api/catalog/books").param(field+"Operator","invalid")).andExpect(status().isBadRequest());
+  }
+  var filter=tools.jackson.databind.json.JsonMapper.builder().build().readValue("""
+   {"eplId":[2,5],"eplIdOperator":"ne","genres":["Drama"],"genresOperator":"ne","collection":["100%_"],"collectionOperator":"ne","revision":[1.4],"revisionOperator":"ne","excludedIds":[4]}
+   """,CatalogBookFilter.class);
+  assertThat(books.findAll(CatalogBookSpecifications.fromFilter(filter))).extracting(book->Objects.requireNonNull(book).getEplId()).containsExactly(3L);
+
+ }
+ @Test void largeNegativeIdSetDoesNotExceedSqliteLimits() throws Exception {
+  var ids=java.util.stream.LongStream.rangeClosed(2,40000).mapToObj(Long::toString).toArray(String[]::new);
+  mvc.perform(get("/api/catalog/books").param("eplId",ids).param("eplIdOperator","ne"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].eplId").value(1));
+ }
  @Test void otherFieldsStillRejectMoreThanOneHundredValues() throws Exception {
   mvc.perform(get("/api/catalog/books").param("author",java.util.stream.IntStream.range(0,101).mapToObj(i->"Author "+i).toArray(String[]::new)))
    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.details").value("Máximo de 100 valores por campo"));

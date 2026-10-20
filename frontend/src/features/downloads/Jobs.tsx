@@ -43,6 +43,7 @@ import {
   post,
   jobStates,
   itemStates,
+  downloadStates,
   type Job,
   type CalibreCounts,
   type Page,
@@ -529,14 +530,34 @@ export function JobDetail() {
   const [sort, setSort] = useBookViewState("sort", "position,asc");
   const [cancel, setCancel] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [downloadFilter, setDownloadFilter] = useBookViewState<string[]>(
+    "downloadFilter",
+    [],
+  );
+  const [downloadExcluded, setDownloadExcluded] = useBookViewState(
+    "downloadExcluded",
+    false,
+  );
   const search = useJobItemSearch(
     "book",
     t("downloads.book"),
     () => setPage(0),
     t("calibreSend.detail"),
     can("CATALOG_READ") ? t("catalog.author") : undefined,
+    true,
   );
-  useEffect(() => setSelected([]), [id, filter, excluded, sort, search.query]);
+  useEffect(
+    () => setSelected([]),
+    [
+      id,
+      filter,
+      excluded,
+      sort,
+      search.query,
+      downloadFilter,
+      downloadExcluded,
+    ],
+  );
   const job = useQuery({
     queryKey: ["job", id],
     queryFn: ({ signal }) =>
@@ -563,10 +584,12 @@ export function JobDetail() {
       excluded,
       sort,
       search.query,
+      downloadFilter,
+      downloadExcluded,
     ],
     queryFn: ({ signal }) =>
       get<Page<Item>>(
-        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&${sortQuery(sort)}&${search.query}${filter ? `&status=${filter}${excluded ? "&statusOperator=ne" : ""}` : ""}`,
+        `/torrent/jobs/${encodeURIComponent(id!)}/items?page=${page}&size=${size}&${sortQuery(sort)}&${search.query}${downloadFilter.length ? `&downloadState=${downloadFilter.join(",")}${downloadExcluded ? "&downloadStateOperator=ne" : ""}` : ""}${filter ? `&status=${filter}${excluded ? "&statusOperator=ne" : ""}` : ""}`,
         signal,
       ),
     refetchInterval:
@@ -978,10 +1001,42 @@ export function JobDetail() {
             setPage(0);
           }}
         />
+        <MultiSelect
+          searchable
+          label={t("downloadLifecycle.phase")}
+          value={downloadFilter}
+          clearable
+          clearButtonProps={{
+            "aria-hidden": false,
+            tabIndex: 0,
+            "aria-label": `${t("catalog.clear")}: ${t("downloadLifecycle.phase")}`,
+          }}
+          {...stateOperatorProps(downloadExcluded, () => {
+            setDownloadExcluded(!downloadExcluded);
+            setPage(0);
+          })}
+          data={[...downloadStates, "IGNORED", "WAITING"].map((value) => ({
+            value,
+            label:
+              value === "IGNORED"
+                ? t("downloadLifecycle.ignored")
+                : value === "WAITING"
+                  ? t("downloadLifecycle.checking")
+                  : status(value),
+          }))}
+          onChange={(values) => {
+            setDownloadFilter(values);
+            if (!values.length) setDownloadExcluded(false);
+            setPage(0);
+          }}
+        />
+        {search.detailField}
         <Button
           variant="subtle"
           onClick={() => {
             search.clear();
+            setDownloadFilter([]);
+            setDownloadExcluded(false);
             setFilter("");
             setExcluded(false);
             setPage(0);

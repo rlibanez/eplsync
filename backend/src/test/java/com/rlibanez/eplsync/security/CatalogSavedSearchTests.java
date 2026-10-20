@@ -42,6 +42,15 @@ class CatalogSavedSearchTests {
         return (MockHttpSession)response.getRequest().getSession(false);
     }
 
+    @Test void savesAndRestoresAllAdditionalNegationOperators() throws Exception {
+        var reader=login("reader");var filters=new LinkedHashMap<String,List<String>>();
+        for(String key:List.of("eplId","collection","genres","revision")) {filters.put(key,List.of(key.equals("eplId")?"1":key.equals("revision")?"1.4":"Text"));filters.put(key+"Operator",List.of("ne"));}
+        var body=mapper.writeValueAsString(Map.of("name","Excluded","filters",filters));
+        mvc.perform(post("/api/catalog/saved-searches").session(reader).with(csrf()).contentType("application/json").content(body)).andExpect(status().isOk());
+        var response=mvc.perform(get("/api/catalog/saved-searches").session(reader)).andExpect(status().isOk()).andReturn();
+        var saved=mapper.readTree(response.getResponse().getContentAsString()).get(0).get("filters");
+        for(String key:List.of("eplId","collection","genres","revision")) assertThat(saved.get(key+"Operator").get(0).asString()).isEqualTo("ne");
+    }
     @Test void personalCrudAndIsolationPersistOnlyFilters() throws Exception {
         var reader=login("reader");
         String body=mapper.writeValueAsString(Map.of("name","Autores","filters",Map.of("author",List.of("Pratchett, Terry","Orwell"),"authorOperator",List.of("NOT"))));

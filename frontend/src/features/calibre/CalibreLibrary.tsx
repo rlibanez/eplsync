@@ -29,6 +29,7 @@ import {
   MultiSelect,
   Select,
   TextInput,
+  TagsInput,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -102,7 +103,10 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     presence,
     ...(updates ? { updatesOnly: "true" } : {}),
   });
-  const [availability, setAvailability] = useBookViewState<string | null>("availability", null);
+  const [availability, setAvailability] = useBookViewState<string | null>(
+    "availability",
+    null,
+  );
   const canCheckFiles =
     auth.can("DOWNLOADS_FILES_READ") && auth.can("CATALOG_READ");
   const excludedFields = updates
@@ -312,40 +316,65 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         <Failure error={snapshot.error} retry={() => snapshot.refetch()} />
       )}
       <div className="filters jobs-filters">
-        <TextInput
-          label={t("filters.eplId")}
-          value={eplId}
-          {...(!updates
-            ? stateOperatorProps(excluded.eplId, () => {
-                setExcluded((current) => ({
-                  ...current,
-                  eplId: !current.eplId,
-                }));
-                setPage(0);
-              })
-            : {})}
-          rightSectionPointerEvents="auto"
-          rightSection={
-            eplId ? (
-              <CloseButton
-                size="sm"
-                aria-label={`${t("catalog.clear")}: ${t("filters.eplId")}`}
-                onClick={() => {
-                  setEplId("");
-                  setExcluded((current) => ({ ...current, eplId: false }));
+        {updates ? (
+          <TextInput
+            label={t("filters.eplId")}
+            value={eplId}
+            {...(!updates
+              ? stateOperatorProps(excluded.eplId, () => {
+                  setExcluded((current) => ({
+                    ...current,
+                    eplId: !current.eplId,
+                  }));
                   setPage(0);
-                }}
-              />
-            ) : undefined
-          }
-          inputMode="numeric"
-          onChange={(e) => {
-            setEplId(e.currentTarget.value.replace(/\D/g, ""));
-            if (!e.currentTarget.value.replace(/\D/g, ""))
-              setExcluded((current) => ({ ...current, eplId: false }));
-            setPage(0);
-          }}
-        />
+                })
+              : {})}
+            rightSectionPointerEvents="auto"
+            rightSection={
+              eplId ? (
+                <CloseButton
+                  size="sm"
+                  aria-label={`${t("catalog.clear")}: ${t("filters.eplId")}`}
+                  onClick={() => {
+                    setEplId("");
+                    setExcluded((current) => ({ ...current, eplId: false }));
+                    setPage(0);
+                  }}
+                />
+              ) : undefined
+            }
+            inputMode="numeric"
+            onChange={(e) => {
+              setEplId(e.currentTarget.value.replace(/\D/g, ""));
+              if (!e.currentTarget.value.replace(/\D/g, ""))
+                setExcluded((current) => ({ ...current, eplId: false }));
+              setPage(0);
+            }}
+          />
+        ) : (
+          <TagsInput
+            label={t("filters.eplId")}
+            value={eplId ? eplId.split(/[,;\s]+/).filter(Boolean) : []}
+            inputMode="numeric"
+            splitChars={[",", ";", " "]}
+            clearable
+            clearButtonProps={{
+              "aria-hidden": false,
+              tabIndex: 0,
+              "aria-label": `${t("catalog.clear")}: ${t("filters.eplId")}`,
+            }}
+            {...stateOperatorProps(excluded.eplId, () => {
+              setExcluded((current) => ({ ...current, eplId: !current.eplId }));
+              setPage(0);
+            })}
+            onChange={(ids) => {
+              setEplId(ids.join(","));
+              if (!ids.length)
+                setExcluded((current) => ({ ...current, eplId: false }));
+              setPage(0);
+            }}
+          />
+        )}
         <TextInput
           label={t("downloads.book")}
           value={title}

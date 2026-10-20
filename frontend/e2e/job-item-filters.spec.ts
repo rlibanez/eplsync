@@ -212,12 +212,31 @@ test("individual download job supports multiple states and a clear link", async 
     .poll(() => requests.at(-1)?.get("status"))
     .toBe("ACCEPTED,FAILED");
   await page
+    .locator(".jobs-filters > div")
+    .filter({ has: state })
     .getByRole("button", { name: "Incluir valores seleccionados", exact: true })
-    .last()
     .click();
+  const download = page.getByRole("textbox", { name: "Descarga", exact: true });
+  for (const label of ["Descargado", "Descargando"]) {
+    await download.click();
+    await page.getByRole("option", { name: label, exact: true }).click();
+    await page.keyboard.press("Escape");
+  }
+  await expect
+    .poll(() => requests.at(-1)?.get("downloadState"))
+    .toBe("DOWNLOADED,DOWNLOADING");
+  await page
+    .locator(".jobs-filters > div")
+    .filter({ has: download })
+    .getByRole("button", { name: "Incluir valores seleccionados", exact: true })
+    .click();
+  const labels = await page.locator(".jobs-filters label").allTextContents();
+  expect(labels.at(-1)).toBe("Detalle");
   await page.getByRole("button", { name: "Siguiente", exact: true }).click();
   await expect.poll(() => requests.at(-1)?.get("page")).toBe("1");
   expect(requests.at(-1)?.get("statusOperator")).toBe("ne");
+  expect(requests.at(-1)?.get("downloadStateOperator")).toBe("ne");
+  expect(requests.at(-1)?.get("downloadState")).toBe("DOWNLOADED,DOWNLOADING");
   expect(requests.at(-1)?.getAll("eplId")).toEqual(["1", "3"]);
   expect(requests.at(-1)?.getAll("book")).toEqual(["Alpha", "Gamma"]);
   await page.getByRole("button", { name: "Limpiar", exact: true }).click();

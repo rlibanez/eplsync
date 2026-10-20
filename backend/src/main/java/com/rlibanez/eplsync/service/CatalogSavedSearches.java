@@ -13,7 +13,7 @@ import com.rlibanez.eplsync.exception.UserInputException;
 public class CatalogSavedSearches {
     public record Search(String id, String name, Map<String,List<String>> filters) {}
     public record Input(String name, Map<String,List<String>> filters) {}
-    private static final Set<String> KEYS=Set.of("titleOperator","authorOperator","languageOperator","statusOperator","publicationStatusOperator","torrentStatusOperator","title","author","language","eplId","revision","genres","collection","status","publicationStatus","pagesFrom","pagesTo","publicationYear","publicationYearFrom","publicationYearTo","publicationDate","publicationDateFrom","publicationDateTo","addedFrom","addedTo","torrentStatus","torrentPresence","torrentRevision","calibrePresence","calibreRevision");
+    private static final Set<String> KEYS=Set.of("eplIdOperator","collectionOperator","genresOperator","revisionOperator","titleOperator","authorOperator","languageOperator","statusOperator","publicationStatusOperator","torrentStatusOperator","title","author","language","eplId","revision","genres","collection","status","publicationStatus","pagesFrom","pagesTo","publicationYear","publicationYearFrom","publicationYearTo","publicationDate","publicationDateFrom","publicationDateTo","addedFrom","addedTo","torrentStatus","torrentPresence","torrentRevision","calibrePresence","calibreRevision");
     private final JdbcTemplate jdbc;
     private final tools.jackson.databind.json.JsonMapper json=tools.jackson.databind.json.JsonMapper.builder().build();
     public CatalogSavedSearches(JdbcTemplate jdbc) {this.jdbc=jdbc;}

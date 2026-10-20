@@ -30,6 +30,16 @@ test("download book filter excludes, paginates, selects all and clears", async (
     });
   });
   await page.goto("/downloads");
+  const ids = page.getByRole("textbox", { name: "EPL ID", exact: true });
+  await ids.fill("999,1000");
+  await ids.press("Enter");
+  await page
+    .locator(".mantine-InputWrapper-root")
+    .filter({ has: ids })
+    .getByRole("button", { name: "Incluir valores seleccionados", exact: true })
+    .click();
+  await expect.poll(() => requests.at(-1)?.get("eplId")).toBe("999,1000");
+  await expect.poll(() => requests.at(-1)?.get("eplIdOperator")).toBe("ne");
   const field = page.getByRole("textbox", { name: "Libro", exact: true });
   const wrapper = page
     .locator(".mantine-InputWrapper-root")
@@ -56,7 +66,11 @@ test("download book filter excludes, paginates, selects all and clears", async (
     requests
       .filter((p) => p.get("size") === "1000")
       .every(
-        (p) => p.get("title") === "Dune" && p.get("titleOperator") === "ne",
+        (p) =>
+          p.get("title") === "Dune" &&
+          p.get("titleOperator") === "ne" &&
+          p.get("eplId") === "999,1000" &&
+          p.get("eplIdOperator") === "ne",
       ),
   ).toBe(true);
   await page

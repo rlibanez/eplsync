@@ -53,9 +53,16 @@ test("download status accepts multiple alternatives and preserves other filters"
     page.getByRole("textbox", { name: "Origen", exact: true }),
   ).toHaveValue("");
   // Clearing can reuse the initial cached result; make a new query to verify its filters.
-  await page.getByLabel("EPL ID", { exact: true }).fill("777");
+  await page.getByRole("textbox", { name: "EPL ID", exact: true }).fill("777");
+  await page
+    .getByRole("textbox", { name: "EPL ID", exact: true })
+    .press("Enter");
   await expect.poll(() => queries.at(-1)?.get("eplId")).toBe("777");
   expect(queries.at(-1)?.has("status")).toBe(false);
   expect(queries.at(-1)?.has("origin")).toBe(false);
+  await expect(pills).toHaveCount(1);
+  await page
+    .getByRole("button", { name: "Limpiar: EPL ID", exact: true })
+    .click();
   await expect(pills).toHaveCount(0);
 });

@@ -29,14 +29,14 @@ public final class CatalogBookSpecifications {
             spec = spec.and((root,q,cb) -> cb.not(selectedIds(root,cb,f.getExcludedIds())));
 
         if (f.getEplId() != null) {
-            spec = spec.and((root, q, cb) -> selectedIds(root,cb,f.getEplId()));
+            spec = spec.and((root, q, cb) -> com.rlibanez.eplsync.ordering.StateOperator.excluded(f.getEplIdOperator())?cb.not(selectedIds(root,cb,f.getEplId())):selectedIds(root,cb,f.getEplId()));
         }
 
         spec = andIfNotNull(spec, textFilter("author",f.getAuthor(),f.getAuthorOperator()));
         spec = andIfNotNull(spec, textFilter("title",f.getTitle(),f.getTitleOperator()));
-        spec = andIfNotNull(spec, genresContains(f.getGenres()));
-        spec = andIfNotNull(spec, collectionContains(f.getCollection()));
-        if (f.getRevision() != null) spec = spec.and((root, q, cb) -> root.get("revision").in((Object[]) f.getRevision()));
+        spec = andIfNotNull(spec, textFilter("genres",f.getGenres(),f.getGenresOperator()));
+        spec = andIfNotNull(spec, textFilter("collection",f.getCollection(),f.getCollectionOperator()));
+        if (f.getRevision() != null) spec = spec.and((root, q, cb) -> com.rlibanez.eplsync.ordering.StateOperator.excluded(f.getRevisionOperator())?cb.or(cb.isNull(root.get("revision")),cb.not(root.get("revision").in((Object[]) f.getRevision()))):root.get("revision").in((Object[]) f.getRevision()));
         spec = andIfNotNull(spec, publicationYearEqualsOrBetween(f));
         spec = andIfNotNull(spec, languageEquals(f));
         spec = andIfNotNull(spec, publicationStatusEquals(f));
@@ -65,8 +65,6 @@ public final class CatalogBookSpecifications {
         var spec=containsAny(field,values);
         return spec==null || !com.rlibanez.eplsync.ordering.StateOperator.excluded(operator)?spec:Specification.not(spec);
     }
-    private static Specification<CatalogBook> genresContains(String[] values) { return containsAny("genres", values); }
-    private static Specification<CatalogBook> collectionContains(String[] values) { return containsAny("collection", values); }
 
     private static Specification<CatalogBook> publicationYearEqualsOrBetween(CatalogBookFilter f) {
         Integer y = f.getPublicationYear();

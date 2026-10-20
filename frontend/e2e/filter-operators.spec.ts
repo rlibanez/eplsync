@@ -43,7 +43,7 @@ test("catalog negative title, author and language persist and clear",async({page
   await page.reload();await page.locator(".catalog-search summary").click();
   await expect(page.getByRole("button",{name:"No contiene ninguno de los textos indicados",exact:true})).toHaveCount(2);
   await page.getByRole("button",{name:"Limpiar",exact:true}).click();
-  await expect(page.getByRole("button",{name:"Contiene alguno de los textos indicados",exact:true})).toHaveCount(2);
+  await expect(page.getByRole("button",{name:"Contiene alguno de los textos indicados",exact:true})).toHaveCount(4);
 });
 
 for(const updates of [false,true]) test(`Calibre ${updates?"updates":"library"}: text exclusion reaches every selected page`,async({page})=>{

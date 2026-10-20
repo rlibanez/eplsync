@@ -13,9 +13,17 @@ export function quickFilter(
 ) {
   const next = new URLSearchParams(params);
   if (
-    ["title", "author", "language", "status", "publicationStatus"].includes(
-      column,
-    )
+    [
+      "title",
+      "author",
+      "language",
+      "status",
+      "publicationStatus",
+      "eplId",
+      "collection",
+      "genres",
+      "revision",
+    ].includes(column)
   ) {
     if (next.get(`${column}Operator`) === "ne") next.delete(column);
     next.delete(`${column}Operator`);

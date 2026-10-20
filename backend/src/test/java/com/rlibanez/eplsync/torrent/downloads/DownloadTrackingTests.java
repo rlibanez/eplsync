@@ -329,6 +329,21 @@ class DownloadTrackingTests {
         } finally {org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(authentication);}
     }
 
+    @Test void multipleIdsNegateBeforePaginationAndUseTheSameSetForSummary() throws Exception {
+        for(int id=32;id<=34;id++) {
+            var row=new DownloadRecord();row.setEplId((long)id);row.setRevision(1d);row.setHash(String.format("%040X",id));row.setClient("stub");row.setClientInstanceId(tracking.instanceId());row.setOrigin(DownloadRecord.Origin.EPLSYNC);row.setStatus(DownloadStatus.DOWNLOADED);row.setCreatedAt(Instant.now());downloads.save(row);
+        }
+        mvc.perform(get("/api/torrent/downloads").param("eplId","32; 33 32").param("page","1").param("size","1").param("sort","eplId,asc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2)).andExpect(jsonPath("$.items[0].eplId").value(33));
+        mvc.perform(get("/api/torrent/downloads").param("eplId","32,33").param("eplIdOperator","ne").param("status","DOWNLOADED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].eplId").value(34));
+        mvc.perform(get("/api/torrent/downloads/summary").param("eplId","32,33").param("eplIdOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
+        var ids=java.util.stream.LongStream.rangeClosed(1,1200).mapToObj(String::valueOf).collect(java.util.stream.Collectors.joining(","));
+        mvc.perform(get("/api/torrent/downloads").param("eplId",ids)).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3));
+        for(String invalid:List.of("32,0","32,-1","32,wrong","9223372036854775808")) mvc.perform(get("/api/torrent/downloads").param("eplId",invalid)).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/torrent/downloads").param("eplIdOperator","invalid")).andExpect(status().isBadRequest());
+    }
     @Test void bookTextFilterSupportsExclusionPagingSummaryAndLiteralCharacters() throws Exception {
         book(1.0,HASH);
         books.save(CatalogBook.builder().eplId(33L).title("Other 100%_book").author("Author").language(Language.ESPANOL).revision(1.0).build());

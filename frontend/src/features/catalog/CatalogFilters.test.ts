@@ -93,36 +93,135 @@ it("keeps library criteria in requests and selections and normalizes revision pr
 
 it("preserves multiple torrent states in selections and clears them for absent torrents", async () => {
   const { catalogParams } = await import("../../api/catalog");
-  const { selectionQuery, selectionFilters } = await import("./CatalogSelection");
-  const params = catalogParams(new URLSearchParams("torrentStatus=DOWNLOADED&torrentStatus=QUEUED"));
+  const { selectionQuery, selectionFilters } =
+    await import("./CatalogSelection");
+  const params = catalogParams(
+    new URLSearchParams("torrentStatus=DOWNLOADED&torrentStatus=QUEUED"),
+  );
   expect(params.getAll("torrentStatus")).toEqual(["DOWNLOADED", "QUEUED"]);
   expect(selectionFilters(selectionQuery(params))).toMatchObject({
-    torrentStatus: ["DOWNLOADED", "QUEUED"], torrentPresence: "PRESENT",
+    torrentStatus: ["DOWNLOADED", "QUEUED"],
+    torrentPresence: "PRESENT",
   });
-  expect(filterRequest(new URLSearchParams("torrentPresence=ABSENT&torrentStatus=DOWNLOADED")).has("torrentStatus")).toBe(false);
+  expect(
+    filterRequest(
+      new URLSearchParams("torrentPresence=ABSENT&torrentStatus=DOWNLOADED"),
+    ).has("torrentStatus"),
+  ).toBe(false);
 });
 
 it("preserves every state operator for select-all and omits operators without values", async () => {
   const { catalogParams } = await import("../../api/catalog");
-  const { selectionQuery, selectionFilters } = await import("./CatalogSelection");
-  const params=catalogParams(new URLSearchParams("status=VERIFICADO&statusOperator=ne&publicationStatus=UPDATED&publicationStatusOperator=ne&torrentStatus=DOWNLOADED&torrentStatusOperator=ne"));
-  expect(selectionFilters(selectionQuery(params))).toMatchObject({status:["VERIFICADO"],statusOperator:"ne",publicationStatus:["UPDATED"],publicationStatusOperator:"ne",torrentStatus:["DOWNLOADED"],torrentStatusOperator:"ne"});
-  expect([...filterRequest(new URLSearchParams("statusOperator=ne&publicationStatusOperator=ne&torrentStatusOperator=ne")).keys()]).toEqual([]);
-  expect(filterRequest(new URLSearchParams("torrentPresence=ABSENT&torrentStatus=DOWNLOADED&torrentStatusOperator=ne")).has("torrentStatusOperator")).toBe(false);
+  const { selectionQuery, selectionFilters } =
+    await import("./CatalogSelection");
+  const params = catalogParams(
+    new URLSearchParams(
+      "status=VERIFICADO&statusOperator=ne&publicationStatus=UPDATED&publicationStatusOperator=ne&torrentStatus=DOWNLOADED&torrentStatusOperator=ne",
+    ),
+  );
+  expect(selectionFilters(selectionQuery(params))).toMatchObject({
+    status: ["VERIFICADO"],
+    statusOperator: "ne",
+    publicationStatus: ["UPDATED"],
+    publicationStatusOperator: "ne",
+    torrentStatus: ["DOWNLOADED"],
+    torrentStatusOperator: "ne",
+  });
+  expect([
+    ...filterRequest(
+      new URLSearchParams(
+        "statusOperator=ne&publicationStatusOperator=ne&torrentStatusOperator=ne",
+      ),
+    ).keys(),
+  ]).toEqual([]);
+  expect(
+    filterRequest(
+      new URLSearchParams(
+        "torrentPresence=ABSENT&torrentStatus=DOWNLOADED&torrentStatusOperator=ne",
+      ),
+    ).has("torrentStatusOperator"),
+  ).toBe(false);
 });
 
 it("keeps language and negative text criteria for every selected result", async () => {
-  const {catalogParams}=await import("../../api/catalog");
-  const {selectionQuery,selectionFilters}=await import("./CatalogSelection");
-  const params=catalogParams(new URLSearchParams("title=Dune&title=Foundation&titleOperator=ne&author=Herbert&authorOperator=ne&language=es&languageOperator=ne"));
-  expect(selectionFilters(selectionQuery(params))).toMatchObject({title:["Dune","Foundation"],titleOperator:"ne",author:["Herbert"],authorOperator:"ne",language:["es"],languageOperator:"ne"});
-  expect([...filterRequest(new URLSearchParams("titleOperator=ne&authorOperator=ne&languageOperator=ne")).keys()]).toEqual([]);
+  const { catalogParams } = await import("../../api/catalog");
+  const { selectionQuery, selectionFilters } =
+    await import("./CatalogSelection");
+  const params = catalogParams(
+    new URLSearchParams(
+      "title=Dune&title=Foundation&titleOperator=ne&author=Herbert&authorOperator=ne&language=es&languageOperator=ne",
+    ),
+  );
+  expect(selectionFilters(selectionQuery(params))).toMatchObject({
+    title: ["Dune", "Foundation"],
+    titleOperator: "ne",
+    author: ["Herbert"],
+    authorOperator: "ne",
+    language: ["es"],
+    languageOperator: "ne",
+  });
+  expect([
+    ...filterRequest(
+      new URLSearchParams(
+        "titleOperator=ne&authorOperator=ne&languageOperator=ne",
+      ),
+    ).keys(),
+  ]).toEqual([]);
 });
 
 it("clicking a value replaces a negative field while preserving other filters", async () => {
-  const {quickFilter}=await import("./CatalogValue");
-  const params=quickFilter(new URLSearchParams("author=Asimov&authorOperator=ne&language=es&languageOperator=ne"),"author","Herbert");
+  const { quickFilter } = await import("./CatalogValue");
+  const params = quickFilter(
+    new URLSearchParams(
+      "author=Asimov&authorOperator=ne&language=es&languageOperator=ne",
+    ),
+    "author",
+    "Herbert",
+  );
   expect(params.getAll("author")).toEqual(["Herbert"]);
   expect(params.has("authorOperator")).toBe(false);
   expect(params.get("languageOperator")).toBe("ne");
+});
+
+it("preserves additional negation in requests and all-result selections and drops empty operators", async () => {
+  const { catalogParams } = await import("../../api/catalog");
+  const { selectionQuery, selectionFilters } =
+    await import("./CatalogSelection");
+  const { savedFilters, applySavedFilters } =
+    await import("./SavedCatalogSearches");
+  const params = catalogParams(
+    new URLSearchParams(
+      "eplId=1&eplId=3&eplIdOperator=ne&collection=Saga&collectionOperator=ne&genres=Drama&genresOperator=ne&revision=1.4&revisionOperator=ne",
+    ),
+  );
+  const selection = selectionFilters(selectionQuery(params));
+  for (const key of ["eplId", "collection", "genres", "revision"]) {
+    expect(selection[`${key}Operator`]).toBe("ne");
+    expect(
+      filterRequest(new URLSearchParams(`${key}Operator=ne`)).has(
+        `${key}Operator`,
+      ),
+    ).toBe(false);
+  }
+  expect(selection.eplId).toEqual([1, 3]);
+  expect(selection.revision).toEqual([1.4]);
+  const restored = applySavedFilters(
+    new URLSearchParams(),
+    savedFilters(params),
+  );
+  expect(selectionFilters(selectionQuery(restored))).toEqual(selection);
+});
+
+it("clicking a catalog value replaces newly negated fields with inclusion", async () => {
+  const { quickFilter } = await import("./CatalogValue");
+  for (const column of ["eplId", "collection", "genres", "revision"] as const) {
+    const result = quickFilter(
+      new URLSearchParams(`${column}=old&${column}Operator=ne&page=4`),
+      column,
+      "new",
+    );
+    expect(result.getAll(column)).toEqual(["new"]);
+    expect(result.has(`${column}Operator`)).toBe(false);
+    expect(result.get("page")).toBe("0");
+  }
 });
