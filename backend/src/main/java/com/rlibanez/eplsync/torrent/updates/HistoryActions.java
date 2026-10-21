@@ -17,7 +17,8 @@ public class HistoryActions {
         public Item(String id,DownloadStatus status,String cleanupState,String message) {this(id,status,cleanupState,message,null);}
     }
     public record Result(List<Item> items) {}
-    private final jakarta.persistence.EntityManager entityManager;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final java.util.concurrent.Semaphore previews=new java.util.concurrent.Semaphore(1);
     private final DownloadRepository downloads;
     private final DownloadTrackingService tracking;
     private final TorrentClientService client;
@@ -26,8 +27,8 @@ public class HistoryActions {
     private final EventJournal events;
     private final org.springframework.transaction.support.TransactionTemplate tx;
     public HistoryActions(DownloadRepository downloads,DownloadTrackingService tracking,TorrentClientService client,
-            UpdateCleanupRepository entries,CleanupQueue queue,EventJournal events,org.springframework.transaction.PlatformTransactionManager manager,jakarta.persistence.EntityManager entityManager) {
-        this.entityManager=entityManager;
+            UpdateCleanupRepository entries,CleanupQueue queue,EventJournal events,org.springframework.transaction.PlatformTransactionManager manager,org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        this.jdbc=jdbc;
         this.downloads=downloads;this.tracking=tracking;this.client=client;this.entries=entries;this.queue=queue;this.events=events;this.tx=new org.springframework.transaction.support.TransactionTemplate(manager);
     }
     private void requireSelection(Selection selection) {
@@ -61,12 +62,22 @@ public class HistoryActions {
     public List<PreviewRecord> previewRecords(Selection selection) {
         requireReadAccess();
         if(!Permission.has(Permission.DOWNLOADS_DELETE)) Permission.require(Permission.TORRENT_CLEANUP);
-        var rows=validate(selection,false);
-        var metadata=com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager,rows.stream().map((DownloadRecord row) -> row.getEplId()).toList());
-        return rows.stream().map(row -> {
-            var book=metadata.get(row.getEplId());
-            return new PreviewRecord(row.getId(),row.getEplId(),row.getRevision(),row.getHash(),book==null ? null : book.title());
-        }).toList();
+        requireSelection(selection);
+        if(!previews.tryAcquire()) throw new org.springframework.web.server.ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"Hay una previsualización de borrado en curso; espera a que termine");
+        try {
+            var result=new ArrayList<PreviewRecord>(selection.ids().size());
+            // Materialize only display fields, releasing the connection after each bounded query.
+            // Never hydrate tens of thousands of JPA entities for this wizard.
+            for(int offset=0;offset<selection.ids().size();offset+=500) {
+                var ids=selection.ids().subList(offset,Math.min(offset+500,selection.ids().size()));
+                var rows=jdbc.query("SELECT d.id,d.epl_id,d.revision,d.hash,b.title FROM torrent_downloads d LEFT JOIN catalog_books b ON b.epl_id=d.epl_id WHERE d.id IN ("+String.join(",",Collections.nCopies(ids.size(),"?"))+")",
+                    (r,n)->new PreviewRecord(r.getString("id"),r.getLong("epl_id"),r.getDouble("revision"),r.getString("hash"),r.getString("title")),ids.toArray());
+                if(rows.size()!=ids.size() || selection.eplId()!=null && rows.stream().anyMatch(row->!selection.eplId().equals(row.eplId())))
+                    throw new UserInputException("Los registros seleccionados no pertenecen al libro");
+                result.addAll(rows);
+            }
+            return result;
+        } finally {previews.release();}
     }
     public record HistoryDeletion(Long eplId,List<String> ids,Boolean confirm) {}
     public record DeletionResult(int deleted,long pendingCleanup) {}

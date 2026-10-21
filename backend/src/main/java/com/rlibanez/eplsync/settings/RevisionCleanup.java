@@ -46,15 +46,29 @@ public class RevisionCleanup {
     }
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(RevisionCleanup.class);
     private static final int LIMIT=1000;
-    private static final String SELECT="""
-        SELECT j.*,count(i.id) total,
-        CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(sum(i.preview_selected),0) ELSE coalesce(json_array_length(j.confirmation),0) END selected,
-        coalesce(sum(i.state='READY'),0) ready,coalesce(sum(i.state='EXCLUDED'),0) excluded,
-        coalesce(sum(i.state IN ('PENDING','RUNNING','VERIFYING')),0) pending,
-        coalesce(sum(i.state='SUCCEEDED'),0) succeeded,coalesce(sum(i.state='BLOCKED'),0) blocked,
-        coalesce(sum(i.state='FAILED'),0) failed,coalesce(sum(i.state='UNCERTAIN'),0) uncertain
-        FROM revision_cleanup_jobs j LEFT JOIN revision_cleanup_items i ON i.job_id=j.id
+    // Aggregate narrow item rows before joining the potentially multi-megabyte confirmation.
+    // Grouping the joined rows can copy that document once per item into SQLite's sorter.
+    static final String ITEM_COUNTS="""
+        SELECT job_id,count(*) total,coalesce(sum(preview_selected),0) selected,
+        sum(state='READY') ready,sum(state='EXCLUDED') excluded,
+        sum(state IN ('PENDING','RUNNING','VERIFYING')) pending,
+        sum(state='SUCCEEDED') succeeded,sum(state='BLOCKED') blocked,
+        sum(state='FAILED') failed,sum(state='UNCERTAIN') uncertain,
+        sum(state IN ('SUCCEEDED','BLOCKED','FAILED','UNCERTAIN','CANCELLED')) processed,
+        sum(state='SKIPPED') skipped,sum(state='SKIPPED' AND preview_selected=1) selected_skipped
+        FROM revision_cleanup_items GROUP BY job_id
         """;
+    private static final String SELECT="""
+        SELECT j.id,j.source,j.action,j.state,j.result,j.message,j.owner_username,j.library,
+        j.allow_undownloaded,j.delete_history,j.direct_removal,j.created_at,j.updated_at,j.expires_at,
+        (j.library_plan IS NOT NULL) has_library_plan,coalesce(c.total,0) total,
+        CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.total,0) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected,0) ELSE coalesce(json_array_length(j.confirmation),0) END selected,
+        coalesce(c.ready,0) ready,coalesce(c.excluded,0) excluded,
+        coalesce(c.pending,0) pending,coalesce(c.succeeded,0) succeeded,
+        coalesce(c.blocked,0) blocked,coalesce(c.failed,0) failed,coalesce(c.uncertain,0) uncertain
+        FROM revision_cleanup_jobs j LEFT JOIN (
+        """+ITEM_COUNTS+") c ON c.job_id=j.id";
+    private static final String SINGLE_SELECT=SELECT.replace("FROM revision_cleanup_items GROUP BY job_id","FROM revision_cleanup_items WHERE job_id=? GROUP BY job_id");
     @org.springframework.beans.factory.annotation.Autowired private CalibreLibraryCleanup libraryCleanup;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
@@ -131,7 +145,7 @@ public class RevisionCleanup {
         return account;
     }
     private void read(String source) {Permission.require(source.equals("downloads")?Permission.TORRENT_SYNC:Permission.CALIBRE_READ);}
-    private Job find(String id) {return jdbc.query(SELECT+" WHERE j.id=? GROUP BY j.id",RevisionCleanup::job,id).stream().findFirst().orElseThrow(()->new UserInputException("El trabajo de limpieza ya no existe"));}
+    private Job find(String id) {return jdbc.query(SINGLE_SELECT+" WHERE j.id=?",RevisionCleanup::job,id,id).stream().findFirst().orElseThrow(()->new UserInputException("El trabajo de limpieza ya no existe"));}
     public Job get(String id) {
         var job=find(id);read(job.source());
         if(!Objects.equals(jdbc.queryForObject("SELECT owner_id FROM revision_cleanup_jobs WHERE id=?",String.class,id),sessions.current().id()))
@@ -143,7 +157,7 @@ public class RevisionCleanup {
         if(source.equals("downloads")) adoptCurrentRemovals();
         String owner=sessions.current().id();
         long total=jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE source=? AND owner_id=? AND state<>'PREVIEW'",Long.class,source,owner);
-        return new PageResponse<>(jdbc.query(SELECT+" WHERE j.source=? AND j.owner_id=? AND j.state<>'PREVIEW' GROUP BY j.id ORDER BY j.created_at DESC,j.id LIMIT ? OFFSET ?",RevisionCleanup::job,source,owner,size,(long)page*size),meta(page,size,total));
+        return new PageResponse<>(jdbc.query(SELECT+" WHERE j.source=? AND j.owner_id=? AND j.state<>'PREVIEW' ORDER BY j.created_at DESC,j.id LIMIT ? OFFSET ?",RevisionCleanup::job,source,owner,size,(long)page*size),meta(page,size,total));
     }
     public PageResponse<Item> items(String id,int page,int size) {return items(id,page,size,new org.springframework.util.LinkedMultiValueMap<>());}
     public PageResponse<Item> items(String id,int page,int size,org.springframework.util.MultiValueMap<String,String> filters) {
@@ -171,7 +185,7 @@ public class RevisionCleanup {
     }
 
     private static PageResponse.PageMeta meta(int page,int size,long total) {int pages=(int)((total+size-1)/size);return new PageResponse.PageMeta(page,size,total,pages,page==0,page>=pages-1,page+1<pages,page>0);}
-    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"),r.getString("library_plan")!=null);}
+    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"),r.getBoolean("has_library_plan"));}
     private Item item(ResultSet r,int n) throws SQLException {
         var formats=new ArrayList<String>();for(var format:json.readTree(r.getString("formats"))) formats.add(format.asString());
         return new Item(r.getString("id"),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title"),r.getString("revision"),r.getString("old_id"),r.getString("replacement_id"),r.getString("replacement_revision"),List.copyOf(formats),r.getString("state"),r.getString("message"),r.getBoolean("dispatched"),r.getString("old_hash"),r.getString("replacement_hash"),null,null,null,r.getString("cleanup_reason"),r.getBoolean("preview_selected"));

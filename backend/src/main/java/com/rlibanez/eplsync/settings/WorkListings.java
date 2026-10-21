@@ -45,23 +45,39 @@ public class WorkListings {
         String normalSql=downloads?"""
             SELECT j.id,'normal' kind,CASE WHEN typeof(j.created_at) IN ('integer','real') THEN j.created_at ELSE cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) END createdAt,
             coalesce(j.type,'DOWNLOAD') type,j.state state,j.event_actor_username username,NULL library,j.selected_books selectedBooks,
-            count(i.id) total,coalesce(sum(CASE WHEN j.track_downloads=1 THEN i.state IN ('SKIPPED','FAILED','CANCELLED') OR i.download_state IN ('DOWNLOADED','IGNORED') ELSE i.state IN ('ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED') END),0) processed,
-            coalesce(sum(i.state='ACCEPTED'),0) accepted,coalesce(sum(i.state='FAILED'),0) failed
-            FROM torrent_bulk_jobs j LEFT JOIN torrent_bulk_items i ON i.job_id=j.id WHERE NOT EXISTS(SELECT 1 FROM calibre_preparation_operations p WHERE p.download_job_id=j.id AND p.state IN ('QUEUED','RUNNING')) GROUP BY j.id
+            coalesce(c.total,0) total,CASE WHEN j.track_downloads=1 THEN coalesce(c.download_processed,0) ELSE coalesce(c.send_processed,0) END processed,
+            coalesce(c.accepted,0) accepted,coalesce(c.failed,0) failed
+            FROM torrent_bulk_jobs j LEFT JOIN (
+                SELECT job_id,count(*) total,
+                sum(state IN ('SKIPPED','FAILED','CANCELLED') OR download_state IN ('DOWNLOADED','IGNORED')) download_processed,
+                sum(state IN ('ACCEPTED','ALREADY_EXISTS','SKIPPED','FAILED')) send_processed,
+                sum(state='ACCEPTED') accepted,sum(state='FAILED') failed
+                FROM torrent_bulk_items GROUP BY job_id
+            ) c ON c.job_id=j.id
+            WHERE NOT EXISTS(SELECT 1 FROM calibre_preparation_operations p WHERE p.download_job_id=j.id AND p.state IN ('QUEUED','RUNNING'))
             """:"""
             SELECT j.id,'normal' kind,cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) createdAt,
-            'SEND' type,j.state state,j.owner_username username,j.library,count(i.id) selectedBooks,count(i.id) total,
-            coalesce(sum(i.state IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED')),0) processed,
-            coalesce(sum(i.state='ACCEPTED'),0) accepted,coalesce(sum(i.state='FAILED'),0) failed
-            FROM calibre_jobs j LEFT JOIN calibre_job_items i ON i.job_id=j.id WHERE NOT EXISTS(SELECT 1 FROM calibre_preparation_operations p WHERE p.calibre_job_id=j.id AND p.state IN ('QUEUED','RUNNING')) GROUP BY j.id
+            'SEND' type,j.state state,j.owner_username username,j.library,coalesce(c.total,0) selectedBooks,coalesce(c.total,0) total,
+            coalesce(c.accepted,0)+coalesce(c.skipped,0)+coalesce(c.failed,0)+coalesce(c.cancelled,0) processed,
+            coalesce(c.accepted,0) accepted,coalesce(c.failed,0) failed
+            FROM calibre_jobs j LEFT JOIN (
+            """+CalibreTransfers.ITEM_COUNTS+"""
+            ) c ON c.job_id=j.id
+            WHERE NOT EXISTS(SELECT 1 FROM calibre_preparation_operations p WHERE p.calibre_job_id=j.id AND p.state IN ('QUEUED','RUNNING'))
             """;
+        String selected="CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.total,0) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected,0) ELSE coalesce(json_array_length(j.confirmation),0) END";
         String projection="""
             SELECT j.id,'cleanup' kind,j.created_at createdAt,'CLEANUP' type,j.state state,j.owner_username username,j.library,
-            CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(sum(i.preview_selected),0) ELSE coalesce(json_array_length(j.confirmation),0) END selectedBooks,CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN count(i.id) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(sum(i.preview_selected),0) ELSE coalesce(json_array_length(j.confirmation),0) END total,
-            coalesce(sum(i.state IN ('SUCCEEDED','BLOCKED','FAILED','UNCERTAIN','CANCELLED') OR i.state='SKIPPED' AND (i.preview_selected=1 OR EXISTS(SELECT 1 FROM json_each(j.confirmation) chosen WHERE chosen.value=i.id))),0) processed,
-            coalesce(sum(i.state='SUCCEEDED'),0) accepted,coalesce(sum(i.state IN ('BLOCKED','FAILED','UNCERTAIN')),0) failed
-            FROM revision_cleanup_jobs j LEFT JOIN revision_cleanup_items i ON i.job_id=j.id
-            WHERE j.state<>'PREVIEW' AND j.source=? AND j.owner_id=? GROUP BY j.id
+            """+selected+" selectedBooks,"+selected+" total,"+"""
+            coalesce(c.processed,0)+CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.skipped,0)
+              WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected_skipped,0)
+              ELSE (SELECT count(*) FROM revision_cleanup_items skipped WHERE skipped.job_id=j.id AND skipped.state='SKIPPED'
+                AND (skipped.preview_selected=1 OR skipped.id IN (SELECT value FROM json_each(j.confirmation)))) END processed,
+            coalesce(c.succeeded,0) accepted,coalesce(c.blocked,0)+coalesce(c.failed,0)+coalesce(c.uncertain,0) failed
+            FROM revision_cleanup_jobs j LEFT JOIN (
+            """+RevisionCleanup.ITEM_COUNTS+"""
+            ) c ON c.job_id=j.id
+            WHERE j.state<>'PREVIEW' AND j.source=? AND j.owner_id=?
             """;
         var args=new ArrayList<Object>(List.of(source,owner));
         String base="WITH work AS ("+(normal?normalSql+" UNION ALL ":"")+projection+") SELECT * FROM work WHERE 1=1";

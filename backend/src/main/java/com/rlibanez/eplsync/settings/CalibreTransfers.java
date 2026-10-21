@@ -240,11 +240,26 @@ public class CalibreTransfers {
         jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,message,download_job_id,cleanup_policy,cleanup_ids,wait_until) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             UUID.randomUUID().toString(),job,position,f.recordId(),waiting?null:f.index(),f.name(),waiting?null:f.size(),f.eplId(),BigDecimal.valueOf(f.revision()).stripTrailingZeros().toPlainString(),waiting?"WAITING_DOWNLOAD":"PENDING",waiting?(downloadId==null?"EPUB pendiente de comprobación":"Esperando la descarga del EPUB"):(f.size()!=f.expectedSize()?SIZE_WARNING:null),downloadId,cleanup.cleanup(),cleanup.cleanup().equals("KEEP")?"[]":tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(cleanup.previous()),waiting?Instant.now().plus(Duration.ofDays(30)).toEpochMilli():null);
     }
-    private static final String SUMMARY="SELECT j.*,count(i.id) AS total,sum(CASE WHEN i.state IN ('PENDING','SENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','CLEANUP_PENDING') THEN 1 ELSE 0 END) AS pending,sum(CASE WHEN i.state='ACCEPTED' THEN 1 ELSE 0 END) AS accepted,sum(CASE WHEN i.state='SKIPPED' THEN 1 ELSE 0 END) AS skipped,sum(CASE WHEN i.state='FAILED' THEN 1 ELSE 0 END) AS failed,sum(CASE WHEN i.state='UNCERTAIN' THEN 1 ELSE 0 END) AS uncertain,sum(CASE WHEN i.state='CANCELLED' THEN 1 ELSE 0 END) AS cancelled FROM calibre_jobs j LEFT JOIN calibre_job_items i ON i.job_id=j.id";
+    // Keep job metadata outside item aggregation, including future large snapshot columns.
+    static final String ITEM_COUNTS="""
+        SELECT job_id,count(*) total,
+        sum(state IN ('PENDING','SENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','CLEANUP_PENDING')) pending,
+        sum(state='ACCEPTED') accepted,sum(state='SKIPPED') skipped,sum(state='FAILED') failed,
+        sum(state='UNCERTAIN') uncertain,sum(state='CANCELLED') cancelled
+        FROM calibre_job_items GROUP BY job_id
+        """;
+    private static final String SUMMARY="""
+        SELECT j.id,j.created_at,j.updated_at,j.owner_username,j.library,j.state,j.message,
+        coalesce(c.total,0) total,coalesce(c.pending,0) pending,coalesce(c.accepted,0) accepted,
+        coalesce(c.skipped,0) skipped,coalesce(c.failed,0) failed,coalesce(c.uncertain,0) uncertain,
+        coalesce(c.cancelled,0) cancelled
+        FROM calibre_jobs j LEFT JOIN (
+        """+ITEM_COUNTS+") c ON c.job_id=j.id";
+    private static final String SINGLE_SUMMARY=SUMMARY.replace("FROM calibre_job_items GROUP BY job_id","FROM calibre_job_items WHERE job_id=? GROUP BY job_id");
     private static Job mapJob(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Job(r.getString("id"),r.getString("created_at"),r.getString("updated_at"),r.getString("owner_username"),r.getString("library"),r.getString("state"),r.getString("message"),r.getLong("total"),r.getLong("pending"),r.getLong("accepted"),r.getLong("skipped"),r.getLong("failed"),r.getLong("uncertain"),r.getLong("cancelled")); }
     private static Item mapItem(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Item(r.getString("id"),r.getString("record_id"),r.getInt("file_index"),r.getString("name"),r.getLong("size"),r.getLong("epl_id"),r.getString("revision"),r.getString("state"),r.getObject("calibre_id")==null ? null : r.getLong("calibre_id"),r.getString("message"),r.getBoolean("identity_complete"),r.getString("download_job_id"),null,null,r.getLong("position"),null,r.getString("cancelled_by_download_job_id")); }
     public Job job(String id) {
-        var result=jdbc.query(SUMMARY+" WHERE j.id=? GROUP BY j.id",CalibreTransfers::mapJob,id);
+        var result=jdbc.query(SINGLE_SUMMARY+" WHERE j.id=?",CalibreTransfers::mapJob,id,id);
         if(result.isEmpty()) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"Trabajo de Calibre no encontrado");return result.getFirst();
     }
     private static Meta meta(int page,int size,long total) { long pages=(total+size-1)/size;return new Meta(page,size,total,pages,page>0,page+1<pages); }
@@ -269,7 +284,7 @@ public class CalibreTransfers {
         if(from!=null) {where+=(where.isEmpty() ? " WHERE " : " AND ")+"julianday(j.created_at)>=julianday(?)";args.add(from.toString());}
         if(before!=null) {where+=(where.isEmpty() ? " WHERE " : " AND ")+"julianday(j.created_at)<julianday(?)";args.add(before.toString());}
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_jobs j"+where,Long.class,args.toArray());args.add(size);args.add((long)page*size);
-        return new Page<>(jdbc.query(SUMMARY+where+" GROUP BY j.id ORDER BY "+order(sort,Map.of("id","j.id","createdAt","j.created_at","username","j.owner_username COLLATE EPL_TEXT","library","j.library COLLATE EPL_TEXT","state","j.state","total","total","accepted","accepted","failed","failed"))+",j.id LIMIT ? OFFSET ?",CalibreTransfers::mapJob,args.toArray()),meta(page,size,total));
+        return new Page<>(jdbc.query(SUMMARY+where+" ORDER BY "+order(sort,Map.of("id","j.id","createdAt","j.created_at","username","j.owner_username COLLATE EPL_TEXT","library","j.library COLLATE EPL_TEXT","state","j.state","total","total","accepted","accepted","failed","failed"))+",j.id LIMIT ? OFFSET ?",CalibreTransfers::mapJob,args.toArray()),meta(page,size,total));
     }
     public Page<Item> items(String id,int page,int size,List<String> sort) {return items(id,page,size,"",sort);}
     public Page<Item> items(String id,int page,int size,String state,List<String> sort) {
