@@ -54,6 +54,8 @@ class LargeDownloadRemovalTests {
                 assertThat(history.previewRecords(new com.rlibanez.eplsync.torrent.updates.HistoryActions.Selection(null,ids,null,null))).hasSize(73000);
                 var job=cleanup.removeSelected(input);
                 assertThat(job.total()).isEqualTo(73000);
+                assertThat(jdbc.queryForList("EXPLAIN QUERY PLAN SELECT id FROM torrent_downloads WHERE client_instance_id=? AND hash=?",tracking.instanceId(),batch.getFirst()[2]).toString()).contains("idx_download_client_hash");
+                assertThat(jdbc.queryForList("EXPLAIN QUERY PLAN SELECT count(*) FROM torrent_update_cleanup WHERE download_id=? AND state IN ('WAITING','BLOCKED','REQUESTED')",ids.getFirst()).toString()).contains("idx_cleanup_download_state");
                 jdbc.setQueryTimeout(2);
                 var concurrentListing=executor.submit(()-> {login();try {return listings.list("downloads",0,20,List.of(),"",null,null,null,"createdAt,desc","eq","eq").items().size();}finally {logout();}});
                 long listingStart=System.nanoTime();
@@ -77,8 +79,10 @@ class LargeDownloadRemovalTests {
                 cleanup.cycle();
                 assertThat(deleted).isNotEmpty();
                 int firstCycle=deleted.size();
+                jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING' WHERE job_id=? AND state='SUCCEEDED'",job.id());
                 cleanup.recover();cleanup.cycle();
-                assertThat(deleted.size()).isGreaterThan(firstCycle);
+                assertThat(deleted.size()).as("restart verifies the whole interrupted batch without resending").isEqualTo(firstCycle);
+                cleanup.cycle();assertThat(deleted.size()).isGreaterThan(firstCycle);
                 assertThat(cleanup.get(job.id()).succeeded()).isGreaterThanOrEqualTo(firstCycle);
                 assertThat(cleanup.removeSelected(input).id()).isEqualTo(job.id());
                 assertThat(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs",Long.class)).isEqualTo(1);

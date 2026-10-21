@@ -113,11 +113,15 @@ public class CleanupQueue {
         hydrate(selected);
         var byHash=TorrentRemovalSafety.index(remote);
         var paths=TorrentRemovalSafety.paths(remote);
+        var checkedHashes=new HashSet<String>();
+        for(var entry:selected) {checkedHashes.add(entry.getHash());var old=byHash.get(entry.getHash());if(old!=null) checkedHashes.addAll(old.aliases());}
         var owners=new HashMap<String,Set<Long>>();
-        for (var row:downloads.findByClientInstanceId(tracking.instanceId()))
+        for (var row:downloads.findByClientInstanceIdAndHashIn(tracking.instanceId(),checkedHashes))
             owners.computeIfAbsent(row.getHash(),key -> new HashSet<>()).add(row.getEplId());
-        for (var book:books.findTorrentIdentities()) for (var hash:magnets.hashes(book.getLinks()))
-            owners.computeIfAbsent(hash,key -> new HashSet<>()).add(book.getEplId());
+        // Scan only the catalog's narrow identity columns, retaining ownership for this bounded batch.
+        // All catalog hashes are still checked, including books outside the deletion selection.
+        for (var book:books.findHashOwners()) for (var hash:magnets.hashes((String)book[1])) if(checkedHashes.contains(hash))
+            owners.computeIfAbsent(hash,key -> new HashSet<>()).add((Long)book[0]);
         var pending=entries.findByClientInstanceIdAndStateIn(tracking.instanceId(),PENDING);
         var protectedTargets=new HashSet<String>();
         var policies=new HashMap<String,Set<PreviousVersions>>();
@@ -231,7 +235,7 @@ public class CleanupQueue {
         }
         if (!dispatched.isEmpty() && CleanupBudget.available()) {
             try {
-                var after=TorrentRemovalSafety.index(adapter.listTorrents());
+                var after=TorrentRemovalSafety.index(adapter instanceof TorrentClient.KnownRemoteIds targeted?targeted.listRemoteIds(dispatched):adapter.listTorrents());
                 for (var hash:dispatched) {
                     var old=byHash.get(hash);
                     if (old.aliases().stream().noneMatch(after::containsKey)) resolve(old.aliases());
@@ -322,6 +326,15 @@ public class CleanupQueue {
             if(blocker!=null) {save(entry,UpdateCleanup.State.WAITING,blocker.message());return false;}
             if(retryAuthorization!=null && !retryAuthorization.torrent(entry.getJobId(),entry.getPreviousVersions()!=PreviousVersions.KEEP,entry.getPreviousVersions()==PreviousVersions.REMOVE_TORRENT_AND_FILES,Boolean.TRUE.equals(entry.getDeleteHistory()))) {
                 save(entry,UpdateCleanup.State.BLOCKED,"El usuario del trabajo ya no tiene permisos para eliminar estas revisiones");return false;
+            }
+            if(entry.getJobId()!=null && entry.getJobId().startsWith("revision:")) {
+                String revisionJob=entry.getJobId().substring("revision:".length());
+                var jobs=em.createNativeQuery("SELECT cancel_requested FROM revision_cleanup_jobs WHERE id=:job").setParameter("job",revisionJob).getResultList();
+                if(!jobs.isEmpty()) {
+                    int marked=em.createNativeQuery("UPDATE revision_cleanup_items SET dispatched=1 WHERE job_id=:job AND old_id=:download AND state='RUNNING' AND EXISTS(SELECT 1 FROM revision_cleanup_jobs WHERE id=:job AND cancel_requested=0)")
+                        .setParameter("job",revisionJob).setParameter("download",entry.getDownloadId()).executeUpdate();
+                    if(marked==0) return false;
+                }
             }
             save(entry,UpdateCleanup.State.REQUESTED,message);return true;
         }));}

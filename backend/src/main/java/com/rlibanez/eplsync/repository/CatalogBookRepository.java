@@ -58,6 +58,8 @@ public interface CatalogBookRepository extends JpaRepository<CatalogBook, Long>,
     java.util.List<TorrentIdentity> findTorrentIdentities();
     @org.springframework.data.jpa.repository.Query("select b.eplId as eplId, b.revision as revision, b.links as links, b.title as title, b.coverUrl as coverUrl, b.coverAvailable as coverAvailable from CatalogBook b where b.eplId > :afterId order by b.eplId")
     java.util.List<TorrentIdentity> torrentBatch(long afterId, org.springframework.data.domain.Pageable pageable);
+    @org.springframework.data.jpa.repository.Query("select b.eplId,b.links from CatalogBook b where b.links is not null")
+    java.util.List<Object[]> findHashOwners();
     interface UpdateIdentity extends TorrentIdentity { String getTitle(); }
 
     @org.springframework.data.jpa.repository.Query("select b.eplId as eplId, b.revision as revision, "

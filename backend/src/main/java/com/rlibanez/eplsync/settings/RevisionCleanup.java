@@ -309,8 +309,8 @@ public class RevisionCleanup {
             var row=rows.getFirst();
             if(((Number)row.get("epl_id")).longValue()!=item.eplId() || !revision(row.get("revision")).equals(item.revision()) || !Objects.equals(row.get("hash"),item.oldHash()) || !job.action().equals("RECORD") && !Objects.equals(row.get("client_instance_id"),tracking.instanceId())) throw new UserInputException("La identidad del registro cambió; prepara un nuevo borrado");
         }
-        // Shared files, aliases and replacement torrents are checked again by CleanupQueue before dispatch.
-        TorrentRemovalSafety.index(remote);
+        // The shared snapshot is validated once by the caller/HistoryActions, and paths and aliases
+        // are checked by CleanupQueue before dispatch. Do not rebuild the full index per selected row.
     }
     Job createLibraryDraft() {
         var owner=authorize(sessions.current().id(),"calibre","BOOK");
@@ -675,9 +675,9 @@ public class RevisionCleanup {
                 long deadline=System.nanoTime()+Duration.ofSeconds(30).toNanos();
                 for(int n=0;n<20 && !Thread.currentThread().isInterrupted() && System.nanoTime()<deadline;n++) {
                     if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE id=? AND cancel_requested=0",Long.class,id)==0) break;
-                    var pending=jdbc.query("SELECT * FROM revision_cleanup_items WHERE job_id=? AND state IN ('PENDING','VERIFYING') ORDER BY position LIMIT 1",this::item,id);
+                    var pending=jdbc.query("SELECT * FROM revision_cleanup_items WHERE job_id=? AND state IN ('PENDING','VERIFYING') ORDER BY position LIMIT 500",this::item,id);
                     if(pending.isEmpty()) break;
-                    try {execute(id,pending.getFirst());}
+                    try {if(executeDownloadBatch(id,pending)) break;execute(id,pending.getFirst());}
                     catch(CalibreTransfers.OperationBusy | com.rlibanez.eplsync.exception.TorrentBusyException ex) {
                         String waiting=ex instanceof CalibreTransfers.OperationBusy ? "Esperando a que termine la operación de Calibre; la limpieza se reintentará automáticamente" : "Esperando a que termine la operación del cliente torrent; la limpieza se reintentará automáticamente";
                         jdbc.update("UPDATE revision_cleanup_jobs SET message=?,updated_at=? WHERE id=?",waiting,Instant.now().toEpochMilli(),id);
@@ -687,6 +687,76 @@ public class RevisionCleanup {
                 finish(id);
             } finally {maintenance.leave(false);}
         } finally {lifecycle.unlock();}
+    }
+    /** Bounded multi-selection safety executor: sequential deletes and a 30-second remote deadline. */
+    private boolean executeDownloadBatch(String id,List<Item> batch) {
+        var job=find(id);
+        if(!job.directRemoval() || !job.source().equals("downloads") || job.action().equals("RECORD")) return false;
+        var verifying=batch.stream().filter(item->item.state().equals("VERIFYING")).toList();
+        boolean verify=verifying.size()>1;
+        var selected=verify?verifying:batch.stream().filter(item->item.state().equals("PENDING") && !item.dispatched()).toList();
+        if(selected.size()<2) return false;
+        var stored=jdbc.queryForMap("SELECT owner_id,context FROM revision_cleanup_jobs WHERE id=?",id);
+        var previous=SecurityContextHolder.getContext();var active=new ArrayList<Item>();
+        try {
+            var owner=authorize((String)stored.get("owner_id"),job.source(),job.action(),true,job.deleteHistory());
+            var security=SecurityContextHolder.createEmptyContext();
+            security.setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new SimpleGrantedAuthority(p.name())).toList()));SecurityContextHolder.setContext(security);
+            return EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(EventContext.Origin.MANUAL,()->transfers.exclusive(()->{
+                Runnable guard=()->{authorize(owner.id(),job.source(),job.action(),true,job.deleteHistory());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión cambió; restaura el destino del trabajo");};
+                for(var item:selected) {
+                    guard.run();
+                    if(!verify && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())==0) {update(item.id(),"SKIPPED","El registro ya no existe; no se ha enviado ningún borrado");continue;}
+                    try {checkDirectPending(item,id,job,false);}
+                    catch(UserInputException ex) {update(item.id(),verify?"UNCERTAIN":"BLOCKED",ex.getMessage());continue;}
+                    if(jdbc.update("UPDATE revision_cleanup_items SET state='RUNNING',message=NULL WHERE id=? AND state=? AND EXISTS(SELECT 1 FROM revision_cleanup_jobs WHERE id=? AND cancel_requested=0)",item.id(),item.state(),id)==1) active.add(item);
+                }
+                if(active.isEmpty()) return true;
+                if(verify) return torrent.exclusiveClient(adapter->{
+                    guard.run();var remote=adapter.listTorrents();var byHash=TorrentRemovalSafety.index(remote);var absent=new ArrayList<Item>();var records=new ArrayList<String>();
+                    for(var item:active) {
+                        guard.run();checkDirectPending(item,id,job,false);checkJobDownload(job,item,remote);
+                        if(byHash.containsKey(item.oldHash())) {update(item.id(),"UNCERTAIN","El torrent sigue presente; no se ha repetido el borrado");continue;}
+                        absent.add(item);
+                        if(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) records.add(item.oldId());
+                    }
+                    if(!records.isEmpty()) history.confirmRevisionAbsences(new HistoryActions.Selection(null,records,null,null),remote);
+                    for(var item:absent) {
+                        if(job.deleteHistory() && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) history.deleteRevisionHistory(item.eplId(),item.oldId());
+                        update(item.id(),"SUCCEEDED",job.deleteHistory()?"Ausencia del torrent confirmada; registro eliminado":"Ausencia del torrent confirmada; registro conservado");
+                    }
+                    return true;
+                });
+                var selection=new HistoryActions.Selection(null,active.stream().map(Item::oldId).toList(),job.action().equals("FILES"),true);
+                var outcomes=history.removeRevision(selection,id,remote->{guard.run();for(var item:active) {checkDirectPending(item,id,job,false);checkJobDownload(job,item,remote);}}).items();
+                var byRecord=new HashMap<String,HistoryActions.Item>();outcomes.forEach(outcome->byRecord.put(outcome.id(),outcome));
+                for(var item:active) {
+                    var outcome=byRecord.get(item.oldId());
+                    if(outcome==null) throw new IllegalStateException("Missing removal result");
+                    if("REMOVED".equals(outcome.cleanupState())) {
+                        if(job.deleteHistory() && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) history.deleteRevisionHistory(item.eplId(),item.oldId());
+                        update(item.id(),"SUCCEEDED",(job.action().equals("FILES")?"Torrent y archivos eliminados":"Torrent eliminado; archivos conservados")+(job.deleteHistory()?"; registro eliminado":"; registro conservado"));
+                    } else if("REQUESTED".equals(outcome.cleanupState())) update(item.id(),"UNCERTAIN",outcome.message());
+                    else if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE id=? AND cancel_requested=1",Long.class,id)>0) {
+                        jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND download_id=? AND state IN ('WAITING','BLOCKED')","revision:"+id,item.oldId());
+                        update(item.id(),"CANCELLED","Borrado cancelado antes del envío");
+                    }
+                    else if("WAITING".equals(outcome.cleanupState()) && outcome.message()==null) update(item.id(),"PENDING",null);
+                    else update(item.id(),"BLOCKED",outcome.message());
+                }
+                return true;
+            })));
+        } catch(RuntimeException ex) {
+            // A committed dispatch is verified after interruption; never reset it to a new send.
+            boolean transientBusy=ex instanceof CalibreTransfers.OperationBusy || ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex);
+            boolean blocked=!transientBusy && (ex instanceof UserInputException || ex instanceof org.springframework.security.access.AccessDeniedException);
+            if(blocked) {
+                for(var item:selected) jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 THEN 'UNCERTAIN' ELSE 'BLOCKED' END,message=? WHERE id=? AND state IN ('RUNNING','PENDING','VERIFYING')",reason(ex),item.id());
+                return true;
+            }
+            for(var item:active) jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN EXISTS(SELECT 1 FROM revision_cleanup_jobs WHERE id=? AND cancel_requested=1) THEN CASE WHEN dispatched=1 THEN 'UNCERTAIN' ELSE 'CANCELLED' END WHEN dispatched=1 THEN 'VERIFYING' ELSE 'PENDING' END WHERE id=? AND state='RUNNING'",id,item.id());
+            throw ex;
+        } finally {SecurityContextHolder.setContext(previous);}
     }
     private void execute(String id,Item item) {
         var job=find(id);var stored=jdbc.queryForMap("SELECT owner_id,context FROM revision_cleanup_jobs WHERE id=?",id);

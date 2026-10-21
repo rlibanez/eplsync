@@ -152,16 +152,27 @@ public class HistoryActions {
             });
         return audited?events.run(EventJournal.Category.TORRENT,"REFRESH_DOWNLOADS",eventScope(selection),operation,r -> Map.of("checked",r.items().size())):operation.get();
     }
+    /** Caller holds the client coordination lock and supplies a fresh, complete safety snapshot. */
+    public void confirmRevisionAbsences(Selection selection,List<RemoteTorrent> remote) {
+        Permission.require(Permission.TORRENT_SYNC);
+        var rows=validate(selection);var byHash=TorrentRemovalSafety.index(remote);var hashes=new HashSet<String>();
+        for(var row:rows) {
+            if(byHash.containsKey(row.getHash())) throw new UserInputException("El torrent sigue presente; no se ha repetido el borrado");
+            hashes.add(row.getHash());
+        }
+        tracking.observeSelected(byHash,hashes);
+        for(var hash:hashes) if(!entries.findByClientInstanceIdAndHashInAndStateIn(tracking.instanceId(),Set.of(hash),CleanupQueue.PENDING).isEmpty()) queue.resolve(Set.of(hash));
+    }
     public Result remove(Selection selection) { return remove(selection,false); }
     public Result remove(Selection selection,boolean retryUnconfirmed) {return remove(selection,retryUnconfirmed,null,remote->{},true);}
     /** Manual cleanup jobs own their single summary; use the existing durable removal and path guards. */
     public Result removeRevision(Selection selection,String jobId,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard) {
         if(jobId==null || !jobId.matches("[a-f0-9-]{36}")) throw new UserInputException("Trabajo de limpieza inválido");
-        return remove(selection,false,"revision:"+jobId,guard,false);
+        return CleanupBudget.run(()->remove(selection,false,"revision:"+jobId,guard,false));
     }
     public Result removeRevision(Selection selection,String jobId,boolean explicitRetry,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard) {
         if(jobId==null || !jobId.matches("[a-f0-9-]{36}")) throw new UserInputException("Trabajo de limpieza inválido");
-        return remove(selection,explicitRetry,"revision:"+jobId,guard,false);
+        return CleanupBudget.run(()->remove(selection,explicitRetry,"revision:"+jobId,guard,false));
     }
     private Result remove(Selection selection,boolean retryUnconfirmed,String provenance,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard,boolean audited) {
         Permission.require(Permission.TORRENT_CLEANUP);
@@ -183,7 +194,7 @@ public class HistoryActions {
                 var pending=new ArrayList<UpdateCleanup>();
                 for (var row:rows) {
                     if(provenance!=null) {
-                        var existing=entries.findByJobIdOrderByEplIdAsc(provenance).stream().filter(e->e.getDownloadId().equals(row.getId())).findFirst();
+                        var existing=entries.findByJobIdAndDownloadId(provenance,row.getId());
                         if(existing.isPresent()) {
                             var entry=existing.orElseThrow();
                             if(!entry.getClientInstanceId().equals(row.getClientInstanceId()) || !entry.getHash().equals(row.getHash())

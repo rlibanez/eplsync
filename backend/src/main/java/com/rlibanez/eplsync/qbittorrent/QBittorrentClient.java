@@ -29,7 +29,7 @@ import static com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.*
 
 @Service
 @ConditionalOnProperty(prefix = "eplsync.torrent", name = "client", havingValue = "qbittorrent", matchIfMissing = true)
-public class QBittorrentClient implements TorrentClient, AutoCloseable {
+public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemoteIds, AutoCloseable {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(QBittorrentClient.class);
     private final tools.jackson.databind.json.JsonMapper jsonMapper = tools.jackson.databind.json.JsonMapper.builder(
         tools.jackson.core.json.JsonFactory.builder().streamReadConstraints(tools.jackson.core.StreamReadConstraints.builder()
@@ -282,6 +282,22 @@ public class QBittorrentClient implements TorrentClient, AutoCloseable {
         // Resolve unmatched aliases against one bounded, streamed full snapshot.
         if(!observed.containsAll(normalized)) result=new java.util.ArrayList<>(readTorrents("torrents/info"));
         return result.stream().filter(t -> t.aliases().stream().anyMatch(normalized::contains)).distinct().toList();
+    }
+
+    /** IDs already observed as primary IDs in the safety snapshot, not arbitrary catalog aliases. */
+    @Override public java.util.List<RemoteTorrent> listRemoteIds(java.util.Set<String> ids) {
+        if(dynamic()) return configured(client->client.listRemoteIds(ids));
+        if(ids.stream().anyMatch(id->!id.matches("[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64}"))) throw new IllegalArgumentException("Identificador remoto inválido");
+        var normalized=ids.stream().map(id->id.toUpperCase(java.util.Locale.ROOT)).collect(java.util.stream.Collectors.toSet());
+        var ordered=normalized.stream().sorted().toList();var result=new java.util.ArrayList<RemoteTorrent>();
+        for(int offset=0;offset<ordered.size();offset+=50) {
+            var batch=ordered.subList(offset,Math.min(offset+50,ordered.size()));
+            for(var torrent:readTorrents("torrents/info?hashes="+encode(String.join("|",batch)))) {
+                if(!batch.contains(torrent.hash())) throw new QBittorrentConnectionException(UPSTREAM);
+                result.add(torrent);
+            }
+        }
+        return java.util.List.copyOf(result);
     }
 
     @Override

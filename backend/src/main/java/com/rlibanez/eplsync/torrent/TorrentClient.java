@@ -43,6 +43,11 @@ public interface TorrentClient {
         throw new TorrentOperationException(HttpStatus.CONFLICT, "El cliente no admite consultar archivos");
     }
 
+    /** Optional efficient verification of primary IDs actually sent to deleteTorrent. */
+    interface KnownRemoteIds {
+        java.util.List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent> listRemoteIds(java.util.Set<String> ids);
+    }
+
     String type();
     TorrentConnectionStatus checkConnection();
 

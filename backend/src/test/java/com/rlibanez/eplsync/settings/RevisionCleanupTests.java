@@ -413,6 +413,36 @@ class RevisionCleanupTests {
         assertThat(downloads.count()).isEqualTo(10003);
         assertThatThrownBy(()->cleanup.removeSelected(new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),input.removal()))).hasMessageContaining("pendiente");
     }
+    @Test void cancellingDuringBatchValidationDoesNotLeaveCleanupRequestsPending() {
+        var input=new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(1L,List.of(old,newer),true,"files",true,true));
+        var job=cleanup.removeSelected(input);
+        when(adapter.listTorrents()).thenAnswer(call->{cleanup.control(job.id(),"cancel");return List.copyOf(remote);});
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).state()).isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id=? AND state IN ('WAITING','BLOCKED','REQUESTED')",Long.class,"revision:"+job.id())).isZero();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+
+    @Test void batchVerificationRetainsUncertaintyWhenCalibreBlocksIt() {
+        var input=new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(1L,List.of(old,newer),true,"files",true,true));
+        var job=cleanup.removeSelected(input);
+        jdbc.update("UPDATE revision_cleanup_items SET state='VERIFYING',dispatched=1 WHERE job_id=?",job.id());
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES('dependency','now','now','Owner','destination','main','source','PAUSED')");
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('dependency-item','dependency',0,?,0,'book.epub',20,1,'1','WAITING_DOWNLOAD')",old);
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(2);
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+
+    @Test void revokedOwnerBlocksAnEntireBatchBeforeAnyDelete() {
+        var input=new RevisionCleanup.RemovalInput(UUID.randomUUID().toString(),new com.rlibanez.eplsync.torrent.updates.HistoryActions.Removal(1L,List.of(old,newer),true,"files",true,true));
+        var job=cleanup.removeSelected(input);
+        jdbc.update("UPDATE users SET status='DISABLED' WHERE id=?",owner.id());cleanup.cycle();
+        assertThat(cleanup.get(job.id()).blocked()).isEqualTo(2);
+        assertThat(cleanup.get(job.id()).pending()).isZero();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+
     @Test void directRemovalIsListedAndIdempotentAndPreservesTheOtherRevision() {
         var input=removal("files",true);var job=cleanup.removeSelected(input);
         assertThat(job.directRemoval()).isTrue();assertThat(job.selected()).isEqualTo(1);

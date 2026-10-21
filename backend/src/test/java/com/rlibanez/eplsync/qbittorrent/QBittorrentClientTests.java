@@ -150,6 +150,25 @@ class QBittorrentClientTests {
         assertThat(qbit.listTorrents(java.util.Set.of("E".repeat(40)))).isEmpty();
     }
 
+    @Test void verifiesDeletedPrimaryIdsWithoutFallingBackToTheFullClient() {
+        var qbit=client();
+        assertThat(qbit.listRemoteIds(java.util.Set.of("A".repeat(40)))).isEmpty();
+        assertThat(torrentQueries).hasSize(1).allMatch(query->query.contains("hashes="));
+        assertThat(qbit.listRemoteIds(java.util.Set.of())).isEmpty();
+        assertThat(torrentQueries).hasSize(1);
+    }
+
+    @Test void verifiesKnownRemoteIdsInBoundedQueries() {
+        var ids=new java.util.HashSet<String>();for(int n=0;n<121;n++) ids.add(String.format("%040X",n));
+        assertThat(client().listRemoteIds(ids)).isEmpty();
+        assertThat(torrentQueries).hasSize(3).allMatch(query->query.contains("hashes="));
+    }
+
+    @Test void rejectsUnexpectedPrimaryIdentityInDeletionVerification() {
+        torrentInfo="[{\"hash\":\""+"B".repeat(40)+"\",\"state\":\"stoppedUP\",\"progress\":1,\"amount_left\":0}]";
+        assertThatThrownBy(()->client().listRemoteIds(java.util.Set.of("A".repeat(40)))).isInstanceOf(QBittorrentConnectionException.class);
+    }
+
     @Test void readsHybridHashesAndRejectsMalformedAliases() {
         torrentInfo = """
                 [{"hash":"%s","infohash_v1":"%s","infohash_v2":"%s",
