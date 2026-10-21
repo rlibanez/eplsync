@@ -49,7 +49,7 @@ test("catalog keeps all three state operators in the URL and resets them on clea
   await page.locator(".catalog-search summary").click();
   await expect(page.getByRole("button",{name:"Excluir valores seleccionados",exact:true})).toHaveCount(3);
   await page.getByRole("button",{name:"Limpiar",exact:true}).click();
-  await expect(page.getByRole("button",{name:"Incluir valores seleccionados",exact:true})).toHaveCount(4);
+  await expect(page.getByRole("button",{name:"Incluir valores seleccionados",exact:true})).toHaveCount(6);
 });
 
 test("saved download updates exclude states also when selecting all results", async ({page}) => {

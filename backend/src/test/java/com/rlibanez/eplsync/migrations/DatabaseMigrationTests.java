@@ -34,14 +34,31 @@ class DatabaseMigrationTests {
     }
     @Test void downloadLifecyclePreserves163DataClosedJobsAndPausedUsers() {
         Flyway.configure().dataSource(new com.rlibanez.eplsync.ordering.TextCollationDataSource(new DriverManagerDataSource(url())))
-            .locations("classpath:db/migration").target("1.5.0.13").load().migrate();
+            .locations("classpath:migrations/released-1.5.0","classpath:migrations/released-1.6.3").load().migrate();
         var jdbc=jdbc();
         for(String state:java.util.List.of("COMPLETED","CANCELLED","PAUSED","RUNNING","CLEANUP_WAIT")) {
             jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,type,state) VALUES(?,100,5,0,1,'DOWNLOAD',?)",state,state);
             jdbc.update("INSERT INTO torrent_bulk_items(id,job_id,position,attempts,state,command_json) VALUES(?,?,0,1,'ACCEPTED','original-command')",state,state);
         }
         jdbc.update("INSERT INTO torrent_update_plans(job_id,client_instance_id,previous_versions,created_at,snapshot) VALUES('CLEANUP_WAIT','client','KEEP',0,'{}')");
+        jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('release-owner','alice','alice','alice@example.org','hash','ADMIN','ACTIVE','now','now')");
+        jdbc.update("INSERT INTO app_settings VALUES('release163.connection','encrypted-configuration')");
+        jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(123,1.2,'Libro conservado','Autor')");
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('release-record',123,1.2,'hash','qbittorrent','client','DOWNLOADED','EPLSYNC',0)");
+        jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('release-book','generation',1,9,123,1.2,'Libro conservado','Autor')");
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES('release-job','now','now','release-owner','alice','target','main','source','PAUSED')");
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state) VALUES('release-item','release-job',0,'release-record',0,'book.epub',1,123,'1.2','UNCERTAIN')");
+        var before=new java.util.LinkedHashMap<String,java.util.List<java.util.Map<String,Object>>>();
+        for(var table:jdbc.queryForList("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('flyway_schema_history','sqlite_sequence') ORDER BY name",String.class))
+            before.put(table,jdbc.queryForList("SELECT * FROM "+table+" ORDER BY rowid"));
+        var history=jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank");
         var upgrade=flyway("classpath:db/migration");assertEquals(8,upgrade.migrate().migrationsExecuted);
+        for(var entry:before.entrySet()) {
+            var after=jdbc.queryForList("SELECT * FROM "+entry.getKey()+" ORDER BY rowid");
+            for(var row:after) stripDownloadLifecycle(entry.getKey(),row);
+            assertEquals(entry.getValue(),after,entry.getKey());
+        }
+        assertEquals(history,jdbc.queryForList("SELECT * FROM flyway_schema_history ORDER BY installed_rank LIMIT 21"));
         for(var row:jdbc.queryForList("SELECT * FROM torrent_bulk_jobs")) {
             assertEquals(row.get("id"),row.get("state"));
             assertEquals(java.util.List.of("COMPLETED","CANCELLED").contains(row.get("state"))?0:1,row.get("track_downloads"));

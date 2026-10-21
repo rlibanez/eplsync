@@ -150,7 +150,8 @@ for (const kind of ["state", "job"] as const) {
           .locator(".job-report-groups")
           .evaluate((element) => element.getBoundingClientRect().width);
         expect(reportWidth).toBeLessThanOrEqual(584);
-        await expect(page.locator(".job-report-group")).toHaveCount(4);
+        await expect(page.locator(".job-report-group")).toHaveCount(5);
+        await expect(report.getByRole("heading", { name: "Trabajos de Calibre relacionados", exact: true })).toBeVisible();
         const rows = page
           .locator(".job-report-group")
           .nth(1)

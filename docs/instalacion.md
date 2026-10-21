@@ -223,3 +223,12 @@ está asociada a la dirección del servidor y al perfil del navegador. Desinstal
 no elimina la base de datos ni los trabajos del servidor.
 
 Consulta los [requisitos de instalación de PWA en MDN](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable).
+
+La versión 1.7.0 añade ocho migraciones desde la 1.6.3, hasta el esquema
+`1.7.0.7`. Conserva los datos y los SQL publicados. Incorpora búsquedas guardadas
+personales, preparación de limpiezas y envíos grandes en segundo plano,
+seguimiento de descargas, cancelación relacionada e índices para los borrados.
+Los trabajos de descarga históricos terminados o cancelados siguen cerrados;
+los activos adquieren seguimiento y los pausados por el usuario se conservan
+pausados. La actualización se comprueba con los SQL exactos de 1.6.3, incluidos
+su historial Flyway y sus datos. Consulta las [notas de 1.7.0](releases/1.7.0.md).

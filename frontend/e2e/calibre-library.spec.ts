@@ -68,7 +68,8 @@ test("browses the local library with filters and configurable columns", async ({
   await expect(page.getByRole("columnheader").nth(2)).toContainText(
     "Calibre ID",
   );
-  await page.getByLabel("EPL ID", { exact: true }).fill("80899");
+  await page.getByRole("textbox", { name: "EPL ID", exact: true }).fill("80899");
+  await page.getByRole("textbox", { name: "EPL ID", exact: true }).press("Enter");
   await expect
     .poll(() => requests.at(-1)?.searchParams.get("eplId"))
     .toBe("80899");

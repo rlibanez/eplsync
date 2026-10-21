@@ -16,7 +16,7 @@ test("page descriptions are available by hover, keyboard and touch without a sub
     name: "Trabajos de descargas",
     exact: true,
   });
-  const description = "Controlan los envíos de EPL Sync.";
+  const description = "Controlan el envío y la descarga de los libros, y la limpieza de las versiones anteriores cuando corresponde.";
   await expect(
     page.getByRole("heading", { name: "Trabajos de descargas", exact: true }),
   ).toBeVisible();

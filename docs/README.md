@@ -2,6 +2,8 @@
 
 [Volver al inicio](../README.md)
 
+[Notas de la versión 1.7.0](releases/1.7.0.md)
+
 ## Instalación y configuración
 
 - [Instalación](instalacion.md): carpetas, permisos, configuración y actualizaciones.

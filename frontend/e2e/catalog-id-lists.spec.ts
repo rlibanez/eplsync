@@ -20,7 +20,7 @@ test("EPL ID lists validate atomically and submit repeated ID parameters", async
   await expect(page).toHaveURL(/eplId=123&eplId=456&eplId=789/);
 });
 
-test("pasted multiline IDs remain separate and number ranges use one grid column", async ({ page }) => {
+test("pasted multiline IDs remain separate and ranges use equal responsive columns", async ({ page }) => {
   await page.goto("/catalog");
   const search = page.locator(".catalog-search");
   await search.locator("summary").click();
@@ -32,11 +32,11 @@ test("pasted multiline IDs remain separate and number ranges use one grid column
     node.dispatchEvent(new ClipboardEvent("paste", {clipboardData: clipboard, bubbles: true, cancelable: true}));
   });
   await expect(ids).toHaveValue("123 456 789");
-  const first = await search.locator(".catalog-filter-grid > :first-child").first().boundingBox();
+  const grid = await search.locator(".catalog-range-grid").boundingBox();
   for (const label of ["Páginas", "Año de publicación", "Publicado en EPL", "Añadido a EPL Sync"]) {
     const range = search.getByRole("group", {name: label, exact: true});
     const box = await range.boundingBox();
-    expect(Math.abs(box!.width - first!.width)).toBeLessThan(2);
+    expect(Math.abs(box!.width - (grid!.width - 16) / 2)).toBeLessThan(2);
     const revision = await search.locator(".catalog-filter-grid").first().getByRole("textbox", {name: "Revisión", exact: true}).boundingBox();
     expect(box!.y).toBeGreaterThan(revision!.y + revision!.height);
   }

@@ -62,7 +62,8 @@ for (const kind of ["downloads", "calibre"] as const)
       },
     );
     await page.goto(`/${kind}`);
-    await page.getByLabel("EPL ID", { exact: true }).fill("23");
+    await page.getByRole("textbox", { name: "EPL ID", exact: true }).fill("23");
+    await page.getByRole("textbox", { name: "EPL ID", exact: true }).press("Enter");
     await expect
       .poll(() => requests.at(-1)?.searchParams.get("eplId"))
       .toBe("23");
@@ -82,7 +83,8 @@ for (const kind of ["downloads", "calibre"] as const)
     await page.reload();
     await page.getByRole("link", { name: label, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/${kind}$`));
-    await expect(page.getByLabel("EPL ID", { exact: true })).toHaveValue("23");
+    await expect(page.locator(".filters").getByText("23", { exact: true })).toBeVisible();
+    await expect.poll(() => requests.at(-1)?.searchParams.get("eplId")).toBe("23");
     await expect
       .poll(() => requests.at(-1)?.searchParams.get("page"))
       .toBe("1");

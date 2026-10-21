@@ -17,6 +17,16 @@ class PublishedMigrationTests {
             }
         }
     }
+    @Test void published163AdditionalMigrationsRemainIntact() throws Exception {
+        var resolver=new org.springframework.core.io.support.PathMatchingResourcePatternResolver();
+        var released=resolver.getResources("classpath:migrations/released-1.6.3/*.sql");
+        assertEquals(7,released.length);
+        for(var resource:released) {
+            try(var old=resource.getInputStream();var current=Objects.requireNonNull(getClass().getResourceAsStream("/db/migration/"+resource.getFilename()))) {
+                assertArrayEquals(old.readAllBytes(),current.readAllBytes(),resource.getFilename());
+            }
+        }
+    }
     @Test void published141MigrationNamesAndContentsRemainIntact() throws Exception {
         var published=Map.ofEntries(
             Map.entry("V1_0_0__initial_schema.sql","ca112f0826bdbad69478c347133f7c3ddfdb1f479cf34a40d338fa0d6e93b543"),

@@ -49,7 +49,8 @@ test("show all stays bounded and restores the previous numeric size when filters
   await expect(size).toHaveValue("Mostrar todos");
   await expect.poll(() => requests.at(-1)?.get("size")).toBe("1000");
   total = 1001;
-  await page.getByLabel("EPL ID", { exact: true }).fill("23");
+  await page.getByRole("textbox", { name: "EPL ID", exact: true }).fill("23");
+  await page.getByRole("textbox", { name: "EPL ID", exact: true }).press("Enter");
   await expect(size).toHaveValue("50");
   await expect.poll(() => requests.at(-1)?.get("size")).toBe("50");
   expect(requests.at(-1)?.get("page")).toBe("0");
