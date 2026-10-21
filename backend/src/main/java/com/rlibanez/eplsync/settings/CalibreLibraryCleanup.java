@@ -22,7 +22,6 @@ public class CalibreLibraryCleanup {
         if(input==null || !input.oldRevisions() && !input.duplicates()) throw new UserInputException("Selecciona al menos un tipo de limpieza");
         var ids=input.ids()==null?List.<String>of():input.ids();
         if(ids.stream().anyMatch(id->id==null || !id.matches("[1-9][0-9]{0,18}")) || new HashSet<>(ids).size()!=ids.size()) throw new UserInputException("Selecciona entradas de Calibre sin duplicados");
-        Map<String,String> choices=input.retained()==null?Map.of():input.retained();
         String scope=ids.isEmpty()?"":" AND epl_id IN (SELECT epl_id FROM calibre_books WHERE active=1 AND cast(calibre_id AS TEXT) IN (SELECT value FROM json_each(?)))";
         Object[] args=ids.isEmpty()?new Object[0]:new Object[]{tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(ids)};
         var entries=jdbc.query("SELECT calibre_id,epl_id,revision,title FROM calibre_books WHERE active=1 AND epl_id>0 AND revision>0"+scope+" ORDER BY epl_id,revision DESC,calibre_id",(r,n)->new Entry(r.getString(1),r.getLong(2),new BigDecimal(r.getString(3)).stripTrailingZeros(),r.getString(4)),args);

@@ -56,7 +56,7 @@ class CatalogSavedSearchTests {
         String body=mapper.writeValueAsString(Map.of("name","Autores","filters",Map.of("author",List.of("Pratchett, Terry","Orwell"),"authorOperator",List.of("NOT"))));
         var response=mvc.perform(post("/api/catalog/saved-searches").session(reader).with(csrf()).contentType("application/json").content(body))
             .andExpect(status().isOk()).andExpect(jsonPath("$.filters.author[0]").value("Pratchett, Terry")).andReturn();
-        String id=mapper.readTree(response.getResponse().getContentAsString()).get("id").asText();
+        String id=mapper.readTree(response.getResponse().getContentAsString()).get("id").asString();
         var admin=login("administrator");
         mvc.perform(get("/api/catalog/saved-searches").session(admin)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
         mvc.perform(put("/api/catalog/saved-searches/"+id).session(admin).with(csrf()).contentType("application/json").content(body)).andExpect(status().isNotFound());

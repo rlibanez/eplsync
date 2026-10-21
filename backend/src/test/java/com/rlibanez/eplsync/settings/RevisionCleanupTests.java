@@ -1254,7 +1254,7 @@ class RevisionCleanupTests {
         duplicateCalibre();removeRemoteBook();var preview=library(old,duplicate,Map.of(),null);
         assertThat(preview.job().ready()).isEqualTo(count);assertThat(preview.job().libraryCleanup()).isTrue();
         var rows=cleanup.items(preview.job().id(),0,1000).items();
-        assertThat(rows).extracting(RevisionCleanup.Item::oldId).doesNotHaveDuplicates();
+        assertThat(rows).extracting(item -> item.oldId()).doesNotHaveDuplicates();
         assertThat(rows).allSatisfy(row->{assertThat(row.replacementId()).isEqualTo("20");assertThat(row.reason()).isIn("OLD_REVISION","DUPLICATE");});
         var job=startLibrary(preview);cleanup.cycle();cleanup.cycle();
         assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(count);
@@ -1315,7 +1315,7 @@ class RevisionCleanupTests {
     }
 
     @Test void formatsChangingDuringPreviewCannotBypassExplicitReview() {
-        duplicateCalibre();when(client.formats(any(),eq(21L))).thenReturn(List.of("EPUB","PDF"),List.of("EPUB","PDF","ZIP"));
+        duplicateCalibre();when(client.formats(any(),eq(21L))).thenReturn(List.of("EPUB","PDF")).thenReturn(List.of("EPUB","PDF","ZIP"));
         var preview=library(false,true,Map.of(),null);
         assertThat(preview.job().ready()).isZero();assertThat(preview.job().excluded()).isEqualTo(1);
         assertThat(item(preview.job()).message()).contains("formatos cambiaron");verify(client,never()).remove(any(),anyLong(),anyBoolean());

@@ -727,7 +727,7 @@ public class RevisionCleanup {
                     }
                     return true;
                 });
-                var selection=new HistoryActions.Selection(null,active.stream().map(Item::oldId).toList(),job.action().equals("FILES"),true);
+                var selection=new HistoryActions.Selection(null,active.stream().map(item -> item.oldId()).toList(),job.action().equals("FILES"),true);
                 var outcomes=history.removeRevision(selection,id,remote->{guard.run();for(var item:active) {checkDirectPending(item,id,job,false);checkJobDownload(job,item,remote);}}).items();
                 var byRecord=new HashMap<String,HistoryActions.Item>();outcomes.forEach(outcome->byRecord.put(outcome.id(),outcome));
                 for(var item:active) {

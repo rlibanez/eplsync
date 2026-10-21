@@ -27,7 +27,6 @@ public class CalibrePreparationOperations {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
     private final CatalogCalibreTransfers catalog;
-    private final CalibreTransfers transfers;
     private final CalibreSettings settings;
     private final DownloadTrackingService tracking;
     private final AccountStore accounts;
@@ -42,8 +41,8 @@ public class CalibrePreparationOperations {
     @org.springframework.beans.factory.annotation.Value("${eplsync.calibre.transfers.worker-enabled:true}") private boolean enabled;
     private volatile boolean closed;
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(CalibrePreparationOperations.class);
-    public CalibrePreparationOperations(JdbcTemplate jdbc,PlatformTransactionManager manager,CatalogCalibreTransfers catalog,CalibreTransfers transfers,CalibreSettings settings,DownloadTrackingService tracking,AccountStore accounts,SessionAccess sessions,MaintenanceGate maintenance,EventJournal events) {
-        this.jdbc=jdbc;this.tx=new TransactionTemplate(manager);this.catalog=catalog;this.transfers=transfers;this.settings=settings;this.tracking=tracking;this.accounts=accounts;this.sessions=sessions;this.maintenance=maintenance;this.events=events;
+    public CalibrePreparationOperations(JdbcTemplate jdbc,PlatformTransactionManager manager,CatalogCalibreTransfers catalog,CalibreSettings settings,DownloadTrackingService tracking,AccountStore accounts,SessionAccess sessions,MaintenanceGate maintenance,EventJournal events) {
+        this.jdbc=jdbc;this.tx=new TransactionTemplate(manager);this.catalog=catalog;this.settings=settings;this.tracking=tracking;this.accounts=accounts;this.sessions=sessions;this.maintenance=maintenance;this.events=events;
     }
     @jakarta.annotation.PostConstruct void recover() {jdbc.update("UPDATE calibre_preparation_operations SET state='QUEUED',phase='RECOVERING' WHERE state='RUNNING'");}
     private void require() {Permission.require(Permission.CATALOG_READ);Permission.require(Permission.CALIBRE_SEND);Permission.require(Permission.DOWNLOADS_FILES_READ);}
