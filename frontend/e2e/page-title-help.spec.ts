@@ -48,7 +48,7 @@ test("catalog date uses the CSV wall time and disappears when no catalog is load
   await page.route("**/api/catalog/import/metadata", (route) =>
     route.fulfill({
       json: {
-        metadata: loaded ? { sourceModifiedAt: "2026-10-15T09:15:00" } : null,
+        metadata: loaded ? { sourceModifiedAt: "2026-10-15T09:15:37" } : null,
       },
     }),
   );
@@ -71,7 +71,7 @@ test("catalog date uses the CSV wall time and disappears when no catalog is load
   );
   await page.goto("/catalog");
   await expect(page.getByText(/Fecha del catálogo:/)).toHaveText(
-    /Fecha del catálogo:.*15 oct 2026.*9:15/,
+    /Fecha del catálogo:.*15 oct 2026.*09:15:37/,
   );
   loaded = false;
   await page.reload();

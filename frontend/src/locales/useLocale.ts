@@ -1,3 +1,4 @@
+import { formatDate } from "./formatDate";
 import { useTranslation } from "react-i18next";
 export function useLocale() {
   const { t, i18n } = useTranslation();
@@ -9,13 +10,7 @@ export function useLocale() {
       value === null
         ? "—"
         : new Intl.NumberFormat(locale, options).format(value),
-    date: (value: string | null) =>
-      value
-        ? new Intl.DateTimeFormat(locale, {
-            dateStyle: "medium",
-            ...(value.includes("T") ? { timeStyle: "short" as const } : {}),
-          }).format(new Date(value.includes("T") ? value : `${value}T00:00:00`))
-        : "—",
+    date: (value: string | null) => formatDate(value, locale),
     language: (value: string | null) =>
       value
         ? t(`languages.${value}`, { defaultValue: value })

@@ -1,3 +1,4 @@
+import { formatDate } from "../../locales/formatDate";
 import { applySavedFilters } from "./SavedCatalogSearches";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { rowNumberWidth } from "../../components/RowNumber";
@@ -62,12 +63,10 @@ export function Catalog() {
   // CSV timestamps are local wall times; UTC formatting preserves those clock values.
   const formattedCatalogDate =
     catalogDate && Number.isFinite(Date.parse(catalogDate))
-      ? new Intl.DateTimeFormat(i18n.resolvedLanguage ?? "es", {
-          dateStyle: "medium",
-          timeStyle: "short",
-          timeZone: "UTC",
-        }).format(
-          new Date(catalogDate.endsWith("Z") ? catalogDate : catalogDate + "Z"),
+      ? formatDate(
+          catalogDate.endsWith("Z") ? catalogDate : catalogDate + "Z",
+          i18n.resolvedLanguage ?? "es",
+          "UTC",
         )
       : null;
   const columns = useCatalogColumns();
