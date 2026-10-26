@@ -232,3 +232,7 @@ Los trabajos de descarga históricos terminados o cancelados siguen cerrados;
 los activos adquieren seguimiento y los pausados por el usuario se conservan
 pausados. La actualización se comprueba con los SQL exactos de 1.6.3, incluidos
 su historial Flyway y sus datos. Consulta las [notas de 1.7.0](releases/1.7.0.md).
+
+La versión 1.7.1 mantiene el esquema `1.7.0.7`. La actualización desde 1.7.0
+no aplica nuevas migraciones y conserva los datos, trabajos y ajustes.
+Consulta las [notas de 1.7.1](releases/1.7.1.md).
