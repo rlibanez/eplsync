@@ -12,7 +12,8 @@ import { HardcoverCover } from "./HardcoverCover";
 import { HardcoverTable } from "./HardcoverTable";
 import { ActionIcon } from "@mantine/core";
 import { BookMarked, Check, Pencil, ExternalLink } from "lucide-react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import { AppModal, ModalActions } from "../../components/AppModal";
 import { TableAction } from "../../components/TableAction";
 import { get } from "../../api/catalog";
@@ -650,7 +651,19 @@ export function CompleteHardcover({
         {!started && configuration && (
           <>
             {!configuration.configured && (
-              <Alert color="orange">{t("hardcover.noKey")}</Alert>
+              <Alert color="orange">
+                <Trans
+                  i18nKey="hardcover.noKey"
+                  components={{
+                    settings:
+                      auth.user?.role === "ADMIN" ? (
+                        <Link to="/settings/calibre#hardcover" />
+                      ) : (
+                        <span />
+                      ),
+                  }}
+                />
+              </Alert>
             )}
             <Fieldset
               legend={t("hardcover.destinationIdentifiers")}

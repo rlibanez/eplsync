@@ -2068,7 +2068,7 @@
     "useField": "Save: {{field}}",
     "identifierFor": "Identifier: {{field}}",
     "invalidMapping": "Select fields and use unique lowercase names without spaces. EPL and revision are protected.",
-    "noKey": "Configure the API key in Settings > Calibre > Hardcover or using EPLSYNC_HARDCOVER_API_KEY.",
+    "noKey": "Configure the API key in <settings>Settings > Calibre > Hardcover</settings> or using EPLSYNC_HARDCOVER_API_KEY.",
     "progress": "Book progress",
     "noMatches": "No matches were found using the available criteria. This book will not be changed.",
     "book": "Hardcover book",

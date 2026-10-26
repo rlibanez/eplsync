@@ -2316,3 +2316,5 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 
 .hardcover-usage { margin-bottom: 16px; }
 .hardcover-usage p { margin: 0 0 4px; }
+
+#hardcover { scroll-margin-top: 16px; }

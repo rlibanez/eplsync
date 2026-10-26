@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Button, Checkbox, PasswordInput } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -48,6 +49,9 @@ async function request<T>(
 }
 export function HardcoverSettings() {
   const { t, i18n } = useTranslation();
+  const { hash } = useLocation();
+  const section = useRef<HTMLElement>(null);
+  const field = useRef<HTMLInputElement>(null);
   const cache = useQueryClient();
   const saved = useSettingsSaved();
   const query = useQuery({
@@ -90,6 +94,12 @@ export function HardcoverSettings() {
     save.reset();
     check.reset();
   };
+  useEffect(() => {
+    if (hash === "#hardcover" && query.isSuccess && !query.isError) {
+      section.current?.scrollIntoView({ block: "start" });
+      field.current?.focus({ preventScroll: true });
+    }
+  }, [hash, query.isSuccess, query.isError]);
   if (query.isPending) return <Loading />;
   if (query.isError)
     return <Failure error={query.error} retry={() => query.refetch()} />;
@@ -100,7 +110,12 @@ export function HardcoverSettings() {
       ? initial.usage
       : null;
   return (
-    <section className="panel settings-section" aria-label="Hardcover">
+    <section
+      id="hardcover"
+      ref={section}
+      className="panel settings-section"
+      aria-label="Hardcover"
+    >
       <h2>Hardcover</h2>
       {!initial.apiKeyConfigured && (
         <p role="status">{t("hardcoverSettings.notConfigured")}</p>
@@ -113,6 +128,7 @@ export function HardcoverSettings() {
       >
         <div className="settings-fields-grid">
           <PasswordInput
+            ref={field}
             label={t("hardcoverSettings.apiKey")}
             value={apiKey}
             autoComplete="new-password"

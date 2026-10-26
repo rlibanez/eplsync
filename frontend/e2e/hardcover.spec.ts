@@ -2226,3 +2226,74 @@ test("Calibre cover is not requested without file-read permission", async ({
   ).toHaveCount(0);
   expect(coverRequests).toBe(0);
 });
+
+test("missing key links admins directly to the Hardcover settings field", async ({
+  page,
+}) => {
+  await page.route("**/api/calibre/hardcover", (r) =>
+    r.fulfill({
+      json: {
+        configured: false,
+        fields,
+        mappings: { BOOK_ID: "hardcover_book" },
+      },
+    }),
+  );
+  await page.route("**/api/settings/calibre", (r) =>
+    r.fulfill({
+      json: { url: "", username: "", passwordConfigured: false, library: "" },
+    }),
+  );
+  await page.goto("/calibre");
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Completar Hardcover", exact: true })
+    .click();
+  const link = page
+    .getByRole("dialog")
+    .getByRole("link", { name: "Ajustes > Calibre > Hardcover", exact: true });
+  await expect(link).toHaveAttribute("href", "/settings/calibre#hardcover");
+  await link.click();
+  await expect(page).toHaveURL(/\/settings\/calibre#hardcover$/);
+  await expect(
+    page.getByRole("region", { name: "Hardcover", exact: true }),
+  ).toBeInViewport();
+  await expect(page.getByLabel("API key", { exact: true })).toBeFocused();
+});
+
+test("missing key does not offer admin settings links to other users", async ({
+  page,
+}) => {
+  await page.route("**/api/auth/me", (r) =>
+    r.fulfill({
+      json: {
+        id: "editor",
+        username: "editor",
+        role: "USER",
+        permissions: ["CALIBRE_READ", "CALIBRE_SEND"],
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover", (r) =>
+    r.fulfill({
+      json: {
+        configured: false,
+        fields,
+        mappings: { BOOK_ID: "hardcover_book" },
+      },
+    }),
+  );
+  await page.goto("/calibre");
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Completar Hardcover", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(/EPLSYNC_HARDCOVER_API_KEY/)).toBeVisible();
+  await expect(
+    dialog.getByRole("link", {
+      name: "Ajustes > Calibre > Hardcover",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+});
