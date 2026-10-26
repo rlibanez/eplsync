@@ -533,7 +533,8 @@
     "repository": "Project repository",
     "events": "Notifications",
     "downloads": "Downloads",
-    "calibre": "Calibre"
+    "calibre": "Calibre",
+    "hardcover": "Hardcover"
   },
   "import": {
     "description": "Download the ePubLibre catalog and create or update your local library.",
@@ -2067,7 +2068,7 @@
     "useField": "Save: {{field}}",
     "identifierFor": "Identifier: {{field}}",
     "invalidMapping": "Select fields and use unique lowercase names without spaces. EPL and revision are protected.",
-    "noKey": "Configure EPLSYNC_HARDCOVER_API_KEY on the server and recreate the container.",
+    "noKey": "Configure the API key in Settings > Calibre > Hardcover or using EPLSYNC_HARDCOVER_API_KEY.",
     "progress": "Book progress",
     "noMatches": "No matches were found using the available criteria. This book will not be changed.",
     "book": "Hardcover book",
@@ -2148,5 +2149,16 @@
     "position": "Book {{current}} of {{total}}",
     "savedCount_one": "{{count}} book saved",
     "savedCount_other": "{{count}} books saved"
+  },
+  "hardcoverSettings": {
+    "apiKey": "API key",
+    "keySaved": "API key configured",
+    "clearKey": "Delete the API key and disable the integration",
+    "restore": "Use environment configuration",
+    "notConfigured": "No API key is configured.",
+    "connected": "Successfully connected to Hardcover.",
+    "usage": "Daily usage: {{used, number}} / {{limit, number}} requests · {{remaining, number}} remaining",
+    "usageTime": "Last response: {{observed}} · Resets: {{reset}}",
+    "usageUnknown": "Usage available after the next Hardcover request."
   }
 }

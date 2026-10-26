@@ -7,15 +7,41 @@ Calibre, utilizando la API GraphQL de Hardcover. Aparece tanto en las acciones d
 selección de Biblioteca de Calibre como en las acciones de cada fila. Requiere
 `CALIBRE_READ` y `CALIBRE_SEND`. No necesita leer las descargas ni los EPUB.
 
-## Configuración del servidor
+## Configuración
 
-Configura `EPLSYNC_HARDCOVER_API_KEY` en `.env` y recrea el contenedor. La variable
-se transmite mediante Docker Compose y también sirve al ejecutar el JAR. El token
-se obtiene en <https://hardcover.app/account/api>.
+Un administrador puede introducir la API key en **Ajustes > Calibre > Hardcover** y
+comprobar la conexión antes de guardarla. La comprobación usa el campo actual,
+pero no guarda ni modifica la configuración. Los cambios guardados se aplican
+sin reiniciar. El token se obtiene en <https://hardcover.app/account/api>.
 
-La clave no se configura en Ajustes, no se copia a SQLite ni se devuelve al
-navegador. Vacía permite arrancar EPL Sync normalmente, pero impide consultar
-Hardcover. Las consultas son de lectura: no modifican tu cuenta de Hardcover.
+La clave se comparte en esta instalación. Se cifra en la tabla existente
+`app_settings` mediante `EPLSYNC_SECRET_KEY` y nunca se devuelve al navegador.
+El campo vacío conserva la clave actual. «Borrar la API key y desactivar la
+integración» impide también usar la clave de entorno.
+
+También se admite `EPLSYNC_HARDCOVER_API_KEY` en `.env` o al ejecutar el JAR.
+Cambiar esa variable requiere recrear el contenedor o reiniciar el JAR. La clave
+guardada en Ajustes tiene prioridad y no se copia a `.env`; la clave de entorno
+no se copia a SQLite. Conserva `EPLSYNC_SECRET_KEY` para recuperar las claves
+cifradas tras reiniciar o restaurar una copia de seguridad.
+
+Sin clave se puede utilizar EPL Sync, pero no consultar Hardcover. Las consultas
+son de lectura: no modifican tu cuenta de Hardcover. No se añaden tablas ni
+migraciones.
+
+### Uso y límite
+
+El apartado muestra la cuota diaria y las consultas disponibles comunicadas en
+las cabeceras `RateLimit` y `RateLimit-Policy` de las respuestas normales de
+Hardcover. No necesita una consulta adicional ni realiza sondeo en segundo
+plano. La fecha de la última respuesta y el restablecimiento acompañan al dato;
+no se estima ni se presenta como un contador en tiempo real. Puede incluir uso
+realizado desde otros clientes que compartan la misma cuota.
+
+Los datos se conservan temporalmente en memoria, separados por credencial.
+Tras reiniciar, cambiar a una clave aún no consultada o vencer el plazo, se
+mostrará su disponibilidad tras la próxima consulta. Si las cabeceras no están
+disponibles, no se inventa un límite ni un consumo.
 
 ## Datos y nombres de identificadores
 

@@ -153,6 +153,10 @@ export const router = createBrowserRouter([
             }),
           },
           {
+            path: "hardcover",
+            element: <Navigate to="/settings/calibre" replace />,
+          },
+          {
             path: "torrent",
             lazy: async () => ({
               Component: (await import("../features/settings/TorrentSettings"))

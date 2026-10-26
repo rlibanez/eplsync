@@ -52,9 +52,14 @@ test("checks form credentials and saves the selected library", async ({
   await page.getByLabel("Usuario", { exact: true }).fill("reader");
   await page.getByLabel("Contraseña", { exact: true }).fill("example-password");
   await page
+    .getByRole("region", { name: "Configuración de Calibre", exact: true })
     .getByRole("button", { name: "Comprobar conexión", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("Conexión correcta");
+  await expect(
+    page
+      .getByRole("region", { name: "Configuración de Calibre", exact: true })
+      .getByRole("status"),
+  ).toContainText("Conexión correcta");
   await page
     .getByRole("region", { name: "Configuración de Calibre", exact: true })
     .getByRole("button", { name: "Guardar", exact: true })
@@ -122,6 +127,7 @@ test("shows only the latest error when saving and checking cleared credentials",
     .click();
   await expect(page.getByRole("alert")).toHaveCount(1);
   await page
+    .getByRole("region", { name: "Configuración de Calibre", exact: true })
     .getByRole("button", { name: "Comprobar conexión", exact: true })
     .click();
   await expect(page.getByRole("alert")).toHaveCount(1);

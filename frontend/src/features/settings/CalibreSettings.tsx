@@ -1,3 +1,4 @@
+import { HardcoverSettings } from "./HardcoverSettings";
 import type { SettingsFormObserver } from "./settingsFormState";
 import { useSettingsSaved } from "./useSettingsSaved";
 import { OptionLabel } from "../downloads/SendOptions";
@@ -53,8 +54,10 @@ async function request<T>(
   return data;
 }
 export function CalibreSettings({
+  showHardcover = true,
   onStateChange,
 }: {
+  showHardcover?: boolean;
   onStateChange?: SettingsFormObserver;
 }) {
   const query = useQuery({
@@ -69,13 +72,21 @@ export function CalibreSettings({
   if (query.isPending) return <Loading />;
   if (query.isError)
     return <Failure error={query.error} retry={() => query.refetch()} />;
-  return <Form initial={query.data} onStateChange={onStateChange} />;
+  return (
+    <Form
+      initial={query.data}
+      onStateChange={onStateChange}
+      showHardcover={showHardcover}
+    />
+  );
 }
 function Form({
   initial,
+  showHardcover,
   onStateChange,
 }: {
   initial: View;
+  showHardcover: boolean;
   onStateChange?: SettingsFormObserver;
 }) {
   const { t } = useTranslation();
@@ -280,6 +291,7 @@ function Form({
         </div>
       </section>
       <IdentifierSettings initial={initial.autoCompleteIdentifiers ?? true} />
+      {showHardcover && <HardcoverSettings />}
       {keyDialog && <SecretKeyDialog onClose={() => setKeyDialog(false)} />}
     </>
   );

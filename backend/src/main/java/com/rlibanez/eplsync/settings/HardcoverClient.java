@@ -10,7 +10,6 @@ import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuil
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.util.Timeout;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,16 +31,26 @@ public class HardcoverClient {
     public record Editions(List<Edition> items,boolean hasNext) {}
     public record Language(String code,String name) {}
     public record EditionBook(Match book,Edition edition) {}
-    private final String key;
+    private final java.util.function.Supplier<String> key;
     private final URI endpoint;
     private final Semaphore requests=new Semaphore(1);
+    private final HardcoverUsage usage=new HardcoverUsage();
     private long nextRequest;
     private static final java.util.concurrent.ScheduledExecutorService TIMER=java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r->{var thread=new Thread(r,"hardcover-timeout");thread.setDaemon(true);return thread;});
     private final JsonMapper json=JsonMapper.builder().build();
     @org.springframework.beans.factory.annotation.Autowired
-    public HardcoverClient(@Value("${eplsync.hardcover.api-key:}") String key) {this(key,URI.create("https://api.hardcover.app/v1/graphql"));}
-    HardcoverClient(String key,URI endpoint) {this.key=key.strip().replaceFirst("(?i)^Bearer\\s+","");this.endpoint=endpoint;}
-    public boolean configured() {return !key.isBlank();}
+    public HardcoverClient(HardcoverSettings settings) {this(settings,URI.create("https://api.hardcover.app/v1/graphql"));}
+    HardcoverClient(HardcoverSettings settings,URI endpoint) {this(settings::apiKey,endpoint);}
+    public HardcoverClient(String key) {this(key,URI.create("https://api.hardcover.app/v1/graphql"));}
+    HardcoverClient(String key,URI endpoint) {this(()->HardcoverSettings.normalize(key),endpoint);}
+    private HardcoverClient(java.util.function.Supplier<String> key,URI endpoint) {this.key=key;this.endpoint=endpoint;}
+    public boolean configured() {return !key.get().isBlank();}
+    HardcoverUsage.Snapshot usage() {
+        try {return usage.snapshot(key.get());}
+        catch(com.rlibanez.eplsync.exception.UserInputException ex) {return null;}
+    }
+    HardcoverUsage.Snapshot usageFor(String candidate) {return usage.snapshot(HardcoverSettings.normalize(candidate));}
+
     public Search search(String title,List<String> authors,int page) {
         return search(title,authors,page,true,true);
     }
@@ -132,17 +141,29 @@ public class HardcoverClient {
         return "";
     }
     JsonNode query(String query,Map<String,?> variables) {
-        if(!configured()) throw invalid("Configura EPLSYNC_HARDCOVER_API_KEY en el servidor para utilizar Hardcover");
+        return query(query,variables,key.get());
+    }
+    public void checkKey(String value) {
+        var result=query("query HardcoverConnection{books(limit:1){id}}",Map.of(),HardcoverSettings.normalize(value));
+        if(!result.path("books").isArray()) throw failure("Hardcover devolvió una respuesta de conexión inválida");
+    }
+    private JsonNode query(String query,Map<String,?> variables,String apiKey) {
+        if(apiKey.isBlank()) throw invalid("Configura la API key de Hardcover en Ajustes o mediante EPLSYNC_HARDCOVER_API_KEY");
         if(!requests.tryAcquire()) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"Hardcover está ocupado; espera antes de volver a consultar");
         try {
             long wait=nextRequest-System.nanoTime();if(wait>0) java.util.concurrent.TimeUnit.NANOSECONDS.sleep(wait);nextRequest=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(1);
             var manager=PoolingHttpClientConnectionManagerBuilder.create().setDefaultConnectionConfig(ConnectionConfig.custom().setConnectTimeout(Timeout.ofSeconds(3)).setSocketTimeout(Timeout.ofSeconds(10)).build()).build();
             try(var client=HttpClients.custom().setConnectionManager(manager).setDefaultRequestConfig(RequestConfig.custom().setResponseTimeout(Timeout.ofSeconds(10)).build()).disableRedirectHandling().disableAutomaticRetries().disableContentCompression().build()) {
-                var post=new HttpPost(endpoint);post.setHeader("Authorization","Bearer "+key);post.setHeader("Accept","application/json");post.setEntity(new StringEntity(json.writeValueAsString(Map.of("query",query,"variables",variables)),ContentType.APPLICATION_JSON));
+                var post=new HttpPost(endpoint);post.setHeader("Authorization","Bearer "+apiKey);post.setHeader("Accept","application/json");post.setEntity(new StringEntity(json.writeValueAsString(Map.of("query",query,"variables",variables)),ContentType.APPLICATION_JSON));
                 var deadline=TIMER.schedule(post::cancel,10,java.util.concurrent.TimeUnit.SECONDS);
                 try(var response=client.executeOpen(null,post,null)) {
                     int status=response.getCode();
-                    if(status==401 || status==403) throw invalid("Hardcover ha rechazado la clave o sus permisos; revisa EPLSYNC_HARDCOVER_API_KEY");
+                    if(status==200 || status==429) {
+                        var rate=response.getFirstHeader("RateLimit");var policy=response.getFirstHeader("RateLimit-Policy");
+                        usage.capture(apiKey,rate==null?null:rate.getValue(),policy==null?null:policy.getValue());
+                    }
+
+                    if(status==401 || status==403) throw invalid("Hardcover ha rechazado la clave o sus permisos; revisa la API key en Ajustes > Calibre > Hardcover");
                     if(status==429) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"Se ha alcanzado el límite de consultas de Hardcover; espera antes de reintentar");
                     if(status!=200 || response.getEntity()==null) throw failure("Hardcover no está disponible o no ha devuelto una respuesta válida");
                     var type=response.getFirstHeader("Content-Type");if(type==null || !type.getValue().toLowerCase(Locale.ROOT).startsWith("application/json")) throw failure("Hardcover devolvió un formato de respuesta inesperado");

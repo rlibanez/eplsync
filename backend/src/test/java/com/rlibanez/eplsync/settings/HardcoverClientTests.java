@@ -9,11 +9,12 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.*;
 
 class HardcoverClientTests {
-    HttpServer server;HardcoverClient client;int status;String body;String request;String authorization;int calls;
+    HttpServer server;HardcoverClient client;int status;String body;String request;String authorization;int calls;String rateLimit,ratePolicy;
     @BeforeEach void setup() throws Exception {
-        status=200;calls=0;body="{\"data\":{\"search\":{\"results\":{\"found\":1,\"hits\":[{\"document\":{\"id\":\"7\",\"slug\":\"the-book\",\"title\":\"The Book\",\"author_names\":[\"Author\"]}}]}}}}";
+        status=200;calls=0;rateLimit=null;ratePolicy=null;body="{\"data\":{\"search\":{\"results\":{\"found\":1,\"hits\":[{\"document\":{\"id\":\"7\",\"slug\":\"the-book\",\"title\":\"The Book\",\"author_names\":[\"Author\"]}}]}}}}";
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);server.createContext("/",e->{
             calls++;authorization=e.getRequestHeaders().getFirst("Authorization");request=new String(e.getRequestBody().readAllBytes(),StandardCharsets.UTF_8);
+            if(rateLimit!=null) e.getResponseHeaders().add("RateLimit",rateLimit);if(ratePolicy!=null) e.getResponseHeaders().add("RateLimit-Policy",ratePolicy);
             byte[] bytes=body.getBytes(StandardCharsets.UTF_8);e.getResponseHeaders().add("Content-Type","application/json");e.sendResponseHeaders(status,bytes.length);e.getResponseBody().write(bytes);e.close();
         });server.start();client=new HardcoverClient("Bearer secret-test-only",URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/"));
     }
@@ -37,6 +38,15 @@ class HardcoverClientTests {
     }
     @Test void missingPopularityIsNotInventedAsZero() {
         assertThat(client.search("Book",List.of("Author"),1).items().getFirst().ratingsCount()).isNull();
+    }
+    @Test void capturesQuotaFromExistingResponsesWithoutAnotherRequestAndKeeps429Usage() {
+        rateLimit="\"Free\";r=9;t=0, \"daily\";r=4840;t=3600";
+        ratePolicy="\"Free\";q=60;w=60;burst=10, \"daily\";q=5000;w=86400";
+        client.search("Book",List.of("Author"),1);
+        assertThat(client.usage().used()).isEqualTo(160);assertThat(client.usageFor("other-key")).isNull();assertThat(calls).isEqualTo(1);
+        rateLimit="\"daily\";r=0;t=3600";status=429;
+        assertThatThrownBy(()->client.search("Book",List.of("Author"),1)).hasMessageContaining("límite");
+        assertThat(client.usage().remaining()).isZero();assertThat(calls).isEqualTo(2);
     }
     @Test void searchesOnlyTheChosenField() {
         client.search("Book",List.of(),1,true,false);

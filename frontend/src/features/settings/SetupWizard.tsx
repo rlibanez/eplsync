@@ -134,7 +134,10 @@ export function SetupWizard() {
       {step === 2 && (
         <>
           <p>{t("setup.calibreHelp")}</p>
-          <CalibreSettings onStateChange={setCalibreForm} />
+          <CalibreSettings
+            onStateChange={setCalibreForm}
+            showHardcover={false}
+          />
         </>
       )}
       {step === 3 && (

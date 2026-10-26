@@ -38,6 +38,7 @@ export function RouteAccess({ children }: { children: ReactNode }) {
       "/settings/users",
       "/settings/database",
       "/settings/calibre",
+      "/settings/hardcover",
       "/settings/setup",
       "/settings/tasks",
     ].includes(pathname) &&

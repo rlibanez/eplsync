@@ -100,11 +100,12 @@ una sincronización: se realiza desde Calibre > Biblioteca.
 
 | Variable | Descripción | Valor predeterminado |
 | --- | --- | --- |
-| `EPLSYNC_HARDCOVER_API_KEY` | Token para consultar el catálogo de Hardcover. Opcional; vacío desactiva las consultas. Solo se configura en el servidor, no se guarda en SQLite ni se devuelve al frontend. | Vacío |
+| `EPLSYNC_HARDCOVER_API_KEY` | Token inicial para consultar Hardcover. Opcional; Ajustes > Calibre > Hardcover permite guardar una clave cifrada que tiene prioridad. La clave de entorno no se copia a SQLite y ninguna se devuelve al frontend. | Vacío |
 
 Obtén el token en tu [cuenta de Hardcover](https://hardcover.app/account/api),
 añádelo a `.env` y recrea el contenedor. Con el JAR se utiliza la misma variable
-de entorno. No se envían cambios a Hardcover. Consulta la [guía de identificadores](hardcover.md).
+de entorno. La clave también puede guardarse desde Ajustes > Calibre > Hardcover, cifrada con
+`EPLSYNC_SECRET_KEY`, sin reiniciar. No se envían cambios a Hardcover. Consulta la [guía de identificadores](hardcover.md).
 
 ## Valores sin la plantilla
 

@@ -166,6 +166,18 @@ export const test = base.extend<{ eventTransport: void }>({
       await page.route("**/api/catalog/covers/task", (route) =>
         route.fulfill({ json: { running: false } }),
       );
+      await page.route("**/api/settings/hardcover", (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({
+              json: {
+                apiKeyConfigured: false,
+                environmentConfigured: false,
+                overridden: false,
+                usage: null,
+              },
+            })
+          : route.fallback(),
+      );
       await page.route("**/api/auth/me", (route) =>
         route.fulfill({
           json: {
