@@ -1,3 +1,4 @@
+import type { SettingsFormObserver } from "./settingsFormState";
 import { secureFetch } from "../auth/transport";
 import { ServerSettings } from "./ServerSettings";
 import { Alert, Button } from "@mantine/core";
@@ -20,7 +21,11 @@ class ConnectionError extends Error {
     super(`HTTP ${status}`);
   }
 }
-export function TorrentSettings() {
+export function TorrentSettings({
+  onStateChange,
+}: {
+  onStateChange?: SettingsFormObserver;
+}) {
   const { t } = useTranslation();
   const check = useMutation({
     mutationKey: ["connection-check"],
@@ -58,6 +63,7 @@ export function TorrentSettings() {
   return (
     <ServerSettings
       section="torrent"
+      onStateChange={onStateChange}
       actions={(values) => (
         <Button
           type="button"

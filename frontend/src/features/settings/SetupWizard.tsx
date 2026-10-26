@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import type { SettingsFormState } from "./settingsFormState";
 import { PageTitle } from "../../components/PageTitle";
 import { useMediaQuery } from "@mantine/hooks";
 import { Button, Group, Stepper, Alert } from "@mantine/core";
@@ -20,6 +22,16 @@ export function SetupWizard() {
   const cache = useQueryClient();
   const state = useSetupProgress();
   const { operation, restoring } = useImport();
+  const [torrentForm, setTorrentForm] = useState<SettingsFormState>({
+    dirty: false,
+    busy: true,
+  });
+  const [calibreForm, setCalibreForm] = useState<SettingsFormState>({
+    dirty: false,
+    busy: true,
+  });
+  const configuration = state.data?.step === 1 ? torrentForm : calibreForm;
+
   const catalog = useQuery({
     queryKey: ["catalog-metadata"],
     queryFn: ({ signal }) =>
@@ -69,6 +81,9 @@ export function SetupWizard() {
         });
     },
   });
+  useEffect(() => {
+    if (configuration.dirty && !sync.isPending) sync.reset();
+  }, [configuration.dirty, sync.isPending, sync.reset]);
   if (state.isPending) return <Loading />;
   if (state.isError)
     return <Failure error={state.error} retry={() => state.refetch()} />;
@@ -113,13 +128,13 @@ export function SetupWizard() {
       {step === 1 && (
         <>
           <p>{t("setup.torrentHelp")}</p>
-          <TorrentSettings />
+          <TorrentSettings onStateChange={setTorrentForm} />
         </>
       )}
       {step === 2 && (
         <>
           <p>{t("setup.calibreHelp")}</p>
-          <CalibreSettings />
+          <CalibreSettings onStateChange={setCalibreForm} />
         </>
       )}
       {step === 3 && (
@@ -178,6 +193,11 @@ export function SetupWizard() {
           }}
         />
       )}
+      {(step === 1 || step === 2) && configuration.dirty && (
+        <Alert color="orange" mt="md" role="status">
+          {t("setup.saveBeforeSync")}
+        </Alert>
+      )}
       <Group justify="space-between" mt="lg" mb="lg">
         <Group>
           <Button
@@ -218,7 +238,7 @@ export function SetupWizard() {
               <Button
                 variant="light"
                 loading={sync.isPending}
-                disabled={busy}
+                disabled={busy || configuration.dirty || configuration.busy}
                 onClick={() => sync.mutate(step)}
               >
                 {t("setup.sync")}
@@ -226,7 +246,15 @@ export function SetupWizard() {
             </>
           )}
           {step < 3 ? (
-            <Button disabled={busy || !ready} onClick={() => void advance()}>
+            <Button
+              disabled={
+                busy ||
+                !ready ||
+                ((step === 1 || step === 2) &&
+                  (configuration.dirty || configuration.busy))
+              }
+              onClick={() => void advance()}
+            >
               {t("setup.next")}
             </Button>
           ) : (

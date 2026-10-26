@@ -185,6 +185,7 @@
     "done": "Configured",
     "pending": "Pending",
     "skipped": "Skipped",
+    "saveBeforeSync": "Save the configuration before synchronizing.",
     "synced": "Synchronization completed.",
     "imported": "Catalog imported successfully.",
     "close": "Close",

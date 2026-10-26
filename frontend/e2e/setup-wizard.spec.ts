@@ -255,3 +255,198 @@ test("wizard suppresses floating notices without replaying them after closing", 
   await emitEvent(page, event(102));
   await expect(toast.getByRole("status")).toHaveCount(1);
 });
+
+for (const kind of ["torrent", "calibre"] as const) {
+  test(`${kind}: sync requires saving changes and credentials`, async ({
+    page,
+  }) => {
+    await installation(page, "active", kind === "torrent" ? 1 : 2);
+    let username = "original",
+      saveFails = true,
+      syncs = 0;
+    const field = (
+      key: string,
+      type: string,
+      value: string | boolean,
+      configured = false,
+    ) => ({ key, type, value, configured, overridden: false });
+    const view = () =>
+      kind === "torrent"
+        ? {
+            section: "torrent",
+            fields: [
+              field("torrent.enabled", "boolean", true),
+              field("torrent.base-url", "text", "http://torrent.test:8090"),
+              field("torrent.qbittorrent.auth.username", "text", username),
+              field("torrent.qbittorrent.auth.password", "secret", "", true),
+            ],
+          }
+        : {
+            url: "http://calibre.test:8081",
+            username,
+            passwordConfigured: true,
+            library: "main",
+            browserUrl: "",
+          };
+    await page.route(`**/api/settings/${kind}`, (route) => {
+      if (route.request().method() === "PUT") {
+        if (saveFails)
+          return route.fulfill({
+            status: 502,
+            json: { details: "Guardado rechazado en la prueba" },
+          });
+        username = route.request().postDataJSON()[
+          kind === "torrent" ? "torrent.qbittorrent.auth.username" : "username"
+        ];
+      }
+      return route.fulfill({ json: view() });
+    });
+    await page.route(`**/api/settings/${kind}/connection`, (route) =>
+      route.fulfill({
+        json:
+          kind === "torrent"
+            ? {
+                enabled: true,
+                connected: true,
+                client: "qbittorrent",
+                authMode: "session",
+                version: "5",
+                apiVersion: "2",
+              }
+            : {
+                connected: true,
+                libraries: [{ id: "main", name: "Main" }],
+                defaultLibrary: "main",
+              },
+      }),
+    );
+    await page.route(
+      kind === "torrent"
+        ? "**/api/torrent/downloads/sync"
+        : "**/api/settings/calibre/sync",
+      (route) => {
+        syncs++;
+        return route.fulfill({
+          status: 502,
+          json: { details: "Fallo inicial de sincronización" },
+        });
+      },
+    );
+    await page.goto("/settings/setup");
+    const sync = page.getByRole("button", { name: "Sincronizar", exact: true });
+    const user = page.getByRole("textbox", { name: "Usuario", exact: true });
+    const notice = page.getByText(
+      "Guarda la configuración antes de sincronizar.",
+      { exact: true },
+    );
+    await expect(sync).toBeEnabled();
+    await sync.click();
+    await expect(
+      page.getByText("Fallo inicial de sincronización", { exact: true }),
+    ).toBeVisible();
+    await user.fill("edited");
+    await expect(sync).toBeDisabled();
+    await expect(notice).toBeVisible();
+    await expect(
+      page.getByText("Fallo inicial de sincronización", { exact: true }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Comprobar conexión", exact: true })
+      .click();
+    await expect(sync).toBeDisabled();
+    await expect(notice).toBeVisible();
+    expect(syncs).toBe(1);
+    await user.fill("original");
+    await expect(sync).toBeEnabled();
+    await expect(notice).toHaveCount(0);
+    const password = page.getByLabel("Contraseña", { exact: true });
+    await password.fill("replacement-test-only");
+    await expect(sync).toBeDisabled();
+    await password.fill("");
+    await expect(sync).toBeEnabled();
+    if (kind === "calibre") {
+      const clear = page.getByRole("checkbox", {
+        name: "Eliminar contraseña guardada",
+        exact: true,
+      });
+      await clear.check();
+      await expect(sync).toBeDisabled();
+      await clear.uncheck();
+      await expect(sync).toBeEnabled();
+    } else {
+      await page
+        .getByRole("button", { name: "Borrar credencial", exact: true })
+        .click();
+      await expect(sync).toBeDisabled();
+      await password.fill("replacement-test-only");
+      await password.fill("");
+      await expect(sync).toBeEnabled();
+    }
+    await user.fill("saved-user");
+    const save = page
+      .getByRole("button", { name: "Guardar", exact: true })
+      .first();
+    await save.click();
+    await expect(
+      page.getByText("Guardado rechazado en la prueba", { exact: true }),
+    ).toBeVisible();
+    await expect(sync).toBeDisabled();
+    saveFails = false;
+    await save.click();
+    await expect(sync).toBeEnabled();
+    await expect(notice).toHaveCount(0);
+    await expect(user).toHaveValue("saved-user");
+    await sync.click();
+    await expect.poll(() => syncs).toBe(2);
+  });
+}
+
+test("Calibre library chosen by connection check must be saved before sync", async ({
+  page,
+}) => {
+  await installation(page, "active", 2);
+  let library = "old-library";
+  await page.route("**/api/settings/calibre", (route) => {
+    if (route.request().method() === "PUT")
+      library = route.request().postDataJSON().library;
+    return route.fulfill({
+      json: {
+        url: "http://calibre.test:8081",
+        username: "",
+        passwordConfigured: false,
+        library,
+        browserUrl: "",
+      },
+    });
+  });
+  await page.route("**/api/settings/calibre/connection", (route) =>
+    route.fulfill({
+      json: {
+        connected: true,
+        libraries: [{ id: "main", name: "Main" }],
+        defaultLibrary: "main",
+      },
+    }),
+  );
+  await page.goto("/settings/setup");
+  const sync = page.getByRole("button", { name: "Sincronizar", exact: true });
+  await expect(sync).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Comprobar conexión", exact: true })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "Biblioteca", exact: true }),
+  ).toHaveValue("Main");
+  await expect(sync).toBeDisabled();
+  await expect(
+    page.getByText("Guarda la configuración antes de sincronizar.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Guardar", exact: true })
+    .first()
+    .click();
+  await expect(sync).toBeEnabled();
+  expect(library).toBe("main");
+});

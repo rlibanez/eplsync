@@ -1,3 +1,4 @@
+import type { SettingsFormObserver } from "./settingsFormState";
 import { useAuth } from "../auth/Auth";
 import { secureFetch } from "../auth/transport";
 import { SettingsList } from "./SettingsList";
@@ -8,7 +9,7 @@ import {
   validCoverOptions,
 } from "./CoverParameter";
 import { RotateCcw } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
@@ -46,10 +47,12 @@ export function ServerSettings({
   section,
   actions,
   children,
+  onStateChange,
 }: {
   section: "catalog" | "covers" | "torrent" | "events";
   actions?: SettingsActions;
   children?: ReactNode;
+  onStateChange?: SettingsFormObserver;
 }) {
   const { t } = useTranslation();
   const result = useQuery({
@@ -57,6 +60,10 @@ export function ServerSettings({
     queryFn: ({ signal }) => get<View>(`/settings/${section}`, signal),
     refetchOnWindowFocus: false,
   });
+  useEffect(() => {
+    if (!result.data || result.isError)
+      onStateChange?.({ dirty: false, busy: true });
+  }, [result.data, result.isError, onStateChange]);
   return (
     <section className="panel settings-section">
       <h2>{t(`serverSettings.sections.${section}`)}</h2>
@@ -70,6 +77,7 @@ export function ServerSettings({
           key={result.dataUpdatedAt}
           view={result.data}
           actions={actions}
+          onStateChange={onStateChange}
         />
       )}
       {children}
@@ -79,9 +87,11 @@ export function ServerSettings({
 function SettingsForm({
   view,
   actions,
+  onStateChange,
 }: {
   view: View;
   actions?: SettingsActions;
+  onStateChange?: SettingsFormObserver;
 }) {
   const { t } = useTranslation();
   const cache = useQueryClient();
@@ -171,6 +181,15 @@ function SettingsForm({
       });
     },
   });
+  const dirty = Object.entries(values).some(([key, value]) => {
+    const original = view.fields.find((field) => field.key === key);
+    // Secret values are masked: an explicit empty value clears a configured secret.
+    if (original?.type === "secret") return value !== "" || original.configured;
+    return JSON.stringify(value) !== JSON.stringify(original?.value);
+  });
+  useEffect(() => {
+    onStateChange?.({ dirty, busy: mutation.isPending });
+  }, [dirty, mutation.isPending, onStateChange]);
   const groupOf = (f: Field) =>
     view.section !== "torrent"
       ? ""
@@ -486,6 +505,14 @@ function SettingsForm({
           {typeof actions === "function" ? actions(values) : actions}
         </div>
       </form>
+      {onStateChange &&
+        mutation.isError &&
+        !(mutation.error instanceof SecretKeyRequiredError) && (
+          <Failure
+            error={mutation.error}
+            retry={() => mutation.mutate(false)}
+          />
+        )}
       {secretKeyDialog && (
         <SecretKeyDialog
           onClose={() => {

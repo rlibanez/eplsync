@@ -1,6 +1,7 @@
+import type { SettingsFormObserver } from "./settingsFormState";
 import { useSettingsSaved } from "./useSettingsSaved";
 import { OptionLabel } from "../downloads/SendOptions";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   Checkbox,
@@ -51,18 +52,32 @@ async function request<T>(
   if (data === null) throw new ApiError(response.status);
   return data;
 }
-export function CalibreSettings() {
+export function CalibreSettings({
+  onStateChange,
+}: {
+  onStateChange?: SettingsFormObserver;
+}) {
   const query = useQuery({
     queryKey: ["calibre-settings"],
     queryFn: ({ signal }) => get<View>("/settings/calibre", signal),
     refetchOnWindowFocus: false,
   });
+  useEffect(() => {
+    if (!query.data || query.isError)
+      onStateChange?.({ dirty: false, busy: true });
+  }, [query.data, query.isError, onStateChange]);
   if (query.isPending) return <Loading />;
   if (query.isError)
     return <Failure error={query.error} retry={() => query.refetch()} />;
-  return <Form initial={query.data} />;
+  return <Form initial={query.data} onStateChange={onStateChange} />;
 }
-function Form({ initial }: { initial: View }) {
+function Form({
+  initial,
+  onStateChange,
+}: {
+  initial: View;
+  onStateChange?: SettingsFormObserver;
+}) {
   const { t } = useTranslation();
   const cache = useQueryClient();
   const settingsSaved = useSettingsSaved();
@@ -119,6 +134,16 @@ function Form({ initial }: { initial: View }) {
     },
   });
   const busy = check.isPending || save.isPending;
+  const dirty =
+    url !== initial.url ||
+    username !== initial.username ||
+    library !== initial.library ||
+    browserUrl !== (initial.browserUrl ?? "") ||
+    password !== "" ||
+    clearPassword;
+  useEffect(() => {
+    onStateChange?.({ dirty, busy });
+  }, [dirty, busy, onStateChange]);
   const reset = () => {
     check.reset();
     save.reset();
