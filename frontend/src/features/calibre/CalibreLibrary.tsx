@@ -1,3 +1,4 @@
+import { CompleteHardcover } from "./CompleteHardcover";
 import { CompleteCalibreIdentifiers } from "./CompleteCalibreIdentifiers";
 import { useBookViewState } from "../catalog/useBookViewState";
 import {
@@ -575,6 +576,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
                   />
                 )}
                 <CompleteCalibreIdentifiers selected={selected} />
+                <CompleteHardcover selected={selected} />
                 <CalibreRemovalLauncher selected={selected} />
               </>
             )

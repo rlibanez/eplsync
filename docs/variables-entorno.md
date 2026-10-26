@@ -96,6 +96,16 @@ la interfaz requiere `EPLSYNC_SECRET_KEY` y la almacena cifrada.
 Cambiar las variables requiere recrear el contenedor. Configurarlas no ejecuta
 una sincronización: se realiza desde Calibre > Biblioteca.
 
+## Hardcover
+
+| Variable | Descripción | Valor predeterminado |
+| --- | --- | --- |
+| `EPLSYNC_HARDCOVER_API_KEY` | Token para consultar el catálogo de Hardcover. Opcional; vacío desactiva las consultas. Solo se configura en el servidor, no se guarda en SQLite ni se devuelve al frontend. | Vacío |
+
+Obtén el token en tu [cuenta de Hardcover](https://hardcover.app/account/api),
+añádelo a `.env` y recrea el contenedor. Con el JAR se utiliza la misma variable
+de entorno. No se envían cambios a Hardcover. Consulta la [guía de identificadores](hardcover.md).
+
 ## Valores sin la plantilla
 
 El Compose utiliza los mismos valores de reserva que `.env.example`.

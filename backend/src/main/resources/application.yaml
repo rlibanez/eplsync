@@ -128,6 +128,8 @@ eplsync:
       batch-timeout: 4s # Límite total del grupo paralelo. >= request-timeout.
       concurrency: 8 # URLs simultáneas (1–32).
 
+  hardcover:
+    api-key: ${EPLSYNC_HARDCOVER_API_KEY:}
   calibre:
     url: ${EPLSYNC_CALIBRE_URL:}
     browser-url: ${EPLSYNC_CALIBRE_BROWSER_URL:}

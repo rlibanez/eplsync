@@ -1,3 +1,4 @@
+import { CompleteHardcover } from "./CompleteHardcover";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import {
   pageSelection,
@@ -47,7 +48,7 @@ export const calibreColumns: TableColumn[] = [
   {
     field: "actions",
     label: "historyActions.actions",
-    width: 160,
+    width: 200,
     sortable: false,
   },
 ];
@@ -244,6 +245,7 @@ export function CalibreTable({
                         selected={[book.calibreId]}
                         inline
                       />
+                      <CompleteHardcover selected={[book.calibreId]} inline />
                       <CalibreRemovalLauncher
                         selected={[book.calibreId]}
                         inline

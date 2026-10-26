@@ -24,6 +24,17 @@ class CalibreApiTests {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.update("DELETE FROM app_settings WHERE setting_key IN ('calibre.connection','calibre.identifiers')");
     }
+    @Test @WithMockUser(authorities={"CALIBRE_READ"}) void hardcoverRequiresMetadataWritePermissionForEveryOperation() throws Exception {
+        mvc.perform(get("/api/calibre/hardcover")).andExpect(status().isForbidden());
+        mvc.perform(put("/api/calibre/hardcover").with(csrf()).contentType("application/json").content("{\"BOOK_ID\":\"hardcover_book\"}")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/calibre/hardcover/editions?token=private&bookId=7")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/calibre/hardcover/edition-languages?token=private&bookId=7")).andExpect(status().isForbidden());
+        for(String action:java.util.List.of("search","preview","apply","discard","resolve-slug","resolve-edition")) mvc.perform(post("/api/calibre/hardcover/"+action).with(csrf()).contentType("application/json").content(action.equals("search")?"{\"calibreId\":9,\"page\":1}":action.equals("resolve-edition")?"{\"token\":\"private\",\"editionId\":11}":action.equals("preview")?"{\"token\":\"private\",\"bookId\":7,\"mappings\":{\"BOOK_ID\":\"hardcover_book\"}}":"{\"token\":\"private\"}")).andExpect(status().isForbidden());
+        verifyNoInteractions(client);
+    }
+    @Test @WithMockUser(authorities={"CALIBRE_READ","CALIBRE_SEND"}) void hardcoverCoverRequiresFileReadPermission() throws Exception {
+        mvc.perform(get("/api/calibre/hardcover/cover?token=private")).andExpect(status().isForbidden());verifyNoInteractions(client);
+    }
     @Test @WithMockUser(authorities={"CALIBRE_READ"}) void identifierChangesRequireWriteAndDownloadPermissions() throws Exception {
         for(String action:java.util.List.of("preview","apply","cancel")) mvc.perform(post("/api/calibre/identifiers/"+action).with(csrf()).contentType("application/json").content("{\"calibreId\":9}"))
             .andExpect(status().isForbidden());

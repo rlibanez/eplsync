@@ -216,6 +216,50 @@ public class CalibreClient {
             return new Book(id,after.path("title").asString(""),authors,epl,revision,true,uuid);
         });
     }
+    public record IdentifierMetadata(String uuid,String title,List<String> authors,Map<String,String> identifiers) {}
+    private IdentifierMetadata identifierMetadata(JsonNode book) {
+        String uuid=book.path("uuid").asString("");
+        if(uuid.isBlank()) throw failure("Calibre no devolvió la identidad de la entrada");
+        var ids=book.path("identifiers");var values=new LinkedHashMap<String,String>();
+        if(!ids.isObject() && !ids.isMissingNode() && !ids.isNull()) throw failure("Calibre devolvió identificadores inválidos");
+        for(var property:ids.properties()) {
+            if(!property.getValue().isString()) throw failure("Calibre devolvió un identificador inválido");
+            values.put(property.getKey(),property.getValue().asString());
+        }
+        var authors=new ArrayList<String>();for(var author:book.path("authors")) authors.add(author.asString());
+        return new IdentifierMetadata(uuid,book.path("title").asString(""),List.copyOf(authors),Map.copyOf(values));
+    }
+    public IdentifierMetadata identifierMetadata(CalibreSettings.Connection c,long id) {
+        if(id<=0) throw new com.rlibanez.eplsync.exception.UserInputException("Calibre ID inválido");
+        return limited(()->identifierMetadata(get(c,"/ajax/book/"+id+"/"+segment(c.library()))));
+    }
+    /** Add confirmed identifiers only; preserve all unrelated fields and reconcile lost responses. */
+    public IdentifierMetadata addIdentifiers(CalibreSettings.Connection c,long id,IdentifierMetadata expected,Map<String,String> additions) {
+        return limited(()->{
+            String path="/ajax/book/"+id+"/"+segment(c.library());
+            var before=identifierMetadata(get(c,path));var desired=new LinkedHashMap<>(expected.identifiers());
+            for(var entry:additions.entrySet()) {
+                if(!desired.getOrDefault(entry.getKey(),"").isBlank() && !desired.get(entry.getKey()).equals(entry.getValue())) throw new com.rlibanez.eplsync.exception.UserInputException("No se sobrescriben identificadores existentes");
+                desired.put(entry.getKey(),entry.getValue());
+            }
+            if(!before.uuid().equals(expected.uuid()) || !before.title().equals(expected.title()) || !before.authors().equals(expected.authors()) ||
+                !before.identifiers().equals(expected.identifiers()) && !before.identifiers().equals(desired))
+                throw new com.rlibanez.eplsync.exception.UserInputException("Los metadatos de Calibre cambiaron; vuelve a previsualizar antes de guardar");
+            if(before.identifiers().equals(desired)) return before;
+            RuntimeException uncertain=null;
+            try {
+                var post=new org.apache.hc.client5.http.classic.methods.HttpPost(c.url()+"/cdb/set-fields/"+id+"/"+segment(c.library()));
+                post.setEntity(new org.apache.hc.core5.http.io.entity.StringEntity(json.writeValueAsString(Map.of("changes",Map.of("identifiers",desired))),org.apache.hc.core5.http.ContentType.APPLICATION_JSON));
+                request(c,post,false);
+            } catch(RuntimeException ex) {uncertain=ex;}
+            try {
+                var after=identifierMetadata(get(c,path));
+                if(after.uuid().equals(expected.uuid()) && after.title().equals(expected.title()) && after.authors().equals(expected.authors()) && after.identifiers().equals(desired)) return after;
+            } catch(RuntimeException ex) {if(uncertain==null) uncertain=ex;}
+            if(uncertain instanceof PermanentFailure permanent) throw permanent;
+            throw new TransientFailure(HttpStatus.BAD_GATEWAY,"Calibre no confirmó los identificadores; vuelve a comprobar la misma entrada antes de reintentar",uncertain);
+        });
+    }
     public boolean hasEpub(CalibreSettings.Connection c,long id) {
         return limited(() -> epubFormat(get(c,"/ajax/book/"+id+"/"+segment(c.library()))));
     }
@@ -245,6 +289,33 @@ public class CalibreClient {
         });
     }
     /** Fetch to a bounded temporary file, without following redirects or buffering the EPUB in memory. */
+    public record Cover(byte[] bytes,String contentType) {}
+    /** Authenticated cover proxy: credentials and Calibre URLs never reach the browser. */
+    public Cover cover(CalibreSettings.Connection c,long id) {
+        if(id<=0) throw new com.rlibanez.eplsync.exception.UserInputException("Identificador de Calibre inválido");
+        return limited(()->{
+            var uri=URI.create(c.url()+"/get/cover/"+id+"/"+segment(c.library()));
+            var credentials=new BasicCredentialsProvider();
+            if(!c.username().isEmpty()) credentials.setCredentials(new AuthScope(new HttpHost(uri.getScheme(),uri.getHost(),uri.getPort())),new UsernamePasswordCredentials(c.username(),c.password().toCharArray()));
+            var manager=PoolingHttpClientConnectionManagerBuilder.create().setDefaultConnectionConfig(ConnectionConfig.custom().setConnectTimeout(Timeout.ofSeconds(3)).setSocketTimeout(Timeout.ofSeconds(10)).build()).build();
+            try(var http=HttpClients.custom().setConnectionManager(manager).setDefaultCredentialsProvider(credentials).setDefaultRequestConfig(RequestConfig.custom().setResponseTimeout(Timeout.ofSeconds(10)).build()).disableRedirectHandling().disableAutomaticRetries().disableContentCompression().build()) {
+                var request=new HttpGet(uri);request.setHeader("Accept","image/jpeg,image/png,image/webp");
+                var deadline=TIMER.schedule(request::cancel,10,TimeUnit.SECONDS);
+                try(var response=http.executeOpen(null,request,null)) {
+                    if(response.getCode()==404) return new Cover(new byte[0],"image/jpeg");
+                    if(response.getCode()!=200 || response.getEntity()==null) throw failure("No se pudo obtener la portada de Calibre");
+                    byte[] bytes=response.getEntity().getContent().readNBytes(4194305);
+                    if(bytes.length==0 || bytes.length>4194304) throw failure("La portada de Calibre no tiene un tamaño válido");
+                    String type;
+                    if(bytes.length>=3 && (bytes[0]&255)==255 && (bytes[1]&255)==216 && (bytes[2]&255)==255) type="image/jpeg";
+                    else if(bytes.length>=8 && java.util.Arrays.equals(java.util.Arrays.copyOf(bytes,8),new byte[]{(byte)137,80,78,71,13,10,26,10})) type="image/png";
+                    else if(bytes.length>=12 && new String(bytes,0,4,java.nio.charset.StandardCharsets.US_ASCII).equals("RIFF") && new String(bytes,8,4,java.nio.charset.StandardCharsets.US_ASCII).equals("WEBP")) type="image/webp";
+                    else throw failure("Calibre no devolvió una portada válida");
+                    return new Cover(bytes,type);
+                } finally {deadline.cancel(false);}
+            } catch(ResponseStatusException ex) {throw ex;} catch(Exception ex) {throw failure("No se pudo obtener la portada de Calibre");}
+        });
+    }
     public void downloadEpub(CalibreSettings.Connection c,long id,java.nio.file.Path target,long maxBytes) {
         downloadEpub(c,id,target,maxBytes,false);
     }
