@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Button, Checkbox, PasswordInput } from "@mantine/core";
+import { Alert, Button, Checkbox, PasswordInput } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ApiError, NetworkError, get } from "../../api/catalog";
@@ -8,6 +8,7 @@ import { secureFetch } from "../auth/transport";
 import { Failure, Loading } from "../../components/Feedback";
 import { useSettingsSaved } from "./useSettingsSaved";
 import { SecretKeyDialog } from "./SecretKeyDialog";
+import { ExternalLink } from "lucide-react";
 import { formatDate } from "../../locales/formatDate";
 
 type Usage = {
@@ -17,11 +18,13 @@ type Usage = {
   observedAt: string;
   resetAt: string;
 };
+type Expiration = { expiresAt: string; expired: boolean; expiresSoon: boolean };
 type View = {
   apiKeyConfigured: boolean;
   environmentConfigured: boolean;
   overridden: boolean;
   usage?: Usage | null;
+  expiration?: Expiration | null;
 };
 async function request<T>(
   method: string,
@@ -80,11 +83,11 @@ export function HardcoverSettings() {
   });
   const check = useMutation({
     mutationFn: () =>
-      request<{ connected: boolean; usage?: Usage | null }>(
-        "POST",
-        input(),
-        "/connection",
-      ),
+      request<{
+        connected: boolean;
+        usage?: Usage | null;
+        expiration?: Expiration | null;
+      }>("POST", input(), "/connection"),
     onError: () => {
       void query.refetch();
     },
@@ -109,6 +112,21 @@ export function HardcoverSettings() {
     : !apiKey && !clearApiKey
       ? initial.usage
       : null;
+  const expiration = check.isSuccess
+    ? check.data.expiration
+    : !apiKey && !clearApiKey
+      ? initial.expiration
+      : null;
+  const expiryText = expiration
+    ? t(
+        expiration.expired
+          ? "hardcoverSettings.expired"
+          : expiration.expiresSoon
+            ? "hardcoverSettings.expiresSoon"
+            : "hardcoverSettings.expiresAt",
+        { date: formatDate(expiration.expiresAt, i18n.language) },
+      )
+    : "";
   return (
     <section
       id="hardcover"
@@ -145,24 +163,40 @@ export function HardcoverSettings() {
             }}
           />
         </div>
+        {expiration &&
+          (expiration.expired || expiration.expiresSoon ? (
+            <Alert
+              color={expiration.expired ? "red" : "orange"}
+              role="status"
+              mb="sm"
+            >
+              {expiryText}
+            </Alert>
+          ) : (
+            <p className="muted">{expiryText}</p>
+          ))}
         {(initial.apiKeyConfigured || apiKey) && (
           <div className="hardcover-usage" role="status">
             {usage ? (
-              <>
-                <p>
+              <small className="muted hardcover-usage-summary">
+                <span>
                   {t("hardcoverSettings.usage", {
                     used: usage.used,
                     limit: usage.limit,
                     remaining: usage.remaining,
                   })}
-                </p>
-                <small className="muted">
-                  {t("hardcoverSettings.usageTime", {
-                    observed: formatDate(usage.observedAt, i18n.language),
-                    reset: formatDate(usage.resetAt, i18n.language),
+                </span>
+                <span>
+                  {t("hardcoverSettings.usageObserved", {
+                    date: formatDate(usage.observedAt, i18n.language),
                   })}
-                </small>
-              </>
+                </span>
+                <span>
+                  {t("hardcoverSettings.usageReset", {
+                    date: formatDate(usage.resetAt, i18n.language),
+                  })}
+                </span>
+              </small>
             ) : (
               <small className="muted">
                 {t("hardcoverSettings.usageUnknown")}
@@ -201,6 +235,16 @@ export function HardcoverSettings() {
             }}
           >
             {t("calibre.check")}
+          </Button>
+          <Button
+            component="a"
+            href="https://hardcover.app/account/api"
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="light"
+            leftSection={<ExternalLink size={16} />}
+          >
+            {t("hardcoverSettings.obtainKey")}
           </Button>
         </div>
       </form>

@@ -29,6 +29,14 @@ Sin clave se puede utilizar EPL Sync, pero no consultar Hardcover. Las consultas
 son de lectura: no modifican tu cuenta de Hardcover. No se añaden tablas ni
 migraciones.
 
+La configuración incluye un enlace para obtener o renovar la API key. Si el
+token contiene la fecha `exp`, se muestra su caducidad y se avisa cuando ha
+caducado o le quedan siete días o menos. Solo se devuelve esa fecha y sus
+indicadores, nunca el token ni sus otras propiedades. Esta lectura local no
+valida la firma ni garantiza que Hardcover acepte la clave: la comprobación de
+conexión sigue siendo la referencia. Los tokens sin fecha reconocible no
+reciben una caducidad estimada.
+
 ### Uso y límite
 
 El apartado muestra la cuota diaria y las consultas disponibles comunicadas en
@@ -185,3 +193,6 @@ número de usuarios, cuando Hardcover proporciona esos datos. Los tooltips
 explican la ordenación: título exacto, relevancia y valoraciones en búsquedas
 por texto; valoraciones y reseñas en búsquedas por ISBN/ASIN; usuarios en las
 ediciones. Los contadores se obtienen en las consultas existentes.
+
+Los desplegables de obra y edición muestran el texto completo de cada opción
+en su tooltip. El valor seleccionado incluye también el criterio de ordenación.

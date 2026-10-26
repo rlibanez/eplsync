@@ -11,13 +11,13 @@ public class HardcoverSettingsController {
     private final HardcoverSettings settings;
     private final HardcoverClient client;
     public HardcoverSettingsController(HardcoverSettings settings,HardcoverClient client) {this.settings=settings;this.client=client;}
-    public record Check(boolean connected,HardcoverUsage.Snapshot usage) {}
-    public record Configuration(boolean apiKeyConfigured,boolean environmentConfigured,boolean overridden,HardcoverUsage.Snapshot usage) {}
+    public record Check(boolean connected,HardcoverUsage.Snapshot usage,HardcoverSettings.Expiration expiration) {}
+    public record Configuration(boolean apiKeyConfigured,boolean environmentConfigured,boolean overridden,HardcoverUsage.Snapshot usage,HardcoverSettings.Expiration expiration) {}
     @GetMapping public ResponseEntity<Configuration> view() {return response(settings.view());}
     @PutMapping public ResponseEntity<Configuration> save(@RequestBody HardcoverSettings.Input input) {return response(settings.save(input));}
     @DeleteMapping public ResponseEntity<Configuration> restore() {return response(settings.restore());}
     @PostMapping("/connection") public ResponseEntity<Check> check(@RequestBody HardcoverSettings.Input input) {
-        String key=settings.resolve(input);client.checkKey(key);return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Check(true,client.usageFor(key)));
+        String key=settings.resolve(input);client.checkKey(key);return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Check(true,client.usageFor(key),HardcoverSettings.expiration(key)));
     }
-    private ResponseEntity<Configuration> response(HardcoverSettings.View value) {return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Configuration(value.apiKeyConfigured(),value.environmentConfigured(),value.overridden(),client.usage()));}
+    private ResponseEntity<Configuration> response(HardcoverSettings.View value) {return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Configuration(value.apiKeyConfigured(),value.environmentConfigured(),value.overridden(),client.usage(),settings.expiration()));}
 }

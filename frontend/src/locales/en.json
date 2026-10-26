@@ -2158,7 +2158,12 @@
     "notConfigured": "No API key is configured.",
     "connected": "Successfully connected to Hardcover.",
     "usage": "Daily usage: {{used, number}} / {{limit, number}} requests · {{remaining, number}} remaining",
-    "usageTime": "Last response: {{observed}} · Resets: {{reset}}",
-    "usageUnknown": "Usage available after the next Hardcover request."
+    "usageUnknown": "Usage available after the next Hardcover request.",
+    "obtainKey": "Get API key",
+    "expired": "The API key has expired ({{date}}). Obtain a new key.",
+    "expiresSoon": "The API key expires soon: {{date}}.",
+    "expiresAt": "API key expiration: {{date}}.",
+    "usageObserved": "Last response: {{date}}",
+    "usageReset": "Resets: {{date}}"
   }
 }

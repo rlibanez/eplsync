@@ -5,6 +5,7 @@ import {
   Button,
   Checkbox,
   Fieldset,
+  CheckIcon,
   Select,
   TextInput,
 } from "@mantine/core";
@@ -591,6 +592,27 @@ export function CompleteHardcover({
   const needsEdition = mapped.some(([field]) =>
     ["EDITION_ID", "ISBN10", "ISBN13", "ASIN"].includes(field),
   );
+  const bookOptions =
+    matches?.items.map((book) => ({
+      value: String(book.id),
+      label: `${book.title} · ${book.authors.join(", ")} · ${book.id}${book.ratingsCount != null ? ` · ${t("hardcover.ratingsCount", { count: book.ratingsCount })}` : ""}`,
+    })) ?? [];
+  const editionOptions = editions.items.map((edition) => ({
+    value: String(edition.id),
+    label: `${edition.title} · ${edition.language || "—"} · ${edition.publisher || "—"} · ${edition.isbn13 || edition.isbn10 || edition.id}${edition.usersCount != null ? ` · ${t("hardcover.usersCount", { count: edition.usersCount })}` : ""}`,
+  }));
+  const bookTooltip = [
+    bookOptions.find((option) => option.value === bookId)?.label,
+    t("hardcover.bookOrder"),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const editionTooltip = [
+    editionOptions.find((option) => option.value === editionId)?.label,
+    t("hardcover.editionOrder"),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   const displayedPreview: Preview | null =
     preview ??
     (matches
@@ -845,7 +867,7 @@ export function CompleteHardcover({
                     <div className="hardcover-book-controls">
                       <Select
                         aria-label={t("hardcover.book")}
-                        title={t("hardcover.bookOrder")}
+                        title={bookTooltip}
                         scrollAreaProps={{
                           viewportRef: bookViewport,
                           onBottomReached: () => void loadMore("books"),
@@ -858,10 +880,15 @@ export function CompleteHardcover({
                         value={bookId}
                         disabled={busy}
                         searchable
-                        data={matches.items.map((book) => ({
-                          value: String(book.id),
-                          label: `${book.title} · ${book.authors.join(", ")} · ${book.id}${book.ratingsCount != null ? ` · ${t("hardcover.ratingsCount", { count: book.ratingsCount })}` : ""}`,
-                        }))}
+                        data={bookOptions}
+                        renderOption={({ option, checked }) => (
+                          <>
+                            {checked && (
+                              <CheckIcon size={12} style={{ flexShrink: 0 }} />
+                            )}
+                            <span title={option.label}>{option.label}</span>
+                          </>
+                        )}
                         onChange={(value) => {
                           setManualBook(false);
                           setManualEdition(false);
@@ -960,7 +987,7 @@ export function CompleteHardcover({
                           <Select
                             className="hardcover-edition-input"
                             aria-label={t("hardcover.edition")}
-                            title={t("hardcover.editionOrder")}
+                            title={editionTooltip}
                             scrollAreaProps={{
                               viewportRef: editionViewport,
                               onBottomReached: () => void loadMore("editions"),
@@ -975,10 +1002,18 @@ export function CompleteHardcover({
                             searchable
                             disabled={busy}
                             value={editionId}
-                            data={editions.items.map((edition) => ({
-                              value: String(edition.id),
-                              label: `${edition.title} · ${edition.language || "—"} · ${edition.publisher || "—"} · ${edition.isbn13 || edition.isbn10 || edition.id}${edition.usersCount != null ? ` · ${t("hardcover.usersCount", { count: edition.usersCount })}` : ""}`,
-                            }))}
+                            data={editionOptions}
+                            renderOption={({ option, checked }) => (
+                              <>
+                                {checked && (
+                                  <CheckIcon
+                                    size={12}
+                                    style={{ flexShrink: 0 }}
+                                  />
+                                )}
+                                <span title={option.label}>{option.label}</span>
+                              </>
+                            )}
                             onChange={(value) => {
                               setEditionId(value);
                               setManualEdition(false);

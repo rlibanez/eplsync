@@ -15,6 +15,8 @@ public class HardcoverSettings {
         @Override public String toString() {return "Hardcover credentials [redacted]";}
     }
     public record View(boolean apiKeyConfigured,boolean environmentConfigured,boolean overridden) {}
+    public record Expiration(java.time.Instant expiresAt,boolean expired,boolean expiresSoon) {}
+    private static final tools.jackson.databind.json.JsonMapper JSON=tools.jackson.databind.json.JsonMapper.builder().build();
     private final JdbcTemplate jdbc;
     private final String cipherKey;
     private final String environmentKey;
@@ -30,6 +32,23 @@ public class HardcoverSettings {
         if(values.getFirst().isEmpty()) return "";
         try {return new CredentialCipher(cipherKey).decrypt(KEY,values.getFirst());}
         catch(IllegalStateException ex) {throw new UserInputException("No se puede recuperar la API key de Hardcover; revisa EPLSYNC_SECRET_KEY");}
+    }
+    synchronized Expiration expiration() {
+        try {return expiration(apiKey());}
+        catch(UserInputException ex) {return null;}
+    }
+    /** Advisory only: read a declared JWT expiry, never use it to authorize or validate the token. */
+    static Expiration expiration(String value) {
+        try {
+            var parts=normalize(value).split("\\.",-1);
+            if(parts.length!=3 || java.util.Arrays.stream(parts).anyMatch(part->!part.matches("[A-Za-z0-9_-]+"))) return null;
+            var claim=JSON.readTree(java.util.Base64.getUrlDecoder().decode(parts[1])).path("exp");
+            if(!claim.isIntegralNumber() || !claim.asString().matches("[0-9]{1,12}")) return null;
+            long seconds=Long.parseLong(claim.asString());if(seconds>253402300799L) return null;
+            var expires=java.time.Instant.ofEpochSecond(seconds);var now=java.time.Instant.now();
+            boolean expired=!expires.isAfter(now);
+            return new Expiration(expires,expired,!expired && !expires.isAfter(now.plusSeconds(7*86400)));
+        } catch(Exception ex) {return null;}
     }
     synchronized String resolve(Input input) {
         if(input==null) throw new UserInputException("Indica la configuración de Hardcover");

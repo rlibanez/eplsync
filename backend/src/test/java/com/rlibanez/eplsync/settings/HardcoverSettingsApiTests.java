@@ -48,6 +48,14 @@ class HardcoverSettingsApiTests {
             .andExpect(jsonPath("$.usage.used").value(160)).andExpect(jsonPath("$.usage.remaining").value(4840));
         verify(client).usage();verifyNoMoreInteractions(client);
     }
+    @Test @WithMockUser(roles="ADMIN") void exposesExpiryWithoutReturningTheTokenOrOtherClaims() throws Exception {
+        long expires=java.time.Instant.now().plusSeconds(86400).getEpochSecond();String token=HardcoverSettingsTests.token("{\"exp\":"+expires+",\"private\":\"secret-claim-only\"}");
+        mvc.perform(put("/api/settings/hardcover").with(csrf()).contentType("application/json").content("{\"apiKey\":\""+token+"\"}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.expiration.expired").value(false)).andExpect(jsonPath("$.expiration.expiresSoon").value(true));
+        var result=mvc.perform(get("/api/settings/hardcover")).andExpect(status().isOk()).andExpect(jsonPath("$.expiration.expiresAt").isString()).andExpect(jsonPath("$.apiKey").doesNotExist()).andReturn();
+        assertThat(result.getResponse().getContentAsString()).doesNotContain(token,"secret-claim-only");
+        verify(client,never()).checkKey(anyString());
+    }
     @Test @WithMockUser(roles="ADMIN") void csrfIsRequired() throws Exception {
         mvc.perform(put("/api/settings/hardcover").contentType("application/json").content("{\"apiKey\":\"private-test-key\"}")).andExpect(status().isForbidden());verifyNoInteractions(client);
     }

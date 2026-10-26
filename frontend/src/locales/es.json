@@ -2158,7 +2158,12 @@
     "notConfigured": "No hay una API key configurada.",
     "connected": "Conexión correcta con Hardcover.",
     "usage": "Uso diario: {{used, number}} / {{limit, number}} consultas · {{remaining, number}} disponibles",
-    "usageTime": "Última respuesta: {{observed}} · Restablecimiento: {{reset}}",
-    "usageUnknown": "Uso disponible tras la próxima consulta a Hardcover."
+    "usageUnknown": "Uso disponible tras la próxima consulta a Hardcover.",
+    "obtainKey": "Obtener API key",
+    "expired": "La API key ha caducado ({{date}}). Obtén una nueva clave.",
+    "expiresSoon": "La API key caduca próximamente: {{date}}.",
+    "expiresAt": "Caducidad de la API key: {{date}}.",
+    "usageObserved": "Última respuesta: {{date}}",
+    "usageReset": "Restablecimiento: {{date}}"
   }
 }

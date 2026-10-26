@@ -2314,7 +2314,8 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 .hardcover-cover-expanded img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .hardcover-cover-modal .mantine-Modal-close { color: white; }
 
-.hardcover-usage { margin-bottom: 16px; }
-.hardcover-usage p { margin: 0 0 4px; }
+.hardcover-usage { margin: 8px 0 16px; }
+.hardcover-usage-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+.hardcover-usage-summary > span { min-width: 0; max-width: 100%; }
 
 #hardcover { scroll-margin-top: 16px; }

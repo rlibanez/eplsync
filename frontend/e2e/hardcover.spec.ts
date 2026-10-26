@@ -864,6 +864,33 @@ test("unique book and edition are selected automatically and preview columns res
   await expect(
     dialog.getByRole("textbox", { name: "Edición en Hardcover", exact: true }),
   ).toHaveAttribute("title", /usuarios.*mayor a menor/);
+  const workInput = dialog.getByRole("textbox", {
+    name: "Libro en Hardcover",
+    exact: true,
+  });
+  const editionInput = dialog.getByRole("textbox", {
+    name: "Edición en Hardcover",
+    exact: true,
+  });
+  await expect(workInput).toHaveAttribute("title", /Only book.*Author/);
+  await expect(editionInput).toHaveAttribute(
+    "title",
+    /Only edition.*Publisher/,
+  );
+  await workInput.click();
+  const workOption = page.getByRole("option", { name: /Only book/ });
+  await expect(workOption.locator("span[title]")).toHaveAttribute(
+    "title",
+    /Only book.*valoraciones/,
+  );
+  await dialog.getByText("Libro", { exact: true }).click();
+  await editionInput.click();
+  const editionOption = page.getByRole("option", { name: /Only edition/ });
+  await expect(editionOption.locator("span[title]")).toHaveAttribute(
+    "title",
+    /Only edition.*87 usuarios/,
+  );
+  await dialog.getByText("Edición", { exact: true }).click();
   const [languageBox, editionBox] = await dialog
     .locator('.hardcover-edition-selectors input:not([type="hidden"])')
     .evaluateAll((inputs) =>

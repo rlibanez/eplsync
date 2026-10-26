@@ -19,6 +19,20 @@ class HardcoverSettingsTests {
         settings=new HardcoverSettings(jdbc,CIPHER,"Bearer env-test-key");
     }
     @AfterEach void close() {data.destroy();}
+    static String token(String payload) {return "e30."+java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(payload.getBytes(StandardCharsets.UTF_8))+".signature";}
+    @Test void readsOnlyDeclaredExpiryWithoutInventingOrValidatingCredentials() {
+        long now=java.time.Instant.now().getEpochSecond();
+        var expired=HardcoverSettings.expiration(token("{\"exp\":"+(now-60)+"}"));assertThat(expired.expired()).isTrue();assertThat(expired.expiresSoon()).isFalse();
+        var soon=HardcoverSettings.expiration(token("{\"exp\":"+(now+86400)+"}"));assertThat(soon.expired()).isFalse();assertThat(soon.expiresSoon()).isTrue();
+        var future=HardcoverSettings.expiration(token("{\"exp\":"+(now+30*86400)+"}"));assertThat(future.expiresSoon()).isFalse();assertThat(future.expiresAt().getEpochSecond()).isEqualTo(now+30*86400);
+        for(String key:java.util.List.of("opaque-test-key","broken.token.signature",token("{}"),token("{\"exp\":\"tomorrow\"}"),token("{\"exp\":999999999999999999999}"))) assertThat(HardcoverSettings.expiration(key)).isNull();
+    }
+    @Test void readsExpiryFromTheEffectiveEncryptedOrEnvironmentKeyAndHidesItWhenCleared() {
+        long deadline=java.time.Instant.now().plusSeconds(86400).getEpochSecond();String token=token("{\"exp\":"+deadline+",\"private\":\"secret-claim-only\"}");
+        var environment=new HardcoverSettings(jdbc,CIPHER,token);assertThat(environment.expiration().expiresAt().getEpochSecond()).isEqualTo(deadline);
+        settings.save(new HardcoverSettings.Input(token,false));assertThat(settings.expiration().expiresSoon()).isTrue();
+        settings.save(new HardcoverSettings.Input("",true));assertThat(settings.expiration()).isNull();
+    }
     @Test void environmentIsNotCopiedToTheDatabaseAndViewsNeverContainSecrets() {
         assertThat(settings.view()).isEqualTo(new HardcoverSettings.View(true,true,false));
         assertThat(settings.apiKey()).isEqualTo("env-test-key");
