@@ -236,3 +236,9 @@ su historial Flyway y sus datos. Consulta las [notas de 1.7.0](releases/1.7.0.md
 La versión 1.7.1 mantiene el esquema `1.7.0.7`. La actualización desde 1.7.0
 no aplica nuevas migraciones y conserva los datos, trabajos y ajustes.
 Consulta las [notas de 1.7.1](releases/1.7.1.md).
+
+La versión 1.8.0 mantiene el esquema `1.7.0.7`. Desde 1.7.1 no hay nuevas
+migraciones: los ajustes e identificadores personales de Hardcover utilizan
+la tabla existente `app_settings`. Las API keys guardadas se cifran con
+`EPLSYNC_SECRET_KEY`; conserva esa clave junto a las copias de seguridad.
+Consulta las [notas de 1.8.0](releases/1.8.0.md).
