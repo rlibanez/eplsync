@@ -20,7 +20,6 @@ import java.net.CookiePolicy;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
@@ -38,9 +37,12 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
     private final TorrentProperties properties;
     private final QBittorrentProperties qbittorrent;
     private final CookieManager cookies = new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER);
-    private final HttpClient apiKeyClient;
+    private record NativeClient(HttpClient http,boolean session) {}
+    private final NativeClient apiKeyClient;
+    private final RegistryHostTransport registryTransport;
+    private final org.apache.hc.client5.http.DnsResolver resolver;
     private final String authorizedDestination;
-    private final HttpClient sessionClient;
+    private final NativeClient sessionClient;
 
     private Holder runtime;
     private static class Holder {
@@ -49,8 +51,8 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         final QBittorrentProperties qb;
         int users;
         boolean retired;
-        Holder(TorrentProperties torrent, QBittorrentProperties qb) {
-            this.torrent = torrent; this.qb = qb; this.client = new QBittorrentClient(torrent, qb);
+        Holder(TorrentProperties torrent, QBittorrentProperties qb, org.apache.hc.client5.http.DnsResolver resolver) {
+            this.torrent = torrent; this.qb = qb; this.client = new QBittorrentClient(torrent, qb, resolver);
         }
     }
     private boolean dynamic() { return properties.effective() != properties; }
@@ -60,7 +62,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
             var torrent = properties.effective(); var qb = qbittorrent.effective();
             if (runtime == null || runtime.torrent != torrent || runtime.qb != qb) {
                 if (runtime != null) { runtime.retired = true; if (runtime.users == 0) runtime.client.close(); }
-                runtime = new Holder(torrent, qb);
+                runtime = new Holder(torrent, qb, resolver);
             }
             selected = runtime; selected.users++;
         }
@@ -77,13 +79,17 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
     }
     public String snapshotBaseUrl() { return properties.getBaseUrl(); }
 
-    public QBittorrentClient(TorrentProperties properties, QBittorrentProperties qbittorrent) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public QBittorrentClient(TorrentProperties properties, QBittorrentProperties qbittorrent) {this(properties,qbittorrent,null);}
+    QBittorrentClient(TorrentProperties properties, QBittorrentProperties qbittorrent, org.apache.hc.client5.http.DnsResolver resolver) {
+        this.resolver=resolver;
         this.properties = properties;
         this.qbittorrent = qbittorrent;
         authorizedDestination = properties.isEnabled() ? QBittorrentDestination.normalize(properties.getBaseUrl()) : null;
         // Sin conexiones al arrancar ni clientes HTTP cuando la integración está deshabilitada.
-        apiKeyClient = properties.isEnabled() ? newClient().build() : null;
-        sessionClient = properties.isEnabled() ? newClient().cookieHandler(cookies).build() : null;
+        registryTransport=properties.isEnabled() && URI.create(authorizedDestination).getHost()==null ? new RegistryHostTransport(properties,resolver) : null;
+        apiKeyClient=properties.isEnabled()?new NativeClient(registryTransport==null?newClient().build():null,false):null;
+        sessionClient=properties.isEnabled()?new NativeClient(registryTransport==null?newClient().cookieHandler(cookies).build():null,true):null;
     }
 
     @Override
@@ -105,7 +111,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
             probe.setRequestTimeout(properties.getRequestTimeout());
             probe.setEnabled(true);
             probe.validate();
-            try (var client = new QBittorrentClient(probe, qbittorrent)) {
+            try (var client = new QBittorrentClient(probe, qbittorrent, resolver)) {
                 var status = client.checkConnection();
                 return new TorrentConnectionStatus(false, status.connected(), status.client(),
                         status.authMode(), status.version(), status.apiVersion());
@@ -144,7 +150,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         var connection = checkConnection();
         boolean useApiKey = connection.authMode().equals("api-key");
         var builder = request("torrents/rename").header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString("hash=" + encode(hash) + "&name=" + encode(name)));
+                .POST("hash=" + encode(hash) + "&name=" + encode(name));
         if (useApiKey) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
         var response = send(useApiKey ? apiKeyClient : sessionClient, builder.build());
         if (response.statusCode() == 404) {
@@ -219,7 +225,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         String body = fields.entrySet().stream().map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue()))
                 .collect(java.util.stream.Collectors.joining("&"));
         var builder = request("torrents/add").header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(body));
+                .POST(body);
         if (key) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
         try {
             var response = send(key ? apiKeyClient : sessionClient, builder.build());
@@ -349,7 +355,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
     private <T> java.util.List<T> readArray(String path, boolean key, java.util.function.Function<tools.jackson.databind.JsonNode,T> convert) {
         var builder = request(path).GET();
         if (key) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
-        var response = send(key ? apiKeyClient : sessionClient, builder.build(), HttpResponse.BodySubscribers::ofInputStream,
+        var response = sendStream(key ? apiKeyClient : sessionClient, builder.build(),
                 properties.getMaxResponseSize().toBytes());
         try (var body = response.body()) {
             checkStatus(response);
@@ -421,7 +427,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
             throw new com.rlibanez.eplsync.exception.UserInputException("Identificador remoto inválido");
         boolean key = sendingAuth() == AuthMode.API_KEY;
         var builder = request("torrents/delete").header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString("hashes=" + encode(remoteId) + "&deleteFiles=" + deleteFiles));
+                .POST("hashes=" + encode(remoteId) + "&deleteFiles=" + deleteFiles);
         if (key) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
         // Una escritura incierta no se reintenta automáticamente.
         checkStatus(send(key ? apiKeyClient : sessionClient, builder.build()));
@@ -525,7 +531,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
     }
 
     private TorrentConnectionStatus checkSession() {
-        if (!cookies.getCookieStore().getCookies().isEmpty()) {
+        if (hasCookies()) {
             try {
                 return readVersions(AuthMode.SESSION);
             } catch (QBittorrentConnectionException ex) {
@@ -533,7 +539,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
             }
         }
         // Como máximo un login por comprobación, incluso con credenciales incorrectas.
-        cookies.getCookieStore().removeAll();
+        clearCookies();
         login();
         return readVersions(AuthMode.SESSION);
     }
@@ -542,14 +548,14 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         var auth = qbittorrent.getAuth();
         String body = "username=" + encode(auth.getUsername()) + "&password=" + encode(auth.getPassword());
         var request = request("auth/login").header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                .POST(body).build();
         var response = send(sessionClient, request);
         checkStatus(response);
         // Versiones anteriores: 200 Ok./Fails.; 5.2.3: 204 sin cuerpo.
         String result = response.body().trim();
         if (result.equals("Fails.")) throw new QBittorrentConnectionException(AUTHENTICATION);
         if (!(response.statusCode() == 204 || (response.statusCode() == 200 && result.equals("Ok.")))
-                || cookies.getCookieStore().getCookies().isEmpty()) {
+                || !hasCookies()) {
             throw new QBittorrentConnectionException(UPSTREAM);
         }
     }
@@ -574,20 +580,28 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         return version;
     }
 
-    private HttpRequest.Builder request(String path) {
+    private QBittorrentRequest.Builder request(String path) {
         String base = QBittorrentDestination.normalize(properties.getBaseUrl());
         URI uri = URI.create(base);
-        return HttpRequest.newBuilder(URI.create(base + "/api/v2/" + path))
+        return new QBittorrentRequest.Builder(URI.create(base + "/api/v2/" + path))
                 .timeout(properties.getRequestTimeout())
                 .header("Origin", uri.getScheme() + "://" + uri.getRawAuthority())
                 .header("Referer", base + "/");
     }
 
-    private HttpResponse<String> send(HttpClient client, HttpRequest request) {
-        return send(client, request, () -> HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8), 1024 * 1024);
+    private QBittorrentRequest.Response<String> send(NativeClient client,QBittorrentRequest request) {
+        return exchange(request,()->registryTransport!=null?registryTransport.text(request,client.session(),1024*1024):sendJdk(client,request,()->HttpResponse.BodySubscribers.ofString(StandardCharsets.UTF_8),1024*1024));
     }
-    private <T> HttpResponse<T> send(HttpClient client, HttpRequest request,
-            java.util.function.Supplier<HttpResponse.BodySubscriber<T>> subscriber, long maximum) {
+    private QBittorrentRequest.Response<java.io.InputStream> sendStream(NativeClient client,QBittorrentRequest request,long maximum) {
+        return exchange(request,()->registryTransport!=null?registryTransport.stream(request,client.session(),maximum):sendJdk(client,request,HttpResponse.BodySubscribers::ofInputStream,maximum));
+    }
+    private <T> QBittorrentRequest.Response<T> sendJdk(NativeClient client,QBittorrentRequest request,java.util.function.Supplier<HttpResponse.BodySubscriber<T>> subscriber,long maximum) throws IOException,InterruptedException {
+        long started=System.nanoTime();
+        var response=client.http().send(request.jdk(),info->new BoundedBodySubscriber<>(subscriber.get(),maximum,java.time.Duration.ofNanos(Math.max(1,properties.getRequestTimeout().toNanos()-(System.nanoTime()-started)))));
+        return new QBittorrentRequest.Response<>(response.statusCode(),response.body());
+    }
+    @FunctionalInterface private interface Exchange<T> {QBittorrentRequest.Response<T> execute() throws IOException,InterruptedException;}
+    private <T> QBittorrentRequest.Response<T> exchange(QBittorrentRequest request,Exchange<T> operation) {
         String expected = authorizedDestination + "/api/v2/";
         if (!request.uri().toString().startsWith(expected)
                 || !QBittorrentDestination.normalize(properties.getBaseUrl()).equals(authorizedDestination)) {
@@ -597,8 +611,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         String endpoint = path.substring(path.lastIndexOf("/api/v2/"));
         long started = System.nanoTime();
         try {
-            var response = client.send(request, info -> new BoundedBodySubscriber<>(subscriber.get(), maximum, java.time.Duration.ofNanos(
-                Math.max(1, properties.getRequestTimeout().toNanos() - (System.nanoTime() - started)))));
+            var response = operation.execute();
             log.trace("qBittorrent {} {}: HTTP {}, {}ms", request.method(), endpoint, response.statusCode(),
                     java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
             if (response.statusCode() >= 400) log.debug("qBittorrent {} {}: HTTP {}", request.method(), endpoint, response.statusCode());
@@ -606,6 +619,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         } catch (HttpTimeoutException ex) {
             throw new QBittorrentConnectionException(TIMEOUT);
         } catch (IOException ex) {
+            if(Thread.currentThread().isInterrupted()) throw new QBittorrentConnectionException(INTERRUPTED);
             for (Throwable cause = ex; cause != null; cause = cause.getCause())
                 if (cause instanceof com.rlibanez.eplsync.exception.TorrentConnectionException connection)
                     throw new QBittorrentConnectionException(connection.getReason());
@@ -617,11 +631,14 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         }
     }
 
-    private void checkStatus(HttpResponse<?> response) {
+    private void checkStatus(QBittorrentRequest.Response<?> response) {
         int status = response.statusCode();
         if (status == 401 || status == 403) throw new QBittorrentConnectionException(AUTHENTICATION);
         if (status < 200 || status >= 300) throw new QBittorrentConnectionException(UPSTREAM);
     }
+
+    private boolean hasCookies() {return registryTransport!=null?registryTransport.hasCookies():!cookies.getCookieStore().getCookies().isEmpty();}
+    private void clearCookies() {cookies.getCookieStore().removeAll();if(registryTransport!=null) registryTransport.clearCookies();}
 
     private String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
 
@@ -629,8 +646,9 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
     @Override
     public synchronized void close() {
         if (runtime != null) { runtime.retired = true; if (runtime.users == 0) runtime.client.close(); runtime = null; }
-        if (apiKeyClient != null) apiKeyClient.shutdownNow();
-        if (sessionClient != null) sessionClient.shutdownNow();
-        cookies.getCookieStore().removeAll();
+        if (apiKeyClient != null && apiKeyClient.http()!=null) apiKeyClient.http().shutdownNow();
+        if (sessionClient != null && sessionClient.http()!=null) sessionClient.http().shutdownNow();
+        if(registryTransport!=null) registryTransport.close();
+        clearCookies();
     }
 }

@@ -220,7 +220,7 @@ class QBittorrentClientTests {
         properties = new TorrentProperties();
         qbittorrent = new QBittorrentProperties();
         properties.setEnabled(true);
-        properties.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/qbit/");
+        properties.setBaseUrl("http://"+(dockerHost()?"qbittorrent_epl":"127.0.0.1")+":" + server.getAddress().getPort() + "/qbit/");
         qbittorrent.getAuth().setApiKey("test-key");
         qbittorrent.getAuth().setUsername("user + ñ");
         qbittorrent.getAuth().setPassword(" p&+=ss ");
@@ -231,7 +231,7 @@ class QBittorrentClientTests {
         var active=new java.util.concurrent.atomic.AtomicReference<>(properties);
         var credentials=new java.util.concurrent.atomic.AtomicReference<>(qbittorrent);
         shell.useEffective(active::get);authShell.useEffective(credentials::get);
-        client=new QBittorrentClient(shell,authShell);
+        client=createClient(shell,authShell);
         String hash="A".repeat(40);
         torrentInfo="[{\"hash\":\""+hash+"\",\"state\":\"uploading\",\"progress\":1,\"amount_left\":0}]";
         client.withSnapshot(snapshot -> {
@@ -250,7 +250,7 @@ class QBittorrentClientTests {
         var disabled = new TorrentProperties();
         disabled.setEnabled(false);
         var originalQb = new QBittorrentProperties();
-        client = new QBittorrentClient(disabled, originalQb);
+        client = createClient(disabled, originalQb);
         var active = new java.util.concurrent.atomic.AtomicReference<>(properties);
         var credentials = new java.util.concurrent.atomic.AtomicReference<>(qbittorrent);
         disabled.useEffective(active::get);
@@ -275,9 +275,17 @@ class QBittorrentClientTests {
         assertThat(calls).hasSize(2).allMatch(call -> call.method().equals("GET"));
     }
 
+    protected boolean dockerHost() {return false;}
+    private QBittorrentClient createClient(TorrentProperties torrent,QBittorrentProperties qb) {
+        if(!dockerHost()) return new QBittorrentClient(torrent,qb);
+        return new QBittorrentClient(torrent,qb,new org.apache.hc.client5.http.DnsResolver() {
+            @Override public java.net.InetAddress[] resolve(String host) throws java.net.UnknownHostException {return new java.net.InetAddress[]{java.net.InetAddress.getByAddress(new byte[]{127,0,0,1})};}
+            @Override public String resolveCanonicalHostname(String host) {return host;}
+        });
+    }
     private QBittorrentClient client() {
         properties.validate();
-        client = new QBittorrentClient(properties, qbittorrent);
+        client = createClient(properties, qbittorrent);
         return client;
     }
 
@@ -613,6 +621,15 @@ class QBittorrentClientTests {
         executor.shutdownNow();
     }
 
+    @Test void interruptedChecksNeverSendRequestsOrClearTheInterruptFlag() {
+        var qbit=client();Thread.currentThread().interrupt();
+        try {assertReason(qbit,INTERRUPTED);assertThat(Thread.currentThread().isInterrupted()).isTrue();assertThat(calls).isEmpty();}
+        finally {Thread.interrupted();}
+    }
+    @Test void textResponsesKeepTheirSizeLimit() {
+        categories=" ".repeat(1024*1024+1);
+        assertThatThrownBy(()->client().listCategories()).isInstanceOfSatisfying(QBittorrentConnectionException.class,ex->assertThat(ex.getReason()).isEqualTo(RESPONSE_TOO_LARGE));
+    }
     @Test
     void autoPrefersKeyAndReturnsVersionsWithoutLogin() {
         var status = client().checkConnection();
@@ -624,7 +641,7 @@ class QBittorrentClientTests {
             assertThat(call.method()).isEqualTo("GET");
             assertThat(call.authorization()).isEqualTo("Bearer test-key");
             assertThat(call.cookie()).isNull();
-            assertThat(call.origin()).isEqualTo("http://127.0.0.1:" + server.getAddress().getPort());
+            assertThat(call.origin()).isEqualTo("http://"+(dockerHost()?"qbittorrent_epl":"127.0.0.1")+":" + server.getAddress().getPort());
         });
     }
 
@@ -890,7 +907,7 @@ class QBittorrentClientTests {
             });
             for (var mode : new AuthMode[]{AuthMode.API_KEY,AuthMode.SESSION}) {
                 qbittorrent.getAuth().setMode(mode);
-                try (var adapter = new QBittorrentClient(properties,qbittorrent)) {
+                try (var adapter = createClient(properties,qbittorrent)) {
                     assertThatThrownBy(adapter::checkConnection).isInstanceOf(QBittorrentConnectionException.class);
                 }
             }
@@ -902,7 +919,7 @@ class QBittorrentClientTests {
                     respond(exchange,307,"");
                 }
             });
-            try (var adapter = new QBittorrentClient(properties,qbittorrent)) {
+            try (var adapter = createClient(properties,qbittorrent)) {
                 assertThatThrownBy(adapter::checkConnection).isInstanceOf(QBittorrentConnectionException.class);
             }
             assertThat(leaked).isEmpty();

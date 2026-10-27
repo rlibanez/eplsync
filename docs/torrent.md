@@ -27,7 +27,9 @@ a qBittorrent utiliza una dirección alcanzable desde él:
 
 - **Otro contenedor:** nombre de servicio y puerto interno, como
   `http://qbittorrent:8080`, si su WebUI escucha en ese puerto. Ambos deben
-  compartir una red Docker.
+  compartir una red Docker. También se admiten nombres con guion bajo, como
+  `http://qbittorrent_epl:8092`, sin cambiar la autenticación ni las restricciones
+  de protocolo, puerto o redirecciones.
 - **Otro equipo:** su IP o dominio y el puerto de la WebUI.
 - **El host Docker:** su dirección accesible; también puedes utilizar
   `host.docker.internal` si está configurado. En Linux puede requerir añadir
