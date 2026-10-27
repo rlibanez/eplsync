@@ -2097,7 +2097,7 @@ test("all three covers follow the selected work and edition while metadata stays
         .click();
     else
       await enlarged
-        .locator(".hardcover-cover-expanded")
+        .locator(".cover-preview-expanded")
         .click({ position: { x: 1, y: 1 } });
     await expect(enlarged).toHaveCount(0);
     await expect(dialog).toBeVisible();

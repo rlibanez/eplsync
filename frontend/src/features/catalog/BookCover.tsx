@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BookOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { CoverPreview } from "../../components/CoverPreview";
 import type { Book } from "../../api/catalog";
 
 export function BookCover({
@@ -11,6 +12,7 @@ export function BookCover({
   detail?: boolean;
 }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
   const [failedUrl, setFailedUrl] = useState<string>();
   const candidate =
     (book.coverAvailable !== false && book.coverUrl?.trim()) ||
@@ -18,7 +20,12 @@ export function BookCover({
   let url: string | undefined;
   try {
     const parsed = new URL(candidate);
-    if (["https:", "http:"].includes(parsed.protocol)) url = parsed.href;
+    if (
+      ["https:", "http:"].includes(parsed.protocol) &&
+      !parsed.username &&
+      !parsed.password
+    )
+      url = parsed.href;
   } catch {
     // Invalid stored URLs retain the placeholder; only absent URLs use ePubLibre.
   }
@@ -39,17 +46,28 @@ export function BookCover({
     </>
   );
   const className = `${detail ? "detail-cover" : "mini-book"} book-cover${visible ? " has-image" : ""}`;
-  return detail && url ? (
-    <a
-      className={className}
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={t("detail.openCover", { title: book.title })}
-      title={t("detail.openCover", { title: book.title })}
-    >
-      {content}
-    </a>
+  return detail && visible ? (
+    <>
+      <button
+        type="button"
+        className={`${className} cover-preview-button`}
+        onClick={() => setExpanded(true)}
+        aria-label={t("detail.openCover", { title: book.title })}
+        title={t("detail.openCover", { title: book.title })}
+      >
+        {content}
+      </button>
+      <CoverPreview
+        source={url}
+        label={t("detail.cover", { title: book.title })}
+        opened={expanded}
+        onClose={() => setExpanded(false)}
+        onError={() => {
+          setFailedUrl(url);
+          setExpanded(false);
+        }}
+      />
+    </>
   ) : (
     <span className={className} aria-hidden="true">
       {content}

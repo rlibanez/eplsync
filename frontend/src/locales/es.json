@@ -404,7 +404,7 @@
     "alreadySent": "El torrent ya existe en el cliente.",
     "epublibre": "Ver en ePubLibre",
     "cover": "Portada de {{title}}",
-    "openCover": "Abrir portada de {{title}} en una nueva pestaña"
+    "openCover": "Ampliar portada de {{title}}"
   },
   "routeError": {
     "loadTitle": "No se ha podido cargar esta página",

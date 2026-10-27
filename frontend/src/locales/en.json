@@ -404,7 +404,7 @@
     "alreadySent": "The torrent already exists in the client.",
     "epublibre": "View on ePubLibre",
     "cover": "Cover of {{title}}",
-    "openCover": "Open cover of {{title}} in a new tab"
+    "openCover": "Enlarge cover of {{title}}"
   },
   "routeError": {
     "loadTitle": "This page could not be loaded",

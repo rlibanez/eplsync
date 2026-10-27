@@ -32,7 +32,7 @@ test("unavailable stored cover uses ePubLibre without a verification request", a
     "src",
     fallback,
   );
-  await expect(page.locator(".detail-cover")).toHaveAttribute("href", fallback);
+  await expect(page.locator(".detail-cover")).toHaveAttribute("type", "button");
   expect(storedRequests).toBe(0);
   expect(checks).toBe(0);
 });
@@ -84,11 +84,22 @@ for (const coverUrl of [custom, null]) {
     await expect(thumbnail).toHaveAttribute("loading", "lazy");
     await expect(page.locator(".mini-book")).toHaveCSS("width", "44px");
     await page.getByRole("link", { name: "Dune", exact: true }).click();
-    const cover = page.getByRole("link", {
-      name: "Abrir portada de Dune en una nueva pestaña",
+    const cover = page.getByRole("button", {
+      name: "Ampliar portada de Dune",
     });
-    await expect(cover).toHaveAttribute("href", expected);
-    await expect(cover).toHaveAttribute("target", "_blank");
+    for (const method of ["escape", "close", "image"]) {
+      await cover.click();
+      const viewer = page.getByRole("dialog", { name: "Portada de Dune" });
+      await expect(viewer).toBeVisible();
+      await expect(viewer.locator("img")).toHaveAttribute("src", expected);
+      if (method === "escape") await page.keyboard.press("Escape");
+      else if (method === "close")
+        await viewer.getByRole("button", { name: "Cerrar" }).click();
+      else await viewer.locator("img").click();
+      await expect(viewer).not.toBeVisible();
+      await expect(cover).toBeFocused();
+      await expect(page).toHaveURL(/\/catalog\/32$/);
+    }
     await expect(cover.locator("img")).toHaveCSS("border-radius", "5px");
     await expect(cover.locator("img")).toHaveCSS("height", "300px");
     await expect(cover.locator("img")).toHaveAttribute("src", expected);

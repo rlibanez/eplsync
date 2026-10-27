@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { BookOpen } from "lucide-react";
-import { Modal } from "@mantine/core";
+import { CoverPreview } from "../../components/CoverPreview";
 import { useTranslation } from "react-i18next";
 
 function safeCover(value?: string | null) {
@@ -77,41 +77,16 @@ export function HardcoverCover({
           {image}
         </span>
       )}
-      <Modal
-        opened={expanded && Boolean(available)}
+      <CoverPreview
+        source={available ? source : undefined}
+        label={label}
+        opened={expanded}
         onClose={() => toggle(false)}
-        fullScreen
-        zIndex={1000}
-        title={label}
-        className="hardcover-cover-modal"
-        closeButtonProps={{ "aria-label": t("common.close") }}
-        styles={{
-          content: { background: "rgba(12, 12, 12, 0.98)", color: "white" },
-          header: { background: "transparent", color: "white" },
-          body: {
-            padding: 16,
-            height: "calc(100dvh - 64px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "zoom-out",
-          },
+        onError={() => {
+          setFailed(source);
+          if (expanded) toggle(false);
         }}
-      >
-        <div className="hardcover-cover-expanded" onClick={() => toggle(false)}>
-          {available && (
-            <img
-              src={source}
-              alt={label}
-              referrerPolicy="no-referrer"
-              onError={() => {
-                setFailed(source);
-                if (expanded) toggle(false);
-              }}
-            />
-          )}
-        </div>
-      </Modal>
+      />
     </>
   );
 }
