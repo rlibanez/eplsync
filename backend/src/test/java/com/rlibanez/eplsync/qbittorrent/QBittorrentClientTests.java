@@ -50,6 +50,7 @@ class QBittorrentClientTests {
     private volatile int renameStatus = 200;
     private volatile int loginStatus = 204;
     private volatile String loginBody = "";
+    private volatile boolean issueSessionCookie = true;
     private volatile String cookieName = "QBT_SID_8080";
     private volatile String cookieValue = "session1";
     private volatile String version = "v5.2.3";
@@ -300,7 +301,7 @@ class QBittorrentClientTests {
                 try { Thread.sleep(delay); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
             }
             if (call.path().equals("/qbit/api/v2/auth/login")) {
-                if (loginStatus < 300 && !loginBody.equals("Fails."))
+                if (issueSessionCookie && loginStatus < 300 && !loginBody.equals("Fails."))
                     exchange.getResponseHeaders().add("Set-Cookie", cookieName + "=" + cookieValue + "; Path=/; HttpOnly");
                 respond(exchange, loginStatus, loginBody);
             } else if (call.path().equals("/qbit/api/v2/app/version") || call.path().equals("/qbit/api/v2/app/webapiVersion") || call.path().startsWith("/qbit/api/v2/torrents/")) {
@@ -682,6 +683,36 @@ class QBittorrentClientTests {
         assertThat(client().checkConnection().authMode()).isEqualTo("session");
         assertThat(calls).hasSize(3);
         assertThat(calls.getLast().cookie()).contains("SID=session1");
+    }
+
+    @Test
+    void supportsQbittorrent53EmptyLoginAndReusesSessionForInventory() {
+        qbittorrent.getAuth().setMode(AuthMode.SESSION);
+        version = "v5.3.0";
+        loginStatus = 204;
+        loginBody = "";
+        cookieName = "QBT_SID_8092";
+        var qbit = client();
+        assertThat(qbit.checkConnection().version()).isEqualTo("v5.3.0");
+        qbit.listCategories();
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/auth/login")).count()).isEqualTo(1);
+        assertThat(calls.getLast().cookie()).contains("QBT_SID_8092=session1");
+    }
+
+    @Test
+    void emptySuccessfulLoginWithoutCookieIsNotAuthenticated() {
+        qbittorrent.getAuth().setMode(AuthMode.SESSION);
+        issueSessionCookie = false;
+        assertReason(client(), UPSTREAM);
+        assertThat(calls).hasSize(1);
+    }
+
+    @Test
+    void rejectsQbittorrent53UnauthorizedLoginWithoutRetryLoop() {
+        qbittorrent.getAuth().setMode(AuthMode.SESSION);
+        loginStatus = 401;
+        assertReason(client(), AUTHENTICATION);
+        assertThat(calls).hasSize(1);
     }
 
     @Test

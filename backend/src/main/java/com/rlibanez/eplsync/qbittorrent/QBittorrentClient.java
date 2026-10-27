@@ -551,7 +551,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
                 .POST(body).build();
         var response = send(sessionClient, request);
         checkStatus(response);
-        // Versiones anteriores: 200 Ok./Fails.; 5.2.3: 204 sin cuerpo.
+        // Versiones anteriores: 200 Ok./Fails.; 5.2.3 y 5.3: 204 sin cuerpo y cookie de sesión.
         String result = response.body().trim();
         if (result.equals("Fails.")) throw new QBittorrentConnectionException(AUTHENTICATION);
         if (!(response.statusCode() == 204 || (response.statusCode() == 200 && result.equals("Ok.")))
