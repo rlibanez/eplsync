@@ -3,7 +3,6 @@ services:
   eplsync:
     image: "ghcr.io/rlibanez/eplsync:${EPLSYNC_VERSION:-1.8.1}"
     container_name: eplsync
-    user: "${PUID:-1000}:${PGID:-1000}"
     restart: unless-stopped
     stop_grace_period: 30s
     ports:
@@ -15,6 +14,8 @@ services:
       - "${TORRENT_DIR:-./torrent}:/app/downloads:ro"
     environment:
       # General
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
       TZ: "${TZ:-Europe/Madrid}"
       EPLSYNC_LOG_LEVEL: "${EPLSYNC_LOG_LEVEL:-INFO}"
       EPLSYNC_SQL_LOG_LEVEL: "${EPLSYNC_SQL_LOG_LEVEL:-INFO}"

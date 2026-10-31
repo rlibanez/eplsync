@@ -34,3 +34,4 @@
 
 !scripts/
 !scripts/eplsync-admin
+!scripts/entrypoint.sh

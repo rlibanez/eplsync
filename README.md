@@ -88,8 +88,7 @@ de las descargas y de la biblioteca de Calibre.
   - [Prepara la carpeta de instalación](#2-prepara-la-carpeta-de-instalación)
   - [Descarga Docker Compose](#3-descarga-docker-compose)
   - [Configura `.env`](#4-configura-env)
-  - [Prepara las carpetas persistentes](#5-prepara-las-carpetas-persistentes)
-  - [Inicia EPL Sync](#6-inicia-epl-sync)
+  - [Inicia EPL Sync](#5-inicia-epl-sync)
 - [Ejecutar sin Docker](#ejecutar-sin-docker)
   - [Descarga el JAR y la configuración](#1-descarga-el-jar-y-la-configuración)
   - [Configura la aplicación](#2-configura-la-aplicación)
@@ -148,22 +147,13 @@ Los ajustes disponibles en la interfaz pueden configurarse desde **Ajustes**: lo
 prioridad sobre los valores iniciales del entorno.<br>
 **Importante**: no todas las variables del archivo `.env` se pueden configurar desde **Ajustes**.
 
-### 5. Prepara las carpetas persistentes
-
-```sh
-mkdir -p data logs
-```
-
-Si has cambiado `DATA_DIR` o `LOGS_DIR`, crea las carpetas correspondientes.
-Deben permitir escritura al usuario y grupo indicados en `PUID` y `PGID`.
-
 Para descargar EPUB o enviarlos a Calibre desde el cliente torrent, configura
 `TORRENT_DIR` con la carpeta de descargas de qBittorrent en el host y descomenta
 su montaje en `docker-compose.yml`. Configura también la carpeta base vista por
 qBittorrent en `EPLSYNC_TORRENT_FILES_REMOTE_ROOT` o en Ajustes > Torrent
 (por ejemplo, `/downloads`). Definir `TORRENT_DIR` por sí solo no activa el montaje.
 
-### 6. Inicia EPL Sync
+### 5. Inicia EPL Sync
 
 ```sh
 docker compose up -d

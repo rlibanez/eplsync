@@ -1,4 +1,9 @@
 #!/bin/sh
 set -eu
 cd /app
+if [ "$(id -u)" = 0 ]; then
+    umask 077
+    exec setpriv --reuid="${PUID:-1000}" --regid="${PGID:-1000}" --clear-groups \
+        java --enable-native-access=ALL-UNNAMED -jar /app/app.jar --admin "$@"
+fi
 exec java --enable-native-access=ALL-UNNAMED -jar /app/app.jar --admin "$@"

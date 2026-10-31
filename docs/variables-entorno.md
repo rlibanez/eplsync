@@ -22,8 +22,8 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 | Variable | Descripción | Valor en `.env.example` |
 | --- | --- | --- |
 | `EPLSYNC_VERSION` | Versión de la imagen de EPL Sync que descargará Docker Compose. Cambiarla antes de ejecutar `docker compose pull` y `docker compose up -d`. | `1.8.1` |
-| `PUID` | UID del usuario del contenedor; se aplica al ejecutarlo. Debe poder escribir en los montajes. | `1000` |
-| `PGID` | GID del usuario del contenedor; se aplica al ejecutarlo. | `1000` |
+| `PUID` | UID del usuario de la aplicación y propietario de las carpetas `DATA_DIR` y `LOGS_DIR`, preparado al arrancar el contenedor. | `1000` |
+| `PGID` | GID del usuario de la aplicación y grupo de las carpetas preparadas al arrancar el contenedor. | `1000` |
 | `TZ` | Zona horaria del contenedor. | `Europe/Madrid` |
 | `HOST_PORT` | Puerto publicado en el host; el puerto interno sigue siendo 8088. | `8088` |
 | `DATA_DIR` | Carpeta del host para SQLite, historial y datos persistentes; excluye la clave de cifrado, suministrada mediante EPLSYNC_SECRET_KEY. | `./data` |
@@ -128,7 +128,7 @@ conserva ese significado.
 
 - Las personalizaciones del catálogo, portadas, torrent y eventos guardadas desde Ajustes tienen prioridad sobre los valores de instalación. Restaurar valores de instalación vuelve a utilizar los de la configuración.
 - La longitud mínima de contraseña es un valor inicial persistido; después se modifica desde Usuarios y seguridad.
-- Para cambiar variables de entorno, recrea el contenedor con `docker compose up -d`. Para cambiar `PUID` o `PGID`, adapta los permisos de las carpetas del host y recrea el contenedor; no necesitas reconstruir la imagen.
+- Para cambiar variables de entorno, recrea el contenedor con `docker compose up -d`. Al cambiar `PUID` o `PGID`, el arranque del contenedor ajusta el propietario de las carpetas `DATA_DIR` y `LOGS_DIR`; adapta también los permisos de los archivos existentes. No necesitas reconstruir la imagen.
 - Duraciones como `3s`, `500ms` y `24h` incluyen su unidad. Las listas de trackers y tags se separan con comas.
 - En `.env`, encierra entre comillas simples los valores que contengan un `$` literal, especialmente contraseñas. No guardes `.env` en Git.
 - Compose traduce `EPLSYNC_EVENTS_RETENTION_MAX_COUNT` y `EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS` a `EPLSYNC_EVENTS_RETENTION_MAXCOUNT` y `EPLSYNC_EVENTS_RETENTION_MAXAGEDAYS` dentro del contenedor. La tabla usa los nombres de `.env`.

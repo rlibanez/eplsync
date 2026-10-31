@@ -47,10 +47,12 @@ LABEL org.opencontainers.image.title="EPL Sync" \
 ARG PUID=1000
 ARG PGID=1000
 
-RUN mkdir -p -m 700 /app/data /app/logs \
+RUN command -v setpriv \
+    && mkdir -p -m 700 /app/data /app/logs \
     && chown -R ${PUID}:${PGID} /app
 
-ENV EPLSYNC_TORRENT_FILES_LOCAL_ROOT=/app/downloads
+ENV PUID=${PUID} PGID=${PGID} \
+    EPLSYNC_TORRENT_FILES_LOCAL_ROOT=/app/downloads
 
 WORKDIR /app
 
@@ -60,8 +62,10 @@ COPY --from=build \
 
 COPY --chmod=755 scripts/eplsync-admin /app/eplsync-admin
 
-USER ${PUID}:${PGID}
+COPY --chmod=755 scripts/entrypoint.sh /app/entrypoint.sh
+
+USER root
 
 EXPOSE 8088
 
-ENTRYPOINT ["sh", "-c", "umask 077; exec java --enable-native-access=ALL-UNNAMED -jar /app/app.jar \"$@\"", "eplsync"]
+ENTRYPOINT ["/app/entrypoint.sh"]
