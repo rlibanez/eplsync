@@ -1242,7 +1242,10 @@
       "actorId": "Administrator ID",
       "username": "Username",
       "downloadJobId": "Download job",
-      "cancelledItems": "Cancelled items"
+      "cancelledItems": "Cancelled items",
+      "omittedItems": "Omitted by user",
+      "library": "Library",
+      "uncertain": "Unconfirmed"
     },
     "unread": "{{count}} operations with updates",
     "startedAt": "Started",

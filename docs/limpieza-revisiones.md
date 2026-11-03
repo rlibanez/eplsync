@@ -46,6 +46,8 @@ Antes de cada borrado se consulta Calibre para verificar los identificadores de 
 
 ## Protección y seguimiento
 
+Al arrancar, EPL Sync recupera las solicitudes de limpieza nunca enviadas que hayan quedado pendientes o bloqueadas bajo un trabajo cancelado, y las marca como canceladas. Dejan de impedir una nueva previsualización o la eliminación del historial del trabajo. Esta recuperación no envía borrados ni descarta solicitudes ya enviadas cuyo resultado siga sin confirmar.
+
 - Los libros sin EPL ID o sin revisión utilizable no son candidatos.
 - Los libros con envíos, limpiezas incompatibles o resultados sin confirmar pendientes quedan excluidos. También se respetan las dependencias de los trabajos de Calibre.
 - Las comprobaciones se repiten antes de actuar. Cambiar la conexión o biblioteca invalida la previsualización y bloquea las operaciones pendientes.

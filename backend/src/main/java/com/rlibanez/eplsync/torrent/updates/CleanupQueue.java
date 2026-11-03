@@ -46,6 +46,7 @@ public class CleanupQueue {
     /** One-time bounded backfill: freeze dependencies from old plans before using the new queue. */
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     public void migrate() {
+        recoverCancelled();
         tx.executeWithoutResult(status -> em.createQuery("update BulkJob j set j.type=:type where exists (select p.jobId from UpdatePlan p where p.jobId=j.id)")
             .setParameter("type",com.rlibanez.eplsync.torrent.bulk.BulkJob.Type.UPDATE).executeUpdate());
         while (true) {
@@ -53,6 +54,22 @@ public class CleanupQueue {
             if (legacy.isEmpty()) return;
             hydrate(legacy);
         }
+    }
+    /** Repair unsent requests left behind by cancelled parents. REQUESTED is never discarded. */
+    public void recoverCancelled() {
+        int total=0,changed;
+        do {
+            synchronized(bulk) {
+                changed=Objects.requireNonNull(tx.execute(status -> em.createNativeQuery("""
+                    UPDATE torrent_update_cleanup SET state='CANCELLED',message='Limpieza cancelada antes de iniciar el borrado',updated_at=:now
+                    WHERE id IN (SELECT e.id FROM torrent_update_cleanup e WHERE e.state IN ('WAITING','BLOCKED') AND (
+                      EXISTS(SELECT 1 FROM torrent_bulk_jobs j WHERE j.id=e.job_id AND j.state='CANCELLED') OR
+                      EXISTS(SELECT 1 FROM revision_cleanup_jobs j WHERE 'revision:'||j.id=e.job_id AND (j.state='CANCELLED' OR j.cancel_requested=1))) LIMIT 500)
+                    """).setParameter("now",Instant.now()).executeUpdate()));
+            }
+            total+=changed;
+        } while(changed==500);
+        if(total>0) log.info("Solicitudes de limpieza sin enviar recuperadas de trabajos cancelados: canceladas={}",total);
     }
     public void hydrate(List<UpdateCleanup> selected) {
         tx.executeWithoutResult(status -> {
@@ -371,6 +388,11 @@ public class CleanupQueue {
         }
     }
     private void saveCurrent(UpdateCleanup entry,UpdateCleanup.State state,String message) {
+        if(entry.getState()!=UpdateCleanup.State.REQUESTED && (state==UpdateCleanup.State.WAITING || state==UpdateCleanup.State.BLOCKED)
+                && ((Number)em.createNativeQuery("SELECT (EXISTS(SELECT 1 FROM torrent_bulk_jobs WHERE id=:job AND state='CANCELLED') OR EXISTS(SELECT 1 FROM revision_cleanup_jobs WHERE 'revision:'||id=:job AND (state='CANCELLED' OR cancel_requested=1)))")
+                    .setParameter("job",Objects.toString(entry.getJobId(),"")).getSingleResult()).longValue()>0) {
+            state=UpdateCleanup.State.CANCELLED;message="Limpieza cancelada antes de iniciar el borrado";
+        }
         // Never forget an uncertain write until absence is confirmed.
         if (entry.getState()==UpdateCleanup.State.REQUESTED && state!=UpdateCleanup.State.REMOVED) state=UpdateCleanup.State.REQUESTED;
         if (entry.getState()==UpdateCleanup.State.REQUESTED && entry.getMessage()!=null && entry.getMessage().contains(NO_DATA))

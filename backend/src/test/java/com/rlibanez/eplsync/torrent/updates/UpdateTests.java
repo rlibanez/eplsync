@@ -746,6 +746,45 @@ class UpdateTests {
         assertThat(cleanup.findAll().toString()).doesNotContain("upstream secret");
     }
 
+    @Autowired com.rlibanez.eplsync.settings.WorkDeletion workDeletion;
+    @Test void restartRepairsUnsentCleanupOfCancelledJobsAndUnblocksDeletion() {
+        history(1,0.9,OTHER,DownloadStatus.DOWNLOADED);
+        var job=create(PreviousVersions.REMOVE_TORRENT);
+        var rows=cleanup.findByJobIdOrderByEplIdAsc(job.jobId());
+        rows.getFirst().setState(UpdateCleanup.State.BLOCKED);cleanup.save(rows.getFirst());
+        // Reproduce an installation already left with a cancelled parent and live requests.
+        jdbc.update("UPDATE torrent_bulk_jobs SET state='CANCELLED' WHERE id=?",job.jobId());
+        jdbc.update("UPDATE torrent_bulk_items SET state='CANCELLED' WHERE job_id=?",job.jobId());
+        var selection=new com.rlibanez.eplsync.settings.WorkDeletion.Selection(List.of(new com.rlibanez.eplsync.settings.WorkDeletion.Ref(job.jobId(),false)));
+        assertThat(workDeletion.apply("downloads",selection,true).items().getFirst().allowed()).isFalse();
+        clearInvocations(stubClient);
+        queue.migrate();queue.migrate();queue.runAutomatic(100);
+        assertThat(cleanup.findByJobIdOrderByEplIdAsc(job.jobId())).allSatisfy(e->assertThat(e.getState()).isEqualTo(UpdateCleanup.State.CANCELLED));
+        assertThat(workDeletion.apply("downloads",selection,true).items().getFirst().allowed()).isTrue();
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+        verify(stubClient,never()).listTorrents();
+        assertThat(downloads.count()).isEqualTo(2);
+    }
+    @Test void restartKeepsDispatchedCleanupProtectedUntilAbsenceIsConfirmed() {
+        var job=create(PreviousVersions.REMOVE_TORRENT);
+        var entry=cleanup.findByJobIdOrderByEplIdAsc(job.jobId()).getFirst();
+        entry.setState(UpdateCleanup.State.REQUESTED);cleanup.save(entry);
+        jdbc.update("UPDATE torrent_bulk_jobs SET state='CANCELLED' WHERE id=?",job.jobId());
+        jdbc.update("UPDATE torrent_bulk_items SET state='CANCELLED' WHERE job_id=?",job.jobId());
+        queue.migrate();
+        assertThat(cleanup.findById(entry.getId()).orElseThrow().getState()).isEqualTo(UpdateCleanup.State.REQUESTED);
+        var selection=new com.rlibanez.eplsync.settings.WorkDeletion.Selection(List.of(new com.rlibanez.eplsync.settings.WorkDeletion.Ref(job.jobId(),false)));
+        assertThat(workDeletion.apply("downloads",selection,true).items().getFirst().allowed()).isFalse();
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,null)));
+        queue.runAutomatic(100);
+        assertThat(cleanup.findById(entry.getId()).orElseThrow().getState()).isEqualTo(UpdateCleanup.State.REQUESTED);
+        when(stubClient.listTorrents()).thenReturn(List.of());
+        queue.runAutomatic(100);
+        assertThat(cleanup.findById(entry.getId()).orElseThrow().getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        assertThat(workDeletion.apply("downloads",selection,true).items().getFirst().allowed()).isTrue();
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+
     @Test void cancellationStopsUnrequestedCleanupButKeepsUncertainConfirmation() {
         history(1,0.9,OTHER,DownloadStatus.DOWNLOADED);
         var job=create(PreviousVersions.REMOVE_TORRENT);

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "../auth/Auth";
 import { copyDetails } from "./copyDetails";
 import { useState } from "react";
 import { Button } from "@mantine/core";
@@ -12,6 +13,12 @@ import {
 
 export function EventSummary({ operation }: { operation: EventOperation }) {
   const { t, i18n } = useTranslation();
+  const { can } = useAuth();
+  const jobHref =
+    operation.latest.action === "CALIBRE_SEND" &&
+    (can("CALIBRE_SEND") || can("CALIBRE_JOBS_MANAGE"))
+      ? `/calibre/jobs/${encodeURIComponent(operation.latest.operationId)}`
+      : null;
   const [copyState, setCopyState] = useState<"copy" | "copied" | "copyFailed">(
     "copy",
   );
@@ -62,7 +69,12 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
   return (
     <>
       <p className="muted">
-        {t("events.operation")}: {operation.latest.operationId}
+        {t("events.operation")}:{" "}
+        {jobHref ? (
+          <Link to={jobHref}>{operation.latest.operationId}</Link>
+        ) : (
+          operation.latest.operationId
+        )}
       </p>
       {!operation.startedAt && (
         <p className="muted">{t("events.missingStart")}</p>

@@ -1242,7 +1242,10 @@
       "actorId": "Administrador que realizó la operación",
       "username": "Nombre de usuario",
       "downloadJobId": "Trabajo de descarga",
-      "cancelledItems": "Elementos cancelados"
+      "cancelledItems": "Elementos cancelados",
+      "omittedItems": "Omitidos por el usuario",
+      "library": "Biblioteca",
+      "uncertain": "Sin confirmar"
     },
     "unread": "{{count}} ejecuciones con novedades",
     "startedAt": "Inicio",
