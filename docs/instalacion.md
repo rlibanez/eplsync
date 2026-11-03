@@ -254,3 +254,10 @@ Consulta las [notas de 1.8.0](releases/1.8.0.md).
 La versión 1.8.1 mantiene el esquema `1.7.0.7`. La actualización desde 1.8.0
 no aplica nuevas migraciones y conserva los datos, trabajos y ajustes.
 Consulta las [notas de 1.8.1](releases/1.8.1.md).
+
+La versión 1.8.2 incorpora cinco migraciones desde 1.8.1 para resolver u omitir
+incidencias de Calibre, conservar las actuaciones de limpieza y separar la
+Limpieza de su Actualización de origen. Conserva los datos y los trabajos.
+El esquema resultante es `1.8.3.2`; se mantienen los identificadores de migración
+existentes aunque no coincidan con la versión de la aplicación.
+Consulta las [notas de 1.8.2](releases/1.8.2.md).
