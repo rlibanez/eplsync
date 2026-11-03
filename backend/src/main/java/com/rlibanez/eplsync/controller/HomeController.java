@@ -42,6 +42,7 @@ public class HomeController {
             var counts = new LinkedHashMap<String,Long>();
             for (var row : em.createQuery("select j.state, count(j) from BulkJob j group by j.state", Object[].class).getResultList())
                 counts.put(row[0].toString(), (Long) row[1]);
+            addCleanupCounts(counts,"downloads",Permission.TORRENT_SYNC);
             blocks.put("jobs", Map.of("byStatus", counts));
         }
         if ((Permission.has(Permission.CALIBRE_READ) || Permission.has(Permission.CALIBRE_JOBS_MANAGE))
@@ -53,9 +54,18 @@ public class HomeController {
                 jdbc.query("SELECT state,count(*) AS total FROM calibre_jobs GROUP BY state", row -> {
                     counts.put(row.getString("state"),row.getLong("total"));
                 });
+                addCleanupCounts(counts,"calibre",Permission.CALIBRE_READ);
                 blocks.put("calibreJobs",Map.of("byStatus",counts));
             }
         }
         return blocks;
     }
+    private void addCleanupCounts(Map<String,Long> counts,String source,Permission permission) {
+        if(!Permission.has(permission)) return;
+        var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if(!(auth.getPrincipal() instanceof com.rlibanez.eplsync.security.Account account)) return;
+        jdbc.query("SELECT state,count(*) AS total FROM revision_cleanup_jobs WHERE source=? AND owner_id=? AND state<>'PREVIEW' GROUP BY state",
+            row->{counts.merge(row.getString("state"),row.getLong("total"),Long::sum);},source,account.id());
+    }
+
 }

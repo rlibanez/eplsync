@@ -87,4 +87,32 @@ class HomeActivityTests {
             .andExpect(jsonPath("$.items[0].lastResult").value("SUCCEEDED"))
             .andExpect(jsonPath("$.items[0].cron").doesNotExist()).andExpect(jsonPath("$.items[0].ownerId").doesNotExist());
     }
+    @Test void homeCountsCleanupJobsBySourceStateOwnerAndPermissionsWithoutCountingPreviews() throws Exception {
+        jdbc.update("INSERT INTO app_settings VALUES('calibre.connection',?)","{\"url\":\"http://calibre.test:8081\",\"username\":\"\",\"password\":\"\",\"library\":\"main\",\"browserUrl\":\"\"}");
+        for(String source:List.of("downloads","calibre")) for(String state:List.of("PREVIEW","QUEUED","RUNNING","PAUSED","COMPLETED","CANCELLED"))
+            jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,state,created_at,updated_at,expires_at) VALUES(?,?,'BOOK',?,'owner','ctx',?,1,2,3)",source+state,source,owner,state);
+        String other=accounts.create("other","","USER",owner).user().id();
+        for(String source:List.of("downloads","calibre"))
+            jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,state,created_at,updated_at,expires_at) VALUES(?,?,'BOOK',?,'other','ctx','RUNNING',1,2,3)",source+"foreign",source,other);
+        bulk("normal","RUNNING",null);
+        var account=accounts.find(owner).authenticatedNow();
+        var authorities=List.of("TORRENT_JOBS_MANAGE","CALIBRE_JOBS_MANAGE","TORRENT_SYNC","CALIBRE_READ").stream()
+            .map(org.springframework.security.core.authority.SimpleGrantedAuthority::new).toList();
+        var auth=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(account,null,authorities);
+        mvc.perform(get("/api/home/summary").with(authentication(auth)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.jobs.byStatus.RUNNING").value(2))
+            .andExpect(jsonPath("$.calibreJobs.byStatus.RUNNING").value(1))
+            .andExpect(jsonPath("$.jobs.byStatus.PAUSED").value(1))
+            .andExpect(jsonPath("$.jobs.byStatus.QUEUED").value(1))
+            .andExpect(jsonPath("$.jobs.byStatus.PREVIEW").doesNotExist());
+        mvc.perform(get("/api/home/summary").with(user("other").authorities(authorities.toArray(org.springframework.security.core.GrantedAuthority[]::new))))
+            .andExpect(jsonPath("$.jobs.byStatus.RUNNING").value(1))
+            .andExpect(jsonPath("$.calibreJobs.byStatus.RUNNING").doesNotExist());
+        var managers=List.of("TORRENT_JOBS_MANAGE","CALIBRE_JOBS_MANAGE").stream().map(org.springframework.security.core.authority.SimpleGrantedAuthority::new).toList();
+        var restricted=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(account,null,managers);
+        mvc.perform(get("/api/home/summary").with(authentication(restricted)))
+            .andExpect(jsonPath("$.jobs.byStatus.RUNNING").value(1))
+            .andExpect(jsonPath("$.calibreJobs.byStatus.RUNNING").doesNotExist());
+    }
+
 }
