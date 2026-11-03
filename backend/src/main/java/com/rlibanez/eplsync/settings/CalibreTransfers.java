@@ -499,6 +499,11 @@ public class CalibreTransfers {
                         if(System.nanoTime()>deadline || !state(id).equals("RUNNING")) break;
                         try {if(w.downloadJobId()!=null && !owner.permissions().contains(Permission.TORRENT_SYNC)) throw new UserInputException("El usuario ya no puede consultar el cliente torrent");updates.waiting(id,w);} catch(RuntimeException ex) {
                             if(cancelledItem(w.id())) continue;
+                            if(ex instanceof EpubFiles.UnsupportedContent unsupported) {
+                                log.warn("Descarga no apta para el envío automático a Calibre: trabajo={}, EPL ID={}, motivo={}",id,w.eplId(),unsupported.getMessage());
+                                finish(id,actor,w,"FAILED",null,unsupported.getMessage());
+                                continue;
+                            }
                             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
                             if(ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) {postponeDownloads(id);break;}
                             if(transientFailure(ex)) {postponeFailure(id,actor,w,ex);break;}
@@ -516,6 +521,7 @@ public class CalibreTransfers {
                     jdbc.update("UPDATE calibre_job_items SET state='BLOCKED_DOWNLOAD',message=? WHERE id=? AND state='WAITING_DOWNLOAD'",safeMessage(ex,"No se puede comprobar o leer la descarga; revisa conexión y carpetas"),item.id());
                     pause(id,actor,"Hay una descarga pendiente que requiere revisión");
                 }
+                complete(id,actor);
                 return;
             }
             if(item.state().equals("CLEANUP_PENDING")) {

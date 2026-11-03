@@ -27,6 +27,7 @@ class EpubFilesTests {
         when(client.exclusiveClient(any())).thenAnswer(call -> {
             Function<TorrentClient,Object> action=call.getArgument(0);return action.apply(adapter);
         });
+        when(adapter.listTorrents(anySet())).thenReturn(List.of(new RemoteTorrent("A".repeat(40),DownloadStatus.DOWNLOADING,null)));
         files=new EpubFiles(records,tracking,client,properties);
     }
     void remote(String name,long size,double progress,String save) {
@@ -103,5 +104,62 @@ class EpubFilesTests {
         assertThatThrownBy(() -> files.prepare(Collections.nCopies(1001,"record"))).hasMessageContaining("1000");
         assertThatThrownBy(() -> files.prepare(List.of())).hasMessageContaining("1000");
         verifyNoInteractions(client);
+    }
+
+    @Test void completedRarPdfAndOtherFormatsAreIndividualUnsupportedContentWithoutExtraction() {
+        when(adapter.listTorrents(anySet())).thenReturn(List.of(new RemoteTorrent("A".repeat(40),DownloadStatus.DOWNLOADED,null)));
+        for(String extension:List.of("rar","PDF","zip","txt")) {
+            remote("book."+extension,10,1,"/downloads");
+            assertThatThrownBy(()->files.list("record")).isInstanceOf(EpubFiles.UnsupportedContent.class)
+                    .hasMessageContaining("EPUB");
+        }
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(directory.toFile().list()).isEmpty();
+    }
+    @Test void pdfIsNamedInTheUnsupportedContentReason() {
+        when(adapter.listTorrents(anySet())).thenReturn(List.of(new RemoteTorrent("A".repeat(40),DownloadStatus.DOWNLOADED,null)));
+        remote("book.pdf",10,1,"/downloads");
+        assertThatThrownBy(()->files.list("record")).isInstanceOf(EpubFiles.UnsupportedContent.class).hasMessageContaining("PDF");
+    }
+    @Test void incompleteTorrentAndMissingMetadataKeepWaitingEvenIfTheRecordWasDownloaded() {
+        for(String name:List.of("book.epub","book.rar","book.pdf")) {
+            remote(name,10,.5,"/downloads");
+            assertThatThrownBy(()->files.list("record")).isInstanceOf(EpubFiles.PendingEpub.class);
+        }
+        when(adapter.listFiles(anyString())).thenReturn(List.of());
+        assertThatThrownBy(()->files.list("record")).isInstanceOf(EpubFiles.PendingEpub.class);
+    }
+    @Test void aCompletedTorrentWithExcludedIncompleteEpubIsNotWaitedOnForever() {
+        when(adapter.listTorrents(anySet())).thenReturn(List.of(new RemoteTorrent("A".repeat(40),DownloadStatus.DOWNLOADED,null)));
+        remote("book.epub",10,0,"/downloads");
+        assertThatThrownBy(()->files.list("record")).isInstanceOf(EpubFiles.UnsupportedContent.class).hasMessageContaining("selección");
+    }
+    @Test void completedEpubPlusOtherFormatsRemainsAvailableWithoutAnExtraTorrentQuery() throws Exception {
+        Files.writeString(directory.resolve("book.epub"),"bytes");
+        when(adapter.listFiles(anyString())).thenReturn(List.of(new TorrentClient.TorrentFile(0,"book.epub",5,1,"/downloads"),new TorrentClient.TorrentFile(1,"book.rar",10,1,"/downloads")));
+        assertThat(files.list("record")).containsExactly(new EpubFiles.Item(0,"book.epub",5));
+        verify(adapter,never()).listTorrents(anySet());
+    }
+    @Test void inaccessibleCompletedEpubAndWrongRootsRemainGlobalSafetyErrors() {
+        remote("book.epub",10,1,"/downloads");
+        assertThatThrownBy(()->files.list("record")).isInstanceOf(TorrentOperationException.class)
+                .isNotInstanceOf(EpubFiles.UnsupportedContent.class).hasMessageContaining("montaje");
+        properties.getFiles().setRemoteRoot("");
+        assertThatThrownBy(()->files.list("record")).hasMessageContaining("Configura");
+    }
+
+    @Test void torrentFoldersExposeTheirEpubsWithoutChoosingOrExtractingAnything() throws Exception {
+        Files.createDirectories(directory.resolve("collection/nested"));
+        Files.writeString(directory.resolve("collection/one.epub"),"one");
+        Files.writeString(directory.resolve("collection/nested/two.epub"),"two");
+        var first=new TorrentClient.TorrentFile(0,"collection/one.epub",3,1,"/downloads");
+        var second=new TorrentClient.TorrentFile(1,"collection/nested/two.epub",3,1,"/downloads");
+        when(adapter.listFiles(anyString())).thenReturn(List.of(first));
+        assertThat(files.list("record")).containsExactly(new EpubFiles.Item(0,"one.epub",3));
+        when(adapter.listFiles(anyString())).thenReturn(List.of(first,second));
+        assertThat(files.list("record")).containsExactly(new EpubFiles.Item(0,"one.epub",3),new EpubFiles.Item(1,"two.epub",3));
+        try(var opened=files.download("record",1)) {assertThat(opened.stream().readAllBytes()).isEqualTo("two".getBytes());}
+        verify(adapter,never()).listTorrents(anySet());
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
     }
 }

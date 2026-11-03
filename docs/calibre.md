@@ -348,10 +348,21 @@ Los metadatos se comprueban de nuevo antes de cada borrado. Si la revisión real
 del EPUB difiere de la prevista por el trabajo, el envío puede completarse, pero
 la limpieza permanece pendiente sin borrar las revisiones anteriores.
 
-Las descargas pendientes se consultan en conjunto cada 30 segundos. Los fallos,
-cancelaciones, archivos inaccesibles o esperas superiores a 30 días quedan visibles
-y pausan el trabajo. Reanudar vuelve a comprobar la descarga. Cancelar un trabajo
-de Calibre no cancela los torrents ya enviados ni deshace envíos o borrados completados.
+Las descargas pendientes se consultan en conjunto cada 30 segundos. Si el EPUB
+no está completo, el elemento continúa esperando automáticamente, incluso si el
+registro guardado todavía indica «Descargado». Un torrent completo sin EPUB
+utilizable (por ejemplo, solo RAR o PDF) deja ese elemento como **Error**, con el
+formato detectado, y el trabajo continúa con los demás libros. Las carpetas son
+compatibles: un único EPUB disponible se envía normalmente. Si hay varios EPUB,
+solo ese elemento queda en error y pide seleccionar el archivo manualmente desde
+Estado de las descargas; nunca se elige uno arbitrariamente ni se envían todos.
+No se extraen ni convierten archivos comprimidos o PDF. Los errores pueden reintentarse dentro del
+trabajo original, conservando su historial y sin repetir los envíos completados;
+el reintento vuelve a comprobar los archivos del torrent asociado.
+
+Los fallos del cliente, cancelaciones, archivos inaccesibles o esperas superiores
+a 30 días quedan visibles y pausan el trabajo. Reanudar vuelve a comprobar la
+descarga. Cancelar un trabajo de Calibre no cancela los torrents ya enviados ni deshace envíos o borrados completados.
 Al reiniciar, los trabajos activos continúan automáticamente y conservan las
 esperas. Los envíos interrumpidos se verifican sin repetirlos; si no se pueden
 confirmar, requieren revisión. Los trabajos ya pausados o cancelados no se reanudan.

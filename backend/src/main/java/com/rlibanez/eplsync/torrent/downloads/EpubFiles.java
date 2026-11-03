@@ -28,23 +28,60 @@ public class EpubFiles {
         public void close() throws IOException { stream.close(); }
     }
     private TorrentOperationException unavailable(String message) { return new TorrentOperationException(HttpStatus.CONFLICT,message); }
-    private List<TorrentFile> files(String id) {
+    /** No complete EPUB yet: callers may wait without treating this as a broken installation. */
+    public static final class PendingEpub extends TorrentOperationException {
+        public PendingEpub() {super(HttpStatus.CONFLICT,"El torrent no contiene archivos EPUB completamente descargados");}
+    }
+    /** No unambiguous EPUB can be sent automatically; only this book must fail. */
+    public static final class UnsupportedContent extends TorrentOperationException {
+        public UnsupportedContent(String message) {super(HttpStatus.CONFLICT,message);}
+    }
+    private List<TorrentFile> contents(String id) {
         return client.exclusiveClient(adapter -> {
             var row=records.findById(id).orElseThrow(() -> new TorrentOperationException(HttpStatus.NOT_FOUND,"Registro de descarga no encontrado"));
             if (!row.getClientInstanceId().equals(tracking.instanceId())) throw unavailable("El registro pertenece a otro cliente torrent");
-            return adapter.listFiles(row.getHash()).stream().filter(f -> f.name().toLowerCase(Locale.ROOT).endsWith(".epub") && f.progress()==1 && f.size()>0).toList();
+            return adapter.listFiles(row.getHash());
         });
     }
+    private static boolean completeEpub(TorrentFile file) {
+        return file.name().toLowerCase(Locale.ROOT).endsWith(".epub") && file.progress()==1 && file.size()>0;
+    }
+    private List<TorrentFile> files(String id) {return contents(id).stream().filter(EpubFiles::completeEpub).toList();}
     public List<Item> list(String id) {
-        var result=completed(id);
-        if(result.isEmpty()) throw unavailable("El torrent no contiene archivos EPUB completamente descargados");
-        return result;
+        requireRoots();
+        var content=contents(id);
+        var result=completed(content);
+        if(!result.isEmpty()) return result;
+        // Empty file lists can mean metadata has not arrived yet. Never infer a format from the torrent name.
+        if(content.isEmpty()) throw new PendingEpub();
+        var status=client.exclusiveClient(adapter -> {
+            var row=records.findById(id).orElseThrow(() -> new TorrentOperationException(HttpStatus.NOT_FOUND,"Registro de descarga no encontrado"));
+            if(!row.getClientInstanceId().equals(tracking.instanceId())) throw unavailable("El registro pertenece a otro cliente torrent");
+            return adapter.listTorrents(Set.of(row.getHash())).stream()
+                    .filter(t -> t.aliases().contains(row.getHash().toUpperCase(Locale.ROOT)))
+                    .map(RemoteTorrent::status).findFirst().orElseThrow(() -> unavailable("El torrent ya no está disponible en el cliente"));
+        });
+        if(status==DownloadStatus.ERROR || status==DownloadStatus.NOT_FOUND) throw unavailable("El torrent no está disponible o tiene un error; revisa Estado de las descargas");
+        if(status!=DownloadStatus.DOWNLOADED) throw new PendingEpub();
+        boolean epub=content.stream().anyMatch(f -> f.name().toLowerCase(Locale.ROOT).endsWith(".epub"));
+        if(epub) throw new UnsupportedContent("La descarga está completa, pero no contiene ningún EPUB completamente descargado; revisa la selección de archivos");
+        var formats=new TreeSet<String>();
+        for(var file:content) {
+            String name=file.name().toLowerCase(Locale.ROOT);
+            for(String extension:List.of("rar","pdf","zip","7z","cbr","cbz")) if(name.endsWith("."+extension)) formats.add(extension.toUpperCase(Locale.ROOT));
+        }
+        throw new UnsupportedContent(formats.isEmpty()?"La descarga está completa, pero no contiene ningún archivo EPUB":
+                "La descarga contiene archivos "+String.join(", ",formats)+", pero ningún EPUB disponible");
     }
     /** Live, accessible completed EPUBs; an incomplete torrent is an empty candidate set. */
     public List<Item> completed(String id) {
         requireRoots();
+        return completed(contents(id));
+    }
+    private List<Item> completed(List<TorrentFile> content) {
         var result=new ArrayList<Item>();
-        for(var f:files(id)) {
+        for(var f:content) {
+            if(!completeEpub(f)) continue;
             try(var opened=open(f)) { result.add(new Item(f.index(), opened.name(), opened.size(), f.size())); }
             catch(IOException ex) { throw unavailable("No se puede leer el EPUB; revisa el montaje y los permisos de la carpeta"); }
         }

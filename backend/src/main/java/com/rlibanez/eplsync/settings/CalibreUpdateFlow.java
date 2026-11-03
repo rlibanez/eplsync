@@ -207,13 +207,16 @@ public class CalibreUpdateFlow {
             recordFound=true;
             if(d.getStatus()==DownloadStatus.NOT_FOUND || d.getStatus()==DownloadStatus.ERROR) throw new UserInputException("El torrent no está disponible o tiene un error; revisa Estado de las descargas");
             if(d.getStatus()!=DownloadStatus.DOWNLOADED) continue;
-            var available=files.list(d.getId());
-            if(available.size()!=1) throw new UserInputException("La descarga no contiene un único EPUB; selecciona el archivo manualmente en Estado de las descargas");
+            List<EpubFiles.Item> available;
+            try {available=files.list(d.getId());}
+            catch(EpubFiles.PendingEpub ex) {continue;}
+            if(available.size()>1) throw new EpubFiles.UnsupportedContent("La descarga contiene varios EPUB; selecciona el archivo que corresponde al libro en Estado de las descargas");
+            if(available.isEmpty()) continue;
             var f=available.getFirst();if(f.size()>268435456) throw new UserInputException("El EPUB supera 256 MiB");
             jdbc.update("UPDATE calibre_job_items SET state='PENDING',transient_attempts=0,next_check=0,record_id=?,file_index=?,name=?,size=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",d.getId(),f.index(),f.name(),f.size(),f.size()!=f.expectedSize()?CalibreTransfers.SIZE_WARNING:null,item.id());return true;
         }
         if(!hashes.isEmpty() && !recordFound) throw new UserInputException("El registro de la descarga aceptada ya no existe; prepara un nuevo envío desde el Catálogo");
-        jdbc.update("UPDATE calibre_job_items SET next_check=? WHERE id=?",Instant.now().plus(internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE)).toEpochMilli(),item.id());return false;
+        jdbc.update("UPDATE calibre_job_items SET next_check=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",Instant.now().plus(internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE)).toEpochMilli(),"Esperando la descarga del EPUB",item.id());return false;
     }
     void cleanup(String job,CalibreSettings.Connection c,CalibreTransfers.Item item) {
         var row=jdbc.queryForMap("SELECT cleanup_policy,cleanup_ids FROM calibre_job_items WHERE id=?",item.id());

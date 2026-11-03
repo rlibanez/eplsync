@@ -398,4 +398,37 @@ class JobRetriesTests {
         create("calibre",parent,selected("calibre",parent,parent+"-0"));
         assertThat(jdbc.queryForObject("SELECT transient_attempts FROM calibre_job_items WHERE job_id=?",Integer.class,parent)).isZero();
     }
+
+    @Test void unsupportedDownloadRetriesInsideTheOriginalJobWithoutRepeatingSuccessfulItems() throws Exception {
+        var parent=calibreJob("COMPLETED","FAILED","ACCEPTED");
+        jdbc.update("UPDATE calibre_job_items SET epl_id=2 WHERE id=?",parent+"-1");
+        var download=torrentJob("COMPLETED","ACCEPTED");
+        jdbc.update("UPDATE calibre_job_items SET record_id=NULL,file_index=NULL,size=NULL,wait_until=9999999999999,download_job_id=?,message='La descarga contiene archivos RAR, pero ningún EPUB disponible' WHERE id=?",download,parent+"-0");
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('downloaded',1,1.1,?,'qbittorrent',?,'DOWNLOADED','EPLSYNC',0)","0".repeat(39)+"1",tracking.instanceId());
+        var preview=failed("calibre",parent);var attempt=create("calibre",parent,preview);
+        assertThat(attempt.jobId()).isEqualTo(parent);
+        assertThat(create("calibre",parent,preview)).isEqualTo(attempt);
+        var retryItem=transfers.items(parent,0,20,List.of("position,asc")).items().getFirst();
+        assertThat(retryItem.state()).isEqualTo("WAITING_DOWNLOAD");
+        assertThat(retries.attemptItems("calibre",parent,preview.token(),0,20).items().getFirst().beforeMessage()).contains("RAR");
+        assertThat(updateFlow.waiting(parent,retryItem)).isTrue();
+        transfers.cycle();transfers.cycle();transfers.recoverInterrupted();transfers.cycle();
+        assertThat(transfers.job(parent).accepted()).isEqualTo(2);
+        assertThat(transfers.job(parent).state()).isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE job_id=?",Long.class,parent)).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void aFailedDownloadWithARecordButNoSelectedEpubCanBeRecheckedInPlace() throws Exception {
+        var parent=calibreJob("COMPLETED","FAILED");
+        jdbc.update("UPDATE calibre_job_items SET file_index=NULL,size=NULL,wait_until=9999999999999,message='La descarga contiene archivos PDF, pero ningún EPUB disponible' WHERE job_id=?",parent);
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('record0',1,1.1,?,'qbittorrent',?,'DOWNLOADED','EPLSYNC',0)","A".repeat(40),tracking.instanceId());
+        var preview=failed("calibre",parent);
+        assertThat(create("calibre",parent,preview).jobId()).isEqualTo(parent);
+        transfers.cycle();transfers.cycle();transfers.cycle();
+        assertThat(transfers.job(parent).accepted()).isEqualTo(1);
+        assertThat(transfers.job(parent).state()).isEqualTo("COMPLETED");
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
 }

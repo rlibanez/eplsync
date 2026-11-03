@@ -134,7 +134,7 @@ public class JobRetries {
                 row.put("retry_policy",policy);row.put("retry_cleanup_ids",Objects.toString(row.get("requested_cleanup_ids"),Objects.toString(row.get("cleanup_ids"),"[]")));
                 if(state.equals("UNCERTAIN")) phase="VERIFY";
                 else if(Set.of("ACCEPTED","SKIPPED").contains(state) && bool(row.get("cleanup_cancelled"))) phase="CLEANUP";
-                else if(Set.of("FAILED","CANCELLED","BLOCKED_DOWNLOAD").contains(state)) phase=row.get("record_id")==null && row.get("download_job_id")!=null?"WAIT":"SEND";
+                else if(Set.of("FAILED","CANCELLED","BLOCKED_DOWNLOAD").contains(state)) phase=(row.get("record_id")==null?row.get("download_job_id")!=null:row.get("file_index")==null)?"WAIT":"SEND";
                 else {issues.add(new Issue(item,"El envío ya terminó correctamente o no se puede reintentar."));continue;}
                 if(changed && (phase.equals("VERIFY") || phase.equals("CLEANUP") || !policy.equals("KEEP"))) {issues.add(new Issue(item,"Restaura la conexión original antes de verificar un envío incierto o reintentar borrados."));continue;}
                 if(phase.equals("SEND") && !changed && bool(row.get("identity_complete"))) {

@@ -333,4 +333,91 @@ class CalibreUpdateFlowTests {
         assertThat(transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items().getFirst().downloadJobId()).isEqualTo("download-job");
         verify(bulk,never()).create(any(),any(),anyBoolean(),anyBoolean(),any());
     }
+
+    String downloadedSecondBook() {
+        var d=new DownloadRecord();d.setEplId(2L);d.setRevision(1.1);d.setHash("B".repeat(40));
+        d.setClient("qbittorrent");d.setClientInstanceId(tracking.instanceId());d.setStatus(DownloadStatus.DOWNLOADED);
+        d.setOrigin(DownloadRecord.Origin.EPLSYNC);d.setCreatedAt(Instant.now());return downloads.save(d).getId();
+    }
+    @Test void unsupportedFirstDownloadDoesNotPauseOtherBooksAndRestartNeverRepeatsTheUpload() {
+        var result=submit(List.of(missing(),ready("KEEP")),true,true);downloadItem("ACCEPTED");
+        String second=downloadedSecondBook();
+        when(files.list(second)).thenThrow(new EpubFiles.UnsupportedContent("La descarga contiene archivos RAR, pero ningún EPUB disponible"));
+        jdbc.update("UPDATE calibre_job_items SET state='WAITING_DOWNLOAD',file_index=NULL,size=NULL,wait_until=9999999999999 WHERE job_id=? AND epl_id=1",result.calibreJobId());
+        jdbc.update("UPDATE calibre_job_items SET position=position+100 WHERE job_id=?",result.calibreJobId());
+        jdbc.update("UPDATE calibre_job_items SET position=CASE WHEN epl_id=2 THEN 0 ELSE 1 END WHERE job_id=?",result.calibreJobId());
+        transfers.cycle();
+        var items=transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items();
+        assertThat(items).extracting(i->i.state()).containsExactly("FAILED","PENDING");
+        assertThat(items.getFirst().message()).contains("RAR");
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("RUNNING");
+        transfers.recoverInterrupted();transfers.cycle();transfers.cycle();
+        var job=transfers.job(result.calibreJobId());
+        assertThat(job.state()).isEqualTo("COMPLETED");assertThat(job.failed()).isEqualTo(1);assertThat(job.accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        verify(bulk,never()).control(anyString(),anyString());
+    }
+    @Test void aJobWithOnlyUnsupportedPdfCompletesWithAnErrorRatherThanPausing() {
+        var result=submit(List.of(missing()),true,true);downloadItem("ACCEPTED");
+        String second=downloadedSecondBook();
+        when(files.list(second)).thenThrow(new EpubFiles.UnsupportedContent("La descarga contiene archivos PDF, pero ningún EPUB disponible"));
+        transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("COMPLETED");
+        assertThat(transfers.job(result.calibreJobId()).failed()).isEqualTo(1);
+        assertThat(transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items().getFirst().message()).contains("PDF");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void aStaleDownloadedRecordWaitsUntilTheLiveEpubIsComplete() throws Exception {
+        var result=submit(List.of(missing()),true,true);downloadItem("ACCEPTED");
+        String second=downloadedSecondBook();
+        when(files.list(second)).thenThrow(new EpubFiles.PendingEpub());
+        transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("RUNNING");
+        assertThat(transfers.job(result.calibreJobId()).failed()).isZero();
+        var item=transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items().getFirst();
+        assertThat(item.state()).isEqualTo("WAITING_DOWNLOAD");assertThat(item.message()).isEqualTo("Esperando la descarga del EPUB");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        byte[] content=CalibreTransfersTests.epub(2,"1.1");
+        doReturn(List.of(new EpubFiles.Item(0,"second.epub",content.length))).when(files).list(second);
+        when(files.download(second,0)).thenAnswer(call->new EpubFiles.Opened("second.epub",content.length,new java.io.ByteArrayInputStream(content)));
+        when(client.book(any(),eq(9L))).thenReturn(book(9,2,"1.1"));
+        jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE job_id=?",result.calibreJobId());
+        transfers.recoverInterrupted();transfers.cycle();transfers.cycle();transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void anUnreadableEpubStillPausesBeforeProcessingOtherWaitingBooks() {
+        var result=submit(List.of(missing(),ready("KEEP")),true,true);downloadItem("ACCEPTED");
+        String second=downloadedSecondBook();
+        when(files.list(second)).thenThrow(new com.rlibanez.eplsync.exception.TorrentOperationException(org.springframework.http.HttpStatus.CONFLICT,"No se puede leer el EPUB; revisa el montaje"));
+        jdbc.update("UPDATE calibre_job_items SET state='WAITING_DOWNLOAD',file_index=NULL,size=NULL,wait_until=9999999999999 WHERE job_id=? AND epl_id=1",result.calibreJobId());
+        jdbc.update("UPDATE calibre_job_items SET position=position+100 WHERE job_id=?",result.calibreJobId());
+        jdbc.update("UPDATE calibre_job_items SET position=CASE WHEN epl_id=2 THEN 0 ELSE 1 END WHERE job_id=?",result.calibreJobId());
+        transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items()).extracting(i->i.state()).containsExactly("BLOCKED_DOWNLOAD","WAITING_DOWNLOAD");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+
+    @Test void multipleEpubsInOneTorrentFailOnlyThatBookAndDoNotUploadAnArbitraryFile() {
+        var result=submit(List.of(missing(),ready("KEEP")),true,true);downloadItem("ACCEPTED");
+        String second=downloadedSecondBook();
+        when(files.list(second)).thenReturn(List.of(new EpubFiles.Item(0,"one.epub",10),new EpubFiles.Item(1,"two.epub",20)));
+        jdbc.update("UPDATE calibre_job_items SET state='WAITING_DOWNLOAD',file_index=NULL,size=NULL,wait_until=9999999999999 WHERE job_id=? AND epl_id=1",result.calibreJobId());
+        jdbc.update("UPDATE calibre_job_items SET position=position+100 WHERE job_id=?",result.calibreJobId());
+        jdbc.update("UPDATE calibre_job_items SET position=CASE WHEN epl_id=2 THEN 0 ELSE 1 END WHERE job_id=?",result.calibreJobId());
+        transfers.cycle();
+        var items=transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items();
+        assertThat(items).extracting(i->i.state()).containsExactly("FAILED","PENDING");
+        assertThat(items.getFirst().message()).contains("varios EPUB","selecciona");
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("RUNNING");
+        verify(files,never()).download(eq(second),anyInt());
+        transfers.cycle();transfers.recoverInterrupted();transfers.cycle();
+        assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("COMPLETED");
+        assertThat(transfers.job(result.calibreJobId()).accepted()).isEqualTo(1);
+        assertThat(transfers.job(result.calibreJobId()).failed()).isEqualTo(1);
+        verify(client,times(1)).uploadEpub(any(),any(),eq("book.epub"),anyString());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
 }
