@@ -21,8 +21,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/catalog/books/{eplId}/activity")
 @PreAuthorize("hasAuthority('CATALOG_READ')")
 public class BookActivityController {
-    public enum Operation { DOWNLOAD, DOWNLOAD_UPDATE, DOWNLOAD_COMPLETED, CALIBRE_SEND, DOWNLOAD_CLEANUP, CALIBRE_CLEANUP, DOWNLOAD_DELETE, CALIBRE_DELETE, DOWNLOAD_RETRY, CALIBRE_RETRY }
-    public enum Result { PENDING, RUNNING, PAUSED, SUCCEEDED, FAILED, BLOCKED, UNCERTAIN, SKIPPED, CANCELLED }
+    public enum Operation { DOWNLOAD, DOWNLOAD_UPDATE, DOWNLOAD_COMPLETED, CALIBRE_SEND, DOWNLOAD_CLEANUP, CALIBRE_CLEANUP, DOWNLOAD_DELETE, CALIBRE_DELETE, DOWNLOAD_RETRY, CALIBRE_RETRY, CALIBRE_OMIT }
+    public enum Result { PENDING, RUNNING, PAUSED, SUCCEEDED, FAILED, BLOCKED, UNCERTAIN, SKIPPED, CANCELLED, OMITTED }
     public record Entry(String id,Instant createdAt,String operation,String revision,String result,String message,String href) {}
     private final JdbcTemplate jdbc;
     public BookActivityController(JdbcTemplate jdbc) {this.jdbc=jdbc;}
@@ -34,6 +34,7 @@ public class BookActivityController {
           WHEN raw_state IN ('UNCERTAIN','REQUESTED','VERIFYING') THEN 'UNCERTAIN'
           WHEN raw_state IN ('BLOCKED','BLOCKED_DOWNLOAD') THEN 'BLOCKED'
           WHEN raw_state='CANCELLED' THEN 'CANCELLED'
+          WHEN raw_state='OMITTED' THEN 'OMITTED'
           WHEN raw_state IN ('SKIPPED','ALREADY_EXISTS','KEPT','EXCLUDED') THEN 'SKIPPED'
           WHEN raw_state IN ('ACCEPTED','SUCCEEDED','REMOVED','COMPLETED') THEN 'SUCCEEDED'
           WHEN job_state='CANCELLED' THEN 'CANCELLED'
@@ -104,7 +105,7 @@ public class BookActivityController {
         return new PageResponse<>(entries,meta(page,size,total));
     }
     private static void retry(List<String> queries,List<Object> args,long book,String kind,String jobs,String items) {
-        queries.add("SELECT 'retry:'||a.id||':'||r.item_id,a.created_at,?,coalesce(json_extract(r.before_item,'$.revision'),CAST(i.revision AS TEXT)),coalesce(json_extract(r.after_item,'$.state'),i.state,json_extract(r.before_item,'$.state')),j.state,CASE WHEN r.after_item IS NOT NULL THEN json_extract(r.after_item,'$.message') ELSE i.message END,?,a.job_id,0 FROM job_retry_attempts a JOIN job_retry_attempt_items r ON r.attempt_id=a.id JOIN "+jobs+" j ON j.id=a.job_id LEFT JOIN "+items+" i ON i.id=r.item_id AND i.job_id=a.job_id WHERE a.kind=? AND coalesce(json_extract(r.before_item,'$.epl_id'),i.epl_id)=?");
+        queries.add("SELECT 'retry:'||a.id||':'||r.item_id,a.created_at,CASE WHEN a.kind='calibre' AND coalesce(json_extract(r.after_item,'$.state'),i.state)='OMITTED' THEN 'CALIBRE_OMIT' ELSE ? END,coalesce(json_extract(r.before_item,'$.revision'),CAST(i.revision AS TEXT)),coalesce(json_extract(r.after_item,'$.state'),i.state,json_extract(r.before_item,'$.state')),j.state,CASE WHEN r.after_item IS NOT NULL THEN json_extract(r.after_item,'$.message') ELSE i.message END,?,a.job_id,0 FROM job_retry_attempts a JOIN job_retry_attempt_items r ON r.attempt_id=a.id JOIN "+jobs+" j ON j.id=a.job_id LEFT JOIN "+items+" i ON i.id=r.item_id AND i.job_id=a.job_id WHERE a.kind=? AND coalesce(json_extract(r.before_item,'$.epl_id'),i.epl_id)=?");
         args.addAll(List.of(kind.equals("downloads")?"DOWNLOAD_RETRY":"CALIBRE_RETRY",kind,kind,book));
     }
     private static <T extends Enum<T>> List<String> values(String input,Class<T> type) {

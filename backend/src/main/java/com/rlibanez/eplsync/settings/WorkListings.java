@@ -58,7 +58,7 @@ public class WorkListings {
             """:"""
             SELECT j.id,'normal' kind,cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) createdAt,
             'SEND' type,j.state state,j.owner_username username,j.library,coalesce(c.total,0) selectedBooks,coalesce(c.total,0) total,
-            coalesce(c.accepted,0)+coalesce(c.skipped,0)+coalesce(c.failed,0)+coalesce(c.cancelled,0) processed,
+            coalesce(c.accepted,0)+coalesce(c.skipped,0)+coalesce(c.failed,0)+coalesce(c.cancelled,0)+coalesce(c.omitted,0) processed,
             coalesce(c.accepted,0) accepted,coalesce(c.failed,0) failed
             FROM calibre_jobs j LEFT JOIN (
             """+CalibreTransfers.ITEM_COUNTS+"""

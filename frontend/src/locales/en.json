@@ -17,7 +17,8 @@
       "DOWNLOAD_DELETE": "Delete downloads",
       "CALIBRE_DELETE": "Delete from Calibre",
       "DOWNLOAD_RETRY": "Download retry",
-      "CALIBRE_RETRY": "Calibre retry"
+      "CALIBRE_RETRY": "Calibre retry",
+      "CALIBRE_OMIT": "Omit Calibre transfer"
     },
     "results": {
       "PENDING": "Pending",
@@ -28,7 +29,8 @@
       "BLOCKED": "Blocked",
       "UNCERTAIN": "Unconfirmed",
       "SKIPPED": "Skipped",
-      "CANCELLED": "Cancelled"
+      "CANCELLED": "Cancelled",
+      "OMITTED": "Omitted by user"
     }
   },
   "calibreIdentifiers": {
@@ -1775,7 +1777,8 @@
       "UNCERTAIN": "Unconfirmed",
       "WAITING_DOWNLOAD": "Waiting for download",
       "BLOCKED_DOWNLOAD": "Download needs attention",
-      "CLEANUP_PENDING": "Cleanup pending"
+      "CLEANUP_PENDING": "Cleanup pending",
+      "OMITTED": "Omitted by user"
     },
     "cancel": "Cancel",
     "detail": "Details",
@@ -2165,5 +2168,26 @@
     "expiresAt": "API key expiration: {{date}}.",
     "usageObserved": "Last response: {{date}}",
     "usageReset": "Resets: {{date}}"
+  },
+  "calibreItemResolution": {
+    "retry": "Select EPUB and retry",
+    "omit": "Omit",
+    "epub": "EPUB file",
+    "reason": "Reason for omission",
+    "note": "Comment (optional)",
+    "retryHelp": "This item will be retried in the original job. EPUB identifiers will be checked before sending.",
+    "omitHelp": "This item will not be sent. No torrents, files or Calibre revisions will be deleted. The omission will be recorded in the history.",
+    "confirmRetry": "I have checked that the EPUB matches this book.",
+    "confirmOmit": "I confirm this item should be omitted.",
+    "applyRetry": "Save and retry",
+    "omitted": "Omitted by user",
+    "reasons": {
+      "NOT_NEEDED": "I do not need to send it",
+      "MANUAL": "I will handle it manually",
+      "UNSUITABLE": "Unsuitable content",
+      "OTHER": "Other"
+    },
+    "completed": "Completed with omissions",
+    "title": "Resolve"
   }
 }

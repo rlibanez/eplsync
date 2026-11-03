@@ -40,6 +40,13 @@ public class CalibreTransferController {
 
     @GetMapping("/{id}") public CalibreTransfers.Job job(@PathVariable String id) {return transfers.job(id);}
     @GetMapping("/{id}/items") public CalibreTransfers.Page<CalibreTransfers.Item> items(@PathVariable String id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,@RequestParam(defaultValue="") String state,@RequestParam(defaultValue="") String detail,@RequestParam(defaultValue="eq") String statusOperator,@RequestParam org.springframework.util.MultiValueMap<String,String> params) {return transfers.items(id,page,size,state,detail,params.getOrDefault("sort",List.of("position,asc")),statusOperator,params);}
+    @org.springframework.beans.factory.annotation.Autowired private CalibreItemResolution itemResolution;
+    @GetMapping("/{id}/items/{item}/resolution")
+    @PreAuthorize("hasAuthority('CALIBRE_JOBS_MANAGE') and hasAuthority('CALIBRE_SEND') and hasAuthority('DOWNLOADS_FILES_READ')")
+    public CalibreItemResolution.Preview previewItem(@PathVariable String id,@PathVariable String item) {return itemResolution.preview(id,item);}
+    @PostMapping("/{id}/items/{item}/resolution")
+    @PreAuthorize("hasAuthority('CALIBRE_JOBS_MANAGE') and hasAuthority('CALIBRE_SEND') and hasAuthority('DOWNLOADS_FILES_READ')")
+    public CalibreTransfers.Job resolveItem(@PathVariable String id,@PathVariable String item,@RequestBody CalibreItemResolution.Input input) {return itemResolution.apply(id,item,input);}
     @PostMapping("/{id}/resolution")
     @PreAuthorize("hasAuthority('CALIBRE_JOBS_MANAGE') and hasAuthority('CALIBRE_SEND') and hasAuthority('DOWNLOADS_FILES_READ')")
     public CalibreTransfers.Job resolve(@PathVariable String id,@RequestBody CalibreTransfers.Resolution input) {return transfers.resolve(id,input);}

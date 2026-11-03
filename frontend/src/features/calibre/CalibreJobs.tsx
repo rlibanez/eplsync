@@ -10,6 +10,7 @@ import { BookLink } from "../catalog/BookLink";
 import { useWorkDeletion } from "../jobs/useWorkDeletion";
 import { stateOperatorProps } from "../../components/StateOperator";
 import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
+import { ResolveCalibreItem } from "./ResolveCalibreItem";
 import { ResolveCalibreUpload } from "./ResolveCalibreUpload";
 import { useJobRetry } from "../jobs/useJobRetry";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
@@ -54,6 +55,7 @@ type Job = {
   pending: number;
   accepted: number;
   skipped: number;
+  omitted?: number;
   failed: number;
   uncertain: number;
   cancelled?: number;
@@ -442,7 +444,12 @@ export function CalibreJobs() {
                               }}
                             >
                               <span className="badge">
-                                {t(`calibreSend.states.${job.state}`)}
+                                {t(
+                                  job.state === "COMPLETED" &&
+                                    (job.omitted ?? 0) > 0
+                                    ? "calibreItemResolution.completed"
+                                    : `calibreSend.states.${job.state}`,
+                                )}
                               </span>
                             </button>
                           </td>,
@@ -624,7 +631,11 @@ export function CalibreJobDetail() {
           <summary>
             <span>{t("calibreSend.report")}</span>
             <strong className="report-result">
-              {t(`calibreSend.states.${value.state}`)}
+              {t(
+                value.state === "COMPLETED" && (value.omitted ?? 0) > 0
+                  ? "calibreItemResolution.completed"
+                  : `calibreSend.states.${value.state}`,
+              )}
             </strong>
           </summary>
           <div className="report-collapse-body">
@@ -636,6 +647,7 @@ export function CalibreJobDetail() {
                       (value.accepted +
                         value.skipped +
                         value.failed +
+                        (value.omitted ?? 0) +
                         (value.cancelled ?? 0))) /
                     value.total
                   : 0
@@ -657,10 +669,14 @@ export function CalibreJobDetail() {
                   values: [
                     [
                       "calibreSend.progress",
-                      `${number(value.accepted + value.skipped + value.failed + (value.cancelled ?? 0))}/${number(value.total)}`,
+                      `${number(value.accepted + value.skipped + value.failed + (value.omitted ?? 0) + (value.cancelled ?? 0))}/${number(value.total)}`,
                     ],
                     ["calibreSend.accepted", number(value.accepted)],
                     ["calibreSend.skipped", number(value.skipped)],
+                    [
+                      "calibreItemResolution.omitted",
+                      number(value.omitted ?? 0),
+                    ],
                     ["calibreSend.failedCount", number(value.failed)],
                     ["calibreSend.uncertain", number(value.uncertain)],
                     [
@@ -714,6 +730,7 @@ export function CalibreJobDetail() {
             "SENDING",
             "ACCEPTED",
             "SKIPPED",
+            "OMITTED",
             "FAILED",
             "UNCERTAIN",
             "CLEANUP_PENDING",
@@ -903,6 +920,20 @@ export function CalibreJobDetail() {
                               ) : (
                                 "—"
                               )}
+                              {["FAILED", "BLOCKED_DOWNLOAD"].includes(
+                                item.state,
+                              ) &&
+                                item.calibreId == null &&
+                                value.state !== "CANCELLED" &&
+                                can("CALIBRE_JOBS_MANAGE") &&
+                                can("CALIBRE_SEND") &&
+                                can("DOWNLOADS_FILES_READ") && (
+                                  <ResolveCalibreItem
+                                    job={id!}
+                                    item={item.id}
+                                    name={item.name}
+                                  />
+                                )}
                               {item.state === "UNCERTAIN" &&
                                 ["PAUSED", "CANCELLED"].includes(value.state) &&
                                 can("CALIBRE_JOBS_MANAGE") &&

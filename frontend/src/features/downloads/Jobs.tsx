@@ -56,12 +56,16 @@ function CalibreProgress({ counts }: { counts?: CalibreCounts | null }) {
     done: number(counts.sent + counts.existing),
     total: number(counts.total),
   });
-  const breakdown = t(
-    "jobCalibre.breakdown",
-    Object.fromEntries(
-      Object.entries(counts).map(([key, value]) => [key, number(value)]),
-    ),
-  );
+  const breakdown =
+    t(
+      "jobCalibre.breakdown",
+      Object.fromEntries(
+        Object.entries(counts).map(([key, value]) => [key, number(value)]),
+      ),
+    ) +
+    ((counts.omitted ?? 0) > 0
+      ? ` · ${t("calibreItemResolution.omitted")}: ${number(counts.omitted ?? 0)}`
+      : "");
   return (
     <Tooltip
       label={breakdown}

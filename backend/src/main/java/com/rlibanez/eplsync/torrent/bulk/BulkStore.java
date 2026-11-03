@@ -74,7 +74,9 @@ public class BulkStore {
             String interval, Instant createdAt, Instant updatedAt, Instant retryAt, String message,
             MultipleHashes multipleHashes, long selectedTorrents, long processedTorrents,
             long selectedItems, long processedItems, BulkJob.Type type, com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions, CleanupSummary cleanup, com.rlibanez.eplsync.torrent.updates.CleanupTiming cleanupTiming, String username, boolean deleteHistory, DownloadSummary download, CalibreSummary calibre) {}
-    public record CalibreCounts(long total,long sent,long existing,long pending,long failed,long uncertain,long cancelled) {}
+    public record CalibreCounts(long total,long sent,long existing,long pending,long failed,long uncertain,long cancelled,long omitted) {
+        public CalibreCounts(long total,long sent,long existing,long pending,long failed,long uncertain,long cancelled) {this(total,sent,existing,pending,failed,uncertain,cancelled,0);}
+    }
     public record RelatedCalibreJob(String id,String library,String state,CalibreCounts counts) {}
     public record CalibreSummary(CalibreCounts counts,List<RelatedCalibreJob> jobs) {}
     public record DownloadSummary(long selected,long downloaded,long pending,long attention,long ignored) {}

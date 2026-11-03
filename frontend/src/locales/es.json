@@ -17,7 +17,8 @@
       "DOWNLOAD_DELETE": "Borrado en Descargas",
       "CALIBRE_DELETE": "Borrado en Calibre",
       "DOWNLOAD_RETRY": "Reintento en Descargas",
-      "CALIBRE_RETRY": "Reintento en Calibre"
+      "CALIBRE_RETRY": "Reintento en Calibre",
+      "CALIBRE_OMIT": "Omitir envío a Calibre"
     },
     "results": {
       "PENDING": "Pendiente",
@@ -28,7 +29,8 @@
       "BLOCKED": "Bloqueado",
       "UNCERTAIN": "Sin confirmar",
       "SKIPPED": "Omitido",
-      "CANCELLED": "Cancelado"
+      "CANCELLED": "Cancelado",
+      "OMITTED": "Omitido por el usuario"
     }
   },
   "calibreIdentifiers": {
@@ -1775,7 +1777,8 @@
       "UNCERTAIN": "Sin confirmar",
       "WAITING_DOWNLOAD": "Esperando descarga",
       "BLOCKED_DOWNLOAD": "Descarga pendiente de revisión",
-      "CLEANUP_PENDING": "Limpieza pendiente"
+      "CLEANUP_PENDING": "Limpieza pendiente",
+      "OMITTED": "Omitido por el usuario"
     },
     "cancel": "Cancelar",
     "detail": "Detalle",
@@ -2165,5 +2168,26 @@
     "expiresAt": "Caducidad de la API key: {{date}}.",
     "usageObserved": "Última respuesta: {{date}}",
     "usageReset": "Restablecimiento: {{date}}"
+  },
+  "calibreItemResolution": {
+    "retry": "Seleccionar EPUB y reintentar",
+    "omit": "Omitir",
+    "epub": "Archivo EPUB",
+    "reason": "Motivo de la omisión",
+    "note": "Comentario (opcional)",
+    "retryHelp": "Se reintentará este elemento dentro del trabajo original. Se comprobarán los identificadores del EPUB antes de enviarlo.",
+    "omitHelp": "No se enviará este elemento ni se borrarán torrents, archivos o revisiones de Calibre. La omisión quedará registrada en el historial.",
+    "confirmRetry": "He comprobado que el EPUB corresponde a este libro.",
+    "confirmOmit": "Confirmo la omisión de este elemento.",
+    "applyRetry": "Guardar y reintentar",
+    "omitted": "Omitidos por el usuario",
+    "reasons": {
+      "NOT_NEEDED": "No necesito enviarlo",
+      "MANUAL": "Lo gestionaré manualmente",
+      "UNSUITABLE": "Contenido no adecuado",
+      "OTHER": "Otro"
+    },
+    "completed": "Terminado con omisiones",
+    "title": "Resolver"
   }
 }

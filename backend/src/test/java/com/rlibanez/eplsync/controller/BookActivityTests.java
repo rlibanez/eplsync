@@ -163,4 +163,17 @@ class BookActivityTests {
         mvc.perform(get("/api/catalog/books/2/activity").with(permissions("TORRENT_JOBS_MANAGE","CALIBRE_SEND")))
             .andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty());
     }
+    @Test void omissionIsOneExplicitDecisionAndRetainsTheOriginalFailure() throws Exception {
+        calibre("omitted",1,"OMITTED");
+        jdbc.update("INSERT INTO job_retry_attempts(id,kind,job_id,username,created_at,finished_at,result,before_job) VALUES('decision','calibre','omitted','owner',2000,3000,'COMPLETED','{}')");
+        jdbc.update("INSERT INTO job_retry_attempt_items(attempt_id,item_id,position,phase,before_item,after_item) VALUES('decision','omitted-item',0,'WAIT',?,?)",
+            "{\"epl_id\":1,\"state\":\"FAILED\",\"message\":\"No EPUB\",\"revision\":1}",
+            "{\"state\":\"OMITTED\",\"message\":\"User decision\"}");
+        mvc.perform(get("/api/catalog/books/1/activity").with(permissions("CALIBRE_JOBS_MANAGE")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(get("/api/catalog/books/1/activity").param("operation","CALIBRE_OMIT").with(permissions("CALIBRE_JOBS_MANAGE")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1))
+            .andExpect(jsonPath("$.items[0].result").value("OMITTED"));
+    }
+
 }

@@ -35,7 +35,7 @@ public class CalibreTransfers {
         public Request(String library,List<FileChoice> files,List<String> deferredRecords) {this(library,files,deferredRecords,null);}
     }
     public record Job(String id,String createdAt,String updatedAt,String username,String library,String state,String message,
-        long total,long pending,long accepted,long skipped,long failed,long uncertain,long cancelled) {}
+        long total,long pending,long accepted,long skipped,long failed,long uncertain,long cancelled,long omitted) {}
     public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position,String author,String cancelledByDownloadJobId) {
         public Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position,String author) {this(id,recordId,index,name,size,eplId,revision,state,calibreId,message,identityComplete,downloadJobId,coverUrl,coverAvailable,position,author,null);}
         public Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position) {this(id,recordId,index,name,size,eplId,revision,state,calibreId,message,identityComplete,downloadJobId,coverUrl,coverAvailable,position,null);}
@@ -245,18 +245,18 @@ public class CalibreTransfers {
         SELECT job_id,count(*) total,
         sum(state IN ('PENDING','SENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','CLEANUP_PENDING')) pending,
         sum(state='ACCEPTED') accepted,sum(state='SKIPPED') skipped,sum(state='FAILED') failed,
-        sum(state='UNCERTAIN') uncertain,sum(state='CANCELLED') cancelled
+        sum(state='UNCERTAIN') uncertain,sum(state='CANCELLED') cancelled,sum(state='OMITTED') omitted
         FROM calibre_job_items GROUP BY job_id
         """;
     private static final String SUMMARY="""
         SELECT j.id,j.created_at,j.updated_at,j.owner_username,j.library,j.state,j.message,
         coalesce(c.total,0) total,coalesce(c.pending,0) pending,coalesce(c.accepted,0) accepted,
         coalesce(c.skipped,0) skipped,coalesce(c.failed,0) failed,coalesce(c.uncertain,0) uncertain,
-        coalesce(c.cancelled,0) cancelled
+        coalesce(c.cancelled,0) cancelled,coalesce(c.omitted,0) omitted
         FROM calibre_jobs j LEFT JOIN (
         """+ITEM_COUNTS+") c ON c.job_id=j.id";
     private static final String SINGLE_SUMMARY=SUMMARY.replace("FROM calibre_job_items GROUP BY job_id","FROM calibre_job_items WHERE job_id=? GROUP BY job_id");
-    private static Job mapJob(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Job(r.getString("id"),r.getString("created_at"),r.getString("updated_at"),r.getString("owner_username"),r.getString("library"),r.getString("state"),r.getString("message"),r.getLong("total"),r.getLong("pending"),r.getLong("accepted"),r.getLong("skipped"),r.getLong("failed"),r.getLong("uncertain"),r.getLong("cancelled")); }
+    private static Job mapJob(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Job(r.getString("id"),r.getString("created_at"),r.getString("updated_at"),r.getString("owner_username"),r.getString("library"),r.getString("state"),r.getString("message"),r.getLong("total"),r.getLong("pending"),r.getLong("accepted"),r.getLong("skipped"),r.getLong("failed"),r.getLong("uncertain"),r.getLong("cancelled"),r.getLong("omitted")); }
     private static Item mapItem(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Item(r.getString("id"),r.getString("record_id"),r.getInt("file_index"),r.getString("name"),r.getLong("size"),r.getLong("epl_id"),r.getString("revision"),r.getString("state"),r.getObject("calibre_id")==null ? null : r.getLong("calibre_id"),r.getString("message"),r.getBoolean("identity_complete"),r.getString("download_job_id"),null,null,r.getLong("position"),null,r.getString("cancelled_by_download_job_id")); }
     public Job job(String id) {
         var result=jdbc.query(SINGLE_SUMMARY+" WHERE j.id=?",CalibreTransfers::mapJob,id,id);
@@ -300,7 +300,7 @@ public class CalibreTransfers {
         paging(page,size);job(id);
         if(detail==null || detail.length()>4096) throw new UserInputException("Filtro de detalle inválido");
         var where=new StringBuilder(" WHERE job_id=?");var args=new ArrayList<Object>();args.add(id);
-        JobItemFilters.states(where,args,state,statusOperator,Set.of("PENDING","SENDING","ACCEPTED","SKIPPED","FAILED","UNCERTAIN","CANCELLED","WAITING_DOWNLOAD","BLOCKED_DOWNLOAD","CLEANUP_PENDING"));
+        JobItemFilters.states(where,args,state,statusOperator,Set.of("PENDING","SENDING","ACCEPTED","SKIPPED","FAILED","UNCERTAIN","CANCELLED","OMITTED","WAITING_DOWNLOAD","BLOCKED_DOWNLOAD","CLEANUP_PENDING"));
         JobItemFilters.append(where,args,filters,"file","name");
         String author="(SELECT b.author FROM catalog_books b WHERE b.epl_id=calibre_job_items.epl_id)";
         if(filters.containsKey("author") || sort.stream().anyMatch(value->value.split(",")[0].equals("author"))) Permission.require(Permission.CATALOG_READ);
@@ -333,8 +333,8 @@ public class CalibreTransfers {
             if(command.equals("resume") && jdbc.queryForObject("SELECT count(*) FROM job_retry_items r JOIN calibre_job_items i ON i.id=r.source_item_id WHERE r.kind='calibre' AND r.parent_id=? AND i.state='UNCERTAIN'",Long.class,id)>0)
                 throw new UserInputException("Hay envíos inciertos transferidos a un reintento; continúa desde ese trabajo");
             if(command.equals("cancel")) {
-                jdbc.update("UPDATE calibre_job_items SET requested_cleanup_policy=coalesce(requested_cleanup_policy,cleanup_policy),requested_cleanup_ids=coalesce(requested_cleanup_ids,cleanup_ids),cleanup_cancelled=CASE WHEN state='CLEANUP_PENDING' THEN true ELSE cleanup_cancelled END WHERE job_id=? AND state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED')",id);
-                jdbc.update("UPDATE calibre_job_items SET cleanup_policy='KEEP',cleanup_ids='[]' WHERE job_id=? AND state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED')",id);
+                jdbc.update("UPDATE calibre_job_items SET requested_cleanup_policy=coalesce(requested_cleanup_policy,cleanup_policy),requested_cleanup_ids=coalesce(requested_cleanup_ids,cleanup_ids),cleanup_cancelled=CASE WHEN state='CLEANUP_PENDING' THEN true ELSE cleanup_cancelled END WHERE job_id=? AND state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED','OMITTED')",id);
+                jdbc.update("UPDATE calibre_job_items SET cleanup_policy='KEEP',cleanup_ids='[]' WHERE job_id=? AND state NOT IN ('ACCEPTED','SKIPPED','FAILED','CANCELLED','OMITTED')",id);
                 jdbc.update("UPDATE calibre_job_items SET state=completion_state,message=coalesce(message || '. ','') || 'Limpieza de revisiones anteriores cancelada' WHERE job_id=? AND state='CLEANUP_PENDING'",id);
                 jdbc.update("UPDATE calibre_job_items SET state='CANCELLED' WHERE job_id=? AND state IN ('PENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD')",id);
             }
@@ -565,7 +565,7 @@ public class CalibreTransfers {
             if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM calibre_job_items WHERE job_id=? AND state IN ('PENDING','SENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','CLEANUP_PENDING','UNCERTAIN'))",Boolean.class,id))) return;
             var j=job(id);
             if(jdbc.update("UPDATE calibre_jobs SET state='COMPLETED',updated_at=? WHERE id=? AND state='RUNNING'",Instant.now().toString(),id)>0)
-                event(actor,id,"CALIBRE_SEND",j.failed()>0 || j.cancelled()>0?EventJournal.Outcome.PARTIAL:EventJournal.Outcome.SUCCEEDED,Map.of("library",j.library(),"total",j.total(),"accepted",j.accepted(),"skipped",j.skipped(),"failed",j.failed(),"uncertain",j.uncertain(),"cancelledItems",j.cancelled()));
+                event(actor,id,"CALIBRE_SEND",j.failed()>0 || j.cancelled()>0 || j.omitted()>0?EventJournal.Outcome.PARTIAL:EventJournal.Outcome.SUCCEEDED,Map.of("library",j.library(),"total",j.total(),"accepted",j.accepted(),"skipped",j.skipped(),"failed",j.failed(),"uncertain",j.uncertain(),"cancelledItems",j.cancelled(),"omittedItems",j.omitted()));
         });
     }
     private static boolean transientFailure(Throwable failure) {

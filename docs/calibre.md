@@ -467,3 +467,26 @@ El asistente permite **Cerrar** o usar Escape durante la comprobación o la apli
 La prueba opcional `CalibreIdentifiersRealTests` utiliza `calibredb` y `calibre-server` reales con una biblioteca temporal (`EPLSYNC_TEST_REAL_CALIBRE=1`). Importa un EPUB fuera de EPL Sync, comprueba el cambio de nombre y la transformación del servidor de contenido, verifica que la exportación original coincide byte por byte y ejecuta la previsualización, asignación y reintento sin simular la descarga de Calibre.
 
 **Limpiar biblioteca** permite combinar duplicados y revisiones antiguas; ambas opciones están activadas inicialmente. No hay un límite de 1000 entradas en esta limpieza: la preparación se realiza por lotes en segundo plano y la previsualización, la selección y las copias que conservar se paginan desde el servidor. Se puede cancelar durante la preparación y no se envían borrados hasta confirmar. Consulta [Limpieza de revisiones](limpieza-revisiones.md#preparación-de-bibliotecas-grandes) para conocer los límites de procesamiento y las protecciones.
+
+### Resolver u omitir un elemento con error
+
+En el detalle de un trabajo de envío, **Resolver** permite seleccionar explícitamente
+un EPUB de la descarga asociada y reintentarlo dentro del trabajo original. Solo se
+ofrecen EPUB completos y accesibles; se comprueban de nuevo antes del reintento y se
+mantienen las validaciones de identidad del envío. No se extraen archivos RAR/ZIP ni
+se convierten PDF. Si quedan otros elementos bloqueados, el trabajo permanece pausado
+hasta revisarlos.
+
+También se puede **Omitir** el elemento con un motivo: «No necesito enviarlo», «Lo
+gestionaré manualmente», «Contenido no adecuado» u «Otro», y un comentario opcional.
+La decisión requiere confirmación y queda registrada con usuario y fecha en el
+historial de intentos y en Eventos. El estado «Omitido por el usuario» y su contador
+se distinguen de los libros enviados o ya existentes. Al terminar, el informe indica
+«Terminado con omisiones». Omitir no envía archivos ni ejecuta limpiezas; conserva los
+torrents, EPUB y registros.
+
+Estas acciones requieren permisos de gestión de trabajos de Calibre, envío a Calibre
+y lectura de archivos de Descargas. No permiten descartar envíos sin confirmar ni
+alterar elementos ya enviados, cancelados o pendientes de limpieza. Las operaciones
+inciertas conservan su procedimiento específico de resolución. Cada decisión conserva
+el error anterior y se aplica una sola vez, aunque se repita la petición.

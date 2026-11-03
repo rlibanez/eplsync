@@ -1,5 +1,7 @@
 package com.rlibanez.eplsync.settings;
 
+import com.rlibanez.eplsync.events.EventContext;
+
 import com.rlibanez.eplsync.dto.PageResponse;
 import com.rlibanez.eplsync.exception.UserInputException;
 import java.time.*;
@@ -50,6 +52,18 @@ public class JobRetryHistory {
         long created=Math.max(now,jdbc.queryForObject("SELECT coalesce(max(created_at),0)+1 FROM job_retry_attempts WHERE kind='calibre' AND job_id=?",Long.class,job));
         jdbc.update("INSERT INTO job_retry_attempts(id,kind,job_id,owner_id,username,created_at,before_job) VALUES(?,'calibre',?,?,?,?,?)",id,job,actor.id(),Objects.toString(actor.username(),"Sistema"),created,json.writeValueAsString(jdbc.queryForMap("SELECT * FROM calibre_jobs WHERE id=?",job)));
         jdbc.update("INSERT INTO job_retry_attempt_items(attempt_id,item_id,position,phase,before_item) VALUES(?,?,0,?,?)",id,item,phase,json.writeValueAsString(jdbc.queryForMap("SELECT * FROM calibre_job_items WHERE id=?",item)));
+        return id;
+    }
+    /** A decision about one failed item must not close attempts still running for other items. */
+    @Transactional
+    public String itemResolution(String job,String item,String phase,EventContext.Actor actor) {
+        var before=jdbc.queryForMap("SELECT * FROM calibre_job_items WHERE job_id=? AND id=?",job,item);
+        String snapshot=json.writeValueAsString(before);
+        jdbc.update("UPDATE job_retry_attempt_items SET after_item=? WHERE item_id=? AND after_item IS NULL AND attempt_id IN (SELECT id FROM job_retry_attempts WHERE kind='calibre' AND job_id=?)",snapshot,item,job);
+        long now=Math.max(Instant.now().toEpochMilli(),jdbc.queryForObject("SELECT coalesce(max(created_at),0)+1 FROM job_retry_attempts WHERE kind='calibre' AND job_id=?",Long.class,job));
+        String id=UUID.randomUUID().toString();
+        jdbc.update("INSERT INTO job_retry_attempts(id,kind,job_id,owner_id,username,created_at,before_job) VALUES(?,'calibre',?,?,?,?,?)",id,job,actor.id(),Objects.toString(actor.username(),"Sistema"),now,json.writeValueAsString(jdbc.queryForMap("SELECT * FROM calibre_jobs WHERE id=?",job)));
+        jdbc.update("INSERT INTO job_retry_attempt_items(attempt_id,item_id,position,phase,before_item) VALUES(?,?,0,?,?)",id,item,phase,snapshot);
         return id;
     }
     @Transactional

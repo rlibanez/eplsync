@@ -153,6 +153,7 @@ export interface CalibreCounts {
   failed: number;
   uncertain: number;
   cancelled: number;
+  omitted?: number;
 }
 export interface Job {
   calibre?: {

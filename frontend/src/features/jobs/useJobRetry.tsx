@@ -436,7 +436,10 @@ function RetryAttemptItems({
       <ul>
         {result.data.items.map((item) => (
           <li key={item.id}>
-            <strong>{item.name}</strong> · {t(`jobRetry.phase.${item.phase}`)}
+            <strong>{item.name}</strong> ·{" "}
+            {item.state === "OMITTED"
+              ? t("calibreItemResolution.omit")
+              : t(`jobRetry.phase.${item.phase}`)}
             <br />
             {label(item.beforeState)} → {label(item.state)}
             {item.beforeMessage && (

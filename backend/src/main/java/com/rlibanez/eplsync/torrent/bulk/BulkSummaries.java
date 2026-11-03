@@ -95,18 +95,18 @@ final class BulkSummaries {
             SELECT i.download_job_id,j.id,j.library,j.state,count(*),
                 sum(i.outcome='ACCEPTED'),sum(i.outcome='SKIPPED'),
                 sum(i.outcome IN ('PENDING','SENDING','WAITING_DOWNLOAD','CLEANUP_PENDING')),
-                sum(i.outcome IN ('FAILED','BLOCKED_DOWNLOAD')),sum(i.outcome='UNCERTAIN'),sum(i.outcome='CANCELLED')
+                sum(i.outcome IN ('FAILED','BLOCKED_DOWNLOAD')),sum(i.outcome='UNCERTAIN'),sum(i.outcome='CANCELLED'),sum(i.outcome='OMITTED')
             FROM linked i JOIN calibre_jobs j ON j.id=i.job_id
             GROUP BY i.download_job_id,j.id,j.library,j.state ORDER BY j.created_at,j.id
             """).setParameter("ids",ids).getResultList()) {
             var row=(Object[])value;
-            var counts=new BulkStore.CalibreCounts(number(row[4]),number(row[5]),number(row[6]),number(row[7]),number(row[8]),number(row[9]),number(row[10]));
+            var counts=new BulkStore.CalibreCounts(number(row[4]),number(row[5]),number(row[6]),number(row[7]),number(row[8]),number(row[9]),number(row[10]),number(row[11]));
             grouped.computeIfAbsent((String)row[0],ignored->new ArrayList<>()).add(new BulkStore.RelatedCalibreJob((String)row[1],(String)row[2],(String)row[3],counts));
         }
         grouped.forEach((id,linked)-> {
-            long[] totals=new long[7];
-            for(var job:linked) {var c=job.counts();totals[0]+=c.total();totals[1]+=c.sent();totals[2]+=c.existing();totals[3]+=c.pending();totals[4]+=c.failed();totals[5]+=c.uncertain();totals[6]+=c.cancelled();}
-            result.put(id,new BulkStore.CalibreSummary(new BulkStore.CalibreCounts(totals[0],totals[1],totals[2],totals[3],totals[4],totals[5],totals[6]),List.copyOf(linked)));
+            long[] totals=new long[8];
+            for(var job:linked) {var c=job.counts();totals[0]+=c.total();totals[1]+=c.sent();totals[2]+=c.existing();totals[3]+=c.pending();totals[4]+=c.failed();totals[5]+=c.uncertain();totals[6]+=c.cancelled();totals[7]+=c.omitted();}
+            result.put(id,new BulkStore.CalibreSummary(new BulkStore.CalibreCounts(totals[0],totals[1],totals[2],totals[3],totals[4],totals[5],totals[6],totals[7]),List.copyOf(linked)));
         });
         return result;
     }
