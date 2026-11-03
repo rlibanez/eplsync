@@ -36,7 +36,7 @@ public class RevisionCleanup {
     public record RetryInput(String requestId,boolean confirm,boolean confirmDestructive) {}
     public record Confirmation(List<String> ids,boolean confirm,boolean confirmDestructive) {}
     public record Job(String id,String source,String action,String state,String result,String message,String username,String library,
-        boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain,boolean libraryCleanup,String updateJobId,String updateCleanupTiming) {}
+        boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain,boolean libraryCleanup,String updateJobId,String updateCleanupTiming,long skipped) {}
     public record Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,
         List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author,String reason,boolean previewSelected) {
         public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author,String reason) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,blockingCalibreJobId,blockingRequiresIntervention,author,reason,false);}
@@ -65,7 +65,7 @@ public class RevisionCleanup {
         CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.total,0) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected,0) ELSE coalesce(json_array_length(j.confirmation),0) END selected,
         coalesce(c.ready,0) ready,coalesce(c.excluded,0) excluded,
         coalesce(c.pending,0) pending,coalesce(c.succeeded,0) succeeded,
-        coalesce(c.blocked,0) blocked,coalesce(c.failed,0) failed,coalesce(c.uncertain,0) uncertain
+        coalesce(c.blocked,0) blocked,coalesce(c.failed,0) failed,coalesce(c.uncertain,0) uncertain,coalesce(c.skipped,0) skipped
         FROM revision_cleanup_jobs j LEFT JOIN (
         """+ITEM_COUNTS+") c ON c.job_id=j.id";
     private static final String SINGLE_SELECT=SELECT.replace("FROM revision_cleanup_items GROUP BY job_id","FROM revision_cleanup_items WHERE job_id=? GROUP BY job_id");
@@ -186,7 +186,7 @@ public class RevisionCleanup {
     }
 
     private static PageResponse.PageMeta meta(int page,int size,long total) {int pages=(int)((total+size-1)/size);return new PageResponse.PageMeta(page,size,total,pages,page==0,page>=pages-1,page+1<pages,page>0);}
-    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"),r.getBoolean("has_library_plan"),r.getString("update_job_id"),r.getString("update_cleanup_timing"));}
+    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"),r.getBoolean("has_library_plan"),r.getString("update_job_id"),r.getString("update_cleanup_timing"),r.getLong("skipped"));}
     private Item item(ResultSet r,int n) throws SQLException {
         var formats=new ArrayList<String>();for(var format:json.readTree(r.getString("formats"))) formats.add(format.asString());
         return new Item(r.getString("id"),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title"),r.getString("revision"),r.getString("old_id"),r.getString("replacement_id"),r.getString("replacement_revision"),List.copyOf(formats),r.getString("state"),r.getString("message"),r.getBoolean("dispatched"),r.getString("old_hash"),r.getString("replacement_hash"),null,null,null,r.getString("cleanup_reason"),r.getBoolean("preview_selected"));
@@ -202,7 +202,7 @@ public class RevisionCleanup {
         return new Item(row.id(),row.eplId(),row.title(),row.revision(),row.oldId(),row.replacementId(),row.replacementRevision(),row.formats(),row.state(),detail,row.dispatched(),row.oldHash(),row.replacementHash(),!(Permission.has(Permission.CALIBRE_SEND)||Permission.has(Permission.CALIBRE_JOBS_MANAGE))?null:blocker.jobId(),!automatic);
     }
     private static String revision(Object value) {return new BigDecimal(value.toString()).stripTrailingZeros().toPlainString();}
-    private List<Item> candidates(String source,List<String> ids) {
+    private List<Item> candidates(String source,List<String> ids,Set<String> present) {
         String sql;
         var args=new ArrayList<Object>();
         if(source.equals("downloads")) {
@@ -223,6 +223,7 @@ public class RevisionCleanup {
                   WHERE r.active=true AND r.epl_id=o.epl_id AND r.revision>o.revision ORDER BY r.revision DESC,r.calibre_id LIMIT 1)
                 WHERE o.active=true AND o.epl_id>0 AND o.revision>0
                 """;
+        if(source.equals("downloads") && present!=null) {sql+=" AND upper(o.hash) IN (SELECT value FROM json_each(?))";args.add(json.writeValueAsString(present));}
         if(!ids.isEmpty()) {sql+=" AND "+(source.equals("downloads")?"o.id":"cast(o.calibre_id AS TEXT)")+" IN ("+String.join(",",Collections.nCopies(ids.size(),"?"))+")";args.addAll(ids);}
         sql+=" ORDER BY o.epl_id,o.revision,old_id LIMIT 1001";
         var result=jdbc.query(sql,(r,n)->new Item(UUID.randomUUID().toString(),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title").substring(0,Math.min(4096,r.getString("title").length())),revision(r.getObject("revision")),r.getString("old_id"),r.getString("replacement_id"),revision(r.getObject("replacement_revision")),List.of(),"READY",null,false,r.getString("old_hash"),r.getString("replacement_hash")),args.toArray());
@@ -303,7 +304,8 @@ public class RevisionCleanup {
         }
     }
     private static String actionPolicy(String action) {return action.equals("FILES")?"REMOVE_TORRENT_AND_FILES":action.equals("TORRENT")?"REMOVE_TORRENT":"KEEP";}
-    private void checkUpdateDependency(Job job,Item item,List<RemoteTorrent> remote) {
+    private void checkUpdateDependency(Job job,Item item,List<RemoteTorrent> remote) {checkUpdateDependency(job,item,remote,null);}
+    private void checkUpdateDependency(Job job,Item item,List<RemoteTorrent> remote,Map<String,RemoteTorrent> snapshot) {
         if(job.updateJobId()==null) return;
         var parent=jdbc.queryForMap("SELECT state FROM torrent_bulk_jobs WHERE id=?",job.updateJobId());
         if("CANCELLED".equals(parent.get("state"))) throw new UserInputException("La actualización relacionada está cancelada");
@@ -314,7 +316,7 @@ public class RevisionCleanup {
         boolean immediate=Boolean.TRUE.equals(request.get("immediate")) || request.get("immediate") instanceof Number n && n.intValue()!=0;
         var targets=json.readValue(Objects.toString(request.get("target_hashes")),new tools.jackson.core.type.TypeReference<List<String>>() {});
         if(targets.isEmpty()) throw new UserInputException("La actualización no conserva los torrents de sustitución");
-        var observed=remote==null?null:TorrentRemovalSafety.index(remote);
+        var observed=snapshot!=null?snapshot:remote==null?null:TorrentRemovalSafety.index(remote);
         for(String hash:targets) {
             var states=jdbc.queryForList("SELECT state FROM torrent_bulk_items WHERE job_id=? AND epl_id=? AND upper(hash)=upper(?)",String.class,job.updateJobId(),item.eplId(),hash);
             if(states.stream().anyMatch(state->Set.of("FAILED","CANCELLED","SKIPPED").contains(state))) throw new UserInputException("La revisión de sustitución no se ha enviado; resuelve la actualización relacionada");
@@ -327,8 +329,9 @@ public class RevisionCleanup {
                 throw new UpdateCleanupJobs.DependencyPending("Esperando la descarga completa de la nueva revisión");
         }
     }
-    private void checkJobDownload(Job job,Item item,List<RemoteTorrent> remote) {
-        if(!item.state().equals("VERIFYING")) checkUpdateDependency(job,item,job.action().equals("RECORD")?null:remote);
+    private void checkJobDownload(Job job,Item item,List<RemoteTorrent> remote) {checkJobDownload(job,item,remote,null);}
+    private void checkJobDownload(Job job,Item item,List<RemoteTorrent> remote,Map<String,RemoteTorrent> snapshot) {
+        if(!item.state().equals("VERIFYING")) checkUpdateDependency(job,item,job.action().equals("RECORD")?null:remote,snapshot);
         if(!job.directRemoval()) {checkDownload(item,job.action(),remote,new HashMap<>(),job.allowUndownloaded());return;}
         var rows=jdbc.queryForList("SELECT * FROM torrent_downloads WHERE id=?",item.oldId());
         if(!rows.isEmpty()) {
@@ -432,7 +435,6 @@ public class RevisionCleanup {
         jdbc.update("DELETE FROM revision_cleanup_jobs WHERE state='PREVIEW' AND expires_at<? AND NOT EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=revision_cleanup_jobs.id AND p.state IN ('QUEUED','RUNNING'))",now);
         if(reuseId==null && jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE state='PREVIEW' AND owner_id=?",Long.class,owner.id())>=10) throw new UserInputException("Hay demasiadas previsualizaciones abiertas; espera a que caduquen");
         String context=context(source),id=reuseId==null?UUID.randomUUID().toString():reuseId;
-        var candidates=libraryPlan==null?candidates(source,ids):libraryPlan.candidates().stream().map(c->new Item(UUID.randomUUID().toString(),c.eplId(),c.title(),c.revision(),c.oldId(),c.retainedId(),c.retainedRevision(),List.of(),"READY",c.problem(),false,null,null,null,null,null,c.reason())).toList();
         var prepared=new ArrayList<Item>();
         var identities=new HashMap<String,String[]>();
         var displayedFormats=new HashMap<String,Set<String>>();
@@ -440,12 +442,14 @@ public class RevisionCleanup {
         var connection=source.equals("calibre")?settings.connection():null;
         var accessible=new HashMap<String,String>();
         java.util.function.Consumer<List<RemoteTorrent>> evaluate=remote->{
+            var observed=TorrentRemovalSafety.index(remote);var paths=TorrentRemovalSafety.paths(remote);
+            var candidates=libraryPlan==null?candidates(source,ids,source.equals("downloads") && !action.equals("RECORD") && !input.deleteHistory()?observed.keySet():null):libraryPlan.candidates().stream().map(c->new Item(UUID.randomUUID().toString(),c.eplId(),c.title(),c.revision(),c.oldId(),c.retainedId(),c.retainedRevision(),List.of(),"READY",c.problem(),false,null,null,null,null,null,c.reason())).toList();
             for(var item:candidates) {
                 if(Thread.currentThread().isInterrupted() || libraryPlan==null && System.nanoTime()>deadline) throw new UserInputException("La previsualización ha tardado demasiado; selecciona menos registros");
                 List<String> formats=List.of();String problem=item.message();
                 try {
                     noPending(item,id,input.allowUndownloaded(),action,false,input.deleteHistory() || action.equals("RECORD"));
-                    if(source.equals("downloads")) checkDownload(item,action,remote,accessible,input.allowUndownloaded());
+                    if(source.equals("downloads")) checkDownload(item,action,remote,accessible,input.allowUndownloaded(),observed,paths);
                     else {
                         checkCalibre(item,Objects.requireNonNull(connection),false);
                         formats=client.formats(connection,Long.parseLong(item.oldId()));
@@ -459,7 +463,7 @@ public class RevisionCleanup {
                         }
                     }
                 } catch(RuntimeException ex) {problem=reason(ex);}
-                prepared.add(new Item(item.id(),item.eplId(),item.title(),item.revision(),item.oldId(),item.replacementId(),item.replacementRevision(),formats,problem==null?"READY":"EXCLUDED",problem,false,item.oldHash(),item.replacementHash(),null,null,null,item.reason()));
+                prepared.add(new Item(item.id(),item.eplId(),item.title(),item.revision(),item.oldId(),item.replacementId(),item.replacementRevision(),formats,problem==null?"READY":"EXCLUDED",problem==null && source.equals("downloads") && !action.equals("RECORD") && !observed.containsKey(item.oldHash())?"El torrent ya está ausente; solo se eliminará el registro de EPL Sync":problem,false,item.oldHash(),item.replacementHash(),null,null,null,item.reason()));
             }
         };
         if(source.equals("downloads")) torrent.exclusiveClient(adapter->{evaluate.accept(adapter.listTorrents());return null;});else evaluate.accept(List.of());
@@ -606,6 +610,9 @@ public class RevisionCleanup {
         if(active>0) throw new UserInputException("Este libro tiene trabajos o borrados pendientes; resuélvelos antes de limpiar sus revisiones");
     }
     private void checkDownload(Item item,String action,List<RemoteTorrent> remote,Map<String,String> checked,boolean force) {
+        checkDownload(item,action,remote,checked,force,TorrentRemovalSafety.index(remote),TorrentRemovalSafety.paths(remote));
+    }
+    private void checkDownload(Item item,String action,List<RemoteTorrent> remote,Map<String,String> checked,boolean force,Map<String,RemoteTorrent> byHash,TorrentRemovalSafety.Paths paths) {
         var rows=jdbc.queryForList("SELECT * FROM torrent_downloads WHERE id IN (?,?)",item.oldId(),item.replacementId());
         var old=rows.stream().filter(r->r.get("id").equals(item.oldId())).findFirst().orElse(null);
         var newer=rows.stream().filter(r->r.get("id").equals(item.replacementId())).findFirst().orElseThrow(()->new UserInputException("La revisión que se conservaba ya no existe"));
@@ -614,7 +621,7 @@ public class RevisionCleanup {
             || !newer.get("client_instance_id").equals(tracking.instanceId()) || (!force && !newer.get("status").equals("DOWNLOADED")) || new BigDecimal(item.replacementRevision()).compareTo(new BigDecimal(item.revision()))<=0)
             throw new UserInputException("La revisión que se conservaba cambió o no está descargada");
         if(old!=null && !old.get("client_instance_id").equals(tracking.instanceId())) throw new UserInputException("El registro pertenece a otro cliente torrent");
-        var byHash=TorrentRemovalSafety.index(remote);var replacement=byHash.get(item.replacementHash());var previous=byHash.get(item.oldHash());
+        var replacement=byHash.get(item.replacementHash());var previous=byHash.get(item.oldHash());
         if(replacement==null || (!force && replacement.status()!=DownloadStatus.DOWNLOADED)) throw new UserInputException("La nueva revisión no está completamente descargada en el cliente");
         if(previous!=null && previous.aliases().stream().anyMatch(replacement.aliases()::contains)) throw new UserInputException("Las revisiones comparten torrent; no puede eliminarse la copia que se conserva");
         if(!force && !checked.containsKey(item.replacementId())) {
@@ -625,7 +632,7 @@ public class RevisionCleanup {
         if(!action.equals("RECORD") && previous!=null) {
             if(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE client_instance_id=? AND upper(hash)=? AND epl_id<>?",Long.class,tracking.instanceId(),previous.hash(),item.eplId())>0) throw new UserInputException("El torrent está compartido con otro libro");
             if(action.equals("FILES") && !(previous.awaitingMetadataWithoutData() && (previous.contentPath()==null || previous.contentPath().isBlank()))) {
-                var safety=TorrentRemovalSafety.assess(previous,TorrentRemovalSafety.paths(remote));
+                var safety=TorrentRemovalSafety.assess(previous,paths);
                 if(safety!=TorrentRemovalSafety.PathSafety.EXCLUSIVE) throw new UserInputException(safety==TorrentRemovalSafety.PathSafety.SHARED?"Los archivos están compartidos con otro torrent":"No puede verificarse que las rutas sean exclusivas");
             }
         }
@@ -792,7 +799,7 @@ public class RevisionCleanup {
                 if(verify) return torrent.exclusiveClient(adapter->{
                     guard.run();var remote=adapter.listTorrents();var byHash=TorrentRemovalSafety.index(remote);var absent=new ArrayList<Item>();var records=new ArrayList<String>();
                     for(var item:active) {
-                        guard.run();checkDirectPending(item,id,job,false);checkJobDownload(job,item,remote);
+                        guard.run();checkDirectPending(item,id,job,false);checkJobDownload(job,item,remote,byHash);
                         if(byHash.containsKey(item.oldHash())) {update(item.id(),"UNCERTAIN","El torrent sigue presente; no se ha repetido el borrado");continue;}
                         absent.add(item);
                         if(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) records.add(item.oldId());
@@ -805,14 +812,15 @@ public class RevisionCleanup {
                     return true;
                 });
                 var selection=new HistoryActions.Selection(null,active.stream().map(item -> item.oldId()).toList(),job.action().equals("FILES"),true);
-                var outcomes=history.removeRevision(selection,id,remote->{guard.run();for(var item:active) {checkDirectPending(item,id,job,false);checkJobDownload(job,item,remote);}}).items();
+                var outcomes=history.removeRevision(selection,id,remote->{guard.run();var snapshot=TorrentRemovalSafety.index(remote);for(var item:active) {checkDirectPending(item,id,job,false);checkJobDownload(job,item,remote,snapshot);}}).items();
                 var byRecord=new HashMap<String,HistoryActions.Item>();outcomes.forEach(outcome->byRecord.put(outcome.id(),outcome));
                 for(var item:active) {
                     var outcome=byRecord.get(item.oldId());
                     if(outcome==null) throw new IllegalStateException("Missing removal result");
                     if("REMOVED".equals(outcome.cleanupState())) {
+                        if(outcome.alreadyAbsent() && !job.deleteHistory()) {update(item.id(),"SKIPPED","El torrent ya estaba ausente; no se ha enviado ningún borrado y el registro se conserva");continue;}
                         if(job.deleteHistory() && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) history.deleteRevisionHistory(item.eplId(),item.oldId());
-                        update(item.id(),"SUCCEEDED",(job.action().equals("FILES")?"Torrent y archivos eliminados":"Torrent eliminado; archivos conservados")+(job.deleteHistory()?"; registro eliminado":"; registro conservado"));
+                        update(item.id(),"SUCCEEDED",outcome.alreadyAbsent()?(job.deleteHistory()?"El torrent ya estaba ausente; registro de EPL Sync eliminado":"Ausencia del torrent confirmada; registro conservado"):(job.action().equals("FILES")?"Torrent y archivos eliminados":"Torrent eliminado; archivos conservados")+(job.deleteHistory()?"; registro eliminado":"; registro conservado"));
                     } else if("REQUESTED".equals(outcome.cleanupState())) update(item.id(),"UNCERTAIN",outcome.message());
                     else if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE id=? AND cancel_requested=1",Long.class,id)>0) {
                         jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND download_id=? AND state IN ('WAITING','BLOCKED')",job.updateJobId()==null?"revision:"+id:job.updateJobId(),item.oldId());
@@ -884,7 +892,8 @@ public class RevisionCleanup {
         var result=history.removeRevision(new HistoryActions.Selection(item.eplId(),List.of(item.oldId()),job.action().equals("FILES"),true),id,item.dispatched(),remote->{guard.run();checkJobDownload(job,item,remote);dispatched(item.id());});
         var outcome=result.items().getFirst();
         if("REMOVED".equals(outcome.cleanupState())) {
-            if(job.deleteHistory() && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) history.deleteRevisionHistory(item.eplId(),item.oldId());update(item.id(),"SUCCEEDED",(job.action().equals("FILES")?"Torrent y archivos eliminados":"Torrent eliminado; archivos conservados")+(job.deleteHistory()?"; registro eliminado":"; registro conservado"));
+            if(outcome.alreadyAbsent() && !item.dispatched() && !job.deleteHistory()) {update(item.id(),"SKIPPED","El torrent ya estaba ausente; no se ha enviado ningún borrado y el registro se conserva");return;}
+            if(job.deleteHistory() && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) history.deleteRevisionHistory(item.eplId(),item.oldId());update(item.id(),"SUCCEEDED",outcome.alreadyAbsent()?(job.deleteHistory()?"El torrent ya estaba ausente; registro de EPL Sync eliminado":"Ausencia del torrent confirmada; registro conservado"):(job.action().equals("FILES")?"Torrent y archivos eliminados":"Torrent eliminado; archivos conservados")+(job.deleteHistory()?"; registro eliminado":"; registro conservado"));
         } else {
             boolean uncertain="REQUESTED".equals(outcome.cleanupState());
             if(!uncertain && !job.directRemoval()) jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND download_id=? AND state IN ('WAITING','BLOCKED')",job.updateJobId()==null?"revision:"+id:job.updateJobId(),item.oldId());
@@ -919,7 +928,7 @@ public class RevisionCleanup {
         long errors=j.blocked()+j.failed()+j.uncertain();String outcome=cancelled?"CANCELLED":errors==0?"SUCCEEDED":j.succeeded()>0?"PARTIAL":"FAILED";
         jdbc.update("UPDATE revision_cleanup_jobs SET state=?,result=?,updated_at=? WHERE id=?",cancelled?"CANCELLED":"COMPLETED",outcome,Instant.now().toEpochMilli(),id);
         var actor=new EventContext.Actor(jdbc.queryForObject("SELECT owner_id FROM revision_cleanup_jobs WHERE id=?",String.class,id),j.username(),"USER");
-        var details=Map.<String,Object>of("source",j.source(),"selected",j.selected(),"removed",j.succeeded(),"blocked",j.blocked(),"failed",j.failed(),"unconfirmed",j.uncertain(),"jobId",id);
+        var details=Map.<String,Object>of("source",j.source(),"selected",j.selected(),"removed",j.succeeded(),"blocked",j.blocked(),"failed",j.failed(),"unconfirmed",j.uncertain(),"skipped",j.skipped(),"jobId",id);
         var terminal=EventJournal.Outcome.valueOf(outcome);
         if(errors>0) {
             String signature=json.writeValueAsString(jdbc.queryForList("SELECT id,state,message FROM revision_cleanup_items WHERE job_id=? ORDER BY position",id));
@@ -929,7 +938,7 @@ public class RevisionCleanup {
             });
         }
         else events.live(actor,EventJournal.Category.JOB,"REVISION_CLEANUP",terminal,EventContext.Origin.MANUAL,id,details);
-        log.info("Limpieza de revisiones finalizada: trabajo={}, origen={}, acción={}, resultado={}, eliminadas={}, bloqueadas={}, fallidas={}, sinConfirmar={}",id,j.source(),j.action(),outcome,j.succeeded(),j.blocked(),j.failed(),j.uncertain());
+        log.info("Limpieza de revisiones finalizada: trabajo={}, origen={}, acción={}, resultado={}, eliminadas={}, omitidas={}, bloqueadas={}, fallidas={}, sinConfirmar={}",id,j.source(),j.action(),outcome,j.succeeded(),j.skipped(),j.blocked(),j.failed(),j.uncertain());
     }
     private static String reason(RuntimeException ex) {return ex instanceof UserInputException || ex instanceof org.springframework.security.access.AccessDeniedException || ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException?Objects.toString(ex.getMessage(),"No se pudo verificar la operación"):"No se pudo comprobar el cliente o completar la operación; revisa la conexión";}
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=3600000) public void retention() {

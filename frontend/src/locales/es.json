@@ -1931,7 +1931,8 @@
       "pending": "Pendientes",
       "blocked": "Bloqueadas",
       "failed": "Fallidas",
-      "uncertain": "Sin confirmar"
+      "uncertain": "Sin confirmar",
+      "skipped": "Omitidas"
     },
     "jobTitle": "Trabajo de limpieza de revisiones",
     "progress": "Seleccionadas: {{selected}} · Eliminadas: {{succeeded}} · Pendientes: {{pending}} · Bloqueadas: {{blocked}} · Fallidas: {{failed}} · Sin confirmar: {{uncertain}}",

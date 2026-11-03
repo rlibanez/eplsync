@@ -45,6 +45,7 @@ import { useAuth } from "../auth/Auth";
 
 type Source = "downloads" | "calibre";
 interface Job {
+  skipped?: number;
   updateJobId?: string | null;
   updateCleanupTiming?: string | null;
   updatedAt: number;
@@ -1002,6 +1003,7 @@ export function CleanupJob() {
     ["blocked", data.blocked],
     ["failed", data.failed],
     ["uncertain", data.uncertain],
+    ...(data.skipped ? ([["skipped", data.skipped]] as const) : []),
   ] as const;
   return (
     <>

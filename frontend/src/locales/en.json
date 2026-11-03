@@ -1931,7 +1931,8 @@
       "pending": "Pending",
       "blocked": "Blocked",
       "failed": "Failed",
-      "uncertain": "Unconfirmed"
+      "uncertain": "Unconfirmed",
+      "skipped": "Skipped"
     },
     "jobTitle": "Revision cleanup job",
     "progress": "Selected: {{selected}} · Removed: {{succeeded}} · Pending: {{pending}} · Blocked: {{blocked}} · Failed: {{failed}} · Unconfirmed: {{uncertain}}",

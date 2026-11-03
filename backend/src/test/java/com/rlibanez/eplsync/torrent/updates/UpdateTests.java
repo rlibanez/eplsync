@@ -1465,8 +1465,8 @@ class UpdateTests {
                     true, null, null, null, books.findById(1L).orElseThrow())));
             try {
                 assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
-                assertThatThrownBy(() -> cleaner.clean(job.jobId())).hasMessageContaining("envíos");
-                assertThatThrownBy(() -> cleaner.cleanAll(false)).hasMessageContaining("envíos");
+                assertThatThrownBy(() -> cleaner.clean(job.jobId())).hasMessageContaining("otra operación con el cliente torrent");
+                assertThatThrownBy(() -> cleaner.cleanAll(false)).hasMessageContaining("otra operación con el cliente torrent");
                 verify(stubClient, never()).deleteTorrent(any(), anyBoolean());
             } finally { release.countDown(); }
             future.get(5, TimeUnit.SECONDS);

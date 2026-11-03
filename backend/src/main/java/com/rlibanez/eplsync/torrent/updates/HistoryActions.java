@@ -13,8 +13,9 @@ import java.util.*;
 @Service
 public class HistoryActions {
     public record Selection(Long eplId,List<String> ids,Boolean deleteFiles,Boolean confirmFiles) {}
-    public record Item(String id,DownloadStatus status,String cleanupState,String message,String blockingCalibreJobId) {
-        public Item(String id,DownloadStatus status,String cleanupState,String message) {this(id,status,cleanupState,message,null);}
+    public record Item(String id,DownloadStatus status,String cleanupState,String message,String blockingCalibreJobId,boolean alreadyAbsent) {
+        public Item(String id,DownloadStatus status,String cleanupState,String message) {this(id,status,cleanupState,message,null,false);}
+        public Item(String id,DownloadStatus status,String cleanupState,String message,String blockingCalibreJobId) {this(id,status,cleanupState,message,blockingCalibreJobId,false);}
     }
     public record Result(List<Item> items) {}
     private final org.springframework.jdbc.core.JdbcTemplate jdbc;
@@ -191,7 +192,7 @@ public class HistoryActions {
         java.util.function.Supplier<Result> operation=() -> client.exclusiveClient(adapter -> {
                 var rows=validate(selection);
                 // Validate the complete response before persisting any removal intent.
-                var remote=adapter.listTorrents(); TorrentRemovalSafety.index(remote);
+                var remote=adapter.listTorrents(); var initial=TorrentRemovalSafety.index(remote);
                 guard.accept(remote);
                 var actor=EventContext.actor();
                 var requests=tx.execute(status -> {
@@ -222,7 +223,7 @@ public class HistoryActions {
                 return new Result(rows.stream().map(r -> {
                     var outcome=byId.get(r.getId());
                     var current=downloads.findById(r.getId()).orElse(null);
-                    return new Item(r.getId(),current==null?DownloadStatus.NOT_FOUND:current.getStatus(),outcome.state().name(),outcome.message(),outcome.state()==UpdateCleanup.State.WAITING ? blockingJob(r) : null);
+                    return new Item(r.getId(),current==null?DownloadStatus.NOT_FOUND:current.getStatus(),outcome.state().name(),outcome.message(),outcome.state()==UpdateCleanup.State.WAITING ? blockingJob(r) : null,!initial.containsKey(r.getHash().toUpperCase(java.util.Locale.ROOT)));
                 }).toList());
             });
         return audited?events.run(EventJournal.Category.TORRENT,"DELETE_DOWNLOADS",scope,operation,r -> Map.of("checked",r.items().size(),"removed",r.items().stream().filter(i -> "REMOVED".equals(i.cleanupState())).count())):operation.get();

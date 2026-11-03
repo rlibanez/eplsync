@@ -692,3 +692,50 @@ test("a related cleanup links back to its update and keeps cleanup controls", as
     page.getByText("Momento del borrado", { exact: true }),
   ).toBeVisible();
 });
+
+test("already absent torrents are counted as skipped rather than newly deleted", async ({
+  page,
+}) => {
+  await page.route("**/api/revision-cleanups/cleanup-job", (r) =>
+    r.fulfill({
+      json: {
+        ...job,
+        action: "FILES",
+        state: "COMPLETED",
+        result: "SUCCEEDED",
+        selected: 148,
+        succeeded: 0,
+        skipped: 148,
+      },
+    }),
+  );
+  await page.route("**/api/revision-cleanups/cleanup-job/items?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            ...ready,
+            state: "SKIPPED",
+            message:
+              "El torrent ya estaba ausente; no se ha enviado ningún borrado y el registro se conserva",
+          },
+        ],
+        meta,
+      },
+    }),
+  );
+  await page.goto("/downloads/jobs/cleanup/cleanup-job");
+  await page.locator(".job-report-panel .report-collapse > summary").click();
+  await expect(
+    page.locator(".cleanup-job-counts > div").filter({ hasText: "Omitidas" }),
+  ).toContainText("148");
+  await expect(
+    page.locator(".cleanup-job-counts > div").filter({ hasText: "Eliminadas" }),
+  ).toContainText("0");
+  await expect(
+    page.getByText(
+      "El torrent ya estaba ausente; no se ha enviado ningún borrado y el registro se conserva",
+      { exact: true },
+    ),
+  ).toBeVisible();
+});

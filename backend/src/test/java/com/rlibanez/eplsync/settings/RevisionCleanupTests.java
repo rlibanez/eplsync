@@ -103,6 +103,40 @@ class RevisionCleanupTests {
         assertThatThrownBy(()->cleanup.retryFailed(job.id(),new RevisionCleanup.RetryInput("changed-config",true,true))).hasMessageContaining("conexión cambió");
         assertThat(cleanup.failureHistory(job.id(),0,20).items()).isEmpty();
     }
+    @Test void completedCleanupDoesNotOfferTheRetainedHistoryRecordsForDeletionAgain() {
+        var job=start(preview("downloads","FILES"));cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(downloads.findById(old)).isPresent();
+        assertThat(preview("downloads","FILES").total()).isZero();
+        assertThat(preview("downloads","TORRENT").total()).isZero();
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void aStalePreviewSkipsAnAlreadyAbsentTorrentRatherThanCountingAnotherDeletion() {
+        var first=preview("downloads","FILES");var second=preview("downloads","FILES");
+        start(first);cleanup.cycle();start(second);cleanup.cycle();
+        assertThat(cleanup.get(second.id()).succeeded()).isZero();
+        assertThat(cleanup.get(second.id()).skipped()).isEqualTo(1);
+        assertThat(item(second).state()).isEqualTo("SKIPPED");
+        assertThat(item(second).message()).contains("ya estaba ausente","registro se conserva");
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+    }
+    @Test void liveSnapshotWinsOverCachedStatusAndFilteringRunsBeforeThePreviewLimit() {
+        jdbc.update("UPDATE torrent_downloads SET status='NOT_FOUND' WHERE id=?",old);
+        assertThat(preview("downloads","FILES").ready()).isEqualTo(1);
+        jdbc.update("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<1001) INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) SELECT 'absent-'||x,1,0.5,printf('%040d',x+100),'qbittorrent',?,'DOWNLOADED','EPLSYNC',0 FROM n",tracking.instanceId());
+        remote.removeIf(row->row.hash().equals("A".repeat(40)));
+        assertThat(preview("downloads","FILES").total()).isZero();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void absentTorrentsCanStillHaveTheirLocalRecordsExplicitlyDeleted() {
+        remote.removeIf(row->row.hash().equals("A".repeat(40)));
+        var job=start(cleanup.preview(new RevisionCleanup.PreviewInput("downloads","FILES",List.of(),false,true)));
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(downloads.findById(old)).isEmpty();
+        assertThat(item(job).message()).contains("ya estaba ausente","registro de EPL Sync eliminado");
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
     RevisionCleanup.Job preview(String source,String action) {return cleanup.preview(new RevisionCleanup.PreviewInput(source,action,List.of()));}
     RevisionCleanup.Item item(RevisionCleanup.Job job) {return cleanup.items(job.id(),0,1000).items().getFirst();}
     RevisionCleanup.Job start(RevisionCleanup.Job job) {return cleanup.start(job.id(),new RevisionCleanup.Confirmation(List.of(item(job).id()),true,true));}
@@ -596,7 +630,7 @@ class RevisionCleanupTests {
     @Test void automaticDeletionWinningBeforeDirectWorkerDoesNotCauseASecondDelete() {
         var automatic=automaticCleanup();var job=cleanup.removeSelected(removal("files",false));
         cleanupQueue.runAutomatic(20);cleanup.cycle();cleanup.cycle();
-        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(cleanup.get(job.id()).succeeded()).isZero();assertThat(cleanup.get(job.id()).skipped()).isEqualTo(1);
         assertThat(cleanups.findById(automatic.getId()).orElseThrow().getState()).isEqualTo(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REMOVED);
         verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
     }
@@ -720,7 +754,7 @@ class RevisionCleanupTests {
         var automatic=automaticCleanup();var job=start(forced("FILES"));
         cleanupQueue.runAutomatic(20);
         assertThat(cleanups.findById(automatic.getId()).orElseThrow().getState()).isEqualTo(com.rlibanez.eplsync.torrent.updates.UpdateCleanup.State.REMOVED);
-        cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isZero();assertThat(cleanup.get(job.id()).skipped()).isEqualTo(1);
         verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);verify(adapter,never()).deleteTorrent(eq("B".repeat(40)),anyBoolean());
         assertThat(downloads.findById(newer)).isPresent();
     }
@@ -750,7 +784,7 @@ class RevisionCleanupTests {
         var manual=Thread.ofPlatform().name("audit-manual").unstarted(()->{try {cleanup.cycle();}catch(Throwable ex) {failure.compareAndSet(null,ex);}});
         var automaticThread=Thread.ofPlatform().name("audit-automatic").unstarted(()->{try {cleanupQueue.runAutomatic(20);}catch(com.rlibanez.eplsync.exception.TorrentOperationException ex) {
             // The production client uses tryLock: a busy maintenance cycle retries on its next tick.
-            if(!Objects.toString(ex.getMessage(),"").contains("Hay envíos o una sincronización en curso")) failure.compareAndSet(null,ex);
+            if(!Objects.toString(ex.getMessage(),"").contains("Hay otra operación con el cliente torrent en curso")) failure.compareAndSet(null,ex);
         }catch(Throwable ex) {failure.compareAndSet(null,ex);}});
         try {
             manual.start();assertThat(entered.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();

@@ -109,3 +109,18 @@ incorporan con un propietario conservado y el cliente original configurado; los 
 trabajos mantienen su seguimiento anterior. Se debe eliminar primero el historial de
 la Limpieza y luego el de la Actualización. El historial relacionado se conserva hasta
 su eliminación explícita para no perder la procedencia de las solicitudes.
+
+### Torrents ausentes y registros conservados
+
+Si no se solicita borrar el registro de EPL Sync, las revisiones antiguas siguen en
+el historial de Descargas después de eliminarse de qBittorrent. La previsualización
+contrasta los hashes con una consulta actual al cliente y no ofrece esos registros
+como torrents disponibles para borrar. El filtrado precede al límite de la
+previsualización; el estado guardado no sustituye a la consulta actual.
+
+Si un torrent desaparece después de previsualizar y antes de ejecutar una orden
+nueva, se muestra como **Omitido** y no como otra eliminación. Los borrados ya
+enviados siguen conservando su comprobación de ausencia. Si se elige borrar también
+el registro, un torrent ya ausente permite eliminar únicamente ese registro y se
+informa de ello. No se vuelven a borrar torrents ni archivos por conservar el
+historial local.
