@@ -166,13 +166,17 @@ public class HistoryActions {
     public Result remove(Selection selection) { return remove(selection,false); }
     public Result remove(Selection selection,boolean retryUnconfirmed) {return remove(selection,retryUnconfirmed,null,remote->{},true);}
     /** Manual cleanup jobs own their single summary; use the existing durable removal and path guards. */
+    private String cleanupProvenance(String id) {
+        var parents=jdbc.queryForList("SELECT update_job_id FROM revision_cleanup_jobs WHERE id=? AND update_job_id IS NOT NULL",String.class,id);
+        return parents.isEmpty()?"revision:"+id:parents.getFirst();
+    }
     public Result removeRevision(Selection selection,String jobId,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard) {
         if(jobId==null || !jobId.matches("[a-f0-9-]{36}")) throw new UserInputException("Trabajo de limpieza inválido");
-        return CleanupBudget.run(()->remove(selection,false,"revision:"+jobId,guard,false));
+        return CleanupBudget.run(()->remove(selection,false,cleanupProvenance(jobId),guard,false));
     }
     public Result removeRevision(Selection selection,String jobId,boolean explicitRetry,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard) {
         if(jobId==null || !jobId.matches("[a-f0-9-]{36}")) throw new UserInputException("Trabajo de limpieza inválido");
-        return CleanupBudget.run(()->remove(selection,explicitRetry,"revision:"+jobId,guard,false));
+        return CleanupBudget.run(()->remove(selection,explicitRetry,cleanupProvenance(jobId),guard,false));
     }
     private Result remove(Selection selection,boolean retryUnconfirmed,String provenance,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard,boolean audited) {
         Permission.require(Permission.TORRENT_CLEANUP);

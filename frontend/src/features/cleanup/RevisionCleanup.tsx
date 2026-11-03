@@ -45,6 +45,8 @@ import { useAuth } from "../auth/Auth";
 
 type Source = "downloads" | "calibre";
 interface Job {
+  updateJobId?: string | null;
+  updateCleanupTiming?: string | null;
   updatedAt: number;
   id: string;
   source: Source;
@@ -1006,25 +1008,36 @@ export function CleanupJob() {
       <WorkNavigation source={data.source} id={id} />
       <PageTitle
         title={t(
-          data.directRemoval
-            ? data.source === "calibre"
-              ? "calibreRemoval.jobTitle"
-              : "revisionCleanup.removalJobTitle"
-            : data.libraryCleanup
-              ? "libraryCleanup.jobTitle"
-              : "revisionCleanup.jobTitle",
+          data.updateJobId
+            ? "revisionCleanup.jobTitle"
+            : data.directRemoval
+              ? data.source === "calibre"
+                ? "calibreRemoval.jobTitle"
+                : "revisionCleanup.removalJobTitle"
+              : data.libraryCleanup
+                ? "libraryCleanup.jobTitle"
+                : "revisionCleanup.jobTitle",
         )}
         description={t(
-          data.directRemoval
-            ? data.source === "calibre"
-              ? "calibreRemoval.description"
-              : "revisionCleanup.removalHelp"
-            : data.libraryCleanup
-              ? "libraryCleanup.description"
-              : "revisionCleanup.protection",
+          data.updateJobId
+            ? "revisionCleanup.protection"
+            : data.directRemoval
+              ? data.source === "calibre"
+                ? "calibreRemoval.description"
+                : "revisionCleanup.removalHelp"
+              : data.libraryCleanup
+                ? "libraryCleanup.description"
+                : "revisionCleanup.protection",
         )}
       />
       <p className="hash-text">{id}</p>
+      {data.updateJobId && can("TORRENT_JOBS_MANAGE") && (
+        <p>
+          <Link to={`/downloads/jobs/${encodeURIComponent(data.updateJobId)}`}>
+            {t("revisionCleanup.relatedUpdate")}
+          </Link>
+        </p>
+      )}
       <section className="panel settings-section job-report-panel">
         <div className="job-controls-heading">
           <div className="action-row">
@@ -1144,6 +1157,18 @@ export function CleanupJob() {
                       )}
                     </dd>
                   </div>
+                  {data.updateCleanupTiming && (
+                    <div>
+                      <dt>{t("send.cleanupTiming")}</dt>
+                      <dd>
+                        {t(
+                          data.updateCleanupTiming === "IMMEDIATE"
+                            ? "send.cleanupImmediate"
+                            : "send.cleanupAfterDownload",
+                        )}
+                      </dd>
+                    </div>
+                  )}
                   {data.source === "downloads" && (
                     <div>
                       <dt>{t("send.deleteHistory")}</dt>

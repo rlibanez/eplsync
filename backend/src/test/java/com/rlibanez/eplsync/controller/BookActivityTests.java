@@ -176,4 +176,14 @@ class BookActivityTests {
             .andExpect(jsonPath("$.items[0].result").value("OMITTED"));
     }
 
+    @Test void aRelatedCleanupDoesNotDuplicateItsOriginalUpdateRequest() throws Exception {
+        bulk("update",1,"UPDATE","ACCEPTED",1);
+        cleanup("related","downloads",owner.id(),"COMPLETED",true);
+        jdbc.update("UPDATE revision_cleanup_jobs SET update_job_id='update' WHERE id='related'");
+        jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state) VALUES('original','update','old',1,'hash','BLOCKED')");
+        mvc.perform(get("/api/catalog/books/1/activity").param("operation","DOWNLOAD_CLEANUP").with(own("TORRENT_SYNC","TORRENT_JOBS_MANAGE")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1))
+            .andExpect(jsonPath("$.items[0].href").value("/downloads/jobs/cleanup/related"));
+    }
+
 }

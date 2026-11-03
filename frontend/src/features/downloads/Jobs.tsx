@@ -677,6 +677,15 @@ export function JobDetail() {
         description={t("downloads.jobNote")}
       />
       <p className="hash-text">{id}</p>
+      {data?.cleanup?.jobId && (
+        <p>
+          <Link
+            to={`/downloads/jobs/cleanup/${encodeURIComponent(data.cleanup.jobId)}`}
+          >
+            {t("jobReport.relatedCleanup")}: {data.cleanup.jobId}
+          </Link>
+        </p>
+      )}
       {retry.content}
 
       {job.isPending ? (
@@ -841,7 +850,8 @@ export function JobDetail() {
                         ],
                       ],
                     },
-                    ...(data.previousVersions || data.cleanup
+                    ...(!data.cleanup?.jobId &&
+                    (data.previousVersions || data.cleanup)
                       ? [
                           {
                             title: "jobReport.cleanup",
@@ -900,12 +910,12 @@ export function JobDetail() {
                                     ],
                                   ]
                                 : []),
-                              ...Object.entries(data.cleanup ?? {}).map(
-                                ([key, value]) => [
+                              ...Object.entries(data.cleanup ?? {})
+                                .filter(([key]) => key !== "jobId")
+                                .map(([key, value]) => [
                                   `historyActions.summary.${key}`,
-                                  number(value),
-                                ],
-                              ),
+                                  number(Number(value)),
+                                ]),
                             ],
                           },
                         ]

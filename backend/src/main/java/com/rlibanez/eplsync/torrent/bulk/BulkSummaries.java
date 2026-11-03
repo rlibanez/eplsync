@@ -65,13 +65,19 @@ final class BulkSummaries {
             observations.put(row[0].toString(),new BulkStore.DownloadSummary(total,done,total-done-attention-ignored,attention,ignored));
         }
         var related=relatedCalibre(em,ids);
+        var cleanupLinks=new HashMap<String,String>();
+        var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if(com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_SYNC) && auth!=null && auth.getPrincipal() instanceof com.rlibanez.eplsync.security.Account account)
+            for(Object value:em.createNativeQuery("SELECT update_job_id,id FROM revision_cleanup_jobs WHERE update_job_id IN (:parents) AND owner_id=:owner").setParameter("parents",ids).setParameter("owner",account.id()).getResultList()) {
+                var row=(Object[])value;cleanupLinks.put(Objects.toString(row[0]),Objects.toString(row[1]));
+            }
         return jobs.stream().map(j -> {
             var c=counts.getOrDefault(j.getId(),Counts.EMPTY);
             var p=plans.get(j.getId());
             var stateCounts=cleanup.getOrDefault(j.getId(),new EnumMap<>(UpdateCleanup.State.class));
             var summary=p==null ? null : new BulkStore.CleanupSummary(stateCounts.getOrDefault(UpdateCleanup.State.WAITING,0L),
                     stateCounts.getOrDefault(UpdateCleanup.State.BLOCKED,0L),stateCounts.getOrDefault(UpdateCleanup.State.REQUESTED,0L),
-                    stateCounts.getOrDefault(UpdateCleanup.State.REMOVED,0L),stateCounts.getOrDefault(UpdateCleanup.State.CANCELLED,0L));
+                    stateCounts.getOrDefault(UpdateCleanup.State.REMOVED,0L),stateCounts.getOrDefault(UpdateCleanup.State.CANCELLED,0L),cleanupLinks.get(j.getId()));
             return new BulkStore.View(j.getId(),j.getState(),j.getClient(),j.getSelectedBooks(),c.books,
                     c.accepted,c.existing,c.skipped,c.failed,c.pending,c.inFlight,c.cancelled,
                     j.getBatchSize(),j.getConcurrency(),j.getIntervalMillis()+"ms",j.getCreatedAt(),j.getUpdatedAt(),j.getRetryAt(),j.getMessage(),

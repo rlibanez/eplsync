@@ -152,14 +152,12 @@ for (const width of [1440, 390])
     await setup(page);
     await page.goto("/downloads/jobs/download");
     await page.getByText("Informe del trabajo", { exact: true }).click();
-    const section = page
-      .locator(".job-report-group")
-      .filter({
-        has: page.getByRole("heading", {
-          name: "Trabajos de Calibre relacionados",
-          exact: true,
-        }),
-      });
+    const section = page.locator(".job-report-group").filter({
+      has: page.getByRole("heading", {
+        name: "Trabajos de Calibre relacionados",
+        exact: true,
+      }),
+    });
     await expect(
       section.getByRole("link", { name: "calibre-main", exact: true }),
     ).toHaveAttribute("href", "/calibre/jobs/calibre-main");
@@ -225,4 +223,35 @@ test("unlinked job explains the absence of related Calibre jobs", async ({
   await expect(
     page.getByText("Sin trabajos de Calibre relacionados.", { exact: true }),
   ).toBeVisible();
+});
+
+test("an update links to its separate cleanup without embedding cleanup execution", async ({
+  page,
+}) => {
+  await setup(page);
+  await page.route("**/api/torrent/jobs/download", (r) =>
+    r.fulfill({
+      json: {
+        ...job,
+        type: "UPDATE",
+        status: "COMPLETED",
+        previousVersions: "removeTorrentAndFiles",
+        cleanup: {
+          waiting: 2,
+          blocked: 0,
+          requested: 0,
+          removed: 1,
+          cancelled: 0,
+          jobId: "related-cleanup",
+        },
+      },
+    }),
+  );
+  await page.goto("/downloads/jobs/download");
+  await expect(
+    page.getByRole("link", {
+      name: "Trabajo de limpieza relacionado: related-cleanup",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "/downloads/jobs/cleanup/related-cleanup");
 });

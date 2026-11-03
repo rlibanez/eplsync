@@ -271,7 +271,10 @@ public class CleanupQueue {
     private void reportProblems(List<UpdateCleanup> selected,boolean automatic) {
         synchronized(bulk) {tx.executeWithoutResult(status -> {
             var changed=new LinkedHashMap<String,UpdateCleanup>();
+            var parents=selected.stream().map(UpdateCleanup::getJobId).filter(Objects::nonNull).distinct().toList();
+            var related=parents.isEmpty()?Set.<String>of():new HashSet<>(em.createQuery("select r.updateJobId from RelatedCleanup r where r.updateJobId in :ids",String.class).setParameter("ids",parents).getResultList());
             for(var candidate:selected) {
+                if(related.contains(candidate.getJobId())) continue;
                 if(candidate.getJobId()!=null && candidate.getJobId().startsWith("revision:")) continue;
                 var entry=entries.findById(candidate.getId()).orElseThrow();em.refresh(entry);
                 String signature=switch(entry.getState()) {
@@ -333,6 +336,8 @@ public class CleanupQueue {
             if(!CleanupBudget.available()) return false;
             var fresh=entries.findById(entry.getId()).orElseThrow();em.refresh(fresh);
             if(!PENDING.contains(fresh.getState())) return false;
+            if(((Number)em.createNativeQuery("SELECT count(*) FROM revision_cleanup_jobs WHERE update_job_id=:parent AND (cancel_requested=1 OR state IN ('PAUSED','CANCELLED'))")
+                .setParameter("parent",Objects.toString(entry.getJobId(),"")).getSingleResult()).longValue()>0) return false;
             var job=entry.getJobId()==null?null:em.find(com.rlibanez.eplsync.torrent.bulk.BulkJob.class,entry.getJobId());
             if(job!=null) {
                 em.refresh(job);
@@ -399,6 +404,12 @@ public class CleanupQueue {
             message=state==UpdateCleanup.State.REMOVED ? "Torrent eliminado; " + NO_DATA.toLowerCase(java.util.Locale.ROOT) : message.contains(NO_DATA) ? message : message + ". " + NO_DATA;
         if(state!=UpdateCleanup.State.BLOCKED && state!=UpdateCleanup.State.REQUESTED) entry.setEventSignature(null);
         entry.setState(state); entry.setMessage(message); entry.setUpdatedAt(Instant.now()); entries.saveAndFlush(entry);
+        if(state==UpdateCleanup.State.REMOVED) {
+            em.createNativeQuery("UPDATE revision_cleanup_items SET state='SUCCEEDED',message=:message WHERE id=:item AND job_id IN (SELECT id FROM revision_cleanup_jobs WHERE update_job_id=:parent) AND state NOT IN ('SUCCEEDED','SKIPPED')")
+                .setParameter("message",message).setParameter("item",entry.getId()).setParameter("parent",Objects.toString(entry.getJobId(),"")).executeUpdate();
+            em.createNativeQuery("UPDATE revision_cleanup_jobs SET state='QUEUED',next_check=0,result=NULL WHERE update_job_id=:parent AND state='COMPLETED' AND cancel_requested=0")
+                .setParameter("parent",Objects.toString(entry.getJobId(),"")).executeUpdate();
+        }
         bulk.cleanupChanged(entry.getJobId());
     }
     public void resolve(Set<String> aliases) {

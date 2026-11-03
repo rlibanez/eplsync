@@ -177,6 +177,7 @@ export interface Job {
   previousVersions?: string | null;
   cleanupTiming?: "immediate" | "afterDownload" | null;
   cleanup?: {
+    jobId?: string | null;
     waiting: number;
     blocked: number;
     requested: number;

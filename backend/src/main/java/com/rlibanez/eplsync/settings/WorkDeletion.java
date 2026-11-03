@@ -64,6 +64,8 @@ public class WorkDeletion {
             if(!source.equals(row.get("source")) || !Objects.equals(row.get("owner_id"),sessions.current().id())) return blocked(ref,"El trabajo de limpieza no pertenece a tu cuenta o a esta vista");
             if(!Set.of("COMPLETED","CANCELLED").contains(row.get("state"))) return blocked(ref,"Solo se pueden eliminar trabajos terminados o cancelados; cancela primero los pausados");
             if(exists("SELECT 1 FROM revision_cleanup_items WHERE job_id=? AND (state IN ('PENDING','RUNNING','VERIFYING','UNCERTAIN') OR dispatched=1 AND state NOT IN ('SUCCEEDED','SKIPPED'))",id)) return blocked(ref,"Hay borrados pendientes o enviados cuyo resultado debe confirmarse");
+            var related=jdbc.queryForList("SELECT update_job_id FROM revision_cleanup_jobs WHERE id=? AND update_job_id IS NOT NULL",String.class,id);
+            if(!related.isEmpty() && pendingCleanup(related.getFirst())) return blocked(ref,"Hay borrados de la actualización pendientes de resolver o confirmar");
             if(pendingCleanup("revision:"+id)) return blocked(ref,"Hay solicitudes de borrado pendientes de resolver");
         } else {
             if(!Permission.has(downloads?Permission.TORRENT_JOBS_MANAGE:Permission.CALIBRE_JOBS_MANAGE)) return blocked(ref,"No tienes permiso de gestión para eliminar este trabajo");
@@ -72,6 +74,7 @@ public class WorkDeletion {
             if(states.isEmpty()) return blocked(ref,"El trabajo ya no existe");
             if(!Set.of("COMPLETED","CANCELLED").contains(states.getFirst())) return blocked(ref,"Solo se pueden eliminar trabajos terminados o cancelados; cancela primero los pausados");
             if(exists("SELECT 1 FROM "+(downloads?"torrent_bulk_items":"calibre_job_items")+" WHERE job_id=? AND state IN ("+(downloads?"'PENDING','IN_FLIGHT'":"'PENDING','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','SENDING','UNCERTAIN','CLEANUP_PENDING'")+")",id)) return blocked(ref,"Hay envíos, descargas o resultados sin confirmar pendientes de resolver");
+            if(downloads && exists("SELECT 1 FROM revision_cleanup_jobs WHERE update_job_id=?",id)) return blocked(ref,"El trabajo de limpieza relacionado conserva esta actualización como origen; elimina primero el trabajo de limpieza");
             if(downloads && pendingCleanup(id)) return blocked(ref,"Hay limpiezas de revisiones anteriores pendientes de resolver");
             String ancestry="WITH RECURSIVE ancestors(id) AS (SELECT ? UNION SELECT j.parent_id FROM job_retry_jobs j JOIN ancestors a ON j.child_id=a.id WHERE j.kind=? UNION SELECT j.root_id FROM job_retry_jobs j JOIN ancestors a ON j.child_id=a.id WHERE j.kind=?) ";
             if(downloads) {
@@ -92,6 +95,7 @@ public class WorkDeletion {
     private void erase(String source,Ref ref) {
         String id=ref.id();
         if(ref.cleanup()) {
+            jdbc.update("INSERT INTO deleted_work_receipts(source,kind,request_id,deleted_at) SELECT 'downloads','cleanup','update:'||update_job_id,? FROM revision_cleanup_jobs WHERE id=? AND update_job_id IS NOT NULL ON CONFLICT DO NOTHING",java.time.Instant.now().toEpochMilli(),id);
             jdbc.update("INSERT INTO deleted_work_receipts(source,kind,request_id,deleted_at) VALUES(?,'cleanup',?,?) ON CONFLICT DO NOTHING",source,id,java.time.Instant.now().toEpochMilli());
             jdbc.update("DELETE FROM torrent_update_cleanup WHERE job_id=?","revision:"+id);
             jdbc.update("DELETE FROM revision_cleanup_jobs WHERE id=?",id); // items and explicit retry tokens cascade

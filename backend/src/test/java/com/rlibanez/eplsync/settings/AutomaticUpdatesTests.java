@@ -40,7 +40,7 @@ class AutomaticUpdatesTests {
     JsonMapper json=JsonMapper.builder().build();
     @BeforeEach void setup() {
         jdbc.update("DELETE FROM scheduled_tasks");jdbc.update("DELETE FROM job_retry_items");jdbc.update("DELETE FROM job_retry_jobs");jdbc.update("DELETE FROM job_retry_previews");
-        jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM calibre_update_requests");jdbc.update("DELETE FROM torrent_update_cleanup");jdbc.update("DELETE FROM torrent_update_plans");jdbc.update("DELETE FROM torrent_bulk_items");jdbc.update("DELETE FROM torrent_bulk_jobs");jdbc.update("DELETE FROM torrent_downloads");jdbc.update("DELETE FROM calibre_books");jdbc.update("DELETE FROM catalog_books");accounts.clear();
+        jdbc.update("DELETE FROM revision_cleanup_jobs");jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM calibre_update_requests");jdbc.update("DELETE FROM torrent_update_cleanup");jdbc.update("DELETE FROM torrent_update_plans");jdbc.update("DELETE FROM torrent_bulk_items");jdbc.update("DELETE FROM torrent_bulk_jobs");jdbc.update("DELETE FROM torrent_downloads");jdbc.update("DELETE FROM calibre_books");jdbc.update("DELETE FROM catalog_books");accounts.clear();
         doReturn(null).when(torrentService).exclusiveClient(any());
         owner=accounts.initialize("Owner","owner@example.org","password123","password123");when(sessions.current()).thenReturn(owner);
         calibre.save(new CalibreSettings.Input("http://calibre.test","","",true,"main"));
@@ -80,6 +80,17 @@ class AutomaticUpdatesTests {
             assertThat(automations.latest(task.id()).state()).isEqualTo("COMPLETED");
             assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Long.class)).isEqualTo(1);
         } finally {org.springframework.test.util.ReflectionTestUtils.setField(automations,"workerEnabled",false);}
+    }
+    @Test void automationWaitsForItsRelatedCleanupWithoutRecreatingTheUpdate() {
+        var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of("torrentCleanup","removeTorrentAndFiles"));
+        execute(task);var cycle=automations.latest(task.id());String update=cycle.jobs().getFirst().id();
+        jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED',download_state='DOWNLOADED' WHERE job_id=?",update);
+        jdbc.update("UPDATE torrent_bulk_jobs SET state='COMPLETED' WHERE id=?",update);
+        jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,state,created_at,updated_at,expires_at,update_job_id) VALUES('linked','downloads','FILES',?,'Owner','context','RUNNING',0,0,999999,?)",owner.id(),update);
+        automations.refresh();assertThat(automations.latest(task.id()).state()).isEqualTo("WAITING");
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='COMPLETED',result='SUCCEEDED' WHERE id='linked'");
+        automations.refresh();assertThat(automations.latest(task.id()).state()).isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Long.class)).isEqualTo(1);
     }
     @Test void torrentCyclePersistsFrozenOptionsLinksAndDoesNotStartAnotherWhilePending() {
         var task=task(ScheduledTasks.Operation.TORRENT_AUTO_UPDATE,Map.of("torrentCleanup","removeTorrentAndFiles"));

@@ -67,7 +67,7 @@ class UpdateTests {
     static final String OLD = "A".repeat(40), NEW = "B".repeat(40), OTHER = "C".repeat(40);
 
     @BeforeEach void setup() {
-        cleanup.deleteAll(); plans.deleteAll(); items.deleteAll(); jobs.deleteAll(); downloads.deleteAll(); books.deleteAll();
+        jdbc.update("DELETE FROM revision_cleanup_jobs");cleanup.deleteAll(); plans.deleteAll(); items.deleteAll(); jobs.deleteAll(); downloads.deleteAll(); books.deleteAll();
         reset(stubClient);
         when(stubClient.withDefaults(any())).thenAnswer(inv -> inv.getArgument(0));
         when(stubClient.addTorrent(any(), any())).thenReturn(TorrentDownloadResult.Status.ACCEPTED);
@@ -110,12 +110,106 @@ class UpdateTests {
         book(4, 2.0, "F".repeat(40)); language(4, com.rlibanez.eplsync.model.enums.Language.INGLES);
     }
 
-    BulkStore.View immediateJob(String hashes,PreviousVersions policy) {
+    BulkStore.View immediateJob(String hashes,PreviousVersions policy) {return relatedUpdate(hashes,policy,CleanupTiming.IMMEDIATE);}
+    BulkStore.View relatedUpdate(String hashes,PreviousVersions policy,CleanupTiming timing) {return relatedUpdate(hashes,policy,timing,false);}
+    BulkStore.View relatedUpdate(String hashes,PreviousVersions policy,CleanupTiming timing,boolean deleteHistory) {
         ownerStore.clear();
         var owner=ownerStore.initialize("cleanupowner","owner@example.org","a permanent cleanup password","a permanent cleanup password");
         book(1L,1.2,hashes);
         return com.rlibanez.eplsync.events.EventContext.withActor(new com.rlibanez.eplsync.events.EventContext.Actor(owner.id(),owner.username(),"USER"),
-            () -> selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),policy,true,null,2,10,"0ms",MultipleHashes.ALL,CleanupTiming.IMMEDIATE)));
+            () -> selectedSender.create(new SelectedUpdateSender.Request(List.of(1L),List.of(DownloadStatus.DOWNLOADED),policy,true,null,2,10,"0ms",MultipleHashes.ALL,timing,deleteHistory)));
+    }
+    @Autowired com.rlibanez.eplsync.settings.JobRetries retries;
+    @Autowired com.rlibanez.eplsync.settings.UpdateCleanupJobs relatedCleanups;
+    @Autowired com.rlibanez.eplsync.settings.RevisionCleanup cleanupJobs;
+    String linked(BulkStore.View update) {
+        var owner=ownerStore.find(bulk.job(update.jobId()).getEventActorId()).authenticatedNow();
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new org.springframework.security.core.authority.SimpleGrantedAuthority(p.name())).toList()));
+        return relatedCleanups.attach(update.jobId());
+    }
+    @Test void relatedCleanupOwnsDeletionWithoutHoldingTheUpdateOpenOrDuplicatingRequests() {
+        var update=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);
+        var request=only(update.jobId());String id=linked(update);
+        assertThat(relatedCleanups.attach(update.jobId())).isEqualTo(id);
+        assertThat(cleanupJobs.get(id).updateJobId()).isEqualTo(update.jobId());
+        assertThat(only(update.jobId()).getId()).isEqualTo(request.getId());
+        cleanupJobs.cycle();verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+        var send=items.findByJobIdOrderByPosition(update.jobId(),org.springframework.data.domain.PageRequest.of(0,10)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='DOWNLOADED' WHERE job_id=?",update.jobId());bulk.cleanupChanged(update.jobId());
+        assertThat(bulk.view(update.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
+        var remote=new ArrayList<RemoteTorrent>(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old/book.epub"),remote(NEW,DownloadStatus.DOWNLOADING,"/new/book.epub")));
+        when(stubClient.listTorrents()).thenAnswer(inv->List.copyOf(remote));
+        when(stubClient.listTorrents(anySet())).thenAnswer(inv->List.copyOf(remote));
+        doAnswer(inv->{String hash=inv.getArgument(0);remote.removeIf(row->row.hash().equals(hash));return null;}).when(stubClient).deleteTorrent(anyString(),anyBoolean());
+        jdbc.update("UPDATE revision_cleanup_jobs SET next_check=0 WHERE id=?",id);
+        cleanupJobs.cycle();cleanupJobs.cycle();queue.runAutomatic(100);
+        assertThat(cleanupJobs.get(id).succeeded()).isEqualTo(1);
+        assertThat(bulk.view(update.jobId()).cleanup().jobId()).isEqualTo(id);
+        var parentRef=new com.rlibanez.eplsync.settings.WorkDeletion.Ref(update.jobId(),false);
+        assertThat(workDeletion.apply("downloads",new com.rlibanez.eplsync.settings.WorkDeletion.Selection(List.of(parentRef)),true).items().getFirst().allowed()).isFalse();
+        var cleanupRef=new com.rlibanez.eplsync.settings.WorkDeletion.Ref(id,true);
+        assertThat(workDeletion.apply("downloads",new com.rlibanez.eplsync.settings.WorkDeletion.Selection(List.of(cleanupRef)),false).items().getFirst().deleted()).isTrue();
+        relatedCleanups.attachPending();assertThat(relatedCleanups.attach(update.jobId())).isNull();
+        assertThat(cleanup.findAll()).hasSize(1);
+        verify(stubClient,times(1)).deleteTorrent(OLD,true);
+        verify(stubClient,never()).deleteTorrent(eq(NEW),anyBoolean());
+    }
+    @Test void relatedCleanupWaitsForEveryReplacementHashAndItsConfiguredDownloadTiming() {
+        var update=relatedUpdate(NEW+" "+OTHER,PreviousVersions.REMOVE_TORRENT_AND_FILES,CleanupTiming.AFTER_DOWNLOAD);String id=linked(update);
+        var sends=items.findByJobIdOrderByPosition(update.jobId(),org.springframework.data.domain.PageRequest.of(0,10)).getContent();
+        assertThat(sends).hasSize(2);
+        bulk.finish(sends.getFirst().getId(),BulkItem.State.ACCEPTED,null,false,false);cleanupJobs.cycle();
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+        bulk.finish(sends.getLast().getId(),BulkItem.State.ACCEPTED,null,false,false);
+        history(1,1.2,NEW,DownloadStatus.DOWNLOADED);var incomplete=history(1,1.2,OTHER,DownloadStatus.QUEUED);
+        jdbc.update("UPDATE revision_cleanup_jobs SET next_check=0 WHERE id=?",id);cleanupJobs.cycle();
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+        incomplete.setStatus(DownloadStatus.DOWNLOADED);downloads.save(incomplete);
+        var remote=new ArrayList<RemoteTorrent>(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old/book.epub"),remote(NEW,DownloadStatus.DOWNLOADED,"/new/book.epub"),remote(OTHER,DownloadStatus.DOWNLOADED,"/another/book.epub")));
+        when(stubClient.listTorrents()).thenAnswer(inv->List.copyOf(remote));when(stubClient.listTorrents(anySet())).thenAnswer(inv->List.copyOf(remote));
+        doAnswer(inv->{String hash=inv.getArgument(0);remote.removeIf(row->row.hash().equals(hash));return null;}).when(stubClient).deleteTorrent(anyString(),anyBoolean());
+        jdbc.update("UPDATE revision_cleanup_jobs SET next_check=0 WHERE id=?",id);cleanupJobs.cycle();cleanupJobs.cycle();
+        assertThat(cleanupJobs.get(id).succeeded()).isEqualTo(1);verify(stubClient,times(1)).deleteTorrent(OLD,true);
+    }
+    @Test void cancellingRelatedCleanupPreservesTheUpdateAndCancellingUpdateCancelsUnsentCleanup() {
+        var update=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT);String id=linked(update);
+        cleanupJobs.control(id,"cancel");
+        assertThat(bulk.view(update.jobId()).status()).isNotEqualTo(BulkJob.State.CANCELLED);
+        assertThat(only(update.jobId()).getState()).isEqualTo(UpdateCleanup.State.CANCELLED);
+        assertThat(cleanupJobs.get(id).state()).isEqualTo("CANCELLED");
+        var send=items.findByJobIdOrderByPosition(update.jobId(),org.springframework.data.domain.PageRequest.of(0,10)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.FAILED,"retryable send",false,false);
+        var preview=retries.preview("downloads",update.jobId(),new com.rlibanez.eplsync.jobs.JobRetryController.Selection(List.of(),true));
+        assertThat(preview.cleanup()).isZero();
+        retries.create("downloads",update.jobId(),new com.rlibanez.eplsync.jobs.JobRetryController.Confirmation(preview.token(),true));
+        assertThat(only(update.jobId()).getState()).isEqualTo(UpdateCleanup.State.CANCELLED);
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void relatedRecordOnlyCleanupPreservesTorrentsAndCompletesItsOriginalRequest() {
+        var update=relatedUpdate(NEW,PreviousVersions.KEEP,CleanupTiming.IMMEDIATE,true);String id=linked(update);
+        var send=items.findByJobIdOrderByPosition(update.jobId(),org.springframework.data.domain.PageRequest.of(0,10)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        cleanupJobs.cycle();
+        assertThat(cleanupJobs.get(id).succeeded()).isEqualTo(1);
+        assertThat(only(update.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        assertThat(downloads.count()).isZero();
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void cancellingUpdateProtectsAlreadyDispatchedCleanupAndItsOriginalHistory() {
+        var update=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT);String id=linked(update);
+        var request=only(update.jobId());request.setState(UpdateCleanup.State.REQUESTED);cleanup.save(request);
+        jdbc.update("UPDATE revision_cleanup_items SET state='UNCERTAIN',dispatched=1 WHERE job_id=?",id);
+        bulk.control(update.jobId(),"cancel");
+        assertThat(cleanupJobs.get(id).state()).isEqualTo("CANCELLED");
+        assertThat(cleanupJobs.get(id).uncertain()).isEqualTo(1);
+        assertThat(only(update.jobId()).getState()).isEqualTo(UpdateCleanup.State.REQUESTED);
+        assertThat(only(update.jobId()).getId()).isEqualTo(request.getId());
+        when(stubClient.listTorrents()).thenReturn(List.of());queue.runAutomatic(100);
+        assertThat(cleanupJobs.get(id).uncertain()).isZero();
+        assertThat(cleanupJobs.get(id).succeeded()).isEqualTo(1);
+        assertThat(cleanupJobs.get(id).state()).isEqualTo("CANCELLED");
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
     }
     @Test void updateCleanupDeletesHistoryOnlyWhenRequestedAndAbsenceConfirmed() {
         for(var policy:List.of(PreviousVersions.REMOVE_TORRENT,PreviousVersions.REMOVE_TORRENT_AND_FILES)) {

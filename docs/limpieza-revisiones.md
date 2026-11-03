@@ -26,7 +26,7 @@ Por defecto, solo se elimina una revisión si existe otra estrictamente superior
 
 La opción **Permitir la limpieza aunque la revisión superior no esté descargada** está desmarcada por defecto. Al marcarla se acepta que puede desaparecer la única copia descargada: sigue siendo obligatorio que exista el torrent de una revisión superior del mismo libro en el cliente. La opción queda guardada en el trabajo y se muestra en la confirmación y en su detalle. No se aplica a Calibre.
 
-Si un trabajo de actualización espera exactamente el mismo borrado, con la misma política, la misma elección de conservar o borrar el registro de EPL Sync y la misma revisión de sustitución, la limpieza manual puede adelantarlo. La ausencia confirmada del torrent antiguo resuelve también la solicitud automática y permite finalizar la fase de limpieza del trabajo original sin repetir el borrado. Otros borrados pendientes, políticas incompatibles y operaciones sin confirmar siguen bloqueando la limpieza.
+Si una Actualización tiene una Limpieza relacionada pendiente, utiliza los controles de esa Limpieza en lugar de crear otra para las mismas revisiones. Las solicitudes antiguas que aún conservan el seguimiento anterior pueden resolverse mediante una limpieza manual compatible, con la misma política y revisión de sustitución. La ausencia confirmada del torrent antiguo resuelve la solicitud original sin repetir el borrado. Otros borrados pendientes, políticas incompatibles y operaciones sin confirmar siguen protegidos.
 
 La eliminación de archivos mantiene las comprobaciones de rutas compartidas, rutas no verificables y torrents compartidos con otros libros. Un torrent sin metadatos y sin datos puede retirarse sin solicitar el borrado de archivos inexistentes.
 
@@ -81,3 +81,31 @@ cancelados ni sin confirmar. Si un fallo conserva constancia de un borrado ya en
 se comprueba su resultado sin reenviarlo. Los borrados sin confirmar mantienen sus
 acciones específicas de comprobación y reintento explícito. Un trabajo cancelado no
 se reactiva con esta acción.
+
+### Limpieza relacionada con una Actualización
+
+Al solicitar borrar revisiones anteriores durante una Actualización, EPL Sync crea
+un trabajo de **Limpieza** relacionado, visible por separado en Descargas > Trabajos
+y en el Home. Los informes enlazan en ambos sentidos, según los permisos y el
+propietario. La Actualización termina cuando finalizan sus envíos y el seguimiento
+de descargas; no espera a que termine la Limpieza.
+
+La Limpieza utiliza las solicitudes originales y su historial, sin crear otras
+órdenes para los mismos torrents. «Inmediatamente» espera la aceptación de todos los
+hashes de sustitución del libro; «Después de descargar» espera además su descarga
+completa. Los libros todavía pendientes no impiden limpiar los que ya están listos.
+Las comprobaciones de dependencia se aplazan conforme al intervalo de limpieza de
+revisiones configurado en Tareas. Se conservan las protecciones de Calibre, identidad,
+rutas y archivos compartidos, y los reintentos del trabajo de Limpieza.
+
+Cancelar la Limpieza conserva la Actualización y cancela solo sus borrados no
+iniciados. Cancelar la Actualización cancela también los borrados no iniciados de su
+Limpieza relacionada. Los borrados ya solicitados quedan sin confirmar y pueden
+comprobarse, sin repetir automáticamente la orden.
+
+Las solicitudes de trabajos anteriores se incorporan en segundo plano, conservando
+sus identificadores, políticas, resultados y enlaces al trabajo de origen. Solo se
+incorporan con un propietario conservado y el cliente original configurado; los demás
+trabajos mantienen su seguimiento anterior. Se debe eliminar primero el historial de
+la Limpieza y luego el de la Actualización. El historial relacionado se conserva hasta
+su eliminación explícita para no perder la procedencia de las solicitudes.

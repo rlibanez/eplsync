@@ -80,7 +80,9 @@ public class BulkStore {
     public record RelatedCalibreJob(String id,String library,String state,CalibreCounts counts) {}
     public record CalibreSummary(CalibreCounts counts,List<RelatedCalibreJob> jobs) {}
     public record DownloadSummary(long selected,long downloaded,long pending,long attention,long ignored) {}
-    public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {}
+    public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled,String jobId) {
+        public CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {this(waiting,blocked,requested,removed,cancelled,null);}
+    }
     public record ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message, String title, String coverUrl, Boolean coverAvailable, Double revision, String author, String downloadState, String downloadMessage) {
         public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null,null,null,null); }
     }
@@ -496,7 +498,11 @@ public class BulkStore {
             default -> throw new com.rlibanez.eplsync.exception.UserInputException("Acción desconocida");
         }
         job.setUpdatedAt(Instant.now()); jobs.saveAndFlush(job);
-        if (action.equals("cancel")) cancellation.propagate(id);
+        if (action.equals("cancel")) {
+            cancellation.propagate(id);
+            em.createNativeQuery("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 THEN 'UNCERTAIN' ELSE 'CANCELLED' END,message='Actualización relacionada cancelada' WHERE job_id IN (SELECT id FROM revision_cleanup_jobs WHERE update_job_id=:id) AND state IN ('PENDING','RUNNING','VERIFYING','BLOCKED','FAILED')").setParameter("id",id).executeUpdate();
+            em.createNativeQuery("UPDATE revision_cleanup_jobs SET state='CANCELLED',result='CANCELLED',cancel_requested=1 WHERE update_job_id=:id").setParameter("id",id).executeUpdate();
+        }
         if (previousState != job.getState()) event(job, switch (action) {
             case "pause" -> com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED;
             case "resume" -> com.rlibanez.eplsync.events.EventJournal.Outcome.RESUMED;
@@ -615,7 +621,7 @@ public class BulkStore {
 
     @Transactional
     public void completeIfEmpty(String id) { complete(job(id)); }
-    /** Cleanup is part of the update job, even after all submissions have finished. */
+    /** Legacy cleanup notifications still refresh download tracking; related cleanup has its own lifecycle. */
     @Transactional
     public void cleanupChanged(String id) {
         if (id!=null) jobs.findById(id).ifPresent(this::complete);
@@ -623,7 +629,7 @@ public class BulkStore {
     private void complete(BulkJob job) {
         if (!List.of(BulkJob.State.RUNNING,BulkJob.State.QUEUED,BulkJob.State.DOWNLOAD_WAIT,BulkJob.State.CLEANUP_WAIT).contains(job.getState())
                 || count(job.getId(), BulkItem.State.PENDING)>0 || count(job.getId(), BulkItem.State.IN_FLIGHT)>0) return;
-        long unfinishedCleanup=job.getType()==BulkJob.Type.UPDATE ? em.createQuery(
+        long unfinishedCleanup=job.getType()==BulkJob.Type.UPDATE && ((Number)em.createNativeQuery("SELECT count(*) FROM revision_cleanup_jobs WHERE update_job_id=:id").setParameter("id",job.getId()).getSingleResult()).longValue()==0 ? em.createQuery(
             "select count(c) from UpdateCleanup c where c.jobId=:job and c.state in :pending",Long.class)
             .setParameter("job",job.getId()).setParameter("pending",com.rlibanez.eplsync.torrent.updates.CleanupQueue.PENDING)
             .getSingleResult() : 0;

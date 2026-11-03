@@ -204,7 +204,9 @@
     "cleanup": "Cleanup",
     "phaseStatus": "Status",
     "notRequired": "Not required",
-    "cleanupBlocked": "Blocked"
+    "cleanupBlocked": "Blocked",
+    "relatedCleanup": "Related cleanup job",
+    "cleanupJob": "Job"
   },
   "suggestions": {
     "loading": "Loading suggestions…",
@@ -1971,7 +1973,8 @@
     "sentOrRemoved": "Sent / Removed",
     "retryFailed": "Retry failed ({{count}})",
     "failureHistory": "Retry history",
-    "previousFailure": "Previous failure"
+    "previousFailure": "Previous failure",
+    "relatedUpdate": "View related update job"
   },
   "calibreRemoval": {
     "confirmDeletion": "I confirm the irreversible deletion of the selected books.",

@@ -204,7 +204,9 @@
     "cleanup": "Limpieza",
     "phaseStatus": "Estado",
     "notRequired": "No necesaria",
-    "cleanupBlocked": "Bloqueada"
+    "cleanupBlocked": "Bloqueada",
+    "relatedCleanup": "Trabajo de limpieza relacionado",
+    "cleanupJob": "Trabajo"
   },
   "suggestions": {
     "loading": "Buscando sugerencias…",
@@ -1971,7 +1973,8 @@
     "sentOrRemoved": "Enviados / Eliminados",
     "retryFailed": "Reintentar fallidos ({{count}})",
     "failureHistory": "Historial de reintentos",
-    "previousFailure": "Fallo anterior"
+    "previousFailure": "Fallo anterior",
+    "relatedUpdate": "Ver trabajo de Actualización relacionado"
   },
   "calibreRemoval": {
     "confirmDeletion": "Confirmo el borrado irreversible de los libros seleccionados.",

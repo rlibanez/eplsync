@@ -36,7 +36,7 @@ public class RevisionCleanup {
     public record RetryInput(String requestId,boolean confirm,boolean confirmDestructive) {}
     public record Confirmation(List<String> ids,boolean confirm,boolean confirmDestructive) {}
     public record Job(String id,String source,String action,String state,String result,String message,String username,String library,
-        boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain,boolean libraryCleanup) {}
+        boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain,boolean libraryCleanup,String updateJobId,String updateCleanupTiming) {}
     public record Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,
         List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author,String reason,boolean previewSelected) {
         public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author,String reason) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,blockingCalibreJobId,blockingRequiresIntervention,author,reason,false);}
@@ -60,7 +60,7 @@ public class RevisionCleanup {
         """;
     private static final String SELECT="""
         SELECT j.id,j.source,j.action,j.state,j.result,j.message,j.owner_username,j.library,
-        j.allow_undownloaded,j.delete_history,j.direct_removal,j.created_at,j.updated_at,j.expires_at,
+        j.update_job_id,(SELECT p.cleanup_timing FROM torrent_update_plans p WHERE p.job_id=j.update_job_id) update_cleanup_timing,j.allow_undownloaded,j.delete_history,j.direct_removal,j.created_at,j.updated_at,j.expires_at,
         (j.library_plan IS NOT NULL) has_library_plan,coalesce(c.total,0) total,
         CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.total,0) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected,0) ELSE coalesce(json_array_length(j.confirmation),0) END selected,
         coalesce(c.ready,0) ready,coalesce(c.excluded,0) excluded,
@@ -88,6 +88,7 @@ public class RevisionCleanup {
     private final JsonMapper json=JsonMapper.builder().build();
     private final ReentrantLock lifecycle=new ReentrantLock();
     private final AtomicBoolean running=new AtomicBoolean();
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.tasks.InternalTaskSettings internalTasks;
     private final ExecutorService worker=Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("revision-cleanup").factory());
     @org.springframework.beans.factory.annotation.Value("${eplsync.revision-cleanup.worker-enabled:true}") private boolean enabled=true;
     public RevisionCleanup(JdbcTemplate jdbc,PlatformTransactionManager manager,AccountStore accounts,SessionAccess sessions,
@@ -185,7 +186,7 @@ public class RevisionCleanup {
     }
 
     private static PageResponse.PageMeta meta(int page,int size,long total) {int pages=(int)((total+size-1)/size);return new PageResponse.PageMeta(page,size,total,pages,page==0,page>=pages-1,page+1<pages,page>0);}
-    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"),r.getBoolean("has_library_plan"));}
+    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"),r.getBoolean("has_library_plan"),r.getString("update_job_id"),r.getString("update_cleanup_timing"));}
     private Item item(ResultSet r,int n) throws SQLException {
         var formats=new ArrayList<String>();for(var format:json.readTree(r.getString("formats"))) formats.add(format.asString());
         return new Item(r.getString("id"),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title"),r.getString("revision"),r.getString("old_id"),r.getString("replacement_id"),r.getString("replacement_revision"),List.copyOf(formats),r.getString("state"),r.getString("message"),r.getBoolean("dispatched"),r.getString("old_hash"),r.getString("replacement_hash"),null,null,null,r.getString("cleanup_reason"),r.getBoolean("preview_selected"));
@@ -289,10 +290,10 @@ public class RevisionCleanup {
     });}
     private void checkDirectPending(Item item,String id,Job job,boolean retry) {
         var blocker=history.blockingCalibre(item.oldHash(),tracking.instanceId());
-        if(blocker!=null) throw new UserInputException(blocker.message());
-        if(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.state NOT IN ('COMPLETED','CANCELLED','DOWNLOAD_WAIT','CLEANUP_WAIT')",Long.class,item.eplId())>0) throw new UserInputException("Este libro tiene un envío torrent pendiente; resuélvelo antes de borrarlo");
+        if(blocker!=null) {if(job.updateJobId()!=null && !blocker.requiresIntervention()) throw new UpdateCleanupJobs.DependencyPending(blocker.message());throw new UserInputException(blocker.message());}
+        if(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.state NOT IN ('COMPLETED','CANCELLED','DOWNLOAD_WAIT','CLEANUP_WAIT') AND j.id<>coalesce(?, '')",Long.class,item.eplId(),job.updateJobId())>0) throw new UserInputException("Este libro tiene un envío torrent pendiente; resuélvelo antes de borrarlo");
         if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND i.job_id<>? AND (i.state='UNCERTAIN' OR j.state IN ('QUEUED','RUNNING','PAUSED') AND i.state IN ('PENDING','RUNNING','VERIFYING'))",Long.class,item.eplId(),id)>0) throw new UserInputException("Este libro tiene otra limpieza pendiente; resuélvela antes de borrarlo");
-        for(var pending:jdbc.queryForList("SELECT * FROM torrent_update_cleanup WHERE epl_id=? AND state IN ('WAITING','BLOCKED','REQUESTED') AND job_id<>?",item.eplId(),"revision:"+id)) {
+        for(var pending:jdbc.queryForList("SELECT * FROM torrent_update_cleanup WHERE epl_id=? AND state IN ('WAITING','BLOCKED','REQUESTED') AND job_id<>? AND job_id<>coalesce(?,'')",item.eplId(),"revision:"+id,job.updateJobId())) {
             if(pending.get("target_hashes")!=null) for(var target:json.readTree(pending.get("target_hashes").toString()))
                 if(item.oldHash().equalsIgnoreCase(target.asString())) throw new UserInputException("Este torrent es la revisión que otro trabajo debe conservar; no puede borrarse mientras la actualización esté pendiente");
             if(!Objects.equals(pending.get("hash"),item.oldHash())) continue;
@@ -302,7 +303,32 @@ public class RevisionCleanup {
         }
     }
     private static String actionPolicy(String action) {return action.equals("FILES")?"REMOVE_TORRENT_AND_FILES":action.equals("TORRENT")?"REMOVE_TORRENT":"KEEP";}
+    private void checkUpdateDependency(Job job,Item item,List<RemoteTorrent> remote) {
+        if(job.updateJobId()==null) return;
+        var parent=jdbc.queryForMap("SELECT state FROM torrent_bulk_jobs WHERE id=?",job.updateJobId());
+        if("CANCELLED".equals(parent.get("state"))) throw new UserInputException("La actualización relacionada está cancelada");
+        if("PAUSED".equals(parent.get("state"))) throw new UpdateCleanupJobs.DependencyPending("Esperando a que continúe la actualización relacionada");
+        var requests=jdbc.queryForList("SELECT target_hashes,immediate FROM torrent_update_cleanup WHERE job_id=? AND download_id=?",job.updateJobId(),item.oldId());
+        if(requests.size()!=1) throw new UserInputException("No se conserva la solicitud original de esta limpieza");
+        var request=requests.getFirst();
+        boolean immediate=Boolean.TRUE.equals(request.get("immediate")) || request.get("immediate") instanceof Number n && n.intValue()!=0;
+        var targets=json.readValue(Objects.toString(request.get("target_hashes")),new tools.jackson.core.type.TypeReference<List<String>>() {});
+        if(targets.isEmpty()) throw new UserInputException("La actualización no conserva los torrents de sustitución");
+        var observed=remote==null?null:TorrentRemovalSafety.index(remote);
+        for(String hash:targets) {
+            var states=jdbc.queryForList("SELECT state FROM torrent_bulk_items WHERE job_id=? AND epl_id=? AND upper(hash)=upper(?)",String.class,job.updateJobId(),item.eplId(),hash);
+            if(states.stream().anyMatch(state->Set.of("FAILED","CANCELLED","SKIPPED").contains(state))) throw new UserInputException("La revisión de sustitución no se ha enviado; resuelve la actualización relacionada");
+            if(states.isEmpty() || states.stream().anyMatch(state->!Set.of("ACCEPTED","ALREADY_EXISTS").contains(state))) throw new UpdateCleanupJobs.DependencyPending("Esperando la aceptación de todos los torrents de la nueva revisión");
+            if(observed!=null) {
+                var replacement=observed.get(hash.toUpperCase(java.util.Locale.ROOT));
+                if(replacement==null || !immediate && replacement.status()!=DownloadStatus.DOWNLOADED)
+                    throw new UpdateCleanupJobs.DependencyPending(immediate?"Esperando que el cliente confirme la nueva revisión":"Esperando la descarga completa de la nueva revisión");
+            } else if(!immediate && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE client_instance_id=? AND epl_id=? AND upper(hash)=upper(?) AND status='DOWNLOADED'",Long.class,tracking.instanceId(),item.eplId(),hash)==0)
+                throw new UpdateCleanupJobs.DependencyPending("Esperando la descarga completa de la nueva revisión");
+        }
+    }
     private void checkJobDownload(Job job,Item item,List<RemoteTorrent> remote) {
+        if(!item.state().equals("VERIFYING")) checkUpdateDependency(job,item,job.action().equals("RECORD")?null:remote);
         if(!job.directRemoval()) {checkDownload(item,job.action(),remote,new HashMap<>(),job.allowUndownloaded());return;}
         var rows=jdbc.queryForList("SELECT * FROM torrent_downloads WHERE id=?",item.oldId());
         if(!rows.isEmpty()) {
@@ -506,7 +532,7 @@ public class RevisionCleanup {
             if(count==0) throw new UserInputException("No hay elementos fallidos para reintentar");
             // A previous dispatch is checked, never implicitly authorized for another remote deletion.
             jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 AND ?<>'RECORD' THEN 'VERIFYING' ELSE 'PENDING' END,message=NULL WHERE job_id=? AND state='FAILED'",job.action(),id);
-            jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',result=NULL,message=NULL,cancel_requested=0,updated_at=? WHERE id=?",now,id);
+            jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',next_check=0,result=NULL,message=NULL,cancel_requested=0,updated_at=? WHERE id=?",now,id);
             var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
             events.recordAs(actor,EventJournal.Category.JOB,"REVISION_CLEANUP_RETRY",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,input.requestId(),Map.of("jobId",id,"source",job.source(),"selected",count));
             events.recordAs(actor,EventJournal.Category.JOB,"REVISION_CLEANUP_RETRY",EventJournal.Outcome.SUCCEEDED,EventContext.Origin.MANUAL,input.requestId(),Map.of("jobId",id,"source",job.source(),"selected",count));
@@ -529,7 +555,7 @@ public class RevisionCleanup {
             // Preserve dispatched=true: this durable one-shot intent may reuse only this job's removal request.
             if(jdbc.update("UPDATE revision_cleanup_items SET state='PENDING',message='Reintento solicitado explícitamente por el usuario' WHERE job_id=? AND state='UNCERTAIN' AND dispatched=1",id)==0) throw new UserInputException("No hay borrados sin confirmar para reintentar");
             jdbc.update("INSERT INTO revision_cleanup_retries(request_id,job_id,created_at) VALUES(?,?,?)",input.requestId(),id,Instant.now().toEpochMilli());
-            jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',result=NULL,message=NULL,cancel_requested=0,updated_at=? WHERE id=?",Instant.now().toEpochMilli(),id);
+            jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',next_check=0,result=NULL,message=NULL,cancel_requested=0,updated_at=? WHERE id=?",Instant.now().toEpochMilli(),id);
         });return get(id);
     });}
     public Job control(String id,String command) {
@@ -539,7 +565,7 @@ public class RevisionCleanup {
             if(command.equals("cancel")) {
                 if(!Set.of("QUEUED","RUNNING","PAUSED").contains(job.state()) && !(job.directRemoval() && job.blocked()+job.failed()>0)) throw new UserInputException("El trabajo no está pendiente");
                 jdbc.update("UPDATE revision_cleanup_jobs SET cancel_requested=1,updated_at=? WHERE id=?",Instant.now().toEpochMilli(),id);
-                if(job.directRemoval()) jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND state IN ('WAITING','BLOCKED')","revision:"+id);
+                if(job.directRemoval()) jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND state IN ('WAITING','BLOCKED')",job.updateJobId()==null?"revision:"+id:job.updateJobId());
                 if(job.directRemoval()) jdbc.update("UPDATE revision_cleanup_items SET state='CANCELLED' WHERE job_id=? AND state IN ('BLOCKED','FAILED')",id);
                 jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN state='VERIFYING' THEN 'UNCERTAIN' ELSE 'CANCELLED' END,message='Cancelado antes de iniciar la operación' WHERE job_id=? AND state IN ('PENDING','VERIFYING')",id);
                 if(!job.state().equals("RUNNING")) jdbc.update("UPDATE revision_cleanup_jobs SET state='CANCELLED',result='CANCELLED' WHERE id=?",id);
@@ -554,7 +580,7 @@ public class RevisionCleanup {
                     if(!job.state().equals("PAUSED") && !(job.directRemoval() && job.blocked()+job.failed()>0)) throw new UserInputException("El trabajo no está interrumpido");
                     if(job.directRemoval()) jdbc.update("UPDATE revision_cleanup_items SET state='PENDING' WHERE job_id=? AND state IN ('BLOCKED','FAILED')",id);
                 }
-                jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',result=NULL,message=NULL,cancel_requested=0 WHERE id=?",id);
+                jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',next_check=0,result=NULL,message=NULL,cancel_requested=0 WHERE id=?",id);
             }
         });return get(id);
     }
@@ -699,21 +725,39 @@ public class RevisionCleanup {
             if(!maintenance.enter(false)) return;
             try {
                 long beforeQuery=idleProbe.snapshot();
-                var jobs=jdbc.queryForList("SELECT id FROM revision_cleanup_jobs WHERE state IN ('QUEUED','RUNNING') ORDER BY updated_at,id LIMIT 1",String.class);
+                var jobs=jdbc.queryForList("SELECT id FROM revision_cleanup_jobs WHERE state IN ('QUEUED','RUNNING') AND next_check<=? ORDER BY updated_at,id LIMIT 1",String.class,Instant.now().toEpochMilli());
                 if(jobs.isEmpty()) {idleProbe.empty(beforeQuery);return;}
                 String id=jobs.getFirst();
+                jdbc.update("""
+                    UPDATE revision_cleanup_items AS i SET state=CASE (SELECT c.state FROM torrent_update_cleanup c JOIN revision_cleanup_jobs j ON j.update_job_id=c.job_id WHERE j.id=i.job_id AND c.download_id=i.old_id) WHEN 'REMOVED' THEN 'SUCCEEDED' ELSE 'CANCELLED' END,
+                      message='Resultado de la solicitud original comprobado; no se ha repetido el borrado'
+                    WHERE i.job_id=? AND i.state NOT IN ('SUCCEEDED','SKIPPED','CANCELLED') AND EXISTS(
+                      SELECT 1 FROM torrent_update_cleanup c JOIN revision_cleanup_jobs j ON j.update_job_id=c.job_id
+                      WHERE j.id=i.job_id AND c.download_id=i.old_id AND c.state IN ('REMOVED','CANCELLED'))
+                    """,id);
                 // Only remote deletions need verification. A local history deletion can be retried idempotently.
                 jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 AND (SELECT action FROM revision_cleanup_jobs WHERE id=?)<>'RECORD' THEN 'VERIFYING' ELSE 'PENDING' END WHERE job_id=? AND state='RUNNING'",id,id);
                 jdbc.update("UPDATE revision_cleanup_jobs SET state='RUNNING',message=NULL,updated_at=? WHERE id=? AND state='QUEUED'",Instant.now().toEpochMilli(),id);
                 long deadline=System.nanoTime()+Duration.ofSeconds(30).toNanos();
                 for(int n=0;n<20 && !Thread.currentThread().isInterrupted() && System.nanoTime()<deadline;n++) {
                     if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE id=? AND cancel_requested=0",Long.class,id)==0) break;
-                    var pending=jdbc.query("SELECT * FROM revision_cleanup_items WHERE job_id=? AND state IN ('PENDING','VERIFYING') ORDER BY position LIMIT 500",this::item,id);
-                    if(pending.isEmpty()) break;
+                    var pending=jdbc.query("""
+                        SELECT i.* FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id
+                        WHERE i.job_id=? AND i.state IN ('PENDING','VERIFYING') AND (j.update_job_id IS NULL OR i.dispatched=1 OR EXISTS(
+                          SELECT 1 FROM torrent_update_cleanup c WHERE c.job_id=j.update_job_id AND c.download_id=i.old_id
+                          AND NOT EXISTS(SELECT 1 FROM torrent_bulk_items b WHERE b.job_id=j.update_job_id AND b.epl_id=i.epl_id AND b.state IN ('PENDING','IN_FLIGHT'))
+                          AND (c.immediate=1 OR EXISTS(SELECT 1 FROM torrent_bulk_items b WHERE b.job_id=j.update_job_id AND b.epl_id=i.epl_id AND b.state IN ('FAILED','CANCELLED','SKIPPED'))
+                            OR NOT EXISTS(SELECT 1 FROM json_each(c.target_hashes) h WHERE NOT EXISTS(SELECT 1 FROM torrent_downloads d WHERE d.client_instance_id=c.client_instance_id AND d.epl_id=i.epl_id AND upper(d.hash)=upper(h.value) AND d.status='DOWNLOADED')))))
+                        ORDER BY i.position LIMIT 500
+                        """,this::item,id);
+                    if(pending.isEmpty()) {
+                        if(find(id).pending()>0) jdbc.update("UPDATE revision_cleanup_jobs SET message='Esperando las revisiones de sustitución de la actualización relacionada',next_check=? WHERE id=?",Instant.now().plus(internalTasks.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CLEANUP)).toEpochMilli(),id);
+                        break;
+                    }
                     try {if(executeDownloadBatch(id,pending)) break;execute(id,pending.getFirst());}
-                    catch(CalibreTransfers.OperationBusy | com.rlibanez.eplsync.exception.TorrentBusyException ex) {
-                        String waiting=ex instanceof CalibreTransfers.OperationBusy ? "Esperando a que termine la operación de Calibre; la limpieza se reintentará automáticamente" : "Esperando a que termine la operación del cliente torrent; la limpieza se reintentará automáticamente";
-                        jdbc.update("UPDATE revision_cleanup_jobs SET message=?,updated_at=? WHERE id=?",waiting,Instant.now().toEpochMilli(),id);
+                    catch(UpdateCleanupJobs.DependencyPending | CalibreTransfers.OperationBusy | com.rlibanez.eplsync.exception.TorrentBusyException ex) {
+                        String waiting=ex instanceof UpdateCleanupJobs.DependencyPending?ex.getMessage():ex instanceof CalibreTransfers.OperationBusy ? "Esperando a que termine la operación de Calibre; la limpieza se reintentará automáticamente" : "Esperando a que termine la operación del cliente torrent; la limpieza se reintentará automáticamente";
+                        jdbc.update("UPDATE revision_cleanup_jobs SET message=?,updated_at=?,next_check=? WHERE id=?",waiting,Instant.now().toEpochMilli(),ex instanceof UpdateCleanupJobs.DependencyPending?Instant.now().plus(internalTasks.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CLEANUP)).toEpochMilli():0,id);
                         break;
                     }
                 }
@@ -736,7 +780,7 @@ public class RevisionCleanup {
             var security=SecurityContextHolder.createEmptyContext();
             security.setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new SimpleGrantedAuthority(p.name())).toList()));SecurityContextHolder.setContext(security);
             return EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(EventContext.Origin.MANUAL,()->transfers.exclusive(()->{
-                Runnable guard=()->{authorize(owner.id(),job.source(),job.action(),true,job.deleteHistory());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión cambió; restaura el destino del trabajo");};
+                Runnable guard=()->{if(!verify) checkUpdateDependency(job,selected.getFirst(),null);authorize(owner.id(),job.source(),job.action(),true,job.deleteHistory());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión cambió; restaura el destino del trabajo");};
                 for(var item:selected) {
                     guard.run();
                     if(!verify && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())==0) {update(item.id(),"SKIPPED","El registro ya no existe; no se ha enviado ningún borrado");continue;}
@@ -771,7 +815,7 @@ public class RevisionCleanup {
                         update(item.id(),"SUCCEEDED",(job.action().equals("FILES")?"Torrent y archivos eliminados":"Torrent eliminado; archivos conservados")+(job.deleteHistory()?"; registro eliminado":"; registro conservado"));
                     } else if("REQUESTED".equals(outcome.cleanupState())) update(item.id(),"UNCERTAIN",outcome.message());
                     else if(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs WHERE id=? AND cancel_requested=1",Long.class,id)>0) {
-                        jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND download_id=? AND state IN ('WAITING','BLOCKED')","revision:"+id,item.oldId());
+                        jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND download_id=? AND state IN ('WAITING','BLOCKED')",job.updateJobId()==null?"revision:"+id:job.updateJobId(),item.oldId());
                         update(item.id(),"CANCELLED","Borrado cancelado antes del envío");
                     }
                     else if("WAITING".equals(outcome.cleanupState()) && outcome.message()==null) update(item.id(),"PENDING",null);
@@ -781,7 +825,7 @@ public class RevisionCleanup {
             })));
         } catch(RuntimeException ex) {
             // A committed dispatch is verified after interruption; never reset it to a new send.
-            boolean transientBusy=ex instanceof CalibreTransfers.OperationBusy || ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex);
+            boolean transientBusy=ex instanceof UpdateCleanupJobs.DependencyPending || ex instanceof CalibreTransfers.OperationBusy || ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex);
             boolean blocked=!transientBusy && (ex instanceof UserInputException || ex instanceof org.springframework.security.access.AccessDeniedException);
             if(blocked) {
                 for(var item:selected) jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 THEN 'UNCERTAIN' ELSE 'BLOCKED' END,message=? WHERE id=? AND state IN ('RUNNING','PENDING','VERIFYING')",reason(ex),item.id());
@@ -799,7 +843,7 @@ public class RevisionCleanup {
             var owner=authorize((String)stored.get("owner_id"),job.source(),job.action(),job.directRemoval(),job.deleteHistory());
             var security=SecurityContextHolder.createEmptyContext();var authorities=new ArrayList<SimpleGrantedAuthority>();owner.permissions().forEach(p->authorities.add(new SimpleGrantedAuthority(p.name())));authorities.add(new SimpleGrantedAuthority("ROLE_"+owner.role()));security.setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,authorities));SecurityContextHolder.setContext(security);
             EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->EventContext.withOrigin(EventContext.Origin.MANUAL,()->transfers.exclusive(()->{
-                Runnable guard=()->{authorize(owner.id(),job.source(),job.action(),job.directRemoval(),job.deleteHistory());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión o biblioteca cambió; prepara una nueva limpieza");if(job.directRemoval() && job.source().equals("calibre")) checkDirectCalibrePending(item,id);else if(job.directRemoval()) checkDirectPending(item,id,job,!verify && item.dispatched());else noPending(item,id,job.allowUndownloaded(),job.action(),!verify && item.dispatched(),job.deleteHistory());};
+                Runnable guard=()->{if(!verify) checkUpdateDependency(job,item,null);authorize(owner.id(),job.source(),job.action(),job.directRemoval(),job.deleteHistory());if(!Objects.equals(stored.get("context"),context(job.source()))) throw new UserInputException("La conexión o biblioteca cambió; prepara una nueva limpieza");if(job.directRemoval() && job.source().equals("calibre")) checkDirectCalibrePending(item,id);else if(job.directRemoval()) checkDirectPending(item,id,job,!verify && item.dispatched());else noPending(item,id,job.allowUndownloaded(),job.action(),!verify && item.dispatched(),job.deleteHistory());};
                 jdbc.update("UPDATE revision_cleanup_jobs SET message=NULL WHERE id=?",id);
                 guard.run();
                 if(!verify) requireCurrentAction(job.source(),job.action());
@@ -809,7 +853,7 @@ public class RevisionCleanup {
                 return null;
             })));
         } catch(RuntimeException ex) {
-            if(ex instanceof CalibreTransfers.OperationBusy || ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
+            if(ex instanceof UpdateCleanupJobs.DependencyPending || ex instanceof CalibreTransfers.OperationBusy || ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) throw ex;
             var fresh=jdbc.queryForList("SELECT dispatched FROM revision_cleanup_items WHERE id=?",Boolean.class,item.id());
             update(item.id(),verify || !fresh.isEmpty() && Boolean.TRUE.equals(fresh.getFirst())?"UNCERTAIN":ex instanceof UserInputException || ex instanceof org.springframework.security.access.AccessDeniedException?"BLOCKED":"FAILED",reason(ex));
         } finally {SecurityContextHolder.setContext(previous);}
@@ -822,6 +866,7 @@ public class RevisionCleanup {
                 boolean exists=jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0;
                 if(verify && exists) throw new UserInputException("El registro sigue presente; no se ha repetido el borrado");
                 if(!verify && exists) history.deleteRevisionHistory(item.eplId(),item.oldId());
+                if(job.updateJobId()!=null) jdbc.update("UPDATE torrent_update_cleanup SET state='REMOVED',message='Registro eliminado; torrent y archivos conservados' WHERE job_id=? AND download_id=? AND state IN ('WAITING','BLOCKED')",job.updateJobId(),item.oldId());
                 update(item.id(),"SUCCEEDED","Registro eliminado; torrent y archivos conservados");return;
             }
             torrent.exclusiveClient(adapter->{guard.run();checkJobDownload(job,item,adapter.listTorrents());boolean exists=jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0;
@@ -842,7 +887,7 @@ public class RevisionCleanup {
             if(job.deleteHistory() && jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE id=?",Long.class,item.oldId())>0) history.deleteRevisionHistory(item.eplId(),item.oldId());update(item.id(),"SUCCEEDED",(job.action().equals("FILES")?"Torrent y archivos eliminados":"Torrent eliminado; archivos conservados")+(job.deleteHistory()?"; registro eliminado":"; registro conservado"));
         } else {
             boolean uncertain="REQUESTED".equals(outcome.cleanupState());
-            if(!uncertain && !job.directRemoval()) jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND download_id=? AND state IN ('WAITING','BLOCKED')","revision:"+id,item.oldId());
+            if(!uncertain && !job.directRemoval()) jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND download_id=? AND state IN ('WAITING','BLOCKED')",job.updateJobId()==null?"revision:"+id:job.updateJobId(),item.oldId());
             update(item.id(),uncertain?"UNCERTAIN":"BLOCKED",outcome.message());
         }
     }
@@ -889,7 +934,7 @@ public class RevisionCleanup {
     private static String reason(RuntimeException ex) {return ex instanceof UserInputException || ex instanceof org.springframework.security.access.AccessDeniedException || ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException?Objects.toString(ex.getMessage(),"No se pudo verificar la operación"):"No se pudo comprobar el cliente o completar la operación; revisa la conexión";}
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=3600000) public void retention() {
         if(!lifecycle.tryLock()) return;
-        try {jdbc.update("DELETE FROM revision_cleanup_jobs WHERE id IN (SELECT id FROM revision_cleanup_jobs WHERE state='PREVIEW' AND expires_at<? AND NOT EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=revision_cleanup_jobs.id AND p.state IN ('QUEUED','RUNNING')) OR state IN ('COMPLETED','CANCELLED') AND updated_at<? AND NOT EXISTS(SELECT 1 FROM revision_cleanup_items i WHERE i.job_id=revision_cleanup_jobs.id AND i.state='UNCERTAIN') ORDER BY created_at LIMIT 100)",Instant.now().toEpochMilli(),Instant.now().minus(Duration.ofDays(90)).toEpochMilli());}finally {lifecycle.unlock();}
+        try {jdbc.update("DELETE FROM revision_cleanup_jobs WHERE id IN (SELECT id FROM revision_cleanup_jobs WHERE update_job_id IS NULL AND (state='PREVIEW' AND expires_at<? AND NOT EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=revision_cleanup_jobs.id AND p.state IN ('QUEUED','RUNNING')) OR state IN ('COMPLETED','CANCELLED') AND updated_at<? AND NOT EXISTS(SELECT 1 FROM revision_cleanup_items i WHERE i.job_id=revision_cleanup_jobs.id AND i.state='UNCERTAIN')) ORDER BY created_at LIMIT 100)",Instant.now().toEpochMilli(),Instant.now().minus(Duration.ofDays(90)).toEpochMilli());}finally {lifecycle.unlock();}
     }
     @jakarta.annotation.PreDestroy void close() {enabled=false;worker.shutdown();try {if(!worker.awaitTermination(65,TimeUnit.SECONDS)) worker.shutdownNow();}catch(InterruptedException ex) {worker.shutdownNow();Thread.currentThread().interrupt();}}
 }

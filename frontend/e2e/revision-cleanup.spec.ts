@@ -651,3 +651,44 @@ test("retry failed cleanup stays in the original job and exposes its previous fa
     page.getByText("Original connection failure", { exact: true }),
   ).toBeVisible();
 });
+
+test("a related cleanup links back to its update and keeps cleanup controls", async ({
+  page,
+}) => {
+  await page.route("**/api/revision-cleanups/cleanup-job", (r) =>
+    r.fulfill({
+      json: {
+        ...job,
+        action: "FILES",
+        directRemoval: true,
+        updateJobId: "original-update",
+        updateCleanupTiming: "AFTER_DOWNLOAD",
+        state: "RUNNING",
+        pending: 1,
+      },
+    }),
+  );
+  await page.route("**/api/revision-cleanups/cleanup-job/items?**", (r) =>
+    r.fulfill({ json: { items: [{ ...ready, state: "PENDING" }], meta } }),
+  );
+  await page.goto("/downloads/jobs/cleanup/cleanup-job");
+  await expect(
+    page.getByRole("heading", {
+      name: "Trabajo de limpieza de revisiones",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", {
+      name: "Ver trabajo de Actualización relacionado",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "/downloads/jobs/original-update");
+  await expect(
+    page.getByRole("button", { name: "Cancelar pendientes", exact: true }),
+  ).toBeVisible();
+  await page.locator(".job-report-panel .report-collapse > summary").click();
+  await expect(
+    page.getByText("Momento del borrado", { exact: true }),
+  ).toBeVisible();
+});

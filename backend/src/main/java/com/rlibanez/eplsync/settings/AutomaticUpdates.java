@@ -133,9 +133,13 @@ public class AutomaticUpdates {
         var jobs=jobs(run);if(jobs.isEmpty()) {
             jdbc.update("UPDATE scheduled_automation_runs SET state='COMPLETED',finished_at=?,message='Planificación interrumpida; se volverá a comprobar en la próxima ejecución' WHERE id=? AND NOT EXISTS(SELECT 1 FROM scheduled_tasks t WHERE t.id=task_id AND t.running=1)",Instant.now().toEpochMilli(),run);return;
         }
-        if(jobs.stream().anyMatch(j->j.state().equals("PAUSED") || j.state().equals("MISSING"))) attention(run);
-        else if(jobs.stream().noneMatch(this::failed)) jdbc.update("UPDATE scheduled_automation_runs SET state='WAITING',message=NULL WHERE id=? AND state='ATTENTION'",run);
-        if(jobs.stream().allMatch(j->j.state().equals("COMPLETED") && !failed(j))) jdbc.update("UPDATE scheduled_automation_runs SET state='COMPLETED',finished_at=? WHERE id=?",Instant.now().toEpochMilli(),run);
+        var updateIds=jobs.stream().filter(j->j.kind().equals("downloads")).map(j->j.id()).toList();
+        var cleanupStates=jdbc.queryForList("SELECT j.state,EXISTS(SELECT 1 FROM revision_cleanup_items i WHERE i.job_id=j.id AND i.state IN ('BLOCKED','FAILED','UNCERTAIN')) problem FROM revision_cleanup_jobs j WHERE j.update_job_id IN (SELECT value FROM json_each(?))",json.writeValueAsString(updateIds));
+        boolean cleanupProblem=cleanupStates.stream().anyMatch(j->"PAUSED".equals(j.get("state")) || ((Number)j.get("problem")).intValue()!=0);
+        boolean cleanupPending=cleanupStates.stream().anyMatch(j->Set.of("QUEUED","RUNNING","PAUSED").contains(j.get("state")));
+        if(cleanupProblem || jobs.stream().anyMatch(j->j.state().equals("PAUSED") || j.state().equals("MISSING"))) attention(run);
+        else if(!cleanupProblem && jobs.stream().noneMatch(this::failed)) jdbc.update("UPDATE scheduled_automation_runs SET state='WAITING',message=NULL WHERE id=? AND state='ATTENTION'",run);
+        if(!cleanupPending && !cleanupProblem && jobs.stream().allMatch(j->j.state().equals("COMPLETED") && !failed(j))) jdbc.update("UPDATE scheduled_automation_runs SET state='COMPLETED',finished_at=? WHERE id=?",Instant.now().toEpochMilli(),run);
     }
     @org.springframework.beans.factory.annotation.Value("${eplsync.tasks.worker-enabled:true}") private boolean workerEnabled;
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=5000)

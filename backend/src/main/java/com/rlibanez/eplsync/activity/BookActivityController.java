@@ -72,7 +72,7 @@ public class BookActivityController {
         boolean calibre=Permission.has(Permission.CALIBRE_SEND)||Permission.has(Permission.CALIBRE_JOBS_MANAGE);
         if(downloads) {
             queries.add("SELECT 'download:'||i.id id,"+millis("j.created_at")+" createdAt,CASE WHEN j.type='UPDATE' THEN 'DOWNLOAD_UPDATE' ELSE 'DOWNLOAD' END operation,CAST(i.revision AS TEXT) revision,"+INITIAL_STATE+" raw_state,j.state job_state,"+INITIAL_MESSAGE+" message,'downloads' source,j.id job_id,0 cleanup FROM torrent_bulk_items i JOIN torrent_bulk_jobs j ON j.id=i.job_id "+firstAttempt("downloads")+" WHERE i.epl_id=?");args.add(eplId);
-            queries.add("SELECT 'torrent-cleanup:'||c.id,"+millis("c.created_at")+",'DOWNLOAD_CLEANUP',CAST(d.revision AS TEXT),c.state,j.state,c.message,'downloads',j.id,0 FROM torrent_update_cleanup c LEFT JOIN torrent_bulk_jobs j ON j.id=c.job_id LEFT JOIN torrent_downloads d ON d.id=c.download_id WHERE c.epl_id=? AND (c.job_id IS NULL OR c.job_id NOT LIKE 'revision:%') AND c.state<>'KEPT'");args.add(eplId);
+            queries.add("SELECT 'torrent-cleanup:'||c.id,"+millis("c.created_at")+",'DOWNLOAD_CLEANUP',CAST(d.revision AS TEXT),c.state,j.state,c.message,'downloads',j.id,0 FROM torrent_update_cleanup c LEFT JOIN torrent_bulk_jobs j ON j.id=c.job_id LEFT JOIN torrent_downloads d ON d.id=c.download_id WHERE c.epl_id=? AND (c.job_id IS NULL OR c.job_id NOT LIKE 'revision:%') AND c.state<>'KEPT' AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs linked WHERE linked.update_job_id=c.job_id)");args.add(eplId);
             retry(queries,args,eplId,"downloads","torrent_bulk_jobs","torrent_bulk_items");
         }
         if(Permission.has(Permission.BOOK_HISTORY_READ)) {
@@ -87,7 +87,7 @@ public class BookActivityController {
         var authentication=SecurityContextHolder.getContext().getAuthentication();
         if(authentication.getPrincipal() instanceof Account owner) for(String source:List.of("downloads","calibre")) {
             if(!Permission.has(source.equals("downloads")?Permission.TORRENT_SYNC:Permission.CALIBRE_READ)) continue;
-            queries.add("SELECT 'cleanup:'||i.id,j.created_at,CASE WHEN j.direct_removal=1 THEN ? ELSE ? END,i.revision,i.state,j.state,i.message,j.source,j.id,1 FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.source=? AND j.owner_id=? AND j.state<>'PREVIEW' AND (i.state NOT IN ('READY','EXCLUDED','SKIPPED') OR i.preview_selected=1 OR EXISTS(SELECT 1 FROM json_each(coalesce(j.confirmation,'[]')) c WHERE c.value=i.id))");
+            queries.add("SELECT 'cleanup:'||i.id,j.created_at,CASE WHEN j.direct_removal=1 AND j.update_job_id IS NULL THEN ? ELSE ? END,i.revision,i.state,j.state,i.message,j.source,j.id,1 FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND j.source=? AND j.owner_id=? AND j.state<>'PREVIEW' AND (i.state NOT IN ('READY','EXCLUDED','SKIPPED') OR i.preview_selected=1 OR EXISTS(SELECT 1 FROM json_each(coalesce(j.confirmation,'[]')) c WHERE c.value=i.id))");
             args.addAll(List.of(source.equals("downloads")?"DOWNLOAD_DELETE":"CALIBRE_DELETE",source.equals("downloads")?"DOWNLOAD_CLEANUP":"CALIBRE_CLEANUP",eplId,source,owner.id()));
         }
         if(queries.isEmpty()) return new PageResponse<>(List.of(),meta(page,size,0));
