@@ -75,6 +75,11 @@ Se reutiliza el trabajo original y se conservan usuario, fecha y motivo anterior
 **Historial de reintentos**, paginado desde el servidor. Las peticiones repetidas
 reutilizan la misma solicitud y no crean nuevos trabajos ni nuevos intentos.
 
+El historial también recoge las comprobaciones de borrados sin confirmar, sus
+reintentos explícitos y la continuación de pendientes. Cada actuación conserva el
+detalle anterior. Los reintentos antiguos sin detalle conservado se identifican
+como tales; no se reconstruyen datos que ya no existen.
+
 El reintento vuelve a comprobar permisos, destino original, identidad, revisión
 conservada y protecciones de borrado. No modifica elementos eliminados, bloqueados,
 cancelados ni sin confirmar. Si un fallo conserva constancia de un borrado ya enviado,
@@ -102,6 +107,14 @@ Cancelar la Limpieza conserva la Actualización y cancela solo sus borrados no
 iniciados. Cancelar la Actualización cancela también los borrados no iniciados de su
 Limpieza relacionada. Los borrados ya solicitados quedan sin confirmar y pueden
 comprobarse, sin repetir automáticamente la orden.
+
+Si la Actualización está cancelada, **Comprobar borrados sin confirmar** sigue
+permitiendo consultar el resultado. Si el torrent antiguo permanece,
+**Reintentar borrados sin confirmar** autoriza un nuevo intento dentro de la
+Limpieza original. Solo afecta a solicitudes previamente enviadas y vuelve a
+comprobar la aceptación de los hashes de sustitución, su presencia en el cliente,
+la política de descarga, los permisos y las protecciones de Calibre y archivos
+compartidos. No reactiva la Actualización ni repite borrados ya confirmados.
 
 Las solicitudes de trabajos anteriores se incorporan en segundo plano, conservando
 sus identificadores, políticas, resultados y enlaces al trabajo de origen. Solo se

@@ -1974,8 +1974,17 @@
     "sentOrRemoved": "Enviados / Eliminados",
     "retryFailed": "Reintentar fallidos ({{count}})",
     "failureHistory": "Historial de reintentos",
-    "previousFailure": "Fallo anterior",
-    "relatedUpdate": "Ver trabajo de Actualización relacionado"
+    "previousFailure": "Detalle anterior",
+    "relatedUpdate": "Ver trabajo de Actualización relacionado",
+    "historyActions": {
+      "RETRY_FAILED": "Reintentar fallidos",
+      "RETRY_UNCONFIRMED": "Reintentar sin confirmar",
+      "VERIFY": "Comprobar sin confirmar",
+      "CONTINUE": "Continuar",
+      "LEGACY_RETRY": "Reintento anterior"
+    },
+    "noRetryHistory": "No hay actuaciones registradas.",
+    "legacyRetry": "No se conservan los detalles de este reintento anterior."
   },
   "calibreRemoval": {
     "confirmDeletion": "Confirmo el borrado irreversible de los libros seleccionados.",

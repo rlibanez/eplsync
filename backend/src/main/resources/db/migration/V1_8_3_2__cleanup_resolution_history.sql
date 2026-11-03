@@ -1,0 +1,2 @@
+ALTER TABLE revision_cleanup_failure_history ADD COLUMN action varchar(32) NOT NULL DEFAULT 'RETRY_FAILED'
+ CHECK(action IN ('RETRY_FAILED','RETRY_UNCONFIRMED','VERIFY','CONTINUE'));

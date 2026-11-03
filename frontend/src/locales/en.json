@@ -1974,8 +1974,17 @@
     "sentOrRemoved": "Sent / Removed",
     "retryFailed": "Retry failed ({{count}})",
     "failureHistory": "Retry history",
-    "previousFailure": "Previous failure",
-    "relatedUpdate": "View related update job"
+    "previousFailure": "Previous detail",
+    "relatedUpdate": "View related update job",
+    "historyActions": {
+      "RETRY_FAILED": "Retry failed",
+      "RETRY_UNCONFIRMED": "Retry unconfirmed",
+      "VERIFY": "Check unconfirmed",
+      "CONTINUE": "Continue",
+      "LEGACY_RETRY": "Previous retry"
+    },
+    "noRetryHistory": "No recorded actions.",
+    "legacyRetry": "Details of this previous retry were not retained."
   },
   "calibreRemoval": {
     "confirmDeletion": "I confirm the irreversible deletion of the selected books.",

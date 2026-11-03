@@ -388,7 +388,11 @@ test("unconfirmed torrent deletion retries directly and keeps its token after a 
     "data-color",
     "orange",
   );
-  await page.locator(".job-report-panel .report-collapse > summary").click();
+  await page
+    .locator(
+      ".job-report-panel:not(.cleanup-retry-history) .report-collapse > summary",
+    )
+    .click();
   await expect(page.locator(".cleanup-job-counts > div")).toHaveCount(6);
   await page
     .getByRole("button", {
@@ -442,7 +446,11 @@ test("cleanup job summary keeps partial status, metrics and help readable on des
   const status = page.locator(".cleanup-job-status");
   await expect(status).toContainText("Completado con incidencias");
   await expect(status).toHaveAttribute("data-color", "orange");
-  await page.locator(".job-report-panel .report-collapse > summary").click();
+  await page
+    .locator(
+      ".job-report-panel:not(.cleanup-retry-history) .report-collapse > summary",
+    )
+    .click();
   await expect(
     page.getByRole("region", { name: "Resumen de la limpieza" }),
   ).toBeVisible();
@@ -687,7 +695,11 @@ test("a related cleanup links back to its update and keeps cleanup controls", as
   await expect(
     page.getByRole("button", { name: "Cancelar pendientes", exact: true }),
   ).toBeVisible();
-  await page.locator(".job-report-panel .report-collapse > summary").click();
+  await page
+    .locator(
+      ".job-report-panel:not(.cleanup-retry-history) .report-collapse > summary",
+    )
+    .click();
   await expect(
     page.getByText("Momento del borrado", { exact: true }),
   ).toBeVisible();
@@ -725,7 +737,11 @@ test("already absent torrents are counted as skipped rather than newly deleted",
     }),
   );
   await page.goto("/downloads/jobs/cleanup/cleanup-job");
-  await page.locator(".job-report-panel .report-collapse > summary").click();
+  await page
+    .locator(
+      ".job-report-panel:not(.cleanup-retry-history) .report-collapse > summary",
+    )
+    .click();
   await expect(
     page.locator(".cleanup-job-counts > div").filter({ hasText: "Omitidas" }),
   ).toContainText("148");
@@ -738,4 +754,73 @@ test("already absent torrents are counted as skipped rather than newly deleted",
       { exact: true },
     ),
   ).toBeVisible();
+});
+
+test("cleanup history aligns with the report and shows checks, retries and legacy attempts", async ({
+  page,
+}) => {
+  await page.route("**/api/revision-cleanups/cleanup-job", (r) =>
+    r.fulfill({
+      json: { ...job, state: "COMPLETED", result: "PARTIAL", uncertain: 1 },
+    }),
+  );
+  await page.route("**/api/revision-cleanups/cleanup-job/items?**", (r) =>
+    r.fulfill({ json: { items: [{ ...ready, state: "UNCERTAIN" }], meta } }),
+  );
+  await page.route(
+    "**/api/revision-cleanups/cleanup-job/failure-history?**",
+    (r) =>
+      r.fulfill({
+        json: {
+          items: [
+            {
+              itemId: "a",
+              createdAt: 1792140000000,
+              username: "Owner",
+              title: "Libro",
+              message: "Comprobación anterior",
+              action: "VERIFY",
+            },
+            {
+              itemId: "a",
+              createdAt: 1792140000001,
+              username: "Owner",
+              title: "Libro",
+              message: "Envío incierto",
+              action: "RETRY_UNCONFIRMED",
+            },
+            {
+              itemId: null,
+              createdAt: 1792140000002,
+              username: "—",
+              title: "—",
+              message: null,
+              action: "LEGACY_RETRY",
+            },
+          ],
+          meta: { ...meta, totalItems: 3 },
+        },
+      }),
+  );
+  await page.goto("/downloads/jobs/cleanup/cleanup-job");
+  const history = page.locator(".cleanup-retry-history summary");
+  const report = page.locator(
+    ".job-report-panel:not(.cleanup-retry-history) .report-collapse > summary",
+  );
+  await expect(history).toBeVisible();
+  expect(
+    Math.abs(
+      (await history.boundingBox())!.x - (await report.boundingBox())!.x,
+    ),
+  ).toBeLessThan(1);
+  await history.click();
+  await expect(page.locator(".cleanup-retry-history")).toContainText(
+    "Comprobar sin confirmar",
+  );
+  await expect(page.locator(".cleanup-retry-history")).toContainText(
+    "Reintentar sin confirmar",
+  );
+  await expect(page.locator(".cleanup-retry-history")).toContainText(
+    "No se conservan los detalles de este reintento anterior.",
+  );
 });

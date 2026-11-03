@@ -803,54 +803,71 @@ function CleanupFailureHistory({
           username: string;
           title: string;
           message: string | null;
+          action?: string;
         }>
       >(`/revision-cleanups/${id}/failure-history?page=${page}&size=20`),
     enabled: opened,
     retry: false,
   });
   return (
-    <details
-      className="panel report-collapse"
-      onToggle={(e) => setOpened(e.currentTarget.open)}
-    >
-      <summary>{t("revisionCleanup.failureHistory")}</summary>
-      {opened &&
-        (result.isPending ? (
-          <Loading />
-        ) : result.isError ? (
-          <Failure error={result.error} retry={() => result.refetch()} />
-        ) : (
-          <>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>{t("events.startedAt")}</th>
-                    <th>{t("events.user")}</th>
-                    <th>{t("catalog.book")}</th>
-                    <th>{t("revisionCleanup.previousFailure")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.data.items.map((row, index) => (
-                    <tr key={`${row.itemId}-${row.createdAt}-${index}`}>
-                      <td>{new Date(row.createdAt).toLocaleString()}</td>
-                      <td>{row.username}</td>
-                      <td>{row.title}</td>
-                      <td>{row.message || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <Pager
-              page={page}
-              pages={result.data.meta.totalPages}
-              change={setPage}
-            />
-          </>
-        ))}
-    </details>
+    <section className="panel settings-section job-report-panel cleanup-retry-history">
+      <details
+        className="report-collapse"
+        onToggle={(e) => setOpened(e.currentTarget.open)}
+      >
+        <summary>{t("revisionCleanup.failureHistory")}</summary>
+        <div className="report-collapse-body">
+          {opened &&
+            (result.isPending ? (
+              <Loading />
+            ) : result.isError ? (
+              <Failure error={result.error} retry={() => result.refetch()} />
+            ) : result.data.meta.totalItems === 0 ? (
+              <p className="muted">{t("revisionCleanup.noRetryHistory")}</p>
+            ) : (
+              <>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{t("events.startedAt")}</th>
+                        <th>{t("revisionCleanup.action")}</th>
+                        <th>{t("events.user")}</th>
+                        <th>{t("catalog.book")}</th>
+                        <th>{t("revisionCleanup.previousFailure")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.data.items.map((row, index) => (
+                        <tr key={`${row.itemId}-${row.createdAt}-${index}`}>
+                          <td>{new Date(row.createdAt).toLocaleString()}</td>
+                          <td>
+                            {t(
+                              `revisionCleanup.historyActions.${row.action || "RETRY_FAILED"}`,
+                            )}
+                          </td>
+                          <td>{row.username}</td>
+                          <td>{row.title}</td>
+                          <td>
+                            {row.action === "LEGACY_RETRY"
+                              ? t("revisionCleanup.legacyRetry")
+                              : row.message || "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Pager
+                  page={page}
+                  pages={result.data.meta.totalPages}
+                  change={setPage}
+                />
+              </>
+            ))}
+        </div>
+      </details>
+    </section>
   );
 }
 

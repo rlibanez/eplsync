@@ -125,8 +125,14 @@ public class CleanupQueue {
             boolean retryUnconfirmed, boolean automatic) {
         return perform(selected,adapter,remote,retryUnconfirmed,automatic);
     }
+    public List<Result> execute(List<UpdateCleanup> selected,TorrentClient adapter,List<RemoteTorrent> remote,boolean retryUnconfirmed,boolean automatic,String retryJob) {
+        return perform(selected,adapter,remote,retryUnconfirmed,automatic,retryJob);
+    }
     private List<Result> perform(List<UpdateCleanup> selected, TorrentClient adapter, List<RemoteTorrent> remote,
             boolean retryUnconfirmed, boolean automatic) {
+        return perform(selected,adapter,remote,retryUnconfirmed,automatic,null);
+    }
+    private List<Result> perform(List<UpdateCleanup> selected,TorrentClient adapter,List<RemoteTorrent> remote,boolean retryUnconfirmed,boolean automatic,String retryJob) {
         hydrate(selected);
         var byHash=TorrentRemovalSafety.index(remote);
         var paths=TorrentRemovalSafety.paths(remote);
@@ -180,14 +186,15 @@ public class CleanupQueue {
                 }
                 var old=byHash.get(entry.getHash());
                 if (old==null && entry.getPreviousVersions()!=PreviousVersions.KEEP) { resolve(Set.of(entry.getHash())); continue; }
+                boolean recovery=retryUnconfirmed && authorizedRecovery(entry,retryJob);
                 var job=entry.getJobId()==null ? null : em.find(com.rlibanez.eplsync.torrent.bulk.BulkJob.class,entry.getJobId());
                 if (job!=null && (job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED
-                        || job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED)) continue;
+                        || (job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED && !recovery))) continue;
                 if (old!=null && uncertain.contains(old.hash()) && !retryUnconfirmed) {
                     save(entry,UpdateCleanup.State.REQUESTED,"Eliminación sin confirmar; no se repetirá automáticamente"); continue;
                 }
                 var targetHashes=targets(entry);
-                if (Boolean.TRUE.equals(entry.getImmediate()) && Boolean.TRUE.equals(entry.getAutomatic())) {
+                if (Boolean.TRUE.equals(entry.getImmediate()) && Boolean.TRUE.equals(entry.getAutomatic()) && !recovery) {
                     if(targetHashes.isEmpty() || !Boolean.TRUE.equals(entry.getReplacementAccepted())) {
                         save(entry,UpdateCleanup.State.WAITING,"El cliente todavía no ha aceptado todos los torrents de la nueva revisión");continue;
                     }
@@ -235,7 +242,7 @@ public class CleanupQueue {
                         save(entry,UpdateCleanup.State.BLOCKED,"Archivos o carpetas compartidos con otro torrent; no se borran archivos");continue;
                     }
                 }
-                if(!claim(entry,"Eliminación solicitada; pendiente de confirmar ausencia" + (noData ? ". " + NO_DATA : ""))) continue;
+                if(!claim(entry,"Eliminación solicitada; pendiente de confirmar ausencia" + (noData ? ". " + NO_DATA : ""),recovery?retryJob:null)) continue;
                 if (!dispatched.add(old.hash())) continue;
                 try {
                     adapter.deleteTorrent(old.hash(),files);
@@ -331,18 +338,33 @@ public class CleanupQueue {
         });}
     }
     /** Commit the dispatch before releasing the monitor. Pause/cancel never waits for HTTP. */
+    private boolean authorizedRecovery(UpdateCleanup entry,String retryJob) {
+        if(retryJob==null || entry.getState()!=UpdateCleanup.State.REQUESTED) return false;
+        return ((Number)em.createNativeQuery("SELECT count(*) FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id WHERE j.id=:job AND j.update_job_id=:parent AND i.old_id=:download AND i.dispatched=1 AND i.state='RUNNING' AND j.state IN ('QUEUED','RUNNING') AND j.cancel_requested=0 AND EXISTS(SELECT 1 FROM revision_cleanup_failure_history h WHERE h.job_id=j.id AND h.item_id=i.id AND h.action='RETRY_UNCONFIRMED')")
+            .setParameter("job",retryJob).setParameter("parent",entry.getJobId()).setParameter("download",entry.getDownloadId()).getSingleResult()).longValue()>0;
+    }
     private boolean claim(UpdateCleanup entry,String message) {
+        return claim(entry,message,null);
+    }
+    private boolean claim(UpdateCleanup entry,String message,String retryJob) {
         synchronized(bulk) {return Boolean.TRUE.equals(tx.execute(status -> {
             if(!CleanupBudget.available()) return false;
             var fresh=entries.findById(entry.getId()).orElseThrow();em.refresh(fresh);
             if(!PENDING.contains(fresh.getState())) return false;
             if(((Number)em.createNativeQuery("SELECT count(*) FROM revision_cleanup_jobs WHERE update_job_id=:parent AND (cancel_requested=1 OR state IN ('PAUSED','CANCELLED'))")
                 .setParameter("parent",Objects.toString(entry.getJobId(),"")).getSingleResult()).longValue()>0) return false;
+            boolean recovery=authorizedRecovery(fresh,retryJob);
             var job=entry.getJobId()==null?null:em.find(com.rlibanez.eplsync.torrent.bulk.BulkJob.class,entry.getJobId());
             if(job!=null) {
                 em.refresh(job);
-                if(job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED
-                    || job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED) return false;
+                if((job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.PAUSED
+                    || (job.getState()==com.rlibanez.eplsync.torrent.bulk.BulkJob.State.CANCELLED && !recovery))) return false;
+            }
+            var related=em.createNativeQuery("SELECT id FROM revision_cleanup_jobs WHERE update_job_id=:parent",String.class).setParameter("parent",Objects.toString(entry.getJobId(),"")).getResultList();
+            if(!related.isEmpty()) {
+                int marked=em.createNativeQuery("UPDATE revision_cleanup_items SET dispatched=1 WHERE job_id=:job AND old_id=:download AND state='RUNNING' AND EXISTS(SELECT 1 FROM revision_cleanup_jobs j WHERE j.id=:job AND j.cancel_requested=0 AND j.state IN ('QUEUED','RUNNING'))")
+                    .setParameter("job",related.getFirst()).setParameter("download",entry.getDownloadId()).executeUpdate();
+                if(marked==0) return false;
             }
             var blocker=blockingCalibre(entry.getHash(),entry.getClientInstanceId());
             if(blocker!=null) {save(entry,UpdateCleanup.State.WAITING,blocker.message());return false;}

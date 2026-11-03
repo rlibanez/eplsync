@@ -211,6 +211,52 @@ class UpdateTests {
         assertThat(cleanupJobs.get(id).state()).isEqualTo("CANCELLED");
         verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void cancelledUpdatesAllowReadOnlyConfirmationAndExplicitSafeRetryInTheSameCleanup(boolean multiple) {
+        if(multiple) history(1,0.9,OTHER,DownloadStatus.DOWNLOADED);
+        var update=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);String id=linked(update);
+        var send=items.findByJobIdOrderByPosition(update.jobId(),org.springframework.data.domain.PageRequest.of(0,10)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        var remote=new ArrayList<RemoteTorrent>(List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old/old.epub"),remote(NEW,DownloadStatus.DOWNLOADED,"/new/new.epub")));
+        if(multiple) remote.add(remote(OTHER,DownloadStatus.DOWNLOADED,"/older/older.epub"));
+        when(stubClient.listTorrents()).thenAnswer(inv->List.copyOf(remote));when(stubClient.listTorrents(anySet())).thenAnswer(inv->List.copyOf(remote));
+        doThrow(new IllegalStateException("lost reply")).when(stubClient).deleteTorrent(anyString(),anyBoolean());
+        cleanupJobs.cycle();assertThat(cleanupJobs.get(id).uncertain()).isEqualTo(multiple?2:1);
+        bulk.control(update.jobId(),"cancel");
+        int attempted=multiple?2:1;
+        cleanupJobs.control(id,"verify");cleanupJobs.cycle();
+        assertThat(cleanupJobs.get(id).uncertain()).isEqualTo(attempted);
+        assertThat(cleanupJobs.items(id,0,20).items()).allSatisfy(item->assertThat(item.message()).contains("sigue presente").doesNotContain("actualización relacionada está cancelada"));
+        verify(stubClient,times(attempted)).deleteTorrent(anyString(),anyBoolean());
+        assertThat(cleanupJobs.failureHistory(id,0,20).items()).hasSize(attempted).allSatisfy(h->assertThat(h.action()).isEqualTo("VERIFY"));
+        doAnswer(inv->{String hash=inv.getArgument(0);remote.removeIf(row->row.hash().equals(hash));return null;}).when(stubClient).deleteTorrent(anyString(),anyBoolean());
+        var retry=new com.rlibanez.eplsync.settings.RevisionCleanup.RetryInput("cancelled-parent-retry",true,true);
+        cleanupJobs.retryUnconfirmed(id,retry);cleanupJobs.retryUnconfirmed(id,retry);cleanupJobs.cycle();cleanupJobs.cycle();
+        assertThat(cleanupJobs.get(id).succeeded()).isEqualTo(attempted);assertThat(cleanupJobs.get(id).uncertain()).isZero();
+        assertThat(bulk.view(update.jobId()).status()).isEqualTo(BulkJob.State.CANCELLED);
+        assertThat(cleanupJobs.failureHistory(id,0,20).items()).hasSize(attempted*2);
+        verify(stubClient,times(attempted*2)).deleteTorrent(anyString(),eq(true));
+        verify(stubClient,never()).deleteTorrent(eq(NEW),anyBoolean());
+        cleanupJobs.retryUnconfirmed(id,retry);cleanupJobs.cycle();verify(stubClient,times(attempted*2)).deleteTorrent(anyString(),anyBoolean());
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void explicitRecoveryAfterParentCancellationStillProtectsReplacementAndSharedFiles(boolean shared) {
+        var update=immediateJob(NEW,PreviousVersions.REMOVE_TORRENT_AND_FILES);String id=linked(update);
+        var send=items.findByJobIdOrderByPosition(update.jobId(),org.springframework.data.domain.PageRequest.of(0,10)).getContent().getFirst();
+        bulk.finish(send.getId(),BulkItem.State.ACCEPTED,null,false,false);
+        var request=only(update.jobId());request.setState(UpdateCleanup.State.REQUESTED);cleanup.save(request);
+        jdbc.update("UPDATE revision_cleanup_items SET state='UNCERTAIN',dispatched=0 WHERE job_id=?",id);
+        bulk.control(update.jobId(),"cancel");
+        var remote=shared?List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/shared/file.epub"),remote(NEW,DownloadStatus.DOWNLOADED,"/shared/file.epub")):List.of(remote(OLD,DownloadStatus.DOWNLOADED,"/old/file.epub"));
+        when(stubClient.listTorrents()).thenReturn(remote);when(stubClient.listTorrents(anySet())).thenReturn(remote);
+        cleanupJobs.retryUnconfirmed(id,new com.rlibanez.eplsync.settings.RevisionCleanup.RetryInput("protected-recovery",true,true));cleanupJobs.cycle();
+        verify(stubClient,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(only(update.jobId()).getState()).isEqualTo(UpdateCleanup.State.REQUESTED);
+        assertThat(downloads.findAll()).hasSize(1);
+        assertThat(cleanupJobs.failureHistory(id,0,20).items()).singleElement().satisfies(h->assertThat(h.action()).isEqualTo("RETRY_UNCONFIRMED"));
+    }
     @Test void updateCleanupDeletesHistoryOnlyWhenRequestedAndAbsenceConfirmed() {
         for(var policy:List.of(PreviousVersions.REMOVE_TORRENT,PreviousVersions.REMOVE_TORRENT_AND_FILES)) {
             var old=downloads.findAll().stream().filter(d->d.getHash().equals(OLD)).findFirst().orElseGet(()->history(1,1,OLD,DownloadStatus.DOWNLOADED));

@@ -137,6 +137,17 @@ class RevisionCleanupTests {
         assertThat(item(job).message()).contains("ya estaba ausente","registro de EPL Sync eliminado");
         verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
     }
+    @Test void unconfirmedChecksAndRetriesKeepAnItemHistoryAndLegacyRequestsRemainVisible() {
+        var job=start(preview("downloads","FILES"));
+        jdbc.update("UPDATE revision_cleanup_items SET state='UNCERTAIN',dispatched=1,message='Original uncertain result' WHERE job_id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='COMPLETED',result='PARTIAL' WHERE id=?",job.id());
+        cleanup.control(job.id(),"verify");cleanup.cycle();
+        assertThat(cleanup.failureHistory(job.id(),0,20).items()).singleElement().satisfies(h->{assertThat(h.action()).isEqualTo("VERIFY");assertThat(h.message()).isEqualTo("Original uncertain result");});
+        var retry=retryInput("history-request");cleanup.retryUnconfirmed(job.id(),retry);cleanup.retryUnconfirmed(job.id(),retry);
+        assertThat(cleanup.failureHistory(job.id(),0,20).meta().totalItems()).isEqualTo(2);
+        jdbc.update("INSERT INTO revision_cleanup_retries(request_id,job_id,created_at) VALUES('legacy-history',?,1)",job.id());
+        assertThat(cleanup.failureHistory(job.id(),0,20).items()).hasSize(3).anySatisfy(h->assertThat(h.action()).isEqualTo("LEGACY_RETRY"));
+    }
     RevisionCleanup.Job preview(String source,String action) {return cleanup.preview(new RevisionCleanup.PreviewInput(source,action,List.of()));}
     RevisionCleanup.Item item(RevisionCleanup.Job job) {return cleanup.items(job.id(),0,1000).items().getFirst();}
     RevisionCleanup.Job start(RevisionCleanup.Job job) {return cleanup.start(job.id(),new RevisionCleanup.Confirmation(List.of(item(job).id()),true,true));}

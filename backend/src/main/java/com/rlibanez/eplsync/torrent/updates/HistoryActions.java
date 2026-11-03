@@ -177,9 +177,12 @@ public class HistoryActions {
     }
     public Result removeRevision(Selection selection,String jobId,boolean explicitRetry,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard) {
         if(jobId==null || !jobId.matches("[a-f0-9-]{36}")) throw new UserInputException("Trabajo de limpieza inválido");
-        return CleanupBudget.run(()->remove(selection,explicitRetry,cleanupProvenance(jobId),guard,false));
+        return CleanupBudget.run(()->remove(selection,explicitRetry,cleanupProvenance(jobId),guard,false,explicitRetry?jobId:null));
     }
     private Result remove(Selection selection,boolean retryUnconfirmed,String provenance,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard,boolean audited) {
+        return remove(selection,retryUnconfirmed,provenance,guard,audited,null);
+    }
+    private Result remove(Selection selection,boolean retryUnconfirmed,String provenance,java.util.function.Consumer<List<com.rlibanez.eplsync.torrent.downloads.RemoteTorrent>> guard,boolean audited,String retryJob) {
         Permission.require(Permission.TORRENT_CLEANUP);
         requireSelection(selection);
         java.util.Objects.requireNonNull(selection);
@@ -218,7 +221,7 @@ public class HistoryActions {
                 }
                 entries.flush();return pending;
                 });
-                var outcomes=queue.execute(requests,adapter,remote,retryUnconfirmed,false);
+                var outcomes=queue.execute(requests,adapter,remote,retryUnconfirmed,false,retryJob);
                 var byId=new HashMap<String,CleanupQueue.Result>();outcomes.forEach(r -> byId.put(r.downloadId(),r));
                 return new Result(rows.stream().map(r -> {
                     var outcome=byId.get(r.getId());
