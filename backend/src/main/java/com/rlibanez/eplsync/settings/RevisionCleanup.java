@@ -482,6 +482,39 @@ public class RevisionCleanup {
         if(created) events.live(new EventContext.Actor(owner.id(),owner.username(),"USER"),EventJournal.Category.JOB,"REVISION_CLEANUP",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,id,Map.of("selected",confirmation.ids().size(),"source",job.source()));
         return get(id);
     }
+    public record FailureHistory(String itemId,long createdAt,String username,String title,String message) {}
+    public PageResponse<FailureHistory> failureHistory(String id,int page,int size) {
+        get(id);com.rlibanez.eplsync.config.QueryLimits.page(page,size);
+        long count=jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_failure_history WHERE job_id=?",Long.class,id);
+        var rows=jdbc.query("SELECT * FROM revision_cleanup_failure_history WHERE job_id=? ORDER BY created_at DESC,request_id,item_id LIMIT ? OFFSET ?",
+            (r,n)->new FailureHistory(r.getString("item_id"),r.getLong("created_at"),r.getString("username"),r.getString("title"),r.getString("message")),id,size,(long)page*size);
+        return new PageResponse<>(rows,meta(page,size,count));
+    }
+    public Job retryFailed(String id,RetryInput input) {return exclusive(()->{
+        var job=get(id);requireCurrentAction(job.source(),job.action());
+        var owner=authorize(sessions.current().id(),job.source(),job.action(),job.directRemoval(),job.deleteHistory());
+        if(input==null || !input.confirm() || input.requestId()==null || !input.requestId().matches("[A-Za-z0-9-]{8,64}")) throw new UserInputException("Confirma el reintento de los elementos fallidos");
+        if(Set.of("FILES","BOOK").contains(job.action()) && !input.confirmDestructive()) throw new UserInputException("Confirma la eliminación irreversible de los elementos fallidos");
+        tx.executeWithoutResult(status->{
+            var previous=jdbc.queryForList("SELECT job_id FROM revision_cleanup_retries WHERE request_id=?",String.class,input.requestId());
+            if(!previous.isEmpty()) {if(!previous.getFirst().equals(id)) throw new UserInputException("La solicitud pertenece a otro trabajo");return;}
+            if(!Set.of("COMPLETED","PAUSED").contains(job.state()) || job.pending()>0) throw new UserInputException("Espera a que termine el trabajo antes de reintentar los fallidos");
+            if(!Objects.equals(jdbc.queryForObject("SELECT context FROM revision_cleanup_jobs WHERE id=?",String.class,id),context(job.source()))) throw new UserInputException("La conexión cambió; restaura el destino del trabajo antes de reintentarlo");
+            long now=Instant.now().toEpochMilli();
+            jdbc.update("INSERT INTO revision_cleanup_retries(request_id,job_id,created_at) VALUES(?,?,?)",input.requestId(),id,now);
+            int count=jdbc.update("INSERT INTO revision_cleanup_failure_history(request_id,item_id,job_id,created_at,username,title,message) SELECT ?,id,job_id,?,?,title,message FROM revision_cleanup_items WHERE job_id=? AND state='FAILED'",input.requestId(),now,owner.username(),id);
+            if(count==0) throw new UserInputException("No hay elementos fallidos para reintentar");
+            // A previous dispatch is checked, never implicitly authorized for another remote deletion.
+            jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN dispatched=1 AND ?<>'RECORD' THEN 'VERIFYING' ELSE 'PENDING' END,message=NULL WHERE job_id=? AND state='FAILED'",job.action(),id);
+            jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',result=NULL,message=NULL,cancel_requested=0,updated_at=? WHERE id=?",now,id);
+            var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+            events.recordAs(actor,EventJournal.Category.JOB,"REVISION_CLEANUP_RETRY",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,input.requestId(),Map.of("jobId",id,"source",job.source(),"selected",count));
+            events.recordAs(actor,EventJournal.Category.JOB,"REVISION_CLEANUP_RETRY",EventJournal.Outcome.SUCCEEDED,EventContext.Origin.MANUAL,input.requestId(),Map.of("jobId",id,"source",job.source(),"selected",count));
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                @Override public void afterCommit() {log.info("Reintento de limpieza solicitado: trabajo={}, solicitud={}, usuario={}, elementos={}",id,input.requestId(),owner.username(),count);}
+            });
+        });return get(id);
+    });}
     public Job retryUnconfirmed(String id,RetryInput input) {return exclusive(()->{
         var job=get(id);requireCurrentAction(job.source(),job.action());authorize(sessions.current().id(),job.source(),job.action(),job.directRemoval(),job.deleteHistory());
         if(!job.source().equals("downloads") || job.action().equals("RECORD")) throw new UserInputException("Solo se pueden reenviar los borrados de torrents de este trabajo");

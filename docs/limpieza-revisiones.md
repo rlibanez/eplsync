@@ -66,3 +66,18 @@ La preparación consulta formatos y comprueba candidatos por lotes de hasta 20 e
 La previsualización muestra 20 candidatos por página, cinco grupos de copias que conservar y hasta 20 copias por consulta del selector. La ordenación y la selección se resuelven en el servidor. **Seleccionar disponibles** y **Quitar selección** afectan a toda la previsualización, no solo a la página visible. Cambiar de página conserva la selección.
 
 Puedes cancelar y cerrar mientras se prepara. La confirmación comprueba la versión de la previsualización para impedir que se confirme una selección anterior a un cambio de copia. El borrado sigue procesándose por lotes de hasta 20 elementos y 30 segundos, con las comprobaciones de identidad, formatos, permisos, biblioteca y trabajos incompatibles antes de cada operación. Una operación incierta se comprueba sin repetir el borrado.
+
+### Reintentar elementos fallidos
+
+Un trabajo de limpieza terminado con elementos **Fallidos** ofrece **Reintentar
+fallidos (n)** en su barra de acciones, tanto para Descargas como para Calibre.
+Se reutiliza el trabajo original y se conservan usuario, fecha y motivo anterior en
+**Historial de reintentos**, paginado desde el servidor. Las peticiones repetidas
+reutilizan la misma solicitud y no crean nuevos trabajos ni nuevos intentos.
+
+El reintento vuelve a comprobar permisos, destino original, identidad, revisión
+conservada y protecciones de borrado. No modifica elementos eliminados, bloqueados,
+cancelados ni sin confirmar. Si un fallo conserva constancia de un borrado ya enviado,
+se comprueba su resultado sin reenviarlo. Los borrados sin confirmar mantienen sus
+acciones específicas de comprobación y reintento explícito. Un trabajo cancelado no
+se reactiva con esta acción.

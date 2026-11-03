@@ -45,6 +45,7 @@ import { useAuth } from "../auth/Auth";
 
 type Source = "downloads" | "calibre";
 interface Job {
+  updatedAt: number;
   id: string;
   source: Source;
   action: string;
@@ -779,6 +780,77 @@ function CleanupItems({
     </div>
   );
 }
+function CleanupFailureHistory({
+  id,
+  version,
+}: {
+  id: string;
+  version: number;
+}) {
+  const { t } = useTranslation();
+  const [opened, setOpened] = useState(false);
+  const [page, setPage] = useState(0);
+  const result = useQuery({
+    queryKey: ["cleanup-failure-history", id, version, page],
+    queryFn: () =>
+      get<
+        Page<{
+          itemId: string;
+          createdAt: number;
+          username: string;
+          title: string;
+          message: string | null;
+        }>
+      >(`/revision-cleanups/${id}/failure-history?page=${page}&size=20`),
+    enabled: opened,
+    retry: false,
+  });
+  return (
+    <details
+      className="panel report-collapse"
+      onToggle={(e) => setOpened(e.currentTarget.open)}
+    >
+      <summary>{t("revisionCleanup.failureHistory")}</summary>
+      {opened &&
+        (result.isPending ? (
+          <Loading />
+        ) : result.isError ? (
+          <Failure error={result.error} retry={() => result.refetch()} />
+        ) : (
+          <>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{t("events.startedAt")}</th>
+                    <th>{t("events.user")}</th>
+                    <th>{t("catalog.book")}</th>
+                    <th>{t("revisionCleanup.previousFailure")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.data.items.map((row, index) => (
+                    <tr key={`${row.itemId}-${row.createdAt}-${index}`}>
+                      <td>{new Date(row.createdAt).toLocaleString()}</td>
+                      <td>{row.username}</td>
+                      <td>{row.title}</td>
+                      <td>{row.message || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <Pager
+              page={page}
+              pages={result.data.meta.totalPages}
+              change={setPage}
+            />
+          </>
+        ))}
+    </details>
+  );
+}
+
 function Pager({
   page,
   pages,
@@ -877,7 +949,7 @@ export function CleanupJob() {
     mutationFn: (value: string) =>
       post<Job>(
         `/revision-cleanups/${id}/${value}`,
-        value === "retry"
+        value === "retry" || value === "retry-failed"
           ? {
               requestId: retryRequest.current,
               confirm: true,
@@ -893,6 +965,7 @@ export function CleanupJob() {
         "downloads",
         "calibre-library",
         "revision-cleanups",
+        "cleanup-failure-history",
         "jobs",
         "calibre-jobs",
       ].forEach((key) => void cache.invalidateQueries({ queryKey: [key] }));
@@ -968,6 +1041,21 @@ export function CleanupJob() {
             {(actions.includes(data.action) ||
               (data.action === "EPUB" && actions.includes("BOOK"))) && (
               <>
+                {data.failed > 0 &&
+                  data.pending === 0 &&
+                  ["COMPLETED", "PAUSED"].includes(data.state) &&
+                  actions.includes(data.action) && (
+                    <Button
+                      disabled={command.isPending}
+                      onClick={() => {
+                        if (!retryRequest.current)
+                          retryRequest.current = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                        command.mutate("retry-failed");
+                      }}
+                    >
+                      {t("revisionCleanup.retryFailed", { count: data.failed })}
+                    </Button>
+                  )}
                 {(data.state === "PAUSED" ||
                   (data.directRemoval &&
                     data.blocked + data.failed > 0 &&
@@ -1100,6 +1188,7 @@ export function CleanupJob() {
         </details>
       </section>
       <ErrorMessage error={command.error} />
+      <CleanupFailureHistory id={data.id} version={data.updatedAt} />
       <div className="filters jobs-filters">
         {search.fields}
         <MultiSelect

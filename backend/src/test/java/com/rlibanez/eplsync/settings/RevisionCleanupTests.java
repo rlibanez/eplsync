@@ -63,6 +63,46 @@ class RevisionCleanupTests {
     RemoteTorrent remote(String hash,String path) {return new RemoteTorrent(hash.repeat(40),DownloadStatus.DOWNLOADED,Instant.now(),Set.of(),path,"Book","/downloads",false);}
     void calibre(long id,int revision) {jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES(?, 'generation',1,?,1,?,'Book','Author')",UUID.randomUUID().toString(),id,revision);}
     CalibreClient.Book book(long id,int revision) {return new CalibreClient.Book(id,"Book",List.of("Author"),1L,BigDecimal.valueOf(revision),true);}
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"downloads","calibre"})
+    void failedCleanupRetriesInPlaceWithDurableHistoryAndNoDuplicateDeletion(String source) {
+        var job=start(preview(source,source.equals("downloads")?"FILES":"BOOK"));var row=item(job);
+        jdbc.update("UPDATE revision_cleanup_items SET state='FAILED',message='Original connection failure' WHERE id=?",row.id());
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='COMPLETED',result='FAILED' WHERE id=?",job.id());
+        jdbc.update("INSERT INTO revision_cleanup_items(id,job_id,position,old_id,replacement_id,epl_id,title,revision,replacement_revision,state) VALUES('already-done',?,1,'done','retained',2,'Previously deleted','1','2','SUCCEEDED')",job.id());
+        if(source.equals("calibre")) removeRemoteBook();
+        var input=new RevisionCleanup.RetryInput("failed-request",true,true);
+        assertThat(cleanup.retryFailed(job.id(),input).id()).isEqualTo(job.id());
+        cleanup.retryFailed(job.id(),input);
+        assertThat(cleanup.failureHistory(job.id(),0,20).items()).singleElement().satisfies(h->{assertThat(h.message()).isEqualTo("Original connection failure");assertThat(h.username()).isEqualTo("Owner");});
+        cleanup.cycle();cleanup.retryFailed(job.id(),input);cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT state FROM revision_cleanup_items WHERE id='already-done'",String.class)).isEqualTo("SUCCEEDED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM revision_cleanup_jobs",Long.class)).isEqualTo(1);
+        if(source.equals("downloads")) verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        else verify(client,times(1)).remove(any(),eq(10L),eq(true));
+    }
+    @Test void failedRetryDoesNotResendAnAlreadyDispatchedDeletionOrTouchUncertainItems() {
+        var job=start(preview("downloads","FILES"));var row=item(job);
+        jdbc.update("UPDATE revision_cleanup_items SET state='FAILED',dispatched=1,message='Failure after dispatch' WHERE id=?",row.id());
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='COMPLETED',result='FAILED' WHERE id=?",job.id());
+        cleanup.retryFailed(job.id(),new RevisionCleanup.RetryInput("failed-dispatch",true,true));
+        assertThat(item(job).state()).isEqualTo("VERIFYING");cleanup.cycle();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);
+        assertThatThrownBy(()->cleanup.retryFailed(job.id(),new RevisionCleanup.RetryInput("not-a-failure",true,true))).hasMessageContaining("No hay elementos fallidos");
+    }
+    @Test void failedRetryKeepsCancellationDestinationAndOwnershipProtections() {
+        var job=start(preview("downloads","FILES"));
+        jdbc.update("UPDATE revision_cleanup_items SET state='FAILED',message='Failure' WHERE job_id=?",job.id());
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='CANCELLED' WHERE id=?",job.id());
+        assertThatThrownBy(()->cleanup.retryFailed(job.id(),new RevisionCleanup.RetryInput("cancelled-retry",true,true))).hasMessageContaining("termine el trabajo");
+        jdbc.update("UPDATE revision_cleanup_jobs SET state='COMPLETED' WHERE id=?",job.id());
+        assertThatThrownBy(()->cleanup.retryFailed(job.id(),new RevisionCleanup.RetryInput("unconfirmed-input",true,false))).hasMessageContaining("irreversible");
+        jdbc.update("UPDATE revision_cleanup_jobs SET context='other' WHERE id=?",job.id());
+        assertThatThrownBy(()->cleanup.retryFailed(job.id(),new RevisionCleanup.RetryInput("changed-config",true,true))).hasMessageContaining("conexión cambió");
+        assertThat(cleanup.failureHistory(job.id(),0,20).items()).isEmpty();
+    }
     RevisionCleanup.Job preview(String source,String action) {return cleanup.preview(new RevisionCleanup.PreviewInput(source,action,List.of()));}
     RevisionCleanup.Item item(RevisionCleanup.Job job) {return cleanup.items(job.id(),0,1000).items().getFirst();}
     RevisionCleanup.Job start(RevisionCleanup.Job job) {return cleanup.start(job.id(),new RevisionCleanup.Confirmation(List.of(item(job).id()),true,true));}

@@ -51,7 +51,6 @@ for (const { source, deleteHistory, action } of [
   { source: "downloads", deleteHistory: false, action: "FILES" },
   { source: "downloads", deleteHistory: true, action: "FILES" },
   { source: "downloads", deleteHistory: true, action: "RECORD" },
-
 ] as const) {
   test(`${source}, ${action}, deleteHistory=${deleteHistory}: preview, selection, confirmation and tracking`, async ({
     page,
@@ -389,7 +388,7 @@ test("unconfirmed torrent deletion retries directly and keeps its token after a 
     "data-color",
     "orange",
   );
-  await page.locator(".report-collapse > summary").click();
+  await page.locator(".job-report-panel .report-collapse > summary").click();
   await expect(page.locator(".cleanup-job-counts > div")).toHaveCount(6);
   await page
     .getByRole("button", {
@@ -443,7 +442,7 @@ test("cleanup job summary keeps partial status, metrics and help readable on des
   const status = page.locator(".cleanup-job-status");
   await expect(status).toContainText("Completado con incidencias");
   await expect(status).toHaveAttribute("data-color", "orange");
-  await page.locator(".report-collapse > summary").click();
+  await page.locator(".job-report-panel .report-collapse > summary").click();
   await expect(
     page.getByRole("region", { name: "Resumen de la limpieza" }),
   ).toBeVisible();
@@ -577,4 +576,78 @@ test("cleanup hides Calibre work links without Calibre job permissions", async (
   await expect(
     page.getByRole("link", { name: "Ver trabajo de Calibre", exact: true }),
   ).toHaveCount(0);
+});
+
+test("retry failed cleanup stays in the original job and exposes its previous failure", async ({
+  page,
+}) => {
+  let retried = false;
+  let request: Record<string, unknown> | undefined;
+  await page.route("**/api/revision-cleanups/cleanup-job", (r) =>
+    r.fulfill({
+      json: {
+        ...job,
+        action: "FILES",
+        state: retried ? "QUEUED" : "COMPLETED",
+        result: retried ? null : "FAILED",
+        failed: retried ? 0 : 1,
+        pending: retried ? 1 : 0,
+        updatedAt: retried ? 2000 : 1000,
+      },
+    }),
+  );
+  await page.route("**/api/revision-cleanups/cleanup-job/items?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            ...ready,
+            state: retried ? "PENDING" : "FAILED",
+            message: "Connection failed",
+          },
+        ],
+        meta,
+      },
+    }),
+  );
+  await page.route(
+    "**/api/revision-cleanups/cleanup-job/retry-failed",
+    async (r) => {
+      request = r.request().postDataJSON();
+      retried = true;
+      await r.fulfill({ json: { ...job, state: "QUEUED" } });
+    },
+  );
+  await page.route(
+    "**/api/revision-cleanups/cleanup-job/failure-history?**",
+    (r) =>
+      r.fulfill({
+        json: {
+          items: [
+            {
+              itemId: "item-1",
+              createdAt: 1792140000000,
+              username: "Owner",
+              title: "Libro de prueba",
+              message: "Original connection failure",
+            },
+          ],
+          meta: { ...meta, totalItems: 1 },
+        },
+      }),
+  );
+  await page.goto("/downloads/jobs/cleanup/cleanup-job");
+  await page
+    .getByRole("button", { name: "Reintentar fallidos (1)", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Reintentar fallidos (1)", exact: true }),
+  ).toHaveCount(0);
+  expect(request).toMatchObject({ confirm: true, confirmDestructive: true });
+  expect(request?.requestId).toBeTruthy();
+  await expect(page).toHaveURL(/\/downloads\/jobs\/cleanup\/cleanup-job$/);
+  await page.getByText("Historial de reintentos", { exact: true }).click();
+  await expect(
+    page.getByText("Original connection failure", { exact: true }),
+  ).toBeVisible();
 });

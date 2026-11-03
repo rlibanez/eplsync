@@ -1189,7 +1189,8 @@
       "CALIBRE_SYNC": "Sincronización de Calibre",
       "TORRENT_UPDATE_SEARCH": "Buscar actualizaciones del catálogo",
       "CALIBRE_UPDATE_SEARCH": "Buscar actualizaciones de Calibre",
-      "REVISION_CLEANUP": "Limpiar revisiones antiguas"
+      "REVISION_CLEANUP": "Limpiar revisiones antiguas",
+      "REVISION_CLEANUP_RETRY": "Reintentar limpieza"
     },
     "fields": {
       "removed": "Eliminaciones confirmadas",
@@ -1967,7 +1968,10 @@
     "confirmCount_other": "Se limpiarán {{count}} revisiones antiguas.",
     "acceptedOrRemoved": "Aceptados / Eliminados",
     "progressColumn": "Progreso",
-    "sentOrRemoved": "Enviados / Eliminados"
+    "sentOrRemoved": "Enviados / Eliminados",
+    "retryFailed": "Reintentar fallidos ({{count}})",
+    "failureHistory": "Historial de reintentos",
+    "previousFailure": "Fallo anterior"
   },
   "calibreRemoval": {
     "confirmDeletion": "Confirmo el borrado irreversible de los libros seleccionados.",
