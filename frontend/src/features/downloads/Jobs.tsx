@@ -1,3 +1,4 @@
+import { DownloadJobControls } from "../jobs/DownloadJobControls";
 import { completedWorkItems } from "./shared";
 import { useAuth } from "../auth/Auth";
 import { WorkWaiting } from "../../components/WorkWaiting";
@@ -157,6 +158,7 @@ export function Jobs() {
   const selectionScope = new URLSearchParams(params);
   selectionScope.delete("page");
   selectionScope.delete("size");
+  const [controlsBusy, setControlsBusy] = useState(false);
   const deletion = useWorkDeletion(
     "downloads",
     (result.data?.items ?? []).map((job) => ({
@@ -165,6 +167,7 @@ export function Jobs() {
     })),
     `${selectionScope}&${sort}`,
     `${page}:${size}`,
+    controlsBusy,
   );
   async function refreshJobs() {
     const request = ++refreshRequest.current;
@@ -350,7 +353,15 @@ export function Jobs() {
           count={deletion.count}
           onClear={deletion.clear}
           controls={columns.controls}
-          actions={deletion.action}
+          actions={
+            <DownloadJobControls
+              selected={deletion.selected}
+              rows={result.data?.items}
+              busy={deletion.busy}
+              onBusy={setControlsBusy}
+              deletion={deletion.action}
+            />
+          }
           disabled={deletion.busy}
         />
         {deletion.content}

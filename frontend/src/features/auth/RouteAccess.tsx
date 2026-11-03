@@ -16,6 +16,13 @@ export function RouteAccess({ children }: { children: ReactNode }) {
   else if (pathname === "/downloads/updates" && !auth.can("CATALOG_READ"))
     permission = "CATALOG_READ";
   else if (pathname === "/downloads/updates") permission = "TORRENT_SYNC";
+  else if (
+    (pathname === "/downloads/jobs" ||
+      pathname.startsWith("/downloads/jobs/cleanup/")) &&
+    auth.can("TORRENT_SYNC") &&
+    auth.can("DOWNLOADS_DELETE")
+  )
+    permission = "TORRENT_SYNC";
   else if (pathname.startsWith("/downloads/jobs"))
     permission = "TORRENT_JOBS_MANAGE";
   else if (pathname === "/downloads") permission = "TORRENT_SYNC";

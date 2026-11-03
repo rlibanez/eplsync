@@ -173,3 +173,13 @@ programadas. Desactivar la cuenta, eliminarla o retirar permisos impide nuevas
 operaciones; una petición ya iniciada puede terminar y se conserva su resultado.
 La interfaz sigue actualizando los trabajos cancelados mientras queden envíos en
 curso, y actualiza la disponibilidad de los reintentos cuando terminan.
+
+En **Descargas → Trabajos**, la selección permite **Continuar**, **Pausar** o
+**Cancelar trabajo** cuando hay trabajos compatibles. El contador de cada botón
+indica cuántos recibirán la acción, incluidas selecciones de otras páginas. Antes
+de actuar se comprueba su estado actual; los trabajos que ya no sean compatibles
+se omiten, y un fallo no impide procesar los demás. La cancelación requiere
+confirmación y conserva las reglas de propagación a Calibre. Las limpiezas no
+admiten pausa manual. **Eliminar trabajos** mantiene su previsualización y las
+protecciones de operaciones pendientes y dependencias; un trabajo activo debe
+cancelarse y resolver sus operaciones pendientes antes de eliminar su historial.

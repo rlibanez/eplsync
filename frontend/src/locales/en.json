@@ -1,4 +1,8 @@
 {
+  "jobSelection": {
+    "result": "Applied: {{done}} · No longer applicable: {{skipped}} · Failed: {{failed}}",
+    "cancel": "The {{count}} eligible selected jobs will be cancelled. Other jobs will be kept."
+  },
   "bookActivity": {
     "title": "Book activity",
     "help": "Operations and results from retained records and jobs.",

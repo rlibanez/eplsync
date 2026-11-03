@@ -26,6 +26,7 @@ export function useWorkDeletion(
   rows: Ref[],
   context: string,
   pageScope = "",
+  locked = false,
 ) {
   const { t } = useTranslation();
   const { can } = useAuth();
@@ -79,7 +80,7 @@ export function useWorkDeletion(
     setOpened(false);
     setReport(null);
   }, [context]);
-  const busy = mutation.isPending;
+  const busy = mutation.isPending || locked;
   const selectedKey = new Set(selected.map(key));
   const selectRange = useRangeSelection(
     available.map(key),
@@ -106,6 +107,7 @@ export function useWorkDeletion(
   const permitted = report?.items.filter((item) => item.allowed) ?? [];
   return {
     visible,
+    selected,
     count: selected.length,
     busy,
     clear: () => setSelected([]),

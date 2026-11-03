@@ -1,4 +1,8 @@
 {
+  "jobSelection": {
+    "result": "Aplicados: {{done}} · Ya no aplicables: {{skipped}} · Fallidos: {{failed}}",
+    "cancel": "Se cancelarán los {{count}} trabajos seleccionados compatibles. Los demás se conservarán."
+  },
   "bookActivity": {
     "title": "Actividad del libro",
     "help": "Operaciones y resultados de los registros y trabajos conservados.",
