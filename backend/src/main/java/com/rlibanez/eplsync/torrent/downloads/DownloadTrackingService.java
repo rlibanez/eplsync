@@ -30,6 +30,7 @@ public class DownloadTrackingService {
     // Compartido por envíos y sync: una instantánea no puede pisar un envío posterior.
     private final ReentrantReadWriteLock coordination = new ReentrantReadWriteLock(true);
     private final Object writes = new Object();
+    private final TorrentAccessWaitLog accessWaitLog=new TorrentAccessWaitLog(log,System::nanoTime);
     private final ThreadLocal<String> operationInstance = new ThreadLocal<>();
 
     public DownloadTrackingService(DownloadRepository downloads, CatalogBookRepository books,
@@ -142,18 +143,24 @@ public class DownloadTrackingService {
 
     /** Wait at an operation boundary, without opening a database transaction or fetching stale remote data. */
     public <T> T awaitExclusive(Supplier<T> action) {
+        boolean waited=false;long started=0;
         try {
             if (!coordination.writeLock().tryLock(0,java.util.concurrent.TimeUnit.SECONDS)) {
-                log.debug("Sincronización torrent esperando turno; se consultará el cliente al obtener el acceso");
-                if (!coordination.writeLock().tryLock(30,java.util.concurrent.TimeUnit.SECONDS))
+                waited=true;started=accessWaitLog.started();
+                if (!coordination.writeLock().tryLock(30,java.util.concurrent.TimeUnit.SECONDS)) {
+                    accessWaitLog.completed(started,TorrentAccessWaitLog.Result.TIMED_OUT);
                     throw new TorrentBusyException("El cliente torrent sigue ocupado tras 30 segundos; no se ha iniciado la sincronización. Vuelve a intentarlo cuando termine la operación actual");
+                }
             }
         } catch(InterruptedException ex) {
             Thread.currentThread().interrupt();
+            if(waited) accessWaitLog.completed(started,TorrentAccessWaitLog.Result.INTERRUPTED);
             throw new TorrentBusyException("La espera para sincronizar el cliente torrent se ha interrumpido; no se ha iniciado la sincronización");
         }
-        try {return action.get();}
-        finally {coordination.writeLock().unlock();}
+        try {
+            if(waited) accessWaitLog.completed(started,TorrentAccessWaitLog.Result.ACQUIRED);
+            return action.get();
+        } finally {coordination.writeLock().unlock();}
     }
 
     public SyncResult sync(Supplier<List<RemoteTorrent>> remoteReader, boolean dryRun, boolean includeDetails) {

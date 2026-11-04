@@ -257,6 +257,13 @@ reales de archivos actualizan también el inventario. Los torrents sin metadatos
 se reintentan más tarde; una respuesta vacía o un fallo conserva el inventario
 anterior. Los registros de torrents ausentes no se consultan en segundo plano.
 
+Las esperas breves para obtener acceso al cliente torrent no generan mensajes de
+log. Las esperas de un segundo o más se registran en DEBUG al terminar la espera,
+con un máximo de un aviso por minuto para el coordinador. El aviso agrupa las
+esperas prolongadas y cuenta los tiempos agotados e interrupciones desde el aviso
+anterior. Esto no cambia los reintentos ni el límite de espera de 30 segundos; los
+fallos de las operaciones siguen llegando a sus respectivos trabajadores.
+
 En Estado de las descargas, la columna Extensiones (visible por defecto) y sus filtros leen
 solo SQLite. Las extensiones seleccionadas se combinan con «o». La negación devuelve
 el resto de registros, incluidos los inventarios sin comprobar y los errores que
