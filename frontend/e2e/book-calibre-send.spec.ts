@@ -97,7 +97,7 @@ for (const missing of [false, true]) {
       ).toBeDisabled();
       await dialog
         .getByRole("checkbox", {
-          name: "Descargar los EPUB no disponibles y enviarlos a Calibre cuando terminen",
+          name: "Descargar los archivos no disponibles y enviarlos a Calibre cuando terminen",
           exact: true,
         })
         .check();

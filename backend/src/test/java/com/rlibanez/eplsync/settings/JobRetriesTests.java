@@ -51,6 +51,7 @@ class JobRetriesTests {
         when(client.hasEpub(any(),anyLong())).thenReturn(true);
         when(client.uploadEpub(any(),any(),anyString(),anyString())).thenReturn(9L);
         when(client.findRevision(any(),anyLong(),any())).thenReturn(null);
+        when(client.findBookRevision(any(),anyLong(),any())).thenReturn(null);
     }
     String digest(String s) throws Exception {return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(s.getBytes(java.nio.charset.StandardCharsets.UTF_8)));}
     String torrentJob(String state,String... states) throws Exception {

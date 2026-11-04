@@ -34,6 +34,7 @@ export function useDownloadColumns(
     hidden?: string[];
     extraSort?: TableColumn[];
     newColumnsAfter?: Record<string, string>;
+    revealOnce?: string[];
   } = { defaults: "createdAt,desc" },
   lastRowNumber = 1,
 ) {
@@ -54,6 +55,18 @@ export function useDownloadColumns(
       const saved = JSON.parse(
         localStorage.getItem(`${key}.settings.v1`) || "null",
       );
+      for (const field of options.revealOnce ?? []) {
+        const marker = `${key}.revealed.${field}`;
+        if (localStorage.getItem(marker) !== "1") {
+          if (saved && Array.isArray(saved.hidden)) {
+            saved.hidden = saved.hidden.filter(
+              (value: string) => value !== field,
+            );
+            localStorage.setItem(`${key}.settings.v1`, JSON.stringify(saved));
+          }
+          localStorage.setItem(marker, "1");
+        }
+      }
       if (saved && Array.isArray(saved.order) && Array.isArray(saved.hidden)) {
         const order = Array.from(
           new Set<string>(

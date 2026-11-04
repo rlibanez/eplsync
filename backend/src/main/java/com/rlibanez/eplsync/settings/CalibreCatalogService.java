@@ -41,8 +41,8 @@ public class CalibreCatalogService {
                 var previous=snapshot();
                 var generations=jdbc.queryForList("SELECT generation FROM calibre_books WHERE active=true LIMIT 1",String.class);
                 String generation=generations.isEmpty()?UUID.randomUUID().toString():generations.getFirst();
-                jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES(?,?,true,?,?,?,?,?) ON CONFLICT(generation,calibre_id) DO UPDATE SET epl_id=excluded.epl_id,revision=excluded.revision,title=excluded.title,authors=excluded.authors",
-                    generation+":"+book.calibreId(),generation,book.calibreId(),book.eplId(),book.revision()==null?null:book.revision().doubleValue(),book.title(),authors);
+                jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors,formats) VALUES(?,?,true,?,?,?,?,?,?) ON CONFLICT(generation,calibre_id) DO UPDATE SET epl_id=excluded.epl_id,revision=excluded.revision,title=excluded.title,authors=excluded.authors,formats=excluded.formats",
+                    generation+":"+book.calibreId(),generation,book.calibreId(),book.eplId(),book.revision()==null?null:book.revision().doubleValue(),book.title(),authors,book.formats()==null?null:json.writeValueAsString(book.formats()));
                 long total=jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true",Long.class);
                 long identified=jdbc.queryForObject("SELECT count(*) FROM calibre_books WHERE active=true AND epl_id IS NOT NULL",Long.class);
                 var value=new Snapshot(connection.library(),previous==null?Instant.now():previous.syncedAt(),total,identified,previous!=null && !Boolean.FALSE.equals(previous.complete()));
@@ -107,7 +107,7 @@ public class CalibreCatalogService {
                 for(var book:result.items()) if(book.eplId()!=null) identified++;
                 tx.executeWithoutResult(s -> {
                     checkDeadline(deadline);
-                    var counts=jdbc.batchUpdate("INSERT OR IGNORE INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES(?,?,false,?,?,?,?,?)",
+                    var counts=jdbc.batchUpdate("INSERT OR IGNORE INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors,formats) VALUES(?,?,false,?,?,?,?,?,?)",
                         result.items(),100,(statement,book) -> {
                             statement.setString(1,generation+":"+book.calibreId());
                             statement.setString(2,generation);
@@ -117,6 +117,7 @@ public class CalibreCatalogService {
                             if(book.title().length()>4096 || String.join(", ",book.authors()).length()>16384) throw new UserInputException("Los metadatos de Calibre superan el tamaño permitido");
                             statement.setString(6,book.title());
                             statement.setString(7,String.join(", ",book.authors()));
+                            statement.setString(8,book.formats()==null?null:json.writeValueAsString(book.formats()));
                         });
                     for(var batch:counts) for(int count:batch) if(count==0)
                         throw new UserInputException("Calibre devolvió identificadores duplicados; vuelve a sincronizar la biblioteca");

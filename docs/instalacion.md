@@ -266,3 +266,13 @@ La protección de preparación por lotes de Torrent añade la columna `preparing
 a los trabajos de descarga (migración `1.8.3.3`). Los trabajos existentes conservan
 sus estados y datos. Una preparación interrumpida se cancela sin enviar sus
 elementos; los trabajos que ya estaban activos conservan su recuperación habitual.
+
+La migración `V1_8_3_4` añade el inventario de archivos de Descargas y los datos de
+verificación y formatos permitidos de los envíos de Calibre. Conserva registros,
+trabajos, reintentos y estados existentes; sus envíos pendientes siguen usando
+EPUB por defecto. Los inventarios existentes comienzan «Sin comprobar» y se
+completan en segundo plano. No es necesario vaciar la base de datos.
+
+`V1_8_3_5` añade los formatos conocidos a la copia local de la biblioteca de Calibre.
+Conserva las entradas anteriores; su formato queda sin comprobar hasta sincronizar
+la biblioteca. La actualización no cambia archivos ni metadatos en Calibre.

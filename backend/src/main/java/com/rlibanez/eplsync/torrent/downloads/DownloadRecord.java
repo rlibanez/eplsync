@@ -35,6 +35,13 @@ public class DownloadRecord {
     @JoinColumn(name = "epl_id", insertable = false, updatable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     @com.fasterxml.jackson.annotation.JsonIgnore
     private com.rlibanez.eplsync.model.CatalogBook catalogBook;
+    @Column(nullable=false) private String inventoryState="PENDING";
+    private String inventoryCheckedAt;
+    private String inventoryError;
+    @Column(nullable=false) private long inventoryNextCheck;
+    @org.hibernate.annotations.Formula("(select group_concat(distinct f.extension order by f.extension) from torrent_download_files f where f.download_id=id)")
+    @com.fasterxml.jackson.annotation.JsonIgnore private String extensionsSort;
+    @Transient private java.util.List<String> fileExtensions=java.util.List.of();
     @Transient private String title;
     @Transient private String coverUrl;
     @Transient private Boolean coverAvailable;

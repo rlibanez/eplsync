@@ -11,6 +11,7 @@ import com.rlibanez.eplsync.exception.UserInputException;
 @RequestMapping("/api/calibre/books")
 @PreAuthorize("hasAuthority('CALIBRE_READ')")
 public class CalibreLibraryController {
+    private static final tools.jackson.databind.json.JsonMapper JSON=tools.jackson.databind.json.JsonMapper.builder().build();
     private final JdbcTemplate jdbc;
     private final CalibreSettings settings;
     public CalibreLibraryController(JdbcTemplate jdbc,CalibreSettings settings) { this.jdbc=jdbc; this.settings=settings; }
@@ -27,14 +28,17 @@ public class CalibreLibraryController {
         return org.springframework.http.ResponseEntity.status(302).cacheControl(org.springframework.http.CacheControl.noStore()).location(target).build();
     }
     public record Book(long calibreId, String title, String authors, Long eplId, Double revision,
-                       Double catalogRevision, String comparison, String presence, String coverUrl, Boolean coverAvailable) {}
+                       Double catalogRevision, String comparison, String presence, String coverUrl, Boolean coverAvailable, List<String> formats) {}
     public record Meta(int page,int size,long totalItems,long totalPages,boolean hasPrevious,boolean hasNext) {}
     public record Page(List<Book> items, Meta meta) {}
+    @GetMapping("/formats")
+    @Transactional(readOnly=true)
+    public List<String> formats() {return jdbc.queryForList("SELECT DISTINCT f.value FROM calibre_books b,json_each(b.formats) f WHERE b.active=true ORDER BY f.value",String.class);}
     @GetMapping
     @Transactional(readOnly=true)
     public Page books(@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,
                       @RequestParam(defaultValue="eq") String titleOperator,@RequestParam(defaultValue="eq") String authorOperator,@RequestParam(defaultValue="") String title,@RequestParam(defaultValue="") String author,@RequestParam(required=false) String eplId,@RequestParam(defaultValue="") String comparison,
-                      @RequestParam(defaultValue="") String presence,@RequestParam(defaultValue="eq") String eplIdOperator,@RequestParam(defaultValue="eq") String comparisonOperator,@RequestParam(defaultValue="eq") String presenceOperator,@RequestParam(defaultValue="false") boolean updatesOnly, jakarta.servlet.http.HttpServletRequest request) {
+                      @RequestParam(defaultValue="") String formats,@RequestParam(defaultValue="eq") String formatsOperator,@RequestParam(defaultValue="") String presence,@RequestParam(defaultValue="eq") String eplIdOperator,@RequestParam(defaultValue="eq") String comparisonOperator,@RequestParam(defaultValue="eq") String presenceOperator,@RequestParam(defaultValue="false") boolean updatesOnly, jakarta.servlet.http.HttpServletRequest request) {
         boolean excludeTitle=com.rlibanez.eplsync.ordering.StateOperator.excluded(titleOperator),excludeAuthor=com.rlibanez.eplsync.ordering.StateOperator.excluded(authorOperator);
         var ids=com.rlibanez.eplsync.filter.EplIds.parse(eplId);
         boolean excludeId=com.rlibanez.eplsync.ordering.StateOperator.excluded(eplIdOperator);
@@ -45,6 +49,14 @@ public class CalibreLibraryController {
         String latest=updatesOnly ? CalibreCatalogService.updatesPredicate() : "";
         String base=" FROM (SELECT b.*, c.revision AS catalog_revision, c.cover_url, c.cover_available, CASE WHEN b.epl_id IS NULL THEN 'UNIDENTIFIED' WHEN c.epl_id IS NULL THEN 'MISSING' ELSE 'PRESENT' END AS presence, CASE WHEN c.epl_id IS NULL OR b.revision IS NULL THEN 'UNKNOWN' WHEN b.revision<c.revision THEN 'OUTDATED' WHEN b.revision>c.revision THEN 'NEWER' ELSE 'CURRENT' END AS comparison FROM calibre_books b LEFT JOIN catalog_books c ON c.epl_id=b.epl_id WHERE b.active=true"+latest+") WHERE 1=1";
         var args=new ArrayList<Object>();
+        boolean excludeFormats=com.rlibanez.eplsync.ordering.StateOperator.excluded(formatsOperator);
+        if(!formats.isEmpty()) {
+            var choices=Arrays.asList(formats.split(",",-1));
+            if(choices.size()>50 || choices.stream().anyMatch(value->!value.matches("[a-z0-9]{1,16}|UNKNOWN"))) throw new UserInputException("Filtro de formatos inválido");
+            var conditions=new ArrayList<String>();
+            for(String value:choices) {if(value.equals("UNKNOWN")) conditions.add("formats IS NULL");else {conditions.add("EXISTS(SELECT 1 FROM json_each(formats) f WHERE f.value=?)");args.add(value);}}
+            base+=" AND "+(excludeFormats?"NOT ":"")+"("+String.join(" OR ",conditions)+")";
+        }
         if(!title.isBlank()) { base+=" AND instr(lower(coalesce(title,'')),lower(?))"+(excludeTitle?"=0":">0"); args.add(title.trim()); }
         if(!author.isBlank()) { base+=" AND instr(lower(coalesce(authors,'')),lower(?))"+(excludeAuthor?"=0":">0"); args.add(author.trim()); }
         if(!ids.isEmpty()) {base+=excludeId?" AND (epl_id IS NULL OR epl_id NOT IN (SELECT value FROM json_each(?)))":" AND epl_id IN (SELECT value FROM json_each(?))";args.add(ids.toString());}
@@ -57,7 +69,7 @@ public class CalibreLibraryController {
             base += " AND " + filter.getKey() + (excluded.get(filter.getKey()) ? " NOT IN (" : " IN (") + String.join(",", Collections.nCopies(selected.size(), "?")) + ")";
             args.addAll(selected);
         }
-        var fields=Map.of("title","title COLLATE EPL_TEXT","authors","authors COLLATE EPL_TEXT","eplId","epl_id","revision","revision","catalogRevision","catalog_revision","comparison","comparison","presence","presence","calibreId","calibre_id");
+        var fields=Map.of("formats","formats","title","title COLLATE EPL_TEXT","authors","authors COLLATE EPL_TEXT","eplId","epl_id","revision","revision","catalogRevision","catalog_revision","comparison","comparison","presence","presence","calibreId","calibre_id");
         var order=new ArrayList<String>();
         for(String value:sort) {
             var parts=value.split(",");
@@ -67,7 +79,7 @@ public class CalibreLibraryController {
         order.add("calibre_id ASC");
         long total=jdbc.queryForObject("SELECT count(*)"+base,Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
-        var items=jdbc.query("SELECT *"+base+" ORDER BY "+String.join(",",order)+" LIMIT ? OFFSET ?",(r,n)->new Book(r.getLong("calibre_id"),r.getString("title"),r.getString("authors"),r.getObject("epl_id")==null?null:r.getLong("epl_id"),r.getObject("revision")==null?null:r.getDouble("revision"),r.getObject("catalog_revision")==null?null:r.getDouble("catalog_revision"),r.getString("comparison"),r.getString("presence"),r.getString("cover_url"),r.getObject("cover_available")==null?null:r.getBoolean("cover_available")),args.toArray());
+        var items=jdbc.query("SELECT *"+base+" ORDER BY "+String.join(",",order)+" LIMIT ? OFFSET ?",(r,n)->new Book(r.getLong("calibre_id"),r.getString("title"),r.getString("authors"),r.getObject("epl_id")==null?null:r.getLong("epl_id"),r.getObject("revision")==null?null:r.getDouble("revision"),r.getObject("catalog_revision")==null?null:r.getDouble("catalog_revision"),r.getString("comparison"),r.getString("presence"),r.getString("cover_url"),r.getObject("cover_available")==null?null:r.getBoolean("cover_available"),r.getString("formats")==null?null:JSON.readValue(r.getString("formats"),new tools.jackson.core.type.TypeReference<List<String>>(){})),args.toArray());
         long pages=(total+size-1)/size;
         return new Page(items,new Meta(page,size,total,pages,page>0,page+1<pages));
     }

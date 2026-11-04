@@ -31,6 +31,27 @@ class CalibreTransferProtocolTests {
         });server.start();connection=new CalibreSettings.Connection("http://127.0.0.1:"+server.getAddress().getPort(),"","","Library with spaces");
     }
     @AfterEach void close() {server.stop(0);}
+    @Test void sendsPdfAsRawBytesAndAddsAnotherFormatWithAtomicDoNotReplace() throws Exception {
+        Path pdf=directory.resolve("book.pdf");Files.writeString(pdf,"%PDF-1.7 payload");
+        assertThat(client.uploadBook(connection,pdf,"book.pdf","pdf-token")).isEqualTo(9);
+        assertThat(sent).isEqualTo(Files.readAllBytes(pdf));assertThat(uri).contains("/add-book/pdf-token/1/book.pdf/");
+        server.createContext("/ajax/book/9/",request->{byte[] body="{\"title\":\"Book\",\"uuid\":\"uuid9\",\"identifiers\":{},\"formats\":[\"EPUB\"]}".getBytes(StandardCharsets.UTF_8);request.getResponseHeaders().add("Content-Type","application/json");request.sendResponseHeaders(200,body.length);try(var out=request.getResponseBody()) {out.write(body);}});
+        uploadResponse="{\"result\":true}";
+        assertThat(client.addFormat(connection,9,pdf,"book.pdf","uuid9")).isTrue();assertThat(uri).contains("/cdb/cmd/add_format/0?library_id=Library%20with%20spaces");
+        var input=new java.io.DataInputStream(new java.io.ByteArrayInputStream(sent));
+        assertThat(input.readUnsignedByte()).isEqualTo(0x94);assertThat(input.readUnsignedByte()).isEqualTo(0xd3);assertThat(input.readLong()).isEqualTo(9);
+        assertThat(input.readUnsignedByte()).isEqualTo(0x92);assertThat(input.readUnsignedByte()).isEqualTo(0xdb);input.skipNBytes(input.readInt());
+        assertThat(input.readUnsignedByte()).isEqualTo(0xc6);int size=input.readInt();assertThat(input.readNBytes(size)).isEqualTo(Files.readAllBytes(pdf));
+        assertThat(input.readUnsignedByte()).isEqualTo(0xdb);assertThat(new String(input.readNBytes(input.readInt()),StandardCharsets.UTF_8)).isEqualTo("PDF");
+        assertThat(input.readUnsignedByte()).isEqualTo(0xc2);assertThat(input.read()).isEqualTo(-1);
+        uploadResponse="{\"result\":false}";assertThat(client.addFormat(connection,9,pdf,"book.pdf","uuid9")).isFalse();
+        assertThatThrownBy(()->client.addFormat(connection,9,pdf,"book.pdf","wrong-uuid")).hasMessageContaining("cambió");
+    }
+    @Test void addingFormatsRequiresAnUnambiguousRevision() {
+        searchBooks="{\"8\":{\"identifiers\":{\"epl\":\"1\",\"revision\":\"1.1\"},\"formats\":[\"PDF\"]},\"9\":{\"identifiers\":{\"epl\":\"1\",\"revision\":\"1.1\"},\"formats\":[\"MOBI\"]}}";
+        assertThatThrownBy(()->client.findBookRevision(connection,1,new BigDecimal("1.1"))).hasMessageContaining("varias entradas");
+        assertThat(posts).hasValue(0);
+    }
     @Test void missingFormatsAreNotTreatedAsConfirmedEpubRemoval() {
         assertThatThrownBy(()->client.hasEpub(connection,9)).hasMessageContaining("formatos");
     }

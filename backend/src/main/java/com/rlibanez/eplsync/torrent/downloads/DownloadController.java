@@ -17,6 +17,7 @@ public class DownloadController {
     public DownloadController(DownloadTrackingService tracking,TorrentClientService client, DownloadQueryService queries, com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup, com.rlibanez.eplsync.torrent.updates.HistoryActions actions) {
         this.tracking=tracking;this.client = client; this.queries = queries; this.cleanup = cleanup; this.actions=actions;
     }
+    @GetMapping("/extensions") public java.util.List<String> extensions() {return queries.extensions();}
     @GetMapping("/sync-state")
     public DownloadTrackingService.SyncState syncState() {return tracking.syncState();}
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('TORRENT_SYNC')")

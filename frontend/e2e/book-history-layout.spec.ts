@@ -118,7 +118,7 @@ test("book history shares catalog pagination spacing and aligns heading with pag
     await expect(history.locator("tbody tr td").nth(2)).toHaveText("2");
     await paging.getByRole("button", { name: "Anterior", exact: true }).click();
     await expect(history.locator("tbody tr td").nth(2)).toHaveText("1");
-    await expect(history.getByRole("columnheader")).toHaveCount(10);
+    await expect(history.getByRole("columnheader")).toHaveCount(11);
     expect(
       await history
         .locator("th[data-table-column]")
@@ -129,6 +129,7 @@ test("book history shares catalog pagination spacing and aligns heading with pag
       "rowNumber",
       "revision",
       "status",
+      "fileExtensions",
       "client",
       "lastCheckedAt",
       "completedAt",
@@ -140,7 +141,7 @@ test("book history shares catalog pagination spacing and aligns heading with pag
       history.locator('th[data-table-column="revision"]'),
     ).toHaveAttribute("aria-sort", "descending");
     await expect(
-      history.locator("tbody tr td").nth(7).locator(".hash-text"),
+      history.locator("tbody tr td").nth(8).locator(".hash-text"),
     ).toHaveText("A".repeat(40));
     await expect(
       history.getByRole("button", { name: "Descargar EPUB", exact: true }),
@@ -149,7 +150,7 @@ test("book history shares catalog pagination spacing and aligns heading with pag
       history.locator('th[data-table-column="actions"]'),
     ).toContainText("Acciones");
     await expect(
-      history.locator("tbody tr td").nth(7).getByRole("button"),
+      history.locator("tbody tr td").nth(8).getByRole("button"),
     ).toHaveCount(0);
     await expect(
       history.getByText("DISCOVERED", { exact: true }),

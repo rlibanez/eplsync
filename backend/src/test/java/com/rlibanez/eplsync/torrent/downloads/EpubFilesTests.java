@@ -108,18 +108,20 @@ class EpubFilesTests {
 
     @Test void completedRarPdfAndOtherFormatsAreIndividualUnsupportedContentWithoutExtraction() {
         when(adapter.listTorrents(anySet())).thenReturn(List.of(new RemoteTorrent("A".repeat(40),DownloadStatus.DOWNLOADED,null)));
-        for(String extension:List.of("rar","PDF","zip","txt")) {
+        for(String extension:List.of("rar","zip","txt")) {
             remote("book."+extension,10,1,"/downloads");
             assertThatThrownBy(()->files.list("record")).isInstanceOf(EpubFiles.UnsupportedContent.class)
-                    .hasMessageContaining("EPUB");
+                    .hasMessageContaining("compatible");
         }
         verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
         assertThat(directory.toFile().list()).isEmpty();
     }
-    @Test void pdfIsNamedInTheUnsupportedContentReason() {
-        when(adapter.listTorrents(anySet())).thenReturn(List.of(new RemoteTorrent("A".repeat(40),DownloadStatus.DOWNLOADED,null)));
-        remote("book.pdf",10,1,"/downloads");
-        assertThatThrownBy(()->files.list("record")).isInstanceOf(EpubFiles.UnsupportedContent.class).hasMessageContaining("PDF");
+    @Test void completedPdfInNestedFolderIsReadWithoutChangingItsBytes() throws Exception {
+        var target=directory.resolve("folder/book.pdf");Files.createDirectories(target.getParent());Files.writeString(target,"%PDF-1.7 test");
+        remote("folder/book.pdf",13,1,"/downloads");
+        assertThat(files.list("record")).singleElement().satisfies(file->assertThat(file.name()).isEqualTo("book.pdf"));
+        try(var opened=files.downloadBook("record",7)) {assertThat(opened.stream().readAllBytes()).isEqualTo(Files.readAllBytes(target));}
+        assertThatThrownBy(()->files.download("record",7)).hasMessageContaining("EPUB");
     }
     @Test void incompleteTorrentAndMissingMetadataKeepWaitingEvenIfTheRecordWasDownloaded() {
         for(String name:List.of("book.epub","book.rar","book.pdf")) {

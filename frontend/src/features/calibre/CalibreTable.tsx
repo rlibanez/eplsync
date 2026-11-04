@@ -20,6 +20,7 @@ import {
   type TableColumn,
 } from "../downloads/DownloadTable";
 export interface CalibreBook {
+  formats?: string[] | null;
   downloadAvailability?: string;
   calibreId: number;
   title: string;
@@ -37,6 +38,7 @@ export const calibreColumns: TableColumn[] = [
   { field: "eplId", label: "filters.eplId", width: 120 },
   { field: "title", label: "downloads.book", width: 360 },
   { field: "authors", label: "filters.author", width: 260 },
+  { field: "formats", label: "downloads.extension", width: 180 },
   { field: "revision", label: "calibre.libraryRevision", width: 160 },
   {
     field: "catalogRevision",
@@ -67,8 +69,10 @@ export function CalibreTable({
   selected,
   onSelection,
   selectionScope = "",
+  onFormat,
 }: {
   items: CalibreBook[];
+  onFormat?: (format: string) => void;
   selectionScope?: string;
   offset?: number;
   emptyMessage?: string;
@@ -216,6 +220,38 @@ export function CalibreTable({
                     )}
                   </td>,
                   <td>{book.authors || "—"}</td>,
+                  <td>
+                    {book.formats == null ? (
+                      onFormat ? (
+                        <button
+                          className="catalog-value-filter"
+                          onClick={() => onFormat("UNKNOWN")}
+                        >
+                          {t("downloads.inventoryUnknown")}
+                        </button>
+                      ) : (
+                        t("downloads.inventoryUnknown")
+                      )
+                    ) : book.formats.length ? (
+                      book.formats.map((format, index) => (
+                        <span key={format}>
+                          {index > 0 && ", "}
+                          {onFormat ? (
+                            <button
+                              className="catalog-value-filter"
+                              onClick={() => onFormat(format)}
+                            >
+                              {format.toUpperCase()}
+                            </button>
+                          ) : (
+                            format.toUpperCase()
+                          )}
+                        </span>
+                      ))
+                    ) : (
+                      "—"
+                    )}
+                  </td>,
                   <td>
                     {book.revision == null ? "—" : revision(book.revision)}
                   </td>,

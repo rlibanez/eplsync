@@ -4,6 +4,7 @@ import {
   PreparationCancelled,
   type PreparationProgress,
 } from "./preparationOperation";
+import { stateOperatorProps } from "../../components/StateOperator";
 import { PreparationFeedback } from "../../components/PreparationFeedback";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { togglePageSelection } from "../../components/pageSelection";
@@ -18,7 +19,15 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import { Alert, Button, Checkbox, Group, Select, Stack } from "@mantine/core";
+import {
+  Alert,
+  Button,
+  Checkbox,
+  Group,
+  Select,
+  Stack,
+  MultiSelect,
+} from "@mantine/core";
 import { Upload } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -67,6 +76,8 @@ const requestIdentifier = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const key = (file: Candidate) =>
   `${file.recordId}:${file.waiting ? "waiting" : file.index}`;
+const bookExtensions = ["epub", "azw3", "mobi", "pdf"];
+const extension = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
 const selectable = (file: Candidate) =>
   file.index >= 0 || file.waiting === true;
 export function CalibreSendProvider({ children }: { children: ReactNode }) {
@@ -76,6 +87,8 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
     [requestId, setRequestId] = useState(""),
     [chosen, setChosen] = useState<string[]>([]),
     [library, setLibrary] = useState<string | null>(null);
+  const [extensions, setExtensions] = useState<string[]>(["epub"]);
+  const [excludeExtensions, setExcludeExtensions] = useState(false);
   const [filePage, setFilePage] = useState(0);
   const chosenSet = useMemo(() => new Set(chosen), [chosen]);
   const { t } = useTranslation();
@@ -132,7 +145,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
       )
         return;
       setChosen([
-        ...data.files.map(key),
+        ...data.files.filter((f) => extension(f.name) === "epub").map(key),
         ...(data.pending ?? []).map((f) =>
           key({ ...f, index: -1, size: 0, waiting: true }),
         ),
@@ -159,9 +172,17 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
     })),
   ];
   const sorting = usePreviewSort(previewFiles, () => setFilePage(0));
-  const displayed = sorting.sorted(
-    (file, field) => file[field as "name" | "eplId" | "revision" | "message"],
-  );
+  const displayed = sorting
+    .sorted(
+      (file, field) => file[field as "name" | "eplId" | "revision" | "message"],
+    )
+    .filter(
+      (f) =>
+        f.waiting ||
+        f.index < 0 ||
+        !extensions.length ||
+        extensions.includes(extension(f.name)) !== excludeExtensions,
+    );
   const selectRange = useRangeSelection(
     displayed
       .slice(filePage * 20, (filePage + 1) * 20)
@@ -171,7 +192,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
       setRequestId(requestIdentifier());
       setChosen((current) => togglePageSelection(current, ids, checked));
     },
-    `${opened}:${filePage}:${JSON.stringify(sorting.order)}`,
+    `${opened}:${filePage}:${JSON.stringify(sorting.order)}:${extensions.join(",")}:${excludeExtensions}`,
   );
   const send = useMutation({
     mutationFn: () => {
@@ -209,6 +230,18 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
             : {}),
           id: requestId,
           library,
+          formats: Array.from(
+            new Set([
+              ...(extensions.length
+                ? bookExtensions.filter(
+                    (ext) => extensions.includes(ext) !== excludeExtensions,
+                  )
+                : bookExtensions),
+              ...(prepare.data?.files
+                .filter((f) => chosenSet.has(key(f)))
+                .map((f) => extension(f.name)) ?? []),
+            ]),
+          ),
           ...("filters" in selection || !prepare.data?.deferredRecords?.length
             ? {}
             : {
@@ -325,6 +358,8 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
         prepare.reset();
         send.reset();
         cancel.reset();
+        setExtensions(["epub"]);
+        setExcludeExtensions(false);
         setOpened(true);
         prepare.mutate(next);
       }}
@@ -393,12 +428,44 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
               {!!previewFiles.length && (
                 <fieldset className="send-options-group cleanup-preview">
                   <legend>{t("revisionCleanup.previewBooks")}</legend>
+                  <MultiSelect
+                    label={t("downloads.extensions")}
+                    searchable
+                    clearable
+                    clearButtonProps={{
+                      "aria-hidden": false,
+                      tabIndex: 0,
+                      "aria-label": `${t("catalog.clear")}: ${t("downloads.extensions")}`,
+                    }}
+                    data={bookExtensions.map((value) => ({
+                      value,
+                      label: value.toUpperCase(),
+                    }))}
+                    value={extensions}
+                    onChange={(values) => {
+                      setExtensions(values);
+                      setFilePage(0);
+                      setRequestId(requestIdentifier());
+                    }}
+                    {...stateOperatorProps(excludeExtensions, () => {
+                      setExcludeExtensions((v) => !v);
+                      setFilePage(0);
+                      setRequestId(requestIdentifier());
+                    })}
+                  />
                   <Group gap="xs">
                     <Button
                       variant="subtle"
                       disabled={send.isPending}
                       onClick={() => {
-                        setChosen(previewFiles.filter(selectable).map(key));
+                        setChosen((current) =>
+                          Array.from(
+                            new Set([
+                              ...current,
+                              ...displayed.filter(selectable).map(key),
+                            ]),
+                          ),
+                        );
                         setRequestId(requestIdentifier());
                       }}
                     >
@@ -408,7 +475,10 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                       variant="subtle"
                       disabled={send.isPending}
                       onClick={() => {
-                        setChosen([]);
+                        const visible = new Set(displayed.map(key));
+                        setChosen((current) =>
+                          current.filter((id) => !visible.has(id)),
+                        );
                         setRequestId(requestIdentifier());
                       }}
                     >
@@ -424,6 +494,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                           <PreviewHeading field="name" {...sorting}>
                             {t("calibreSend.files")}
                           </PreviewHeading>
+                          <th>{t("downloads.extension")}</th>
                           <PreviewHeading field="eplId" {...sorting}>
                             EPL ID
                           </PreviewHeading>
@@ -454,6 +525,11 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                                 value={filePage * 20 + index + 1}
                               />
                               <td>{file.name}</td>
+                              <td>
+                                {file.index < 0
+                                  ? "—"
+                                  : extension(file.name).toUpperCase()}
+                              </td>
                               <td>{file.eplId ?? "—"}</td>
                               <td>{revision(file.revision)}</td>
                               <td>
@@ -464,7 +540,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                       </tbody>
                     </table>
                   </div>
-                  {previewFiles.length > 20 && (
+                  {displayed.length > 20 && (
                     <nav
                       className="pagination cleanup-preview-pagination"
                       aria-label={t("revisionCleanup.previewPages")}
@@ -477,7 +553,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                         {t("catalog.previous")}
                       </Button>
                       <span>
-                        {filePage + 1} / {Math.ceil(previewFiles.length / 20)}
+                        {filePage + 1} / {Math.ceil(displayed.length / 20)}
                       </span>
                       <Button
                         variant="subtle"

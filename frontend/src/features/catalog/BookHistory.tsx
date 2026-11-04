@@ -1,4 +1,5 @@
-import { Trash2 } from "lucide-react";
+import { DownloadInventory } from "./DownloadInventory";
+import { Trash2, Files } from "lucide-react";
 import { TableAction } from "../../components/TableAction";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import {
@@ -36,11 +37,19 @@ type HistoryItem = Pick<
   | "lastCheckedAt"
   | "completedAt"
   | "lastError"
+  | "fileExtensions"
+  | "inventoryState"
+  | "inventoryCheckedAt"
 >;
 
 export function BookHistory({ id }: { id: number }) {
   const { t } = useTranslation();
   const { can } = useAuth();
+  const canReadInventory = can("CATALOG_READ") && can("BOOK_HISTORY_READ");
+  const [inventory, setInventory] = useState<{
+    bookId: number;
+    recordId: string;
+  } | null>(null);
   const canRemove = can("DOWNLOADS_DELETE") || can("TORRENT_CLEANUP");
   const selectable =
     can("DOWNLOADS_FILES_READ") ||
@@ -58,6 +67,7 @@ export function BookHistory({ id }: { id: number }) {
     [
       { field: "revision", label: "downloads.revision", width: 100 },
       { field: "status", label: "downloads.status", width: 160 },
+      { field: "fileExtensions", label: "downloads.extensions", width: 200 },
       { field: "client", label: "downloads.client", width: 160 },
       { field: "lastCheckedAt", label: "downloads.lastChecked", width: 200 },
       { field: "completedAt", label: "downloads.completed", width: 220 },
@@ -66,7 +76,7 @@ export function BookHistory({ id }: { id: number }) {
       {
         field: "actions",
         label: "historyActions.actions",
-        width: 140,
+        width: 180,
         sortable: false,
       },
     ],
@@ -78,7 +88,11 @@ export function BookHistory({ id }: { id: number }) {
     {
       defaults: "revision,desc",
       selection: selectable,
-      hidden: can("DOWNLOADS_FILES_READ") || canRemove ? [] : ["actions"],
+      hidden:
+        canReadInventory || can("DOWNLOADS_FILES_READ") || canRemove
+          ? []
+          : ["actions"],
+      newColumnsAfter: { fileExtensions: "status" },
     },
     (page + 1) * size,
   );
@@ -100,6 +114,7 @@ export function BookHistory({ id }: { id: number }) {
     `${id}:${page}:${size}:${sort}`,
   );
   useEffect(() => setSelected([]), [sort, id]);
+  useEffect(() => setInventory(null), [id]);
   useEffect(() => {
     if (result.data)
       setPage((current) =>
@@ -194,6 +209,25 @@ export function BookHistory({ id }: { id: number }) {
                                   {status(item.status)}
                                 </span>
                               </td>,
+                              <td>
+                                {item.inventoryCheckedAt
+                                  ? (item.fileExtensions ?? [])
+                                      .map(
+                                        (ext) =>
+                                          ext.toUpperCase() ||
+                                          t("downloads.noExtension"),
+                                      )
+                                      .join(" · ") || "—"
+                                  : t(
+                                      item.inventoryState === "ERROR"
+                                        ? "downloads.inventoryError"
+                                        : "downloads.inventoryUnknown",
+                                    )}
+                                {item.inventoryCheckedAt &&
+                                  item.inventoryState === "ERROR" && (
+                                    <> · {t("downloads.inventoryError")}</>
+                                  )}
+                              </td>,
                               <td title={item.clientInstanceId}>
                                 {item.client || "—"}
                                 <small className="hash-text">
@@ -210,6 +244,19 @@ export function BookHistory({ id }: { id: number }) {
                               <td>{item.lastError || "—"}</td>,
                               <td>
                                 <Group gap={4} wrap="nowrap">
+                                  {canReadInventory && (
+                                    <TableAction
+                                      label={t("downloadInventory.open")}
+                                      onClick={() =>
+                                        setInventory({
+                                          bookId: id,
+                                          recordId: item.id,
+                                        })
+                                      }
+                                    >
+                                      <Files size={16} aria-hidden="true" />
+                                    </TableAction>
+                                  )}
                                   <EpubDownload id={item.id} />
                                   <SendToCalibre ids={[item.id]} inline />
                                   {canRemove && (
@@ -248,6 +295,14 @@ export function BookHistory({ id }: { id: number }) {
           </>
         )}
       </section>
+      {inventory && inventory.bookId === id && canReadInventory && (
+        <DownloadInventory
+          key={`${id}:${inventory.recordId}`}
+          eplId={id}
+          recordId={inventory.recordId}
+          onClose={() => setInventory(null)}
+        />
+      )}
     </CalibreSendProvider>
   );
 }

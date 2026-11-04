@@ -33,6 +33,20 @@ class CalibreCatalogTests {
         jdbc.update("DELETE FROM catalog_books");
         settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"main"));
     }
+    @Test @WithMockUser(authorities={"CALIBRE_READ","CALIBRE_SYNC"})
+    void formatsAreSynchronizedFilteredAndSortedLocally() throws Exception {
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(
+            new CalibreClient.Book(1,"One",List.of("Author"),1L,null,false,"uuid1",List.of("epub","pdf")),
+            new CalibreClient.Book(2,"Two",List.of("Author"),2L,null,false,"uuid2",List.of("pdf")),
+            new CalibreClient.Book(3,"Unknown",List.of("Author"),3L,null,false)),3,0,100));
+        snapshots.sync();clearInvocations(client);
+        mvc.perform(get("/api/calibre/books").param("formats","pdf").param("sort","formats,asc")).andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2)).andExpect(jsonPath("$.items[0].calibreId").value(1)).andExpect(jsonPath("$.items[0].formats[0]").value("epub"));
+        mvc.perform(get("/api/calibre/books").param("formats","UNKNOWN")).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].calibreId").value(3));
+        mvc.perform(get("/api/calibre/books").param("formats","pdf").param("formatsOperator","ne")).andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1));
+        mvc.perform(get("/api/calibre/books/formats")).andExpect(status().isOk()).andExpect(content().json("[\"epub\",\"pdf\"]"));
+        mvc.perform(get("/api/calibre/books").param("formats","bad/format")).andExpect(status().isBadRequest());
+        verifyNoInteractions(client);
+    }
     @Test void syncsWaitForTransfersAndDoNotOverlapOrPauseThem() throws Exception {
         var active=new java.util.concurrent.atomic.AtomicInteger();var maximum=new java.util.concurrent.atomic.AtomicInteger();
         when(client.books(any(),eq(0),eq(100))).thenAnswer(call->{maximum.accumulateAndGet(active.incrementAndGet(),Math::max);try {Thread.sleep(20);return new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100);}finally {active.decrementAndGet();}});

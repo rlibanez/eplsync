@@ -63,6 +63,10 @@ export interface Download {
   completedAt: string | null;
   lastCheckedAt: string | null;
   lastError: string | null;
+  fileExtensions?: string[];
+  inventoryState?: string;
+  inventoryCheckedAt?: string | null;
+  inventoryError?: string | null;
 }
 const initialFilters = {
   eplId: "",
@@ -71,6 +75,8 @@ const initialFilters = {
   titleOperator: "eq",
   status: "",
   statusOperator: "eq",
+  extensions: "",
+  extensionsOperator: "eq",
   origin: "",
   completed: "",
   sort: "createdAt,desc",
@@ -87,6 +93,12 @@ function DownloadHistory() {
   const session = useSyncSession();
   const syncPending = useIsMutating({ mutationKey: ["torrent-sync"] }) > 0;
   const [filters, setFilters] = useBookViewState("filters", initialFilters);
+  useEffect(() => {
+    const { inventoryState, ...remaining } = filters as typeof filters & {
+      inventoryState?: string;
+    };
+    if (inventoryState !== undefined) setFilters(remaining);
+  }, [filters, setFilters]);
   const [draftTitle, setDraftTitle] = useBookViewState("draftTitle", "");
   const [page, setPage] = useBookViewState("page", 0);
   const [size, setSize] = useBookViewState("size", 20);
@@ -114,14 +126,24 @@ function DownloadHistory() {
     return () => window.clearTimeout(timer);
   }, [draftTitle, filters.title]);
 
+  const extensionOptions = useQuery({
+    queryKey: ["download-extensions"],
+    queryFn: ({ signal }) =>
+      get<string[]>("/torrent/downloads/extensions", signal),
+    staleTime: 30000,
+    refetchInterval: 30000,
+  });
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters))
-    if (value) {
+    if (value && key !== "inventoryState") {
       if (key === "sort")
         ordering(value).forEach((sort) => params.append("sort", sort));
       else if (
         !key.endsWith("Operator") ||
-        (filters[key.slice(0, -8) as "status" | "origin" | "title" | "eplId"] &&
+        (filters[
+          key.slice(0, -8) as
+            "status" | "origin" | "title" | "eplId" | "extensions"
+        ] &&
           value === "ne")
       )
         params.set(key, value);
@@ -137,6 +159,12 @@ function DownloadHistory() {
     queryKey: ["downloads", params.toString()],
     queryFn: ({ signal }) =>
       get<Page<Download>>(`/torrent/downloads?${params}`, signal),
+    refetchInterval: (query) =>
+      query.state.data?.items.some(
+        (row) => row.inventoryState && row.inventoryState !== "CHECKED",
+      )
+        ? 30000
+        : false,
   });
   useEffect(() => {
     if (result.data) {
@@ -182,6 +210,11 @@ function DownloadHistory() {
       { field: "hash", label: "downloads.hash", width: 340 },
       { field: "revision", label: "downloads.revision", width: 110 },
       { field: "status", label: "downloads.status", width: 160 },
+      {
+        field: "fileExtensions",
+        label: "downloads.extensions",
+        width: 200,
+      },
       { field: "client", label: "downloads.client", width: 180 },
       { field: "origin", label: "downloads.origin", width: 180 },
       { field: "lastCheckedAt", label: "downloads.lastChecked", width: 200 },
@@ -199,6 +232,8 @@ function DownloadHistory() {
     {
       defaults: "createdAt,desc",
       selection: selectable,
+      newColumnsAfter: { fileExtensions: "status" },
+      revealOnce: ["fileExtensions"],
       hidden: selectable ? [] : ["actions"],
       extraSort: [
         { field: "createdAt", label: "downloads.createdAt", width: 200 },
@@ -345,6 +380,48 @@ function DownloadHistory() {
               }));
               setPage(0);
             }}
+          />
+          <MultiSelect
+            label={t("downloads.extensions")}
+            clearable
+            clearButtonProps={{
+              "aria-hidden": false,
+              tabIndex: 0,
+              "aria-label": `${t("catalog.clear")}: ${t("downloads.extensions")}`,
+            }}
+            searchable
+            data={[
+              ...Array.from(
+                new Set([
+                  "epub",
+                  "azw3",
+                  "mobi",
+                  "pdf",
+                  "rar",
+                  "zip",
+                  "7z",
+                  "cbr",
+                  ...(extensionOptions.data ?? []),
+                  ...(filters.extensions?.split(",").filter(Boolean) ?? []),
+                ]),
+              )
+                .filter(
+                  (value) => !["UNKNOWN", "ERROR", "OTHER"].includes(value),
+                )
+                .sort()
+                .map((value) => ({ value, label: value.toUpperCase() })),
+              { value: "UNKNOWN", label: t("downloads.inventoryUnknown") },
+              { value: "ERROR", label: t("downloads.inventoryError") },
+              { value: "OTHER", label: t("downloads.otherExtensions") },
+            ]}
+            value={filters.extensions?.split(",").filter(Boolean) ?? []}
+            onChange={(values) => filter("extensions", values.join(","))}
+            {...stateOperatorProps(filters.extensionsOperator === "ne", () =>
+              filter(
+                "extensionsOperator",
+                filters.extensionsOperator === "ne" ? "eq" : "ne",
+              ),
+            )}
           />
           <Select
             label={t("downloads.origin")}
@@ -514,6 +591,73 @@ function DownloadHistory() {
                                         {status(d.status)}
                                       </span>
                                     </button>
+                                  </td>,
+                                  <td title={d.inventoryError ?? undefined}>
+                                    {d.inventoryCheckedAt ? (
+                                      (d.fileExtensions ?? []).map(
+                                        (ext, index) => (
+                                          <span key={ext}>
+                                            {index > 0 && " · "}
+                                            {ext ? (
+                                              <button
+                                                type="button"
+                                                className="catalog-value-filter"
+                                                onClick={() => {
+                                                  filter("extensions", ext);
+                                                  filter(
+                                                    "extensionsOperator",
+                                                    "eq",
+                                                  );
+                                                }}
+                                              >
+                                                {ext.toUpperCase()}
+                                              </button>
+                                            ) : (
+                                              t("downloads.noExtension")
+                                            )}
+                                          </span>
+                                        ),
+                                      )
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="catalog-value-filter"
+                                        onClick={() => {
+                                          filter(
+                                            "extensions",
+                                            d.inventoryState === "ERROR"
+                                              ? "ERROR"
+                                              : "UNKNOWN",
+                                          );
+                                          filter("extensionsOperator", "eq");
+                                        }}
+                                      >
+                                        {t(
+                                          d.inventoryState === "ERROR"
+                                            ? "downloads.inventoryError"
+                                            : "downloads.inventoryUnknown",
+                                        )}
+                                      </button>
+                                    )}
+                                    {d.inventoryCheckedAt &&
+                                      d.inventoryState === "ERROR" && (
+                                        <>
+                                          <span> · </span>
+                                          <button
+                                            type="button"
+                                            className="catalog-value-filter"
+                                            onClick={() => {
+                                              filter("extensions", "ERROR");
+                                              filter(
+                                                "extensionsOperator",
+                                                "eq",
+                                              );
+                                            }}
+                                          >
+                                            {t("downloads.inventoryError")}
+                                          </button>
+                                        </>
+                                      )}
                                   </td>,
                                   <td title={d.clientInstanceId}>
                                     {d.client}

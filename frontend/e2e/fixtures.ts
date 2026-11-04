@@ -118,6 +118,8 @@ export const test = base.extend<{ eventTransport: void }>({
             })
           : route.fallback(),
       );
+      await context.route("**/api/calibre/books/formats", route=>route.fulfill({json:[]}));
+      await context.route("**/api/torrent/downloads/extensions", route=>route.fulfill({json:[]}));
       await context.route("**/api/torrent/downloads/sync-state", (route) =>
         route.fulfill({ json: { syncedAt: null } }),
       );

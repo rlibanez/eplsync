@@ -190,3 +190,17 @@ test("read-only Calibre users can browse without catalog links or synchronizatio
     0,
   );
 });
+
+test("formats are visible, sortable and provide quick filters", async ({page}) => {
+  await page.route("**/api/settings/calibre/snapshot", r=>r.fulfill({json:{snapshot:null}}));
+  await page.route("**/api/calibre/books/formats", r=>r.fulfill({json:["epub","pdf"]}));
+  await page.route("**/api/calibre/books?**", r=>r.fulfill({json:{items:[{calibreId:1,title:"Formats book",authors:"Author",eplId:1,revision:1,catalogRevision:1,comparison:"CURRENT",presence:"PRESENT",formats:["epub","pdf"]}],meta:{page:0,size:20,totalItems:1,totalPages:1,hasPrevious:false,hasNext:false}}}));
+  await page.goto("/calibre");
+  const column=page.locator('th[data-table-column="formats"]');
+  await expect(column).toBeVisible();
+  const sorted=page.waitForRequest(r=>r.url().includes("/api/calibre/books?") && new URL(r.url()).searchParams.getAll("sort").includes("formats,asc"));
+  await column.click();await sorted;
+  const filtered=page.waitForRequest(r=>r.url().includes("/api/calibre/books?") && new URL(r.url()).searchParams.get("formats")==="pdf");
+  await page.locator("tbody").getByRole("button",{name:"PDF",exact:true}).click();await filtered;
+  await expect(page.getByRole("textbox",{name:"Extensión",exact:true}).locator("xpath=ancestor::*[contains(@class,'mantine-MultiSelect-root')]")).toContainText("PDF");
+});

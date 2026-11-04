@@ -45,6 +45,7 @@ class CalibreItemResolutionTests {
         when(files.list("record")).thenReturn(List.of(new EpubFiles.Item(0,"one.epub",epub.length),new EpubFiles.Item(1,"two.epub",epub.length)));
         when(files.download("record",1)).thenAnswer(c->new EpubFiles.Opened("two.epub",epub.length,new java.io.ByteArrayInputStream(epub)));
         when(client.findRevision(any(),anyLong(),any())).thenReturn(null);
+        when(client.findBookRevision(any(),anyLong(),any())).thenReturn(null);
         when(client.uploadEpub(any(),any(),anyString(),anyString())).thenReturn(9L);
         when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true));
         when(client.hasEpub(any(),anyLong())).thenReturn(true);

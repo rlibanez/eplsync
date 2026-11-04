@@ -499,3 +499,32 @@ y lectura de archivos de Descargas. No permiten descartar envíos sin confirmar 
 alterar elementos ya enviados, cancelados o pendientes de limpieza. Las operaciones
 inciertas conservan su procedimiento específico de resolución. Cada decisión conserva
 el error anterior y se aplica una sola vez, aunque se repita la petición.
+
+## Envío de varios formatos
+
+El asistente admite EPUB, AZW3, MOBI y PDF, con EPUB seleccionado por defecto.
+El filtro Extensiones tiene selección múltiple, negación y borrado. Filtrar no
+elimina selecciones ocultas; Seleccionar disponibles y Quitar selección actúan
+sobre los resultados filtrados y el contador mantiene el total seleccionado.
+
+Los formatos seleccionados de la misma descarga y revisión se añaden a una sola
+entrada cuando la correspondencia está verificada. Dos archivos del mismo formato
+requieren elegir uno. Se comprueban los identificadores y el UUID de la entrada;
+el añadido utiliza la operación nativa de Calibre con reemplazo desactivado.
+Los formatos existentes se conservan. No se solicita conversión ni se modifica
+el archivo original de Descargas. El servidor puede tener plugins de importación:
+para los nuevos formatos y los añadidos a una entrada se verifica también el SHA-256
+del formato original exportado por Calibre. Una diferencia queda sin confirmar y
+no provoca un nuevo envío automático.
+
+Los libros pendientes conservan los formatos permitidos y se comprueban al acabar
+la descarga. Si hay una única copia de cada formato seleccionado, se encolan en
+el trabajo original; las ambigüedades se resuelven con Resolver. Los comprimidos y
+los formatos no compatibles se informan por elemento y no se extraen.
+
+La columna **Extensión** de Biblioteca de Calibre muestra todos los formatos de
+cada entrada y está visible por defecto. Permite ordenar desde la cabecera y
+filtrar pulsando un formato. Su filtro admite varias opciones, negación y borrado.
+Los datos se guardan durante la sincronización o la verificación de un envío;
+abrir, ordenar o filtrar la tabla no consulta el servidor de Calibre. Tras actualizar,
+las entradas previas muestran **Sin comprobar** hasta la siguiente sincronización.

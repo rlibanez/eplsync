@@ -52,6 +52,13 @@ public class CatalogBookController {
         return ResponseEntity.ok(downloads.history(eplId,page,size,sort));
     }
 
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('BOOK_HISTORY_READ')")
+    @GetMapping("/{eplId}/history/{recordId}/files")
+    public CatalogDownloadViewService.Inventory inventory(@PathVariable Long eplId,@PathVariable String recordId,
+            @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+        return downloads.inventory(eplId,recordId,page,size);
+    }
+
     /**
      * Búsqueda/listado PAGINADO (recomendado).
      *

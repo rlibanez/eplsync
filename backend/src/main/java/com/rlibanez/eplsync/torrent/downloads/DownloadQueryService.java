@@ -12,8 +12,9 @@ import java.util.*;
 
 @Service
 public class DownloadQueryService {
+    private static final Set<String> MAIN_EXTENSIONS=Set.of("epub","azw3","mobi","pdf","rar","zip","7z","cbr");
     private static final Set<String> DATE_FIELDS = Set.of("createdAt", "requestedAt", "submittedAt", "completedAt", "discoveredAt", "lastCheckedAt", "lastSeenAt");
-    private static final Set<String> SORT_FIELDS = Set.of("title", "lastError", "id", "eplId", "revision", "hash", "status", "origin", "client", "clientInstanceId",
+    private static final Set<String> SORT_FIELDS = Set.of("fileExtensions", "title", "lastError", "id", "eplId", "revision", "hash", "status", "origin", "client", "clientInstanceId",
             "createdAt", "requestedAt", "submittedAt", "completedAt", "discoveredAt", "lastCheckedAt", "lastSeenAt");
     private final DownloadRepository repository;
     private final jakarta.persistence.EntityManager entityManager;
@@ -55,13 +56,14 @@ public class DownloadQueryService {
         for (var value : params.getOrDefault("sort", List.of("createdAt,desc"))) {
             var parts = value.split(",", -1);
             if (parts.length > 2 || !SORT_FIELDS.contains(parts[0])) throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación de descargas inválida");
-            orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]), parts[0].equals("title") ? "catalogBook.title" : parts[0]));
+            orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]), parts[0].equals("fileExtensions") ? "extensionsSort" : parts[0].equals("title") ? "catalogBook.title" : parts[0]));
         }
         com.rlibanez.eplsync.config.QueryLimits.sort(Sort.by(orders));
         if (orders.stream().noneMatch(order -> order.getProperty().equals("id"))) orders.add(Sort.Order.asc("id"));
         var spec = filters(params);
         var result = repository.findAll(com.rlibanez.eplsync.ordering.TextOrdering.sorted(spec, Sort.by(orders)), PageRequest.of(page, size));
         var metadata = com.rlibanez.eplsync.torrent.DownloadBookMetadata.load(entityManager, result.getContent().stream().map((DownloadRecord entryValue) -> java.util.Objects.requireNonNull(entryValue).getEplId()).toList());
+        loadExtensions(result.getContent());
         result.forEach(row -> {
             var book = metadata.get(row.getEplId());
             if (book != null) { row.setTitle(book.title()); row.setCoverUrl(book.coverUrl()); row.setCoverAvailable(book.coverAvailable()); }
@@ -70,8 +72,15 @@ public class DownloadQueryService {
                 result.getTotalPages(), result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
     }
 
+    void loadExtensions(List<DownloadRecord> records) {
+        var extensions=new HashMap<String,List<String>>();
+        if(!records.isEmpty()) for(var entry:entityManager.createQuery("select distinct f.downloadId,f.extension from DownloadFile f where f.downloadId in :ids order by f.extension",Object[].class).setParameter("ids",records.stream().map(DownloadRecord::getId).toList()).getResultList())
+            extensions.computeIfAbsent((String)entry[0],ignored->new ArrayList<>()).add((String)entry[1]);
+        records.forEach(row->row.setFileExtensions(List.copyOf(extensions.getOrDefault(row.getId(),List.of()))));
+    }
+
     private void validate(MultiValueMap<String, String> params, boolean listing) {
-        var allowed = new HashSet<>(Set.of("title", "titleOperator", "eplId", "eplIdOperator", "hash", "revision", "status", "statusOperator", "originOperator", "origin", "client", "clientInstanceId", "completed"));
+        var allowed = new HashSet<>(Set.of("extensions","extensionsOperator","inventoryState","title", "titleOperator", "eplId", "eplIdOperator", "hash", "revision", "status", "statusOperator", "originOperator", "origin", "client", "clientInstanceId", "completed"));
         if (listing) allowed.addAll(Set.of("page", "size", "sort"));
         DATE_FIELDS.forEach(field -> { allowed.add(field + "From"); allowed.add(field + "To"); });
         if (!allowed.containsAll(params.keySet())) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro de descargas desconocido");
@@ -89,7 +98,12 @@ public class DownloadQueryService {
             try {
                 switch (key) {
                     case "page", "size", "sort" -> { }
-                    case "titleOperator", "statusOperator", "originOperator", "eplIdOperator" -> com.rlibanez.eplsync.ordering.StateOperator.excluded(text);
+                    case "extensionsOperator", "titleOperator", "statusOperator", "originOperator", "eplIdOperator" -> com.rlibanez.eplsync.ordering.StateOperator.excluded(text);
+                    case "extensions" -> {
+                        var extensions=Arrays.stream(text.toLowerCase(Locale.ROOT).split(",",-1)).distinct().toList();
+                        if(extensions.size()>50 || extensions.stream().anyMatch(v->!v.matches("[a-z0-9]{1,16}|unknown"))) throw new IllegalArgumentException();values.put(key,extensions);
+                    }
+                    case "inventoryState" -> {if(!Set.of("UNKNOWN","CHECKED","ERROR").contains(text)) throw new IllegalArgumentException();values.put(key,text);}
                     case "title" -> { if(text.length()>256) throw new com.rlibanez.eplsync.exception.UserInputException(); if(!text.isBlank()) values.put(key,text.trim()); }
                     case "eplId" -> values.put(key, com.rlibanez.eplsync.filter.EplIds.delimited(com.rlibanez.eplsync.filter.EplIds.parse(text)));
                     case "revision" -> { double revision = Double.parseDouble(text); if (!Double.isFinite(revision) || revision < 0) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, revision); }
@@ -108,7 +122,19 @@ public class DownloadQueryService {
         return (root, query, cb) -> {
             var predicates = new ArrayList<Predicate>();
             values.forEach((key, value) -> {
-                if(key.equals("title")) {
+                if(key.equals("extensions")) {
+                    var selected=(List<?>)value;
+                    var sub=query.subquery(String.class);var file=sub.from(DownloadFile.class);
+                    Predicate extension=file.get("extension").in(selected.stream().filter(v->!Set.of("unknown","error","other").contains(v)).toList());
+                    if(selected.contains("other")) extension=cb.or(extension,cb.not(file.get("extension").in(MAIN_EXTENSIONS)));
+                    sub.select(file.get("id")).where(cb.equal(file.get("downloadId"),root.get("id")),extension);
+                    Predicate match=cb.exists(sub);
+                    if(selected.contains("unknown")) match=cb.or(match,cb.and(cb.isNull(root.get("inventoryCheckedAt")),cb.notEqual(root.get("inventoryState"),"ERROR")));
+                    if(selected.contains("error")) match=cb.or(match,cb.equal(root.get("inventoryState"),"ERROR"));
+                    predicates.add("ne".equals(params.getFirst("extensionsOperator"))?cb.not(match):match);
+                }
+                else if(key.equals("inventoryState")) predicates.add(value.equals("UNKNOWN")?cb.isNull(root.get("inventoryCheckedAt")):cb.equal(root.get("inventoryState"),value));
+                else if(key.equals("title")) {
                     var title=cb.coalesce(root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).<String>get("title"),"");
                     var position=cb.locate(cb.lower(title),((String)value).toLowerCase(Locale.ROOT));
                     predicates.add("ne".equals(params.getFirst("titleOperator"))?cb.equal(position,0):cb.greaterThan(position,0));
@@ -130,6 +156,9 @@ public class DownloadQueryService {
             return cb.and(predicates.toArray(Predicate[]::new));
         };
     }
+
+    @Transactional(readOnly=true)
+    public List<String> extensions() {return entityManager.createQuery("select distinct f.extension from DownloadFile f where f.extension<>'' order by f.extension",String.class).setMaxResults(1000).getResultList();}
 
     private int integer(String value, int fallback) {
         try { return value == null ? fallback : Integer.parseInt(value); }

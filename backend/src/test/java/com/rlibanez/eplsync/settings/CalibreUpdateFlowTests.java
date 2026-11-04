@@ -50,6 +50,7 @@ class CalibreUpdateFlowTests {
         when(client.book(any(),eq(9L))).thenReturn(book(9,1,"1.1"));
         when(client.book(any(),eq(1L))).thenReturn(book(1,1,"1.0"));
         when(client.findRevision(any(),anyLong(),any())).thenReturn(null);
+        when(client.findBookRevision(any(),anyLong(),any())).thenReturn(null);
         when(client.uploadEpub(any(),any(),anyString(),anyString())).thenReturn(9L);
         when(client.hasEpub(any(),anyLong())).thenReturn(true);
         var view=mock(BulkStore.View.class);when(view.jobId()).thenReturn("download-job");when(bulk.create(any(),any(),anyBoolean(),anyBoolean(),any())).thenReturn(view);
@@ -339,6 +340,20 @@ class CalibreUpdateFlowTests {
         d.setClient("qbittorrent");d.setClientInstanceId(tracking.instanceId());d.setStatus(DownloadStatus.DOWNLOADED);
         d.setOrigin(DownloadRecord.Origin.EPLSYNC);d.setCreatedAt(Instant.now());return downloads.save(d).getId();
     }
+    @Test void waitingDownloadExpandsSelectedFormatsOnceAndPreservesThemAcrossRestart() {
+        var result=submit(List.of(missing()),true,true);downloadItem("ACCEPTED");
+        String record=downloadedSecondBook(),job=result.calibreJobId();
+        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",10),new EpubFiles.Item(1,"book.pdf",20),new EpubFiles.Item(2,"archive.rar",30)));
+        jdbc.update("UPDATE calibre_job_items SET allowed_formats='[\"epub\",\"pdf\"]' WHERE job_id=?",job);
+        var item=transfers.items(job,0,20,List.of("position,asc")).items().getFirst();
+        assertThat(flow.waiting(job,item)).isTrue();
+        assertThat(flow.waiting(job,item)).isFalse();
+        transfers.recoverInterrupted();
+        assertThat(jdbc.queryForList("SELECT name FROM calibre_job_items WHERE job_id=? ORDER BY position",String.class,job)).containsExactly("book.epub","book.pdf");
+        assertThat(jdbc.queryForList("SELECT state FROM calibre_job_items WHERE job_id=?",String.class,job)).containsOnly("PENDING");
+        assertThat(jdbc.queryForList("SELECT download_job_id FROM calibre_job_items WHERE job_id=?",String.class,job)).containsOnly(result.downloadJobId());
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
     @Test void unsupportedFirstDownloadDoesNotPauseOtherBooksAndRestartNeverRepeatsTheUpload() {
         var result=submit(List.of(missing(),ready("KEEP")),true,true);downloadItem("ACCEPTED");
         String second=downloadedSecondBook();
@@ -410,7 +425,7 @@ class CalibreUpdateFlowTests {
         transfers.cycle();
         var items=transfers.items(result.calibreJobId(),0,20,List.of("position,asc")).items();
         assertThat(items).extracting(i->i.state()).containsExactly("FAILED","PENDING");
-        assertThat(items.getFirst().message()).contains("varios EPUB","selecciona");
+        assertThat(items.getFirst().message()).contains("mismo formato","selecciona");
         assertThat(transfers.job(result.calibreJobId()).state()).isEqualTo("RUNNING");
         verify(files,never()).download(eq(second),anyInt());
         transfers.cycle();transfers.recoverInterrupted();transfers.cycle();

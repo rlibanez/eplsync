@@ -36,7 +36,8 @@ class DownloadCancellationTests {
         jdbc.update("DELETE FROM calibre_job_items");jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM calibre_books");jdbc.update("DELETE FROM job_retry_jobs");jdbc.update("DELETE FROM torrent_bulk_items");jdbc.update("DELETE FROM torrent_bulk_jobs");jdbc.update("DELETE FROM torrent_downloads");jdbc.update("DELETE FROM catalog_books");accounts.clear();
         var owner=accounts.initialize("Owner","owner@example.com","password123","password123");SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new SimpleGrantedAuthority(p.name())).toList()));
         settings.save(new CalibreSettings.Input("http://localhost:8081","","",true,"main"));when(torrent.withDefaults(any())).thenAnswer(call->call.getArgument(0));when(client.hasEpub(any(),anyLong())).thenReturn(true);when(client.findRevision(any(),anyLong(),any())).thenReturn(null);
-        when(client.uploadEpub(any(),any(),anyString(),anyString())).thenAnswer(call->{String name=call.getArgument(2);return Long.parseLong(name.replace("Book ",""))+10;});
+        when(client.findBookRevision(any(),anyLong(),any())).thenReturn(null);
+        when(client.uploadEpub(any(),any(),anyString(),anyString())).thenAnswer(call->{String name=call.getArgument(2);return Long.parseLong(name.replace("Book ","").replace(".epub",""))+10;});
         when(client.book(any(),anyLong())).thenAnswer(call->{long remote=call.getArgument(1);return new CalibreClient.Book(remote,"Book "+(remote-10),List.of("Author"),remote-10,BigDecimal.ONE,true);});
         for(long id=1;id<=5;id++)jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author,links) VALUES(?,1,?,'Author',?)",id,"Book "+id,String.format("%040X",id));
     }
@@ -51,9 +52,9 @@ class DownloadCancellationTests {
     void ready(String job,long book,String state) throws Exception {
         byte[] bytes=CalibreTransfersTests.epub(book,"1");String record="record-"+book;
         jdbc.update("INSERT OR IGNORE INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES(?,?,1,?,'qbittorrent',?,'DOWNLOADED','EPLSYNC',0)",record,book,String.format("%040X",book),tracking.instanceId());
-        jdbc.update("UPDATE calibre_job_items SET state=?,record_id=?,file_index=0,size=? WHERE job_id=? AND epl_id=?",state,record,bytes.length,job,book);
-        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"Book "+book,bytes.length)));
-        when(files.download(record,0)).thenAnswer(call->new EpubFiles.Opened("Book "+book,bytes.length,new java.io.ByteArrayInputStream(bytes)));
+        jdbc.update("UPDATE calibre_job_items SET state=?,record_id=?,file_index=0,size=?,name=? WHERE job_id=? AND epl_id=?",state,record,bytes.length,"Book "+book+".epub",job,book);
+        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"Book "+book+".epub",bytes.length)));
+        when(files.download(record,0)).thenAnswer(call->new EpubFiles.Opened("Book "+book+".epub",bytes.length,new java.io.ByteArrayInputStream(bytes)));
     }
     @Test void exclusiveJobCancelsUnsentItemsAndKeepsAlreadySentBooks() throws Exception {
         String parent=download(1L,2L,3L),job=calibre(Map.of(1L,parent,2L,parent,3L,parent));ready(job,1,"ACCEPTED");jdbc.update("UPDATE calibre_job_items SET calibre_id=11,message='Enviado y verificado' WHERE id=?",item(job,1));
@@ -63,7 +64,7 @@ class DownloadCancellationTests {
     }
     @Test void mixedJobKeepsItsOtherDependencyAndCompletesWithTheActualCounters() throws Exception {
         String a=download(1L),b=download(2L),job=calibre(Map.of(1L,a,2L,b));bulk.control(a,"cancel");assertThat(transfers.job(job).state()).isEqualTo("QUEUED");assertThat(state(job,1)).isEqualTo("CANCELLED");assertThat(state(job,2)).isEqualTo("WAITING_DOWNLOAD");assertThat(jdbc.queryForObject("SELECT state FROM torrent_bulk_jobs WHERE id=?",String.class,b)).isEqualTo("QUEUED");
-        ready(job,2,"PENDING");transfers.cycle();assertThat(transfers.job(job).state()).isEqualTo("COMPLETED");assertThat(transfers.job(job).accepted()).isEqualTo(1);assertThat(transfers.job(job).cancelled()).isEqualTo(1);verify(client,times(1)).uploadEpub(any(),any(),eq("Book 2"),anyString());
+        ready(job,2,"PENDING");transfers.cycle();assertThat(transfers.job(job).state()).isEqualTo("COMPLETED");assertThat(transfers.job(job).accepted()).isEqualTo(1);assertThat(transfers.job(job).cancelled()).isEqualTo(1);verify(client,times(1)).uploadEpub(any(),any(),eq("Book 2.epub"),anyString());
     }
     @Test void aReadyFileWithoutDownloadDependencyKeepsTheJobMixedAndUserPauseIsPreserved() throws Exception {
         String a=download(1L,2L),job=calibre(Map.of(1L,a,2L,a));ready(job,2,"PENDING");jdbc.update("UPDATE calibre_job_items SET download_job_id=NULL WHERE id=?",item(job,2));transfers.control(job,"pause");bulk.control(a,"cancel");assertThat(transfers.job(job).state()).isEqualTo("PAUSED");assertThat(state(job,1)).isEqualTo("CANCELLED");assertThat(state(job,2)).isEqualTo("PENDING");transfers.recoverInterrupted();assertThat(transfers.job(job).state()).isEqualTo("PAUSED");
@@ -73,7 +74,7 @@ class DownloadCancellationTests {
         doAnswer(call->{bulk.control(a,"cancel");return 11L;}).when(client).uploadEpub(any(),any(),anyString(),anyString());transfers.cycle();assertThat(state(job,1)).isEqualTo("ACCEPTED");assertThat(state(job,2)).isEqualTo("WAITING_DOWNLOAD");assertThat(jdbc.queryForObject("SELECT message FROM calibre_job_items WHERE id=?",String.class,item(job,1))).contains(DownloadCancellation.REASON);verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());verify(client,never()).remove(any(),anyLong(),anyBoolean());
     }
     @Test void cancellationWhileReadingTheFilePreventsItsUpload() throws Exception {
-        String a=download(1L),b=download(2L),job=calibre(Map.of(1L,a,2L,b));ready(job,1,"PENDING");byte[] bytes=CalibreTransfersTests.epub(1,"1");when(files.download("record-1",0)).thenAnswer(call->{bulk.control(a,"cancel");return new EpubFiles.Opened("Book 1",bytes.length,new java.io.ByteArrayInputStream(bytes));});transfers.cycle();assertThat(state(job,1)).isEqualTo("CANCELLED");assertThat(transfers.job(job).state()).isEqualTo("RUNNING");verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        String a=download(1L),b=download(2L),job=calibre(Map.of(1L,a,2L,b));ready(job,1,"PENDING");byte[] bytes=CalibreTransfersTests.epub(1,"1");when(files.download("record-1",0)).thenAnswer(call->{bulk.control(a,"cancel");return new EpubFiles.Opened("Book 1.epub",bytes.length,new java.io.ByteArrayInputStream(bytes));});transfers.cycle();assertThat(state(job,1)).isEqualTo("CANCELLED");assertThat(transfers.job(job).state()).isEqualTo("RUNNING");verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
     @Test void anUnconfirmedUploadRemainsVerifiableAcrossRestartAndIsNotRepeated() throws Exception {
         String a=download(1L),job=calibre(Map.of(1L,a));ready(job,1,"PENDING");doAnswer(call->{bulk.control(a,"cancel");throw new CalibreClient.UnconfirmedUpload();}).when(client).uploadEpub(any(),any(),anyString(),anyString());transfers.cycle();assertThat(transfers.job(job).state()).isEqualTo("CANCELLED");assertThat(state(job,1)).isEqualTo("UNCERTAIN");transfers.recoverInterrupted();transfers.cycle();assertThat(state(job,1)).isEqualTo("UNCERTAIN");verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());

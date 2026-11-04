@@ -76,6 +76,7 @@ class CalibreTorrentConcurrencyTests {
         }
         when(files.list(anyString())).thenAnswer(call -> {String id=call.getArgument(0);return List.of(new EpubFiles.Item(0,identities.get(id)+".epub",payloads.get(id).length));});
         when(files.download(anyString(),eq(0))).thenAnswer(call -> {String id=call.getArgument(0);var bytes=payloads.get(id);return new EpubFiles.Opened(identities.get(id)+".epub",bytes.length,new java.io.ByteArrayInputStream(bytes));});
+        when(calibre.findBookRevision(any(),anyLong(),any())).thenReturn(null);
         when(calibre.check(any())).thenReturn(new CalibreClient.Check(true,List.of(new CalibreClient.Library("main","Main")),"main"));
         var uploaded=ConcurrentHashMap.<Long>newKeySet();var uploadRequests=ConcurrentHashMap.<String>newKeySet();
         var contention=new ArrayList<CompletableFuture<Void>>();

@@ -240,3 +240,59 @@ seguimiento es temporal y se conserva en memoria durante una hora; no sustituye
 al trabajo persistente ni añade tablas. Si el servidor se reinicia o no se puede
 recuperar el resultado, se indica que hay que comprobar los trabajos antes de
 iniciar otro envío de la misma selección.
+
+## Inventario de archivos y extensiones
+
+EPL Sync conserva el inventario de cada registro en `torrent_download_files`:
+índice del cliente, ruta relativa (incluidas las subcarpetas), tamaño esperado y
+extensión normalizada. No guarda los archivos ni rutas absolutas del servidor.
+El registro de Descargas conserva el estado, fecha y último error de comprobación.
+Eliminar el registro elimina también su inventario, sin borrar archivos del cliente.
+
+Un trabajador consulta los inventarios pendientes en segundo plano, hasta cinco
+registros por ciclo y con un segundo de presupuesto entre consultas. No mantiene
+una transacción SQLite durante la red y obtiene turno entre operaciones torrent.
+Los inventarios comprobados no se consultan continuamente: las comprobaciones
+reales de archivos actualizan también el inventario. Los torrents sin metadatos
+se reintentan más tarde; una respuesta vacía o un fallo conserva el inventario
+anterior. Los registros de torrents ausentes no se consultan en segundo plano.
+
+En Estado de las descargas, la columna Extensiones (visible por defecto) y sus filtros leen
+solo SQLite. Las extensiones seleccionadas se combinan con «o». La negación devuelve
+el resto de registros, incluidos los inventarios sin comprobar y los errores que
+no tengan identificada ninguna de las extensiones seleccionadas. Si un error conserva
+EPUB en su inventario, sigue coincidiendo con EPUB. «Sin comprobar» permite distinguir
+los inventarios desconocidos. Conocer un archivo no garantiza que haya terminado su
+descarga: su disponibilidad se comprueba antes de enviarlo.
+
+Se admiten para el envío EPUB, AZW3, MOBI y PDF. Las carpetas se recorren mediante
+los archivos enumerados por el cliente; RAR, ZIP y 7Z quedan sin extracción.
+
+La columna **Extensiones** está visible por defecto y permite ordenar por el
+listado alfabético de extensiones de cada torrent. Al actualizar se muestra una
+vez también para preferencias anteriores; después se respeta si se oculta.
+Pulsar una extensión aplica su filtro. El filtro admite **Sin comprobar**, combinable
+con extensiones conocidas; también permite excluir esa selección.
+
+El filtro **Extensiones** incluye también **Sin comprobar**, **Error de comprobación**
+y **Otro**; no hay un filtro separado de Inventario. «Otro» agrupa archivos con
+extensiones distintas de EPUB, AZW3, MOBI, PDF, RAR, ZIP, 7Z y CBR, incluidos los archivos
+sin extensión. Las extensiones concretas detectadas siguen disponibles.
+Las opciones seleccionadas se combinan como alternativas. «Sin comprobar» no incluye
+comprobaciones fallidas. Si un fallo conserva un inventario anterior, sus últimas
+extensiones conocidas se mantienen visibles junto al aviso de error.
+
+### Archivos del torrent en la ficha del libro
+
+En **Historial de descargas** de la ficha del Catálogo se muestran las extensiones
+por registro, con columna visible por defecto y ordenable. La acción **Ver archivos**
+abre una tabla paginada con los nombres/rutas relativas, extensiones y tamaños del
+inventario local. Cada torrent conserva su propio listado, aunque comparta EPL ID
+o revisión con otro torrent. No se consulta qBittorrent ni se abre ningún archivo.
+
+Ver estos metadatos requiere **Catálogo: lectura** e **Historial de descargas: lectura**
+(`CATALOG_READ` y `BOOK_HISTORY_READ`). No concede permiso para descargar archivos;
+las operaciones de lectura del contenido mantienen sus protecciones independientes.
+El popup distingue inventarios sin comprobar y fallidos, conserva el último
+inventario conocido y advierte de que los archivos pueden no estar completamente
+descargados. Las consultas y la paginación no modifican el inventario ni los torrents.

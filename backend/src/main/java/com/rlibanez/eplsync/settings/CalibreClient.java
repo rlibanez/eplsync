@@ -21,9 +21,15 @@ import tools.jackson.databind.json.JsonMapper;
 /** Calibre content-server protocol, including Basic/Digest authentication. No redirects are followed. */
 @Service
 public class CalibreClient {
+    private static List<String> formats(tools.jackson.databind.JsonNode book) {
+        var node=book.path("formats");if(!node.isArray()) return null;
+        var values=new TreeSet<String>();for(var value:node) {String name=value.asString("").toLowerCase(Locale.ROOT);if(name.matches("[a-z0-9]{1,16}")) values.add(name);}
+        return List.copyOf(values);
+    }
     public record Library(String id, String name) {}
     public record Check(boolean connected, List<Library> libraries, String defaultLibrary) {}
-    public record Book(long calibreId, String title, List<String> authors, Long eplId, BigDecimal revision, boolean linked, String uuid) {
+    public record Book(long calibreId, String title, List<String> authors, Long eplId, BigDecimal revision, boolean linked, String uuid, List<String> formats) {
+        public Book(long calibreId,String title,List<String> authors,Long eplId,BigDecimal revision,boolean linked,String uuid) {this(calibreId,title,authors,eplId,revision,linked,uuid,null);}
         public Book(long calibreId,String title,List<String> authors,Long eplId,BigDecimal revision,boolean linked) {this(calibreId,title,authors,eplId,revision,linked,null);}
     }
     public record Books(List<Book> items, long total, int page, int size) {}
@@ -67,7 +73,7 @@ public class CalibreClient {
                 var identifiers = b.path("identifiers");
                 Long epl = positiveId(identifiers.path("epl").asString(""));
                 BigDecimal revision = revision(identifiers.path("revision").asString(""));
-                books.add(new Book(id, b.path("title").asString(""), authors, epl, revision, epl != null && revision != null));
+                books.add(new Book(id, b.path("title").asString(""), authors, epl, revision, epl != null && revision != null,null,formats(b)));
             }
             return new Books(books, total, page, size);
         });
@@ -135,9 +141,12 @@ public class CalibreClient {
         catch (Exception ex) { if(upload) throw new UnconfirmedUpload(ex); throw new TransientFailure(HttpStatus.BAD_GATEWAY,"No se puede consultar Calibre; revisa la URL, que el servidor de contenido esté activo y la conexión de red",ex); }
     }
     /** Search live identifiers and EPUB format, including later matches with the same revision. */
-    public Long findRevision(CalibreSettings.Connection c,long eplId,BigDecimal revision) {
+    public Long findRevision(CalibreSettings.Connection c,long eplId,BigDecimal revision) {return findRevision(c,eplId,revision,true);}
+    public Long findBookRevision(CalibreSettings.Connection c,long eplId,BigDecimal revision) {return findRevision(c,eplId,revision,false);}
+    private Long findRevision(CalibreSettings.Connection c,long eplId,BigDecimal revision,boolean epubOnly) {
         return limited(() -> {
             String path="/ajax/search/"+segment(c.library())+"?num=100&query="+segment("identifiers:=epl:"+eplId);
+            Long match=null;
             for(int offset=0;offset<10000;offset+=100) {
                 var search=get(c,path+"&offset="+offset);
                 var ids=search.path("book_ids");long total=search.path("total_num").asLong(-1);
@@ -151,22 +160,56 @@ public class CalibreClient {
                         if(!book.isObject()) throw failure("Calibre no devolvió los metadatos solicitados");
                         var identifiers=book.path("identifiers");
                         var actual=revision(identifiers.path("revision").asString(""));
-                        if(java.util.Objects.equals(positiveId(identifiers.path("epl").asString("")),eplId) && actual!=null && actual.compareTo(revision)==0 && epubFormat(book)) return Long.valueOf(id);
+                        if(java.util.Objects.equals(positiveId(identifiers.path("epl").asString("")),eplId) && actual!=null && actual.compareTo(revision)==0 && (!epubOnly || epubFormat(book))) {
+                            if(epubOnly) return Long.valueOf(id);
+                            if(match!=null && match.longValue()!=Long.parseLong(id)) throw failure("Hay varias entradas de esta revisión en Calibre; revisa los duplicados antes de añadir formatos");
+                            match=Long.valueOf(id);
+                        }
                     }
                 }
-                if(offset+ids.size()>=total) return null;
+                if(offset+ids.size()>=total) return match;
             }
             throw failure("La búsqueda de revisiones de Calibre supera el límite permitido");
         });
     }
-    public long uploadEpub(CalibreSettings.Connection c,java.nio.file.Path file,String name,String token) {
+    public long uploadEpub(CalibreSettings.Connection c,java.nio.file.Path file,String name,String token) {return uploadBook(c,file,name,token);}
+    public long uploadBook(CalibreSettings.Connection c,java.nio.file.Path file,String name,String token) {
+        String format=com.rlibanez.eplsync.torrent.downloads.BookFormats.extension(name);
+        if(!com.rlibanez.eplsync.torrent.downloads.BookFormats.SUPPORTED.contains(format)) throw failure("Formato de libro no compatible");
         return limited(() -> {
             var request=new org.apache.hc.client5.http.classic.methods.HttpPost(c.url()+"/cdb/add-book/"+segment(token)+"/1/"+segment(name)+"/"+segment(c.library()));
-            request.setEntity(new org.apache.hc.core5.http.io.entity.FileEntity(file.toFile(),org.apache.hc.core5.http.ContentType.create("application/epub+zip")));
+            request.setEntity(new org.apache.hc.core5.http.io.entity.FileEntity(file.toFile(),org.apache.hc.core5.http.ContentType.create(format.equals("epub")?"application/epub+zip":format.equals("pdf")?"application/pdf":"application/octet-stream")));
             var result=request(c,request,true);
             if(!result.path("book_id").isIntegralNumber() || result.path("book_id").asLong()<=0) throw new UnconfirmedUpload();
             return result.path("book_id").asLong();
         });
+    }
+    /** Use calibre's native dont-replace operation, not set-fields which overwrites existing formats. */
+    public boolean addFormat(CalibreSettings.Connection c,long id,java.nio.file.Path file,String name,String expectedUuid) {
+        return limited(()->{
+            String format=com.rlibanez.eplsync.torrent.downloads.BookFormats.extension(name);
+            if(!com.rlibanez.eplsync.torrent.downloads.BookFormats.SUPPORTED.contains(format)) throw failure("Formato no compatible");
+            var target=book(c,id);if(expectedUuid==null || !expectedUuid.equals(target.uuid())) throw failure("La entrada de Calibre cambió; no se añadirá el formato");
+            try {
+                long size=java.nio.file.Files.size(file);if(size<=0 || size>268435456) throw failure("El archivo supera el límite de tamaño");
+                var prefix=new java.io.ByteArrayOutputStream();var out=new java.io.DataOutputStream(prefix);
+                out.writeByte(0x94);out.writeByte(0xd3);out.writeLong(id);out.writeByte(0x92);packString(out,name);out.writeByte(0xc6);out.writeInt((int)size);
+                var suffix=new java.io.ByteArrayOutputStream();var tail=new java.io.DataOutputStream(suffix);packString(tail,format.toUpperCase(java.util.Locale.ROOT));tail.writeByte(0xc2);
+                try(var input=new java.io.SequenceInputStream(java.util.Collections.enumeration(java.util.List.of(new java.io.ByteArrayInputStream(prefix.toByteArray()),java.nio.file.Files.newInputStream(file),new java.io.ByteArrayInputStream(suffix.toByteArray()))))) {
+                    var post=new org.apache.hc.client5.http.classic.methods.HttpPost(c.url()+"/cdb/cmd/add_format/0?library_id="+segment(c.library()));
+                    post.setEntity(new org.apache.hc.core5.http.io.entity.InputStreamEntity(input,prefix.size()+size+suffix.size(),org.apache.hc.core5.http.ContentType.create("application/x-msgpack")));
+                    var result=request(c,post,true);
+                    if(!result.path("result").isBoolean()) throw new UnconfirmedUpload();return result.path("result").asBoolean();
+                }
+            } catch(java.io.IOException ex) {throw new UnconfirmedUpload(ex);}
+        });
+    }
+    private static void packString(java.io.DataOutputStream out,String value) throws java.io.IOException {
+        byte[] bytes=value.getBytes(java.nio.charset.StandardCharsets.UTF_8);out.writeByte(0xdb);out.writeInt(bytes.length);out.write(bytes);
+    }
+    public boolean hasFormat(CalibreSettings.Connection c,long id,String format) {
+        if(format.equalsIgnoreCase("epub")) return hasEpub(c,id);
+        return formats(c,id).contains(format.toUpperCase(java.util.Locale.ROOT));
     }
     public Book book(CalibreSettings.Connection c,long id) {
         return limited(() -> {
@@ -175,7 +218,7 @@ public class CalibreClient {
             var authors=new ArrayList<String>();for(var a:b.path("authors")) authors.add(a.asString());
             var epl=positiveId(b.path("identifiers").path("epl").asString(""));
             var rev=revision(b.path("identifiers").path("revision").asString(""));
-            return new Book(id,b.path("title").asString(""),authors,epl,rev,epl!=null && rev!=null,b.path("uuid").asString(""));
+            return new Book(id,b.path("title").asString(""),authors,epl,rev,epl!=null && rev!=null,b.path("uuid").asString(""),formats(b));
         });
     }
     /** Fill only absent identifiers on the exact entry. Read again after any uncertain POST. */
@@ -213,7 +256,7 @@ public class CalibreClient {
             for(var entry:values.entrySet()) if(!entry.getValue().equals(fields.path(entry.getKey()).asString("")))
                 throw failure("Calibre no conservó todos los identificadores; revisa la entrada");
             var authors=new ArrayList<String>();for(var author:after.path("authors")) authors.add(author.asString());
-            return new Book(id,after.path("title").asString(""),authors,epl,revision,true,uuid);
+            return new Book(id,after.path("title").asString(""),authors,epl,revision,true,uuid,formats(after));
         });
     }
     public record IdentifierMetadata(String uuid,String title,List<String> authors,Map<String,String> identifiers) {}
@@ -317,13 +360,17 @@ public class CalibreClient {
         });
     }
     public void downloadEpub(CalibreSettings.Connection c,long id,java.nio.file.Path target,long maxBytes) {
-        downloadEpub(c,id,target,maxBytes,false);
+        downloadEpub(c,id,target,maxBytes,false,"epub");
     }
     /** Read-only calibre export: unlike /get/epub, this returns the stored format without rewriting it. */
     public void downloadOriginalEpub(CalibreSettings.Connection c,long id,java.nio.file.Path target,long maxBytes) {
-        downloadEpub(c,id,target,maxBytes,true);
+        downloadEpub(c,id,target,maxBytes,true,"epub");
     }
-    private void downloadEpub(CalibreSettings.Connection c,long id,java.nio.file.Path target,long maxBytes,boolean original) {
+    public void downloadOriginalFormat(CalibreSettings.Connection c,long id,java.nio.file.Path target,long maxBytes,String format) {
+        if(!com.rlibanez.eplsync.torrent.downloads.BookFormats.SUPPORTED.contains(format)) throw failure("Formato no compatible");
+        downloadEpub(c,id,target,maxBytes,true,format);
+    }
+    private void downloadEpub(CalibreSettings.Connection c,long id,java.nio.file.Path target,long maxBytes,boolean original,String format) {
         limited(() -> {
             var uri=URI.create(c.url()+(original?"/cdb/cmd/export/0?library_id="+segment(c.library()):"/get/epub/"+id+"/"+segment(c.library())));
             var credentials=new BasicCredentialsProvider();
@@ -337,7 +384,7 @@ public class CalibreClient {
                 org.apache.hc.client5.http.classic.methods.HttpUriRequestBase request;
                 if(original) {
                     var post=new org.apache.hc.client5.http.classic.methods.HttpPost(uri);
-                    post.setEntity(new org.apache.hc.core5.http.io.entity.StringEntity("[\"fmt\","+id+",\"EPUB\",null]",org.apache.hc.core5.http.ContentType.APPLICATION_JSON));
+                    post.setEntity(new org.apache.hc.core5.http.io.entity.StringEntity("[\"fmt\","+id+",\""+format.toUpperCase(java.util.Locale.ROOT)+"\",null]",org.apache.hc.core5.http.ContentType.APPLICATION_JSON));
                     request=post;
                 } else request=new HttpGet(uri);
                 request.setHeader("Accept",original?"application/x-msgpack":"application/epub+zip");
@@ -364,7 +411,7 @@ public class CalibreClient {
                         if(total==0) throw failure("Calibre ID "+id+": el EPUB está vacío");
                         }
                     }
-                    try(var zip=new java.util.zip.ZipFile(target.toFile())) {
+                    if(format.equals("epub")) try(var zip=new java.util.zip.ZipFile(target.toFile())) {
                         var mimetype=zip.getEntry("mimetype");
                         if(mimetype==null || mimetype.getSize()!=20 || zip.getEntry("META-INF/container.xml")==null)
                             throw failure("Calibre ID "+id+": la respuesta no es un EPUB válido");

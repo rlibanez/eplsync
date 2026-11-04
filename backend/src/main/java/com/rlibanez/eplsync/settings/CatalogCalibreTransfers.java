@@ -19,7 +19,13 @@ public class CatalogCalibreTransfers {
     public record Book(long eplId,double revision,String title) {}
     public record Selection(CatalogBookFilter filters) {}
     public record Prepared(List<CalibreClient.Library> libraries,String library,List<CalibreTransfers.Candidate> files,List<Book> books,List<Book> missing,List<Book> deferred,@com.fasterxml.jackson.annotation.JsonIgnore Map<Long,String> deferredRecords) {}
-    public record Request(String id,String library,List<Book> books,List<CalibreTransfers.FileChoice> files,boolean download,List<Long> pending) {}
+    public record Request(String id,String library,List<Book> books,List<CalibreTransfers.FileChoice> files,boolean download,List<Long> pending,List<String> formats) {
+        public Request {if(formats==null) formats=List.of("epub");}
+        public Request(String id,String library,List<Book> books,List<CalibreTransfers.FileChoice> files,boolean download,List<Long> pending) {this(id,library,books,files,download,pending,List.of("epub"));}
+    }
+    static String legacyJson(Request request,tools.jackson.databind.json.JsonMapper json) {
+        var value=new LinkedHashMap<String,Object>();value.put("id",request.id());value.put("library",request.library());value.put("books",request.books());value.put("files",request.files());value.put("download",request.download());value.put("pending",request.pending());return json.writeValueAsString(value);
+    }
     private final CatalogBookService catalog;
     private final DownloadRepository downloads;
     private final DownloadTrackingService tracking;
@@ -89,7 +95,7 @@ public class CatalogCalibreTransfers {
         return List.copyOf(result);
     }
     private String signature(Request request) {
-        try {return "sha256:"+HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(json.writeValueAsBytes(request)));}
+        try {return "sha256:"+HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest((BookFormats.allowed(request.formats()).equals(Set.of("epub"))?legacyJson(request,json):json.writeValueAsString(request)).getBytes(java.nio.charset.StandardCharsets.UTF_8)));}
         catch(java.security.NoSuchAlgorithmException ex) {throw new IllegalStateException(ex);}
     }
     public CalibreTransfers.Job create(Request request) {return create(request,id->{});}
@@ -129,6 +135,11 @@ public class CatalogCalibreTransfers {
                     }
                 }
             }
+            var selectedFormats=new HashSet<String>();
+            for(var candidate:selected) {
+                String key=candidate.eplId()+":"+candidate.revision()+":"+BookFormats.extension(candidate.name());
+                if(!selectedFormats.add(key)) throw new UserInputException("Selecciona un solo archivo de cada formato por libro y revisión");
+            }
             if(!deferredRecords.isEmpty()) epub.requireRoots();
             if(selected.isEmpty() && waits.isEmpty()) throw new UserInputException("Selecciona algún EPUB o activa la descarga de los libros no disponibles");
             if(waits.stream().anyMatch(b->!deferredRecords.containsKey(b.eplId()))) {Permission.require(Permission.TORRENT_SEND);Permission.require(Permission.TORRENT_SYNC);epub.requireRoots();}
@@ -151,6 +162,7 @@ public class CatalogCalibreTransfers {
                 for(var b:request.books()) cleanup.put(b.eplId(),new CalibreUpdateFlow.Choice(0,b.revision(),true,List.of(),"KEEP",List.of(),false));
                 var waiting=waits.stream().map(b->new CalibreUpdateFlow.Book(0,b.eplId(),b.title(),b.revision(),List.of(),List.of(),null)).toList();
                 String id=transfers.enqueueCatalog(connection,request.library(),selected,waiting,cleanup,downloadId,dependencies,deferredRecords);
+                jdbc.update("UPDATE calibre_job_items SET allowed_formats=? WHERE job_id=?",json.writeValueAsString(BookFormats.allowed(request.formats())),id);
                 jdbc.update("INSERT INTO calibre_update_requests(id,owner_id,payload,result,created_at) VALUES(?,?,?,?,?)","catalog:"+request.id(),EventContext.actor().id(),signature(request),json.writeValueAsString(id),java.time.Instant.now().toString());
                 var result=transfers.job(id);
                 stage.accept(id);

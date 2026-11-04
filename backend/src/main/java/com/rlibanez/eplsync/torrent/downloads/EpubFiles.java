@@ -36,11 +36,14 @@ public class EpubFiles {
     public static final class UnsupportedContent extends TorrentOperationException {
         public UnsupportedContent(String message) {super(HttpStatus.CONFLICT,message);}
     }
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private DownloadFileInventory inventory;
     private List<TorrentFile> contents(String id) {
         return client.exclusiveClient(adapter -> {
             var row=records.findById(id).orElseThrow(() -> new TorrentOperationException(HttpStatus.NOT_FOUND,"Registro de descarga no encontrado"));
             if (!row.getClientInstanceId().equals(tracking.instanceId())) throw unavailable("El registro pertenece a otro cliente torrent");
-            return adapter.listFiles(row.getHash());
+            var result=adapter.listFiles(row.getHash());
+            if(inventory!=null) inventory.record(id,row.getClientInstanceId(),row.getHash(),result);
+            return result;
         });
     }
     private static boolean completeEpub(TorrentFile file) {
@@ -50,7 +53,7 @@ public class EpubFiles {
     public List<Item> list(String id) {
         requireRoots();
         var content=contents(id);
-        var result=completed(content);
+        var result=completedBooks(content);
         if(!result.isEmpty()) return result;
         // Empty file lists can mean metadata has not arrived yet. Never infer a format from the torrent name.
         if(content.isEmpty()) throw new PendingEpub();
@@ -63,15 +66,29 @@ public class EpubFiles {
         });
         if(status==DownloadStatus.ERROR || status==DownloadStatus.NOT_FOUND) throw unavailable("El torrent no está disponible o tiene un error; revisa Estado de las descargas");
         if(status!=DownloadStatus.DOWNLOADED) throw new PendingEpub();
-        boolean epub=content.stream().anyMatch(f -> f.name().toLowerCase(Locale.ROOT).endsWith(".epub"));
-        if(epub) throw new UnsupportedContent("La descarga está completa, pero no contiene ningún EPUB completamente descargado; revisa la selección de archivos");
+        boolean epub=content.stream().anyMatch(f -> BookFormats.SUPPORTED.contains(BookFormats.extension(f.name())));
+        if(epub) throw new UnsupportedContent("La descarga está completa, pero no contiene ningún libro compatible completamente descargado; revisa la selección de archivos");
         var formats=new TreeSet<String>();
         for(var file:content) {
             String name=file.name().toLowerCase(Locale.ROOT);
             for(String extension:List.of("rar","pdf","zip","7z","cbr","cbz")) if(name.endsWith("."+extension)) formats.add(extension.toUpperCase(Locale.ROOT));
         }
-        throw new UnsupportedContent(formats.isEmpty()?"La descarga está completa, pero no contiene ningún archivo EPUB":
-                "La descarga contiene archivos "+String.join(", ",formats)+", pero ningún EPUB disponible");
+        throw new UnsupportedContent(formats.isEmpty()?"La descarga está completa, pero no contiene ningún archivo compatible":
+                "La descarga contiene archivos "+String.join(", ",formats)+", pero ningún libro compatible disponible");
+    }
+    private List<Item> completedBooks(List<TorrentFile> content) {
+        var result=new ArrayList<Item>();
+        for(var file:content) if(BookFormats.SUPPORTED.contains(BookFormats.extension(file.name())) && file.progress()==1 && file.size()>0) {
+            try(var opened=open(file,true)) {result.add(new Item(file.index(),opened.name(),opened.size(),file.size()));}
+            catch(IOException ex) {throw unavailable("No se puede leer el libro; revisa el montaje y los permisos de la carpeta");}
+        }
+        return List.copyOf(result);
+    }
+    public Opened downloadBook(String id,int index) {
+        requireRoots();
+        var file=contents(id).stream().filter(f->f.index()==index && BookFormats.SUPPORTED.contains(BookFormats.extension(f.name())) && f.progress()==1 && f.size()>0).findFirst()
+            .orElseThrow(()->unavailable("El archivo no existe o todavía no está completamente descargado"));
+        try {return open(file,true);}catch(IOException ex) {throw unavailable("El libro no está accesible; revisa la carpeta compartida y sus permisos");}
     }
     /** Live, accessible completed EPUBs; an incomplete torrent is an empty candidate set. */
     public List<Item> completed(String id) {
@@ -152,7 +169,8 @@ public class EpubFiles {
         var f=properties.getFiles();
         if(f.getRemoteRoot().isBlank() || f.getLocalRoot().isBlank()) throw unavailable("Configura las carpetas de descarga en Ajustes > Torrent");
     }
-    static Path relative(String root,String savePath,String name) {
+    static Path relative(String root,String savePath,String name) {return relative(root,savePath,name,false);}
+    private static Path relative(String root,String savePath,String name,boolean books) {
         // Remote paths may use Windows separators even when EPL Sync runs on Linux.
         if (java.util.stream.Stream.of(root,savePath,name).anyMatch(v -> v.isBlank() || v.chars().anyMatch(Character::isISOControl)))
             throw new TorrentOperationException(HttpStatus.CONFLICT,"Ruta de archivo inválida");
@@ -166,7 +184,7 @@ public class EpubFiles {
         var relative=Path.of((save.equals(base)?"":save.substring(prefix.length())+"/")+file);
         for(var part:relative) if(part.toString().equals("..") || part.toString().equals("."))
             throw new TorrentOperationException(HttpStatus.CONFLICT,"Ruta de archivo no permitida");
-        if(relative.isAbsolute() || !file.toLowerCase(Locale.ROOT).endsWith(".epub"))
+        if(relative.isAbsolute() || !(books?BookFormats.SUPPORTED.contains(BookFormats.extension(file)):file.toLowerCase(Locale.ROOT).endsWith(".epub")))
             throw new TorrentOperationException(HttpStatus.CONFLICT,"Ruta de EPUB inválida");
         return relative;
     }
@@ -176,11 +194,12 @@ public class EpubFiles {
             result=result.substring(0,result.length()-1);
         return result;
     }
-    private Opened open(TorrentFile file) throws IOException {
+    private Opened open(TorrentFile file) throws IOException {return open(file,false);}
+    private Opened open(TorrentFile file,boolean books) throws IOException {
         var roots=properties.getFiles();
         var root=Path.of(roots.getLocalRoot()).toRealPath();
         if (!Files.isDirectory(root)) throw new IOException("Not a directory");
-        var relative=relative(roots.getRemoteRoot(),file.savePath(),file.name());
+        var relative=relative(roots.getRemoteRoot(),file.savePath(),file.name(),books);
         SeekableByteChannel channel;
         // Descriptor-relative traversal prevents replacing a parent with a symlink between validation and opening.
         try(var directory=Files.newDirectoryStream(root)) {

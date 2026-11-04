@@ -44,9 +44,9 @@ test("select all retains library filters and exclusions and requires opt-in for 
   await page.getByRole("button",{name:"Siguiente",exact:true}).click();
   await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
   const dialog=page.getByRole("dialog");
-  await expect(dialog.locator("fieldset").filter({has: dialog.locator("legend", {hasText:"Archivos EPUB"})})).toHaveCount(0);
+  await expect(dialog.locator("fieldset").filter({has: dialog.locator("legend", {hasText:"Archivos"})})).toHaveCount(0);
   await expect(dialog.getByRole("button",{name:"Enviar a Calibre",exact:true})).toBeDisabled();
-  await dialog.getByRole("checkbox",{name:"Descargar los EPUB no disponibles y enviarlos a Calibre cuando terminen",exact:true}).check();
+  await dialog.getByRole("checkbox",{name:"Descargar los archivos no disponibles y enviarlos a Calibre cuando terminen",exact:true}).check();
   await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
   await expect(page).toHaveURL(/\/calibre\/jobs\/catalog-job$/);
 });
@@ -157,7 +157,7 @@ test("whole catalog reports preparation and creation progress without replaying 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("status")).toContainText("500");
   await dialog
-    .getByRole("checkbox", { name: /Descargar los EPUB no disponibles/ })
+    .getByRole("checkbox", { name: /Descargar los archivos no disponibles/ })
     .check();
   await dialog
     .getByRole("button", { name: "Enviar a Calibre", exact: true })
@@ -178,8 +178,8 @@ test("large downloaded selections defer file checks without requesting downloads
   await page.goto("/catalog");await page.getByRole("button",{name:/Seleccionar todo/}).click();
   await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
   const dialog=page.getByRole("dialog");
-  await expect(dialog.getByText(/Se comprobarán los EPUB de 1001 libros/)).toBeVisible();
-  await expect(dialog.getByRole("checkbox",{name:/Descargar los EPUB/})).toHaveCount(0);
+  await expect(dialog.getByText(/Se comprobarán los archivos de 1001 libros/)).toBeVisible();
+  await expect(dialog.getByRole("checkbox",{name:/Descargar los archivos/})).toHaveCount(0);
   await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
   await expect(page).toHaveURL(/\/calibre\/jobs\/catalog-job$/);
 });
@@ -205,8 +205,8 @@ test("available EPUBs appear before the missing download option", async ({page})
   await page.getByRole("button",{name:"Seleccionar todo (40)",exact:true}).click();
   await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
   const dialog=page.getByRole("dialog");
-  const files=dialog.locator("fieldset").filter({hasText:"Archivos EPUB"});
-  const pending=dialog.getByRole("checkbox",{name:/Descargar los EPUB no disponibles/});
+  const files=dialog.locator("fieldset").filter({hasText:"Archivos"});
+  const pending=dialog.getByRole("checkbox",{name:/Descargar los archivos no disponibles/});
   await expect(files).toBeVisible();
   await expect(pending).toBeVisible();
   const fileBounds=await files.boundingBox();
@@ -230,7 +230,7 @@ for (const phase of ["PREPARE", "SEND"] as const) {
     await page.route("**/api/calibre/transfers/catalog/operations/*/cancel",route=>{cancelled=true;cancellations++;return route.fulfill({json:operation(phase)});});
     await page.goto("/catalog");await page.getByRole("button",{name:/Seleccionar todo/}).click();await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();
     const dialog=page.getByRole("dialog");
-    if(phase==="SEND") {await dialog.getByRole("checkbox",{name:/Descargar los EPUB/}).check();await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();}
+    if(phase==="SEND") {await dialog.getByRole("checkbox",{name:/Descargar los archivos/}).check();await dialog.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();}
     await expect(dialog.getByRole("status")).toContainText("500");await expect(dialog.getByRole("button",{name:"Cancelar",exact:true})).toBeEnabled();await dialog.getByRole("button",{name:"Cancelar",exact:true}).click();await expect(dialog).toBeHidden();
     expect(cancellations).toBe(1);expect(sends).toBe(phase==="SEND"?1:0);await expect(page).toHaveURL(/\/catalog$/);
   });

@@ -57,7 +57,7 @@ public class CalibrePreparationOperations {
     }
     public Progress send(CatalogCalibreTransfers.Request input) {
         if(input==null || input.books()==null || input.books().isEmpty() || input.files()==null || !input.files().isEmpty() || input.pending()==null) throw new UserInputException("Prepara de nuevo la selección grande del catálogo");
-        return begin(input.id(),"SEND",json.writeValueAsString(input));
+        return begin(input.id(),"SEND",com.rlibanez.eplsync.torrent.downloads.BookFormats.allowed(input.formats()).equals(Set.of("epub"))?CatalogCalibreTransfers.legacyJson(input,json):json.writeValueAsString(input));
     }
     private Progress begin(String id,String kind,String input) {
         require();if(id==null || !id.matches("[a-zA-Z0-9-]{1,100}")) throw new UserInputException("Solicitud de preparación inválida");
@@ -126,7 +126,7 @@ public class CalibrePreparationOperations {
                 }
                 if(cursor>=request.books().size()) {activate(id,request);return;}
                 int end=Math.min(cursor+500,request.books().size());var books=request.books().subList(cursor,end);var ids=books.stream().map(book -> Objects.requireNonNull(book).eplId()).collect(java.util.stream.Collectors.toSet());
-                var batch=new CatalogCalibreTransfers.Request("stage-"+digest(id).substring(0,32)+"-"+cursor,request.library(),books,List.of(),request.download(),request.pending().stream().filter(ids::contains).toList());
+                var batch=new CatalogCalibreTransfers.Request("stage-"+digest(id).substring(0,32)+"-"+cursor,request.library(),books,List.of(),request.download(),request.pending().stream().filter(ids::contains).toList(),request.formats());
                 if(batch.pending().isEmpty()) {jdbc.update("UPDATE calibre_preparation_operations SET cursor=?,processed=?,total=?,phase='CREATING_JOBS',updated_at=? WHERE id=? AND state='RUNNING'",end,end,request.books().size(),Instant.now().toEpochMilli(),id);requireActive(id);return;}
                 progress(id,"CREATING_JOBS",cursor,request.books().size());
                 CalibrePreparationContext.run((phase,done,total)->{},true,()->catalog.createStagedBatch(batch,created->{merge(selected,created);jdbc.update("UPDATE calibre_preparation_operations SET cursor=?,processed=?,total=?,phase='CREATING_JOBS',updated_at=? WHERE id=?",end,end,request.books().size(),Instant.now().toEpochMilli(),selected);}));
@@ -183,7 +183,7 @@ public class CalibrePreparationOperations {
             if(download!=null) {Permission.require(Permission.TORRENT_SEND);Permission.require(Permission.TORRENT_SYNC);}
             if(download!=null) jdbc.update("UPDATE torrent_bulk_jobs SET state=CASE WHEN EXISTS(SELECT 1 FROM torrent_bulk_items WHERE job_id=? AND state='PENDING') THEN 'QUEUED' ELSE 'COMPLETED' END,updated_at=? WHERE id=? AND state='PAUSED'",download,Instant.now().toEpochMilli(),download);
             jdbc.update("UPDATE calibre_jobs SET state='QUEUED',updated_at=? WHERE id=? AND state='PAUSED'",Instant.now().toString(),calibre);
-            jdbc.update("INSERT INTO calibre_update_requests(id,owner_id,payload,result,created_at) VALUES(?,?,?,?,?)","catalog:"+request.id(),op.get("owner_id"),"sha256:"+digest(json.writeValueAsString(request)),json.writeValueAsString(calibre),Instant.now().toString());
+            jdbc.update("INSERT INTO calibre_update_requests(id,owner_id,payload,result,created_at) VALUES(?,?,?,?,?)","catalog:"+request.id(),op.get("owner_id"),"sha256:"+digest(com.rlibanez.eplsync.torrent.downloads.BookFormats.allowed(request.formats()).equals(Set.of("epub"))?CatalogCalibreTransfers.legacyJson(request,json):json.writeValueAsString(request)),json.writeValueAsString(calibre),Instant.now().toString());
             complete(id,calibre);
             if(download!=null) events.live(new EventContext.Actor((String)op.get("owner_id"),(String)op.get("owner_username"),"USER"),EventJournal.Category.JOB,"DOWNLOAD",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,download,Map.of("selected",jdbc.queryForObject("SELECT selected_books FROM torrent_bulk_jobs WHERE id=?",Long.class,download)));
             events.live(new EventContext.Actor((String)op.get("owner_id"),(String)op.get("owner_username"),"USER"),EventJournal.Category.JOB,"CALIBRE_SEND",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,calibre,Map.of("selected",request.books().size(),"library",request.library()));

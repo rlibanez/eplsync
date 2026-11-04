@@ -192,7 +192,7 @@ public class CalibreUpdateFlow {
         jdbc.update("UPDATE calibre_job_items SET next_check=? WHERE job_id=? AND state='WAITING_DOWNLOAD' AND next_check<=?",next,job,now);
     }
     boolean waiting(String job,CalibreTransfers.Item item) {
-        var row=jdbc.queryForMap("SELECT i.download_job_id,i.wait_until,i.file_index FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.id=?",item.id());
+        var row=jdbc.queryForMap("SELECT i.download_job_id,i.wait_until,i.file_index,i.allowed_formats FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.id=?",item.id());
         if(((Number)row.get("wait_until")).longValue()<Instant.now().toEpochMilli()) throw new UserInputException("La espera superó 30 días; revisa la descarga y reanuda");
         String downloadId=(String)row.get("download_job_id");
         Set<String> hashes=new HashSet<>();
@@ -210,14 +210,24 @@ public class CalibreUpdateFlow {
             List<EpubFiles.Item> available;
             try {available=files.list(d.getId());}
             catch(EpubFiles.PendingEpub ex) {continue;}
+            var allowed=BookFormats.allowed(json.readValue(row.get("allowed_formats").toString(),new tools.jackson.core.type.TypeReference<List<String>>(){}));
+            available=available.stream().filter(f->allowed.contains(BookFormats.extension(f.name()))).sorted(java.util.Comparator.comparingInt(f->BookFormats.extension(f.name()).equals("epub")?0:1)).toList();
             if(downloadId==null && row.get("file_index")!=null) {
                 available=available.stream().filter(f->f.index()==((Number)row.get("file_index")).intValue()).toList();
                 if(available.isEmpty()) throw new EpubFiles.UnsupportedContent("El EPUB seleccionado ya no está disponible; revisa los archivos de la descarga");
             }
-            if(available.size()>1) throw new EpubFiles.UnsupportedContent("La descarga contiene varios EPUB; selecciona el archivo que corresponde al libro en Estado de las descargas");
-            if(available.isEmpty()) continue;
+            if(available.stream().map(f->BookFormats.extension(f.name())).distinct().count()!=available.size()) throw new EpubFiles.UnsupportedContent("La descarga contiene varios libros del mismo formato; selecciona el archivo que corresponde al libro mediante Resolver");
+            if(available.isEmpty()) {if(d.getStatus()==DownloadStatus.DOWNLOADED) throw new EpubFiles.UnsupportedContent("La descarga no contiene archivos de los formatos seleccionados");continue;}
             var f=available.getFirst();if(f.size()>268435456) throw new UserInputException("El EPUB supera 256 MiB");
-            jdbc.update("UPDATE calibre_job_items SET state='PENDING',transient_attempts=0,next_check=0,record_id=?,file_index=?,name=?,size=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",d.getId(),f.index(),f.name(),f.size(),f.size()!=f.expectedSize()?CalibreTransfers.SIZE_WARNING:null,item.id());return true;
+            var selected=available;
+            return tx.execute(status->{
+                if(jdbc.update("UPDATE calibre_job_items SET state='PENDING',transient_attempts=0,next_check=0,record_id=?,file_index=?,name=?,size=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",d.getId(),f.index(),f.name(),f.size(),f.size()!=f.expectedSize()?CalibreTransfers.SIZE_WARNING:null,item.id())!=1) return false;
+                for(var extra:selected.subList(1,selected.size())) {
+                    if(extra.size()>268435456) throw new UserInputException("El libro supera 256 MiB");
+                    jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,cleanup_policy,cleanup_ids,allowed_formats,download_job_id,wait_until) SELECT ?,job_id,(SELECT coalesce(max(position),-1)+1 FROM calibre_job_items WHERE job_id=?),record_id,?,?,?,epl_id,revision,'PENDING','KEEP','[]',allowed_formats,download_job_id,wait_until FROM calibre_job_items WHERE id=?",UUID.randomUUID().toString(),job,extra.index(),extra.name(),extra.size(),item.id());
+                }
+                return true;
+            });
         }
         if(downloadId==null && !recordFound) throw new UserInputException("El registro de descarga ya no existe o cambió; revisa Estado de las descargas");
         if(!hashes.isEmpty() && !recordFound) throw new UserInputException("El registro de la descarga aceptada ya no existe; prepara un nuevo envío desde el Catálogo");

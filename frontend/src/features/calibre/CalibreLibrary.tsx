@@ -64,6 +64,11 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     [author, setAuthor] = useBookViewState("author", ""),
     [eplId, setEplId] = useBookViewState("eplId", ""),
     [comparison, setComparison] = useBookViewState("comparison", ""),
+    [formats, setFormats] = useBookViewState("formats", ""),
+    [excludeFormats, setExcludeFormats] = useBookViewState(
+      "excludeFormats",
+      false,
+    ),
     [presence, setPresence] = useBookViewState("presence", ""),
     [sort, setSort] = useBookViewState("sort", "title,asc");
   const selectable = updates
@@ -82,7 +87,17 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
   const [searching, setSearching] = useState(false);
   useEffect(
     () => setSelected([]),
-    [title, author, excluded, eplId, comparison, presence, sort],
+    [
+      title,
+      author,
+      excluded,
+      eplId,
+      comparison,
+      presence,
+      sort,
+      formats,
+      excludeFormats,
+    ],
   );
   const pageSizeChoice = usePageSizeChoice(size);
   const params = new URLSearchParams({
@@ -102,6 +117,9 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       : {}),
     comparison,
     presence,
+    ...(!updates && formats
+      ? { formats, formatsOperator: excludeFormats ? "ne" : "eq" }
+      : {}),
     ...(updates ? { updatesOnly: "true" } : {}),
   });
   const [availability, setAvailability] = useBookViewState<string | null>(
@@ -113,11 +131,17 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
   const excludedFields = updates
     ? [
         "actions",
+        "formats",
         "presence",
         "comparison",
         ...(!canCheckFiles ? ["downloadAvailability"] : []),
       ]
     : ["downloadAvailability"];
+  const formatOptions = useQuery({
+    queryKey: ["calibre-formats", auth.user?.id],
+    queryFn: ({ signal }) => get<string[]>("/calibre/books/formats", signal),
+    enabled: !updates,
+  });
   const previousSearch = useQuery({
     queryKey: ["saved-calibre-updates", auth.user?.id],
     queryFn: ({ signal }) => latestSavedSearch("calibre", signal),
@@ -209,6 +233,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       if (search)
         cache.setQueryData(["saved-calibre-updates", auth.user?.id], search);
       cache.setQueryData(["calibre-snapshot"], snapshot);
+      void cache.invalidateQueries({ queryKey: ["calibre-formats"] });
       void cache.invalidateQueries({
         queryKey: ["calibre-library"],
         refetchType: updates ? "none" : "active",
@@ -239,6 +264,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     },
     {
       defaults: "title,asc",
+      newColumnsAfter: { formats: "authors" },
       selection: selectable,
     },
     (page + 1) * size,
@@ -440,6 +466,47 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             setPage(0);
           }}
         />
+        {!updates && (
+          <MultiSelect
+            label={t("downloads.extension")}
+            searchable
+            clearable
+            clearButtonProps={{
+              "aria-label": `${t("catalog.clear")}: ${t("downloads.extension")}`,
+              "aria-hidden": false,
+              tabIndex: 0,
+            }}
+            data={Array.from(
+              new Set([
+                "epub",
+                "pdf",
+                "azw3",
+                "mobi",
+                "cbr",
+                ...(formatOptions.data ?? []),
+                ...formats.split(",").filter(Boolean),
+                "UNKNOWN",
+              ]),
+            )
+              .sort()
+              .map((value) => ({
+                value,
+                label:
+                  value === "UNKNOWN"
+                    ? t("downloads.inventoryUnknown")
+                    : value.toUpperCase(),
+              }))}
+            value={formats.split(",").filter(Boolean)}
+            onChange={(values) => {
+              setFormats(values.join(","));
+              setPage(0);
+            }}
+            {...stateOperatorProps(excludeFormats, () => {
+              setExcludeFormats(!excludeFormats);
+              setPage(0);
+            })}
+          />
+        )}
         {updates && canCheckFiles && (
           <Select
             label={t("calibreUpdateSend.availability")}
@@ -537,6 +604,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             setEplId("");
             setComparison("");
             setPresence("");
+            setFormats("");
+            setExcludeFormats(false);
             setAvailability(null);
             setPage(0);
           }}
@@ -594,6 +663,15 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               emptyMessage={updates ? t("revisionUpdates.empty") : undefined}
               excludedFields={excludedFields}
               columns={columns}
+              onFormat={
+                updates
+                  ? undefined
+                  : (value) => {
+                      setFormats(value);
+                      setExcludeFormats(false);
+                      setPage(0);
+                    }
+              }
               selected={selectable ? selected : undefined}
               selectionScope={`${params}:${sort}:${updates}`}
               onSelection={setSelected}

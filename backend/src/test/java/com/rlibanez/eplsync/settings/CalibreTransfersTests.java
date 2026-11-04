@@ -53,6 +53,7 @@ class CalibreTransfersTests {
         when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length)));
         when(files.download(record,0)).thenAnswer(call -> new EpubFiles.Opened("book.epub",bytes.length,new java.io.ByteArrayInputStream(bytes)));
         when(client.findRevision(any(),anyLong(),any())).thenReturn(null);
+        when(client.findBookRevision(any(),anyLong(),any())).thenReturn(null);
         when(client.hasEpub(any(),anyLong())).thenReturn(true);
         when(client.uploadEpub(any(),any(),anyString(),anyString())).thenReturn(9L);
         when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true));
@@ -552,6 +553,48 @@ class CalibreTransfersTests {
         }
         } finally {logger.detachAppender(capture);capture.stop();logger.setLevel(previous);}
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"pdf","mobi","azw3"})
+    void sendsSupportedFormatsWithoutChangingBytesAndVerifiesOriginalCalibreFile(String format) throws Exception {
+        byte[] payload=format.equals("pdf")?"%PDF-1.7\ncontent".getBytes(java.nio.charset.StandardCharsets.US_ASCII):new byte[100];
+        if(!format.equals("pdf")) System.arraycopy("BOOKMOBI".getBytes(java.nio.charset.StandardCharsets.US_ASCII),0,payload,60,8);
+        String name="book."+format;
+        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(4,name,payload.length)));
+        when(files.downloadBook(record,4)).thenAnswer(call->new EpubFiles.Opened(name,payload.length,new java.io.ByteArrayInputStream(payload)));
+        when(client.uploadBook(any(),any(),eq(name),anyString())).thenAnswer(call->{assertThat(java.nio.file.Files.readAllBytes(call.getArgument(1))).isEqualTo(payload);return 9L;});
+        when(client.hasFormat(any(),eq(9L),eq(format))).thenReturn(true);
+        doAnswer(call->{java.nio.file.Files.write(call.getArgument(2),payload);return null;}).when(client).downloadOriginalFormat(any(),eq(9L),any(),anyLong(),eq(format));
+        var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+        var job=EventContext.withActor(actor,()->transfers.create(new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,4)),List.of(),UUID.randomUUID().toString(),List.of(format))));
+        transfers.cycle();transfers.cycle();assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,times(1)).uploadBook(any(),any(),eq(name),anyString());verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().message()).doesNotContain("EPUB");
+    }
+    @Test void epubAndPdfFromSameRecordShareOneCalibreEntryWithoutReplacingExistingFormats() throws Exception {
+        byte[] pdf="%PDF-1.7\ncontent".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length),new EpubFiles.Item(1,"book.pdf",pdf.length)));
+        when(files.downloadBook(record,1)).thenAnswer(call->new EpubFiles.Opened("book.pdf",pdf.length,new java.io.ByteArrayInputStream(pdf)));
+        when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true,"uuid9"));
+        var attached=new java.util.concurrent.atomic.AtomicBoolean();when(client.hasFormat(any(),eq(9L),eq("pdf"))).thenAnswer(call->attached.get());
+        when(client.addFormat(any(),eq(9L),any(),eq("book.pdf"),eq("uuid9"))).thenAnswer(call->{attached.set(true);return true;});
+        doAnswer(call->{java.nio.file.Files.write(call.getArgument(2),pdf);return null;}).when(client).downloadOriginalFormat(any(),eq(9L),any(),anyLong(),eq("pdf"));
+        var job=EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->transfers.create(new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,0),new CalibreTransfers.FileChoice(record,1)),List.of(),null,List.of("epub","pdf"))));
+        for(int n=0;n<4;n++) transfers.cycle();assertThat(transfers.job(job.id()).accepted()).isEqualTo(2);
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());verify(client,never()).uploadBook(any(),any(),anyString(),anyString());
+        verify(client,times(1)).addFormat(any(),eq(9L),any(),eq("book.pdf"),eq("uuid9"));
+        assertThat(jdbc.queryForList("SELECT DISTINCT calibre_id FROM calibre_job_items WHERE job_id=?",Long.class,job.id())).containsExactly(9L);
+    }
+    @Test void mismatchedStoredFormatStaysUncertainAndIsNeverAutomaticallyUploadedAgain() throws Exception {
+        byte[] pdf="%PDF-1.7\noriginal".getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(1,"book.pdf",pdf.length)));
+        when(files.downloadBook(record,1)).thenAnswer(call->new EpubFiles.Opened("book.pdf",pdf.length,new java.io.ByteArrayInputStream(pdf)));
+        when(client.uploadBook(any(),any(),eq("book.pdf"),anyString())).thenReturn(9L);when(client.hasFormat(any(),eq(9L),eq("pdf"))).thenReturn(true);
+        doAnswer(call->{java.nio.file.Files.writeString(call.getArgument(2),"different");return null;}).when(client).downloadOriginalFormat(any(),eq(9L),any(),anyLong(),eq("pdf"));
+        var job=EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),()->transfers.create(new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,1)),List.of(),null,List.of("pdf"))));
+        transfers.cycle();transfers.recoverInterrupted();transfers.cycle();assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
+        verify(client,times(1)).uploadBook(any(),any(),eq("book.pdf"),anyString());
+    }
+
     @Test void sendsAndPublishesVerifiedBookWithoutSuccessfulHistoryEvent() {
         var job=create();transfers.cycle();
         assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
@@ -561,23 +604,14 @@ class CalibreTransfersTests {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE action='CALIBRE_SEND_FILE'",Long.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(DISTINCT operation_id) FROM app_events WHERE action='CALIBRE_SEND' AND actor_id=?",Long.class,owner.id())).isZero();
     }
-    @Test void twentyFiveSuccessfulFilesDoNotCreateHistoryEvents() {
-        var choices=new java.util.ArrayList<CalibreTransfers.FileChoice>();
-        var available=new java.util.ArrayList<EpubFiles.Item>();
-        for(int index=0;index<25;index++) {
-            choices.add(new CalibreTransfers.FileChoice(record,index));
-            available.add(new EpubFiles.Item(index,"book.epub",bytes.length));
-        }
-        when(files.list(record)).thenReturn(available);
-        when(files.download(eq(record),anyInt())).thenAnswer(call -> new EpubFiles.Opened("book.epub",bytes.length,new java.io.ByteArrayInputStream(bytes)));
-        var job=EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),
-            () -> transfers.create(new CalibreTransfers.Request("main",choices)));
-        for(int index=0;index<25;index++) transfers.cycle();
-        assertThat(transfers.job(job.id()).accepted()).isEqualTo(25);
-        assertThat(jdbc.queryForObject("SELECT count(DISTINCT operation_id) FROM app_events WHERE actor_id=? AND action='CALIBRE_SEND'",Long.class,owner.id())).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE actor_id=? AND action='CALIBRE_SEND_FILE'",Long.class,owner.id())).isZero();
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM app_events WHERE operation_id=? AND outcome='SUCCEEDED'",Long.class,job.id())).isZero();
+    @Test void ambiguousFilesOfTheSameFormatCannotCreateDuplicateEntries() {
+        when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"first.epub",bytes.length),new EpubFiles.Item(1,"second.epub",bytes.length)));
+        assertThatThrownBy(()->EventContext.withActor(new EventContext.Actor(owner.id(),owner.username(),"USER"),
+            ()->transfers.create(new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,0),new CalibreTransfers.FileChoice(record,1))))))
+            .hasMessageContaining("solo archivo de cada formato");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
+
     @Test void preparationIdentifiesTheInaccessibleRecordInsteadOfAnAnonymousError() {
         when(files.list(record)).thenThrow(new com.rlibanez.eplsync.exception.TorrentOperationException(org.springframework.http.HttpStatus.CONFLICT,"No se puede leer el EPUB; revisa el montaje y los permisos de la carpeta"));
         var prepared=transfers.prepare(List.of(record));
@@ -995,13 +1029,16 @@ class CalibreTransfersTests {
         var job=create();transfers.cycle();transfers.control(job.id(),"cancel");jdbc.update("UPDATE calibre_jobs SET updated_at=?",Instant.now().minus(java.time.Duration.ofDays(100)).toString());
         transfers.retention();assertThat(transfers.job(job.id()).uncertain()).isEqualTo(1);
     }
-    @Test void metadataOnlyDuplicateDoesNotPreventUploadingTheEpub() {
+    @Test void metadataOnlyEntryReceivesMissingEpubWithoutCreatingAnotherBook() throws Exception {
+        var attached=new java.util.concurrent.atomic.AtomicBoolean();
         when(client.findRevision(any(),eq(1L),any())).thenReturn(8L);
-        when(client.hasEpub(any(),eq(8L))).thenReturn(false);
-        var job=create();transfers.cycle();
-        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
-        assertThat(transfers.job(job.id()).skipped()).isZero();
-        verify(client).uploadEpub(any(),any(),anyString(),anyString());
+        when(client.hasEpub(any(),eq(8L))).thenAnswer(call->attached.get());
+        when(client.book(any(),eq(8L))).thenReturn(new CalibreClient.Book(8,"Book",List.of("Author"),1L,new BigDecimal("1.1"),true,"uuid8"));
+        when(client.addFormat(any(),eq(8L),any(),eq("book.epub"),eq("uuid8"))).thenAnswer(call->{attached.set(true);return true;});
+        doAnswer(call->{java.nio.file.Files.write(call.getArgument(2),bytes);return null;}).when(client).downloadOriginalFormat(any(),eq(8L),any(),anyLong(),eq("epub"));
+        var job=create();transfers.cycle();assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,times(1)).addFormat(any(),eq(8L),any(),eq("book.epub"),eq("uuid8"));
     }
     @Test void uploadWithoutConfirmedEpubStaysUncertainAndCanBeRecoveredWithoutResending() {
         when(client.hasEpub(any(),eq(9L))).thenReturn(false);
