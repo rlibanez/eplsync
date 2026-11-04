@@ -24,6 +24,7 @@ public class BulkJob {
     @Enumerated(EnumType.STRING) private Type type = Type.DOWNLOAD;
     @Enumerated(EnumType.STRING) private com.rlibanez.eplsync.torrent.updates.PreviousVersions previousVersions;
     private boolean trackDownloads;
+    @Column(nullable=false) private boolean preparing;
     private long nextDownloadCheck;
     private String client;
     private String targetFingerprint;

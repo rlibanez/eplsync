@@ -40,7 +40,7 @@ public class HomeController {
             blocks.put("downloads", downloads.summary(new LinkedMultiValueMap<>()));
         if (Permission.has(Permission.TORRENT_JOBS_MANAGE)) {
             var counts = new LinkedHashMap<String,Long>();
-            for (var row : em.createQuery("select j.state, count(j) from BulkJob j group by j.state", Object[].class).getResultList())
+            for (var row : em.createQuery("select j.state, count(j) from BulkJob j where j.preparing=false group by j.state", Object[].class).getResultList())
                 counts.put(row[0].toString(), (Long) row[1]);
             addCleanupCounts(counts,"downloads",Permission.TORRENT_SYNC);
             blocks.put("jobs", Map.of("byStatus", counts));

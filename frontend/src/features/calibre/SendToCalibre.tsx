@@ -4,6 +4,7 @@ import {
   PreparationCancelled,
   type PreparationProgress,
 } from "./preparationOperation";
+import { PreparationFeedback } from "../../components/PreparationFeedback";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { togglePageSelection } from "../../components/pageSelection";
 import { PreviewHeading, usePreviewSort } from "../../components/PreviewSort";
@@ -17,16 +18,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import {
-  Alert,
-  Button,
-  Checkbox,
-  Group,
-  Select,
-  Stack,
-  Progress,
-  Text,
-} from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Select, Stack } from "@mantine/core";
 import { Upload } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -271,37 +263,27 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [working]);
   const feedback = (
-    <Stack gap="xs" role="status" aria-live="polite">
-      <Text fw={600}>
-        {t(
-          send.isPending
-            ? "calibrePreparation.creating"
-            : "calibrePreparation.loading",
-        )}
-      </Text>
-      <Text>
-        {t(`calibrePreparation.phases.${progress?.phase ?? "QUEUED"}`)}
-      </Text>
-      {!!progress?.total && (
-        <>
-          <Progress
-            value={Math.min(100, (progress.processed * 100) / progress.total)}
-            animated
-            aria-label={t("calibrePreparation.progress")}
-          />
-          <Text size="sm">
-            {t("calibrePreparation.count", {
+    <PreparationFeedback
+      title={t(
+        send.isPending
+          ? "calibrePreparation.creating"
+          : "calibrePreparation.loading",
+      )}
+      phase={t(`calibrePreparation.phases.${progress?.phase ?? "QUEUED"}`)}
+      processed={progress?.processed}
+      total={progress?.total}
+      progressLabel={t("calibrePreparation.progress")}
+      count={
+        progress?.total
+          ? t("calibrePreparation.count", {
               processed: number(progress.processed),
               total: number(progress.total),
-            })}
-          </Text>
-        </>
-      )}
-      {progress?.message && <Text size="sm">{progress.message}</Text>}
-      <Text size="sm" c="dimmed">
-        {t("calibrePreparation.elapsed", { seconds: elapsed })}
-      </Text>
-    </Stack>
+            })
+          : undefined
+      }
+      message={progress?.message}
+      elapsed={t("calibrePreparation.elapsed", { seconds: elapsed })}
+    />
   );
   return (
     <Sender.Provider
@@ -515,7 +497,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
           <Alert color="red">{t("calibrePreparation.cancelFailed")}</Alert>
         )}
         {send.isPending && (
-          <div className="calibre-preparation-feedback">{feedback}</div>
+          <div className="preparation-feedback">{feedback}</div>
         )}
         <ModalActions
           summary={

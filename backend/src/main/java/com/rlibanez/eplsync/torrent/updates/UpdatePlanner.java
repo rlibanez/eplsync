@@ -156,6 +156,7 @@ public class UpdatePlanner {
         var plan=new UpdatePlan(); plan.setJobId(jobId); plan.setClientInstanceId(tracking.instanceId());
         plan.setDeleteHistory(Boolean.TRUE.equals(input.deleteHistory()));plan.setPreviousVersions(input.policy()); plan.setCleanupTiming(input.timing()); plan.setAutomaticCleanup((input.policy()!=PreviousVersions.KEEP || Boolean.TRUE.equals(input.deleteHistory())) && input.timing()==CleanupTiming.IMMEDIATE); plan.setCreatedAt(Instant.now()); plan.setSnapshot("{\"items\":[]}"); plans.saveAndFlush(plan);
         long[] counts={0,0};
+        TorrentPreparationProgress.report("PREPARING",0,0,0,jobId);
         scan(filter,includeNotFound,input.multipleHashes()==null ? properties.getBulk().getMultipleHashes() : input.multipleHashes(),selection,c -> {
             var book=books.findById(c.eplId()).orElseThrow(); counts[0]++;
             for(var hash:c.targetHashes()) {
@@ -163,6 +164,7 @@ public class UpdatePlanner {
                 var command=preparation.prepare(book,options==null ? new TorrentDownloadRequest(hash,null,null,null,null)
                         : new TorrentDownloadRequest(hash,options.start(),options.savePath(),options.rename(),options.qbittorrent()));
                 bulk.appendPrepared(jobId,command,counts[1]++);
+                TorrentPreparationProgress.report("PREPARING",counts[0],0,counts[1],jobId);
                 if(counts[1]%25==0) { em.flush(); em.clear(); }
             }
             int offset=0;
@@ -177,6 +179,7 @@ public class UpdatePlanner {
                 em.flush(); em.clear(); if(!history.hasNext()) break;
             }
         });
+        TorrentPreparationProgress.report("FINALIZING",counts[0],counts[0],counts[1],jobId);
         return bulk.finishPrepared(jobId,counts[0]);
     }
 }

@@ -369,6 +369,9 @@ test("created jobs still support pause, resume and confirmed cancellation", asyn
   expect(cancels).toBe(1);
 });
 test("a failed submission is not retried automatically", async ({ page }) => {
+  await page.route("**/api/torrent/preparations/*", (r) =>
+    r.fulfill({ status: 404, json: {} }),
+  );
   let calls = 0;
   await page.route("**/api/torrent/books", (r) => {
     calls++;

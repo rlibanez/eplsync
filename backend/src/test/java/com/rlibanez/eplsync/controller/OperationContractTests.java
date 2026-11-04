@@ -18,7 +18,7 @@ class OperationContractTests {
         var bulk = mock(BulkStore.class);
         var imports = mock(CatalogImportService.class);
         var mvc = MockMvcBuilders.standaloneSetup(new CoverCheckController(covers),new CoverTaskController(tasks),
-                new UpdateController(planner,mock(UpdateCleanupService.class),bulk),new SelectionController(planner,bulk),
+                new UpdateController(planner,mock(UpdateCleanupService.class),bulk),new SelectionController(planner,bulk,mock(TorrentPreparationProgress.class)),
                 new CatalogImportController(imports,mock(com.rlibanez.eplsync.repository.CatalogMetadataRepository.class)))
                 .setControllerAdvice(new GlobalExceptionHandler()).build();
         for (String path : java.util.List.of("/api/catalog/covers/check","/api/catalog/covers/task",

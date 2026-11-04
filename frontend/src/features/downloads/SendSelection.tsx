@@ -1,3 +1,10 @@
+import {
+  prepareTorrent,
+  TorrentPreparationCancelled,
+  TorrentPreparationUnknown,
+  type TorrentPreparation,
+} from "./torrentPreparation";
+import { PreparationFeedback } from "../../components/PreparationFeedback";
 import { useAuth } from "../auth/Auth";
 import { AppModal as Modal, ModalActions } from "../../components/AppModal";
 import { Send } from "lucide-react";
@@ -8,12 +15,14 @@ import {
   useQueryClient,
   useIsMutating,
 } from "@tanstack/react-query";
-import { Button, TextInput, Select, Checkbox } from "@mantine/core";
+import { Alert, Button, TextInput, Select, Checkbox } from "@mantine/core";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { get } from "../../api/catalog";
+import { ActionError, post } from "./shared";
+import { useLocale } from "../../locales/useLocale";
 import { Loading, Failure } from "../../components/Feedback";
-import { post, type Job } from "./shared";
+
 import { OptionLabel, type SendDefaults } from "./SendOptions";
 export function SendSelection({
   filters,
@@ -31,6 +40,7 @@ export function SendSelection({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const { number } = useLocale();
   const auth = useAuth();
   const navigate = useNavigate();
   const cache = useQueryClient();
@@ -104,7 +114,24 @@ export function SendSelection({
           : undefined,
     };
   }
+  const [preparation, setPreparation] = useState<TorrentPreparation | null>(
+    null,
+  );
+  const [preparationId, setPreparationId] = useState<string | null>(null);
   const active = useIsMutating({ mutationKey: ["send-books"] }) > 0;
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!active || !preparationId) return;
+    setElapsed(0);
+    const started = Date.now();
+    const timer = window.setInterval(
+      () => setElapsed(Math.floor((Date.now() - started) / 1000)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [active, preparationId]);
   const mutation = useMutation({
     mutationKey: ["send-books"],
     meta: {
@@ -116,9 +143,24 @@ export function SendSelection({
       },
     },
     retry: false,
-    mutationFn: ({ url, body }: { url: string; body: unknown }) =>
-      post<Job>(url, body),
+    mutationFn: ({
+      url,
+      body,
+      id,
+    }: {
+      url: string;
+      body: unknown;
+      id: string;
+    }) =>
+      prepareTorrent(url, body, id, setPreparation).catch((error) => {
+        if (error instanceof TorrentPreparationCancelled) return null;
+        throw error;
+      }),
     onSuccess: (data) => {
+      if (data === null) {
+        onClose();
+        return;
+      }
       void cache.invalidateQueries({ queryKey: ["downloads"] });
       void cache.invalidateQueries({ queryKey: ["download-summary"] });
       void cache.invalidateQueries({ queryKey: ["book"] });
@@ -146,7 +188,14 @@ export function SendSelection({
     };
   }
   function send() {
+    if (mutation.error instanceof TorrentPreparationUnknown) return;
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setCancelling(false);
+    setCancelError(null);
+    setPreparationId(id);
+    setPreparation(null);
     mutation.mutate({
+      id,
       url: revisionStates
         ? "/torrent/revision-updates/send"
         : single
@@ -208,6 +257,63 @@ export function SendSelection({
     >
       <p>{t("selection.selected", { count })}</p>
       {allResults && <p className="muted">{t("send.liveSelection")}</p>}
+      {active && preparationId && (
+        <div className="preparation-feedback">
+          <PreparationFeedback
+            title={t("torrentPreparation.creating")}
+            phase={t(
+              `torrentPreparation.phases.${preparation?.phase ?? "WAITING"}`,
+            )}
+            processed={preparation?.processed}
+            total={preparation?.total}
+            progressLabel={t("torrentPreparation.progress")}
+            count={
+              preparation &&
+              (preparation.total > 0 || preparation.processed > 0)
+                ? t("torrentPreparation.counts", {
+                    processed: number(preparation.processed),
+                    total:
+                      preparation.total > 0 ? number(preparation.total) : "—",
+                    items: number(preparation.items),
+                  })
+                : undefined
+            }
+            elapsed={t("torrentPreparation.elapsed", { seconds: elapsed })}
+          />
+        </div>
+      )}
+      {mutation.isError && (
+        <Alert color="red" role="alert">
+          {mutation.error instanceof TorrentPreparationUnknown
+            ? t("torrentPreparation.unknown")
+            : "details" in mutation.error &&
+                typeof mutation.error.details === "string" &&
+                mutation.error.details
+              ? mutation.error.details
+              : t("torrentPreparation.failed")}
+          {mutation.error instanceof ActionError &&
+            mutation.error.incidentId && (
+              <p>{t("torrentPreparation.incidentReference")}</p>
+            )}
+          {auth.can("TORRENT_JOBS_MANAGE") &&
+            (preparation?.state === "FAILED" && preparation.jobId ? (
+              <p>
+                <Link
+                  to={`/downloads/jobs/${encodeURIComponent(preparation.jobId)}`}
+                  onClick={onClose}
+                >
+                  {t("torrentPreparation.viewJob")}: {preparation.jobId}
+                </Link>
+              </p>
+            ) : mutation.error instanceof TorrentPreparationUnknown ? (
+              <p>
+                <Link to="/downloads/jobs" onClick={onClose}>
+                  {t("nav.downloadJobs")}
+                </Link>
+              </p>
+            ) : null)}
+        </Alert>
+      )}
       {(defaults.isPending || categories.isFetching) && <Loading />}
       {categories.isError && (
         <Failure
@@ -230,7 +336,8 @@ export function SendSelection({
         }}
       >
         <fieldset
-          disabled={!ready || !initialized.current}
+          hidden={active}
+          disabled={active || !ready || !initialized.current}
           style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
         >
           {revisionStates && (
@@ -420,13 +527,51 @@ export function SendSelection({
           </Button>
         </fieldset>
         <ModalActions>
-          <Button variant="default" disabled={active} onClick={onClose}>
+          {cancelError && <span role="alert">{cancelError}</span>}
+          <Button
+            variant="default"
+            loading={cancelling}
+            disabled={
+              active &&
+              (!preparationId ||
+                !!revisionStates ||
+                !!single ||
+                !preparation ||
+                !["COUNTING", "SNAPSHOT", "PREPARING"].includes(
+                  preparation.phase,
+                ))
+            }
+            onClick={async () => {
+              if (!active || !preparationId) {
+                onClose();
+                return;
+              }
+              setCancelling(true);
+              setCancelError(null);
+              try {
+                await post(
+                  `/torrent/preparations/${encodeURIComponent(preparationId)}/cancel`,
+                  {},
+                );
+              } catch (error) {
+                setCancelError(
+                  error instanceof Error ? error.message : String(error),
+                );
+                setCancelling(false);
+              }
+            }}
+          >
             {t("common.cancel")}
           </Button>
           <Button
             type="submit"
             loading={active}
-            disabled={!ready || !initialized.current || count === 0}
+            disabled={
+              !ready ||
+              !initialized.current ||
+              count === 0 ||
+              mutation.error instanceof TorrentPreparationUnknown
+            }
           >
             {t("selection.createJob")}
           </Button>

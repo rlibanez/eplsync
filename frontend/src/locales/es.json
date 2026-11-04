@@ -1,4 +1,22 @@
 {
+  "torrentPreparation": {
+    "incidentReference": "La referencia identifica la incidencia en el log; no es un identificador de trabajo.",
+    "viewJob": "Ver trabajo de descarga",
+    "creating": "Creando el trabajo",
+    "elapsed": "Tiempo transcurrido: {{seconds}} s",
+    "progress": "Preparación del trabajo de descarga",
+    "counts": "{{processed}} de {{total}} libros procesados · {{items}} elementos preparados",
+    "unknown": "No se pudo recuperar el resultado del envío. Comprueba los trabajos antes de iniciar otro envío de la misma selección.",
+    "failed": "No se pudo preparar el trabajo de descarga. Revisa el resultado antes de reintentar.",
+    "phases": {
+      "SNAPSHOT": "Fijando la selección del catálogo…",
+      "WAITING": "Esperando turno para preparar el trabajo…",
+      "COUNTING": "Consultando los libros de la selección…",
+      "PREPARING": "Preparando el trabajo de descarga…",
+      "FINALIZING": "Guardando el trabajo de descarga…",
+      "COMPLETED": "Trabajo de descarga preparado"
+    }
+  },
   "jobSelection": {
     "result": "Aplicados: {{done}} · Ya no aplicables: {{skipped}} · Fallidos: {{failed}}",
     "cancel": "Se cancelarán los {{count}} trabajos seleccionados compatibles. Los demás se conservarán."

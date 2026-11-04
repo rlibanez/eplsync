@@ -115,4 +115,11 @@ class HomeActivityTests {
             .andExpect(jsonPath("$.calibreJobs.byStatus.RUNNING").doesNotExist());
     }
 
+    @Test void inactivePreparationIsNotPresentedAsAUserPausedJobRequiringAttention() throws Exception {
+        bulk("preparing","PAUSED","Preparando el trabajo");jdbc.update("UPDATE torrent_bulk_jobs SET preparing=1 WHERE id='preparing'");
+        var auth=user("manager").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("TORRENT_JOBS_MANAGE"));
+        mvc.perform(get("/api/home/attention").with(auth)).andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
+        mvc.perform(get("/api/home/summary").with(auth)).andExpect(status().isOk()).andExpect(jsonPath("$.jobs.byStatus.PAUSED").doesNotExist());
+    }
+
 }

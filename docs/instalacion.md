@@ -261,3 +261,8 @@ Limpieza de su Actualización de origen. Conserva los datos y los trabajos.
 El esquema resultante es `1.8.3.2`; se mantienen los identificadores de migración
 existentes aunque no coincidan con la versión de la aplicación.
 Consulta las [notas de 1.8.2](releases/1.8.2.md).
+
+La protección de preparación por lotes de Torrent añade la columna `preparing`
+a los trabajos de descarga (migración `1.8.3.3`). Los trabajos existentes conservan
+sus estados y datos. Una preparación interrumpida se cancela sin enviar sus
+elementos; los trabajos que ya estaban activos conservan su recuperación habitual.

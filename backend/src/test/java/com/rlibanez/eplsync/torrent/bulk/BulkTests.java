@@ -42,6 +42,8 @@ class BulkTests {
 
     @Autowired com.rlibanez.eplsync.events.EventJournal events;
     @Autowired BulkStore store;
+    @Autowired TorrentPreparationProgress preparations;
+    @Autowired BulkCatalogPreparation batchedPreparation;
     @Autowired org.springframework.web.context.WebApplicationContext context;
     @Autowired com.rlibanez.eplsync.security.AccountStore accounts;
     @Autowired com.rlibanez.eplsync.settings.WorkListings listings;
@@ -536,7 +538,7 @@ class BulkTests {
         assertThat(store.list(0, 20, List.of(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT)).items())
                 .extracting(value -> Objects.requireNonNull(value).status()).containsExactlyInAnyOrder(BulkJob.State.RUNNING, BulkJob.State.RETRY_WAIT);
         assertThat(store.list(100, 20, null).items()).isEmpty();
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store,preparations))
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/jobs"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
@@ -793,7 +795,7 @@ class BulkTests {
         rows.get(4).setState(BulkItem.State.FAILED); rows.get(4).setMessage("Envío rechazado");
         items.saveAll(rows);
         create(null); // Otro job no debe contaminar el filtro ni sus contadores.
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store,preparations))
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
         String path = "/api/torrent/jobs/" + job.jobId() + "/items";
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path)
@@ -820,7 +822,7 @@ class BulkTests {
     @Test void endpointsAcceptOverridesAndExposeProgressWithoutSnapshots() throws Exception {
         var conversion = new org.springframework.format.support.DefaultFormattingConversionService();
         new com.rlibanez.eplsync.config.LanguageWebConfiguration().addFormatters(conversion);
-        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store))
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new BulkController(store,listings), new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store,preparations))
                 .setConversionService(conversion)
                 .setCustomArgumentResolvers(new org.springframework.data.web.PageableHandlerMethodArgumentResolver())
                 .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
@@ -1040,4 +1042,122 @@ class BulkTests {
         store.next();assertThat(store.claim(job.jobId(),store.pending(job.jobId(),1).getFirst())).isNull();
         assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);verify(client,never()).addTorrent(any());
     }
+    @Test void trackedLargeSelectionKeepsOneCommittedJobAndExposesItsResult() throws Exception {
+        accounts.clear();var owner=accounts.initialize("progress-owner","owner@example.org","password123","password123");
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new org.springframework.security.core.authority.SimpleGrantedAuthority(p.name())).toList()));
+        books.deleteAll();var rows=new java.util.ArrayList<Object[]>();
+        for(long id=1;id<=1501;id++) rows.add(new Object[]{id,"Book "+id,"Author",1.0,String.format("%040X",id)});
+        jdbc.batchUpdate("INSERT INTO catalog_books(epl_id,title,author,revision,links) VALUES(?,?,?,?,?)",rows);
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(
+            new com.rlibanez.eplsync.torrent.updates.SelectionController(null,store,preparations),new TorrentPreparationController(preparations))
+            .setControllerAdvice(new com.rlibanez.eplsync.exception.GlobalExceptionHandler()).build();
+        String input="{\"dryRun\":false,\"all\":true,\"multipleHashes\":\"all\"}";
+        for(int attempt=0;attempt<2;attempt++) mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/torrent/books")
+            .header(TorrentPreparationProgress.HEADER,"large-selection-progress").contentType("application/json").content(input))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isAccepted())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.selectedBooks").value(1501));
+        assertThat(jobs.count()).isEqualTo(1);assertThat(items.count()).isEqualTo(1501);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/torrent/preparations/large-selection-progress"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control","no-store"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.processed").value(1501))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.total").value(1501))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.state").value("COMPLETED"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.result.jobId").value(preparations.status("large-selection-progress").jobId()));
+        verify(client,never()).addTorrent(any(com.rlibanez.eplsync.torrent.TorrentDownload.class));
+    }
+
+    @Test void originalLongTransactionTimesOutButBatchedPreparationKeepsWritesShort() {
+        var tx=new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));tx.setTimeout(1);
+        when(client.withDefaults(any())).thenAnswer(call->{Thread.sleep(260);return call.getArgument(0);});
+        assertThatThrownBy(()->tx.execute(status->create(null))).isInstanceOf(RuntimeException.class);
+        assertThat(jobs.count()).isZero();
+        var writes=(org.springframework.transaction.support.TransactionTemplate)org.springframework.test.util.ReflectionTestUtils.getField(batchedPreparation,"write");
+        writes.setTimeout(1);
+        try {
+            var checked=new java.util.concurrent.atomic.AtomicBoolean();
+            when(client.withDefaults(any())).thenAnswer(call->{
+                assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                if(checked.compareAndSet(false,true)) {
+                    try(var executor=java.util.concurrent.Executors.newSingleThreadExecutor()) {
+                        assertThat(executor.submit(()->jdbc.update("UPDATE catalog_books SET title='Changed during preparation' WHERE epl_id=1")).get(2,java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(1);
+                    }
+                    String provisional=jobs.findAll().getFirst().getId();
+                    assertThatThrownBy(()->store.control(provisional,"resume")).hasMessageContaining("preparando");
+                }
+                Thread.sleep(260);return call.getArgument(0);
+            });
+            var result=create(null);assertThat(result.status()).isEqualTo(BulkJob.State.QUEUED);
+            assertThat(jobs.findById(result.jobId()).orElseThrow().isPreparing()).isFalse();
+            assertThat(items.findByJobIdOrderByPosition(result.jobId(),PageRequest.of(0,100)).getContent()).hasSize(5);
+            assertThat(items.findByJobIdOrderByPosition(result.jobId(),PageRequest.of(0,100)).getContent().getFirst().getCommandJson()).doesNotContain("Changed during preparation");
+            verify(client,never()).addTorrent(any(com.rlibanez.eplsync.torrent.TorrentDownload.class));
+        } finally {writes.setTimeout(30);}
+    }
+    @Test void complete65283BookSelectionCommitsChunksWithoutSendingOrDuplicatingHashes() {
+        books.deleteAll();var rows=new java.util.ArrayList<Object[]>();
+        for(long id=1;id<=65283;id++) rows.add(new Object[]{id,"Book "+id,"Author",1.0,String.format("%040X",id==501?1:id)});
+        jdbc.batchUpdate("INSERT INTO catalog_books(epl_id,title,author,revision,links) VALUES(?,?,?,?,?)",rows);
+        long started=System.nanoTime();
+        var result=store.create(new CatalogBookFilter(),PageRequest.of(0,20,Sort.by("title")),false,true,new BulkRequest(null,100,5,"0ms",MultipleHashes.ALL));
+        System.out.println("65283 books, title sort, preparationMs="+(System.nanoTime()-started)/1_000_000);
+        assertThat(result.selectedBooks()).isEqualTo(65283);assertThat(result.selectedItems()).isEqualTo(65283);
+        assertThat(result.skipped()).isEqualTo(1);assertThat(result.pending()).isEqualTo(65282);
+        assertThat(jobs.count()).isEqualTo(1);assertThat(result.status()).isEqualTo(BulkJob.State.QUEUED);
+        assertThat(jobs.findById(result.jobId()).orElseThrow().isPreparing()).isFalse();
+        verify(client,never()).addTorrent(any(com.rlibanez.eplsync.torrent.TorrentDownload.class));
+    }
+    @Test void snapshotUsesOneSelectionQueryInsteadOfGrowingOffsetQueries() throws Exception {
+        for(long id=6;id<=305;id++) books.save(CatalogBook.builder().eplId(id).revision(1.0).author("Author").title("Book "+id).links(String.format("%040X",id)).build());
+        var statistics=context.getBean(jakarta.persistence.EntityManagerFactory.class).unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        boolean enabled=statistics.isStatisticsEnabled();statistics.setStatisticsEnabled(true);
+        var path=java.nio.file.Files.createTempFile("snapshot-query-test-",".gz");
+        try {
+            long before=statistics.getPrepareStatementCount();
+            var tx=new org.springframework.transaction.support.TransactionTemplate(context.getBean(org.springframework.transaction.PlatformTransactionManager.class));tx.setReadOnly(true);
+            Long total=tx.execute(status->org.springframework.test.util.ReflectionTestUtils.invokeMethod(batchedPreparation,"freeze",store,new CatalogBookFilter(),PageRequest.of(0,20,Sort.by("title")),false,path));
+            assertThat(total).isEqualTo(305);assertThat(statistics.getPrepareStatementCount()-before).isEqualTo(2);
+        } finally {statistics.setStatisticsEnabled(enabled);java.nio.file.Files.deleteIfExists(path);}
+    }
+
+    @Test void cancellationRemovesOnlyProvisionalJobAndNeverSends() {
+        accounts.clear();var owner=accounts.initialize("cancel-owner","owner@example.org","password123","password123");
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new org.springframework.security.core.authority.SimpleGrantedAuthority(p.name())).toList()));
+        var existing=create(null);
+        var request=new org.springframework.mock.web.MockHttpServletRequest("POST","/api/torrent/books");
+        request.addHeader(TorrentPreparationProgress.HEADER,"cancel-preparing-selection");
+        when(client.withDefaults(any())).thenAnswer(call->{
+            preparations.cancel("cancel-preparing-selection");return call.getArgument(0);
+        });
+        assertThatThrownBy(()->preparations.track(request,java.util.Map.of(),()->create(null)))
+            .isInstanceOf(TorrentPreparationProgress.Cancelled.class);
+        assertThat(preparations.status("cancel-preparing-selection").state()).isEqualTo("CANCELLED");
+        assertThat(jobs.count()).isEqualTo(1);assertThat(jobs.existsById(existing.jobId())).isTrue();
+        verify(client,never()).addTorrent(any(com.rlibanez.eplsync.torrent.TorrentDownload.class));
+    }
+
+    @Test void preparationInterruptedByRestartCannotBeResumedOrDispatched() {
+        var result=create(null);jdbc.update("UPDATE torrent_bulk_jobs SET state='PAUSED',preparing=1 WHERE id=?",result.jobId());
+        assertThatThrownBy(()->store.control(result.jobId(),"resume")).hasMessageContaining("preparando");
+        store.recover();var recovered=jobs.findById(result.jobId()).orElseThrow();
+        assertThat(recovered.isPreparing()).isFalse();assertThat(recovered.getState()).isEqualTo(BulkJob.State.CANCELLED);
+        assertThat(items.countByJobIdAndState(result.jobId(),BulkItem.State.PENDING)).isZero();
+        verify(client,never()).addTorrent(any(com.rlibanez.eplsync.torrent.TorrentDownload.class));
+    }
+
+    @Test void failedPreparationCancelsOnlyItsInactiveCommittedItemsAndKeepsARealJobReference() {
+        for(long id=6;id<=205;id++) books.save(CatalogBook.builder().eplId(id).revision(1.0).author("Author").title("Book "+id).links(String.format("%040X",id)).build());
+        when(client.withDefaults(any())).thenAnswer(call->{
+            com.rlibanez.eplsync.torrent.TorrentDownload command=call.getArgument(0);
+            if(command.book().getEplId()==101L) throw new IllegalStateException("preparation failure");return command;
+        });
+        Throwable failure=catchThrowable(()->store.create(new CatalogBookFilter(),PageRequest.of(0,20,Sort.by("eplId")),false,true,null));
+        assertThat(failure).isInstanceOf(BulkCatalogPreparation.Failed.class);
+        String id=((BulkCatalogPreparation.Failed)failure).jobId();assertThat(id).isNotNull();
+        var stored=jobs.findById(id).orElseThrow();assertThat(stored.getState()).isEqualTo(BulkJob.State.CANCELLED);assertThat(stored.isPreparing()).isFalse();
+        assertThat(items.countByJobId(id)).isEqualTo(100);assertThat(items.countByJobIdAndState(id,BulkItem.State.CANCELLED)).isEqualTo(100);
+        assertThat(failure.getMessage()).contains("se ha cancelado sin enviar torrents");
+        verify(client,never()).addTorrent(any(com.rlibanez.eplsync.torrent.TorrentDownload.class));
+    }
+
 }

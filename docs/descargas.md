@@ -183,3 +183,50 @@ confirmación y conserva las reglas de propagación a Calibre. Las limpiezas no
 admiten pausa manual. **Eliminar trabajos** mantiene su previsualización y las
 protecciones de operaciones pendientes y dependencias; un trabajo activo debe
 cancelarse y resolver sus operaciones pendientes antes de eliminar su historial.
+
+### Progreso al preparar envíos grandes
+
+Al pulsar **Crear trabajo**, el asistente muestra la espera de turno, la consulta
+de la selección, la preparación de elementos y el guardado final. Cuando conoce
+el total, muestra una barra y los contadores de libros procesados y elementos
+preparados; un libro puede generar varios elementos si tiene varios hashes.
+Estos contadores corresponden a la creación del trabajo. Los envíos al cliente
+y la descarga de los archivos se siguen después en el propio trabajo.
+
+La selección se fija con una única consulta ordenada y una lectura secuencial consistente,
+sin repetir consultas con desplazamientos crecientes. Se procesa desde un archivo
+privado temporal. Los elementos se guardan en transacciones de hasta 100 libros,
+liberando el escritor de SQLite entre lotes. El índice temporal de hashes no hace
+un commit por cada hash. El trabajo permanece inactivo y oculto de las listas
+hasta completar su preparación; entonces se activa una sola vez. Se conservan
+los filtros, exclusiones, ordenación, opciones y deduplicación de hashes.
+
+Durante la captura y preparación del envío general del Catálogo se puede pulsar
+Cancelar. Se espera la confirmación del servidor: se eliminan únicamente los
+trabajos y elementos provisionales de esa operación, sin enviar ni borrar torrents.
+Al comenzar la activación final, la cancelación deja de estar disponible; después
+se utilizan los controles del trabajo. Cerrar una conexión no cancela por sí solo.
+
+Si falla la preparación después de guardar algún lote, el trabajo y sus elementos
+pendientes quedan cancelados sin enviar torrents. El aviso enlaza a ese trabajo
+real si tienes permiso para verlo. Si no llegó a guardarse un trabajo, no se
+muestra un enlace ficticio. Una referencia de incidencia identifica el error en
+el log, no un trabajo. Tras un reinicio, las preparaciones incompletas también se
+cancelan de forma segura; hay que iniciar una nueva selección. Los trabajos ya
+activados conservan su recuperación habitual.
+
+El log registra el inicio de la petición antes de esperar el turno, los cambios
+de fase y finales en INFO y el resultado con el ID del
+trabajo. Los fallos conservan el tipo de causa técnica sin registrar credenciales.
+SNAPSHOT y PREPARING no generan logs parciales, pero mantienen el progreso del frontend.
+La consulta del progreso no solicita datos al cliente torrent ni escribe en SQLite.
+Solo puede consultarla el usuario que inició el envío, conservando su permiso de
+Envío torrent.
+
+Si se pierde la respuesta HTTP, el asistente consulta el resultado de la misma
+petición, sin volver a enviarla. Repetir su identificador dentro de la misma
+instancia devuelve el resultado conservado, sin crear otro trabajo. Este
+seguimiento es temporal y se conserva en memoria durante una hora; no sustituye
+al trabajo persistente ni añade tablas. Si el servidor se reinicia o no se puede
+recuperar el resultado, se indica que hay que comprobar los trabajos antes de
+iniciar otro envío de la misma selección.

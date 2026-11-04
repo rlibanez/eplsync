@@ -19,6 +19,8 @@ final class SelectionHashIndex implements AutoCloseable {
                 statement.execute("PRAGMA cache_size=-2048"); statement.execute("PRAGMA journal_mode=OFF");
                 statement.execute("CREATE TABLE hashes(hash TEXT PRIMARY KEY) WITHOUT ROWID");
             }
+            // This private temporary index needs no per-hash commits or durability.
+            connection.setAutoCommit(false);
             insert=connection.prepareStatement("INSERT OR IGNORE INTO hashes VALUES(?)");
         } catch(Exception ex) { close(); throw failure(ex); }
     }

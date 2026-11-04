@@ -32,11 +32,11 @@ public class HomeActivityController {
         if(Permission.has(Permission.TORRENT_JOBS_MANAGE)) queries.add(new Projection("""
             SELECT j.id,j.state,j.updated_at,
               coalesce((SELECT coalesce(nullif(i.download_message,''),nullif(i.message,'')) FROM torrent_bulk_items i WHERE i.job_id=j.id AND (i.state='FAILED' OR i.download_state IN ('ERROR','NOT_FOUND','PAUSED')) ORDER BY i.position LIMIT 1),nullif(j.message,''),(SELECT nullif(c.message,'') FROM torrent_update_cleanup c WHERE c.job_id=j.id AND c.state IN ('BLOCKED','REQUESTED') ORDER BY c.created_at LIMIT 1)) message
-            FROM torrent_bulk_jobs j WHERE EXISTS(SELECT 1 FROM torrent_update_cleanup c WHERE c.job_id=j.id AND c.state='REQUESTED') AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs linked WHERE linked.update_job_id=j.id)
+            FROM torrent_bulk_jobs j WHERE j.preparing=0 AND (EXISTS(SELECT 1 FROM torrent_update_cleanup c WHERE c.job_id=j.id AND c.state='REQUESTED') AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs linked WHERE linked.update_job_id=j.id)
               OR j.state<>'CANCELLED' AND (
               j.state='PAUSED' AND nullif(j.message,'') IS NOT NULL
               OR EXISTS(SELECT 1 FROM torrent_bulk_items i WHERE i.job_id=j.id AND (i.state='FAILED' OR i.download_state IN ('ERROR','NOT_FOUND','PAUSED')))
-              OR EXISTS(SELECT 1 FROM torrent_update_cleanup c WHERE c.job_id=j.id AND c.state='BLOCKED') AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs linked WHERE linked.update_job_id=j.id))
+              OR EXISTS(SELECT 1 FROM torrent_update_cleanup c WHERE c.job_id=j.id AND c.state='BLOCKED') AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs linked WHERE linked.update_job_id=j.id)))
             """,List.of(),"downloads","normal"));
         boolean calibreAllowed=Permission.has(Permission.CALIBRE_JOBS_MANAGE) || Permission.has(Permission.CALIBRE_SEND);
         boolean calibreConfigured=(calibreAllowed || Permission.has(Permission.CALIBRE_READ)) && !calibre.view().url().isBlank();

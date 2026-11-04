@@ -23,6 +23,7 @@ export class ActionError extends Error {
     public status: number,
     public details: string,
     public eventOperationId?: string | null,
+    public incidentId?: string | null,
   ) {
     super(details);
   }
@@ -31,6 +32,7 @@ export async function post<T>(
   path: string,
   body?: unknown,
   signal?: AbortSignal,
+  headers?: Record<string, string>,
 ): Promise<T> {
   let response: Response;
   try {
@@ -39,6 +41,7 @@ export async function post<T>(
       signal,
       headers: {
         Accept: "application/json",
+        ...headers,
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -52,6 +55,7 @@ export async function post<T>(
       response.status,
       typeof data?.details === "string" ? data.details : "",
       response.headers.get("X-EPLSync-Operation-Id"),
+      typeof data?.incidentId === "string" ? data.incidentId : null,
     );
   if (data === null) throw new ActionError(0, "");
   return data;

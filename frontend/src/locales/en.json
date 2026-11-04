@@ -1,4 +1,22 @@
 {
+  "torrentPreparation": {
+    "incidentReference": "The reference identifies the incident in the log; it is not a job identifier.",
+    "viewJob": "View download job",
+    "creating": "Creating the job",
+    "elapsed": "Elapsed time: {{seconds}} s",
+    "progress": "Download job preparation",
+    "counts": "{{processed}} of {{total}} books processed · {{items}} items prepared",
+    "unknown": "The submission result could not be recovered. Check the jobs before submitting the same selection again.",
+    "failed": "The download job could not be prepared. Check the result before retrying.",
+    "phases": {
+      "SNAPSHOT": "Freezing the catalogue selection…",
+      "WAITING": "Waiting to prepare the job…",
+      "COUNTING": "Querying the selected books…",
+      "PREPARING": "Preparing the download job…",
+      "FINALIZING": "Saving the download job…",
+      "COMPLETED": "Download job prepared"
+    }
+  },
   "jobSelection": {
     "result": "Applied: {{done}} · No longer applicable: {{skipped}} · Failed: {{failed}}",
     "cancel": "The {{count}} eligible selected jobs will be cancelled. Other jobs will be kept."

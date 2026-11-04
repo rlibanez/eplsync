@@ -54,7 +54,7 @@ public class WorkListings {
                 sum(state='ACCEPTED') accepted,sum(state='FAILED') failed
                 FROM torrent_bulk_items GROUP BY job_id
             ) c ON c.job_id=j.id
-            WHERE NOT EXISTS(SELECT 1 FROM calibre_preparation_operations p WHERE p.download_job_id=j.id AND p.state IN ('QUEUED','RUNNING'))
+            WHERE j.preparing=0 AND NOT EXISTS(SELECT 1 FROM calibre_preparation_operations p WHERE p.download_job_id=j.id AND p.state IN ('QUEUED','RUNNING'))
             """:"""
             SELECT j.id,'normal' kind,cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) createdAt,
             'SEND' type,j.state state,j.owner_username username,j.library,coalesce(c.total,0) selectedBooks,coalesce(c.total,0) total,

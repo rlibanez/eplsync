@@ -29,7 +29,7 @@ public class BulkStore {
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.specification.CatalogLibraryFilters libraryFilters;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.events.EventJournal events;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.settings.DownloadCancellation cancellation;
-    private void event(BulkJob job, com.rlibanez.eplsync.events.EventJournal.Outcome outcome) {
+    void event(BulkJob job, com.rlibanez.eplsync.events.EventJournal.Outcome outcome) {
         if (events == null) return;
         var summary = view(job);
         var origin = job.getEventOrigin() == null ? com.rlibanez.eplsync.events.EventContext.Origin.MANUAL
@@ -87,9 +87,13 @@ public class BulkStore {
         public ItemView(String id, Long eplId, String hash, BulkItem.State status, int attempts, String message) { this(id,eplId,hash,status,attempts,message,null,null,false,null,null,null,null); }
     }
 
-    @Transactional(timeout=120)
+    @org.springframework.beans.factory.annotation.Autowired private BulkCatalogPreparation catalogPreparation;
+
     public View create(CatalogBookFilter filter, Pageable pageable, boolean paginated, boolean all, BulkRequest request) {
-        return (View) prepare(filter,pageable,paginated,all,request,false,false,0,20);
+        // Calibre's staged coordinator already owns the transaction and batch budget.
+        if(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            return (View) prepare(filter,pageable,paginated,all,request,false,false,0,20);
+        return catalogPreparation.create(this,filter,pageable,paginated,all,request);
     }
     public record Preview(boolean dryRun, boolean applied, long selectedBooks, long selectedItems,
                           long skipped, List<ItemView> items, PageResponse.PageMeta meta) {
@@ -112,6 +116,7 @@ public class BulkStore {
                            BulkRequest request, boolean dryRun, boolean includeDetails,int detailPage,int detailSize) {
         var details = new ArrayList<ItemView>();
         long skipped = 0;
+        TorrentPreparationProgress.report("COUNTING",0,0,0,null);
         client.requireEnabled();
         filter.normalize();
         if (!paginated && !all && !hasFilter(filter))
@@ -137,6 +142,7 @@ public class BulkStore {
             ? Math.max(0, Math.min(matchingBooks - offset, pageable.getPageSize()))
             : matchingBooks;
         if (!dryRun && totalBooks == 0) throw new com.rlibanez.eplsync.exception.UserInputException("No hay libros que coincidan con los filtros");
+        TorrentPreparationProgress.report("PREPARING",0,totalBooks,0,job.getId());
         long position = 0;
         long selectedBooks = 0;
         int lastProgressCheckpoint = 0;
@@ -200,10 +206,11 @@ public class BulkStore {
             offset += batch.size(); remaining -= batch.size();
             if (!dryRun) { em.flush(); em.clear(); }
             else em.clear();
+            TorrentPreparationProgress.report("PREPARING",selectedBooks,totalBooks,position,job.getId());
             if (totalBooks > 0) {
                 int progressPercent = (int) (selectedBooks * 100 / totalBooks);
                 int checkpointPercent = progressPercent / 10 * 10;
-                if (!com.rlibanez.eplsync.settings.CalibrePreparationContext.staged() && checkpointPercent >= 10 && checkpointPercent > lastProgressCheckpoint) {
+                if (!TorrentPreparationProgress.tracked() && !com.rlibanez.eplsync.settings.CalibrePreparationContext.staged() && checkpointPercent >= 10 && checkpointPercent > lastProgressCheckpoint) {
                     log.info("Preparación bulk en progreso: dryRun={}, jobId={}, progreso={}%, librosProcesados={}/{}, itemsPreparados={}",
                             dryRun, job.getId(), progressPercent, selectedBooks, totalBooks, position);
                     lastProgressCheckpoint = checkpointPercent;
@@ -217,6 +224,7 @@ public class BulkStore {
             return new Preview(true,false,selectedBooks,position,skipped,details,
                     new PageResponse.PageMeta(detailPage,detailSize,position,pages,detailPage==0,detailPage>=pages-1,detailPage<pages-1,detailPage>0));
         }
+        TorrentPreparationProgress.report("FINALIZING",selectedBooks,totalBooks,position,job.getId());
         job.setSelectedBooks(selectedBooks);
         if (items.countByJobIdAndState(job.getId(), BulkItem.State.PENDING) == 0) job.setState(BulkJob.State.COMPLETED);
         jobs.saveAndFlush(job);
@@ -227,7 +235,7 @@ public class BulkStore {
     }
 
     private BulkJob newJob(BulkRequest input) { return newJob(input, true); }
-    private BulkJob newJob(BulkRequest input, boolean persist) {
+    BulkJob newJob(BulkRequest input, boolean persist) {
         if (input.options() != null && input.options().hash() != null)
             throw new com.rlibanez.eplsync.exception.UserInputException("Bulk selecciona el hash de cada libro; no admite options.hash");
         int batchSize = input.batchSize() == null ? properties.getBulk().getBatchSize() : input.batchSize();
@@ -283,14 +291,14 @@ public class BulkStore {
         return finishPrepared(job.getId(),count);
     }
 
-    private BulkItem newItem(BulkJob job, Long eplId, Double revision, long position) {
+    BulkItem newItem(BulkJob job, Long eplId, Double revision, long position) {
         var item = new BulkItem();
         item.setId(UUID.randomUUID().toString()); item.setJobId(job.getId());
         item.setPosition(position); item.setEplId(eplId); item.setRevision(revision); item.setState(BulkItem.State.PENDING);
         return item;
     }
 
-    private boolean hasFilter(CatalogBookFilter filter) {
+    boolean hasFilter(CatalogBookFilter filter) {
         var bean = new BeanWrapperImpl(filter);
         for (var descriptor : bean.getPropertyDescriptors()) {
             if (descriptor.getName().equals("class")) continue;
@@ -301,7 +309,7 @@ public class BulkStore {
         return false;
     }
 
-    private void validateSort(Sort sort) {
+    void validateSort(Sort sort) {
         var bean = new BeanWrapperImpl(com.rlibanez.eplsync.model.CatalogBook.class);
         for (var order : sort) if (order.getProperty().equals("class") || order.getProperty().contains(".")
                 || !bean.isReadableProperty(order.getProperty())) throw new com.rlibanez.eplsync.exception.UserInputException("Campo sort inválido");
@@ -471,6 +479,7 @@ public class BulkStore {
     @Transactional
     public View control(String id, String action) {
         var job = job(id);
+        if(job.isPreparing()) throw new com.rlibanez.eplsync.exception.UserInputException("El trabajo se está preparando; espera a que termine la creación");
         if(((Number)em.createNativeQuery("SELECT count(*) FROM calibre_preparation_operations WHERE download_job_id=:id AND state IN ('QUEUED','RUNNING')").setParameter("id",id).getSingleResult()).longValue()>0) throw new com.rlibanez.eplsync.exception.UserInputException("El trabajo se está preparando; espera a que termine la creación");
         if (job.getState() == BulkJob.State.COMPLETED || job.getState() == BulkJob.State.CANCELLED)
             throw new TorrentOperationException(HttpStatus.CONFLICT, "El trabajo ya ha finalizado");
@@ -514,6 +523,7 @@ public class BulkStore {
 
     @Transactional
     public void recover() {
+        catalogPreparation.recover();
         items.recover(BulkItem.State.IN_FLIGHT, BulkItem.State.PENDING);
         for (var state : List.of(BulkJob.State.RUNNING)) {
             for (var job : jobs.findByStateOrderByCreatedAtAsc(state, Pageable.unpaged())) {

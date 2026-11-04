@@ -13,15 +13,19 @@ public class SelectionController {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SelectionController.class);
     private final UpdatePlanner planner;
     private final BulkStore bulk;
+    private final TorrentPreparationProgress progress;
 
-    public SelectionController(UpdatePlanner planner, BulkStore bulk) {
-        this.planner = planner; this.bulk = bulk;
+    public SelectionController(UpdatePlanner planner, BulkStore bulk,TorrentPreparationProgress progress) {
+        this.planner = planner; this.bulk = bulk;this.progress=progress;
     }
 
     @PostMapping("/books")
     public ResponseEntity<?> books(@RequestBody java.util.Map<String,Object> body,
             jakarta.servlet.http.HttpServletRequest request) {
         var input = com.rlibanez.eplsync.api.OperationBody.read(body,TorrentOperationRequest.class,request);
+        return input.dryRun()?books(input):progress.track(request,input,()->books(input));
+    }
+    private ResponseEntity<?> books(TorrentOperationRequest input) {
         log.info("Solicitud torrent: dryRun={}, filtros={}", input.dryRun(), SelectionQueries.safeLog(input.filters()));
         if (input.selection() != null) {
             if (!"new".equals(input.selection())) throw new com.rlibanez.eplsync.exception.UserInputException("selection debe ser new");
@@ -33,12 +37,12 @@ public class SelectionController {
             throw new com.rlibanez.eplsync.exception.UserInputException("El envío general no admite includeNotFound ni previousVersions");
         if ((input.detailPage()!=null || input.detailSize()!=null) && (!input.dryRun() || !Boolean.TRUE.equals(input.includeDetails())))
             throw new com.rlibanez.eplsync.exception.UserInputException("detailPage y detailSize requieren dryRun=true e includeDetails=true");
-        synchronized (bulk) {
-            if (input.dryRun()) return ResponseEntity.ok(bulk.preview(input.filter(), input.pageable(),
-                    input.paginated(), Boolean.TRUE.equals(input.all()), input.bulk(), Boolean.TRUE.equals(input.includeDetails()),input.detailPageNumber(),input.detailPageSize()));
-            var job = bulk.create(input.filter(),input.pageable(),input.paginated(),Boolean.TRUE.equals(input.all()),input.bulk());
-            return ResponseEntity.accepted().location(URI.create("/api/torrent/jobs/" + job.jobId())).body(job);
+        if (input.dryRun()) {
+            synchronized(bulk) {return ResponseEntity.ok(bulk.preview(input.filter(), input.pageable(),
+                input.paginated(), Boolean.TRUE.equals(input.all()), input.bulk(), Boolean.TRUE.equals(input.includeDetails()),input.detailPageNumber(),input.detailPageSize()));}
         }
+        var job = bulk.create(input.filter(),input.pageable(),input.paginated(),Boolean.TRUE.equals(input.all()),input.bulk());
+        return ResponseEntity.accepted().location(URI.create("/api/torrent/jobs/" + job.jobId())).body(job);
     }
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(@RequestBody java.util.Map<String,Object> body,

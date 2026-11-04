@@ -11,10 +11,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 @PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('TORRENT_SYNC')")
 public class RevisionUpdatesController {
     private final RevisionUpdates updates;
+    private final com.rlibanez.eplsync.torrent.bulk.TorrentPreparationProgress progress;
     private final TorrentClientService client;
     private final SelectedUpdateSender sender;
     private final com.rlibanez.eplsync.torrent.bulk.BulkStore bulk;
-    public RevisionUpdatesController(RevisionUpdates updates,TorrentClientService client,SelectedUpdateSender sender,com.rlibanez.eplsync.torrent.bulk.BulkStore bulk) {this.updates=updates;this.client=client;this.sender=sender;this.bulk=bulk;}
+    public RevisionUpdatesController(RevisionUpdates updates,TorrentClientService client,SelectedUpdateSender sender,com.rlibanez.eplsync.torrent.bulk.BulkStore bulk,com.rlibanez.eplsync.torrent.bulk.TorrentPreparationProgress progress) {this.progress=progress;this.updates=updates;this.client=client;this.sender=sender;this.bulk=bulk;}
     @PostMapping("/search")
     public PageResponse<RevisionUpdates.Row> search(@RequestBody UpdatePreferences.Preferences input,
         @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size,@RequestParam(defaultValue="title,asc") String sort,
@@ -41,7 +42,10 @@ public class RevisionUpdatesController {
     }
     @PostMapping("/send")
     @PreAuthorize("hasAuthority('CATALOG_READ') and hasAuthority('TORRENT_SYNC') and hasAuthority('TORRENT_SEND')")
-    public org.springframework.http.ResponseEntity<com.rlibanez.eplsync.torrent.bulk.BulkStore.View> send(@RequestBody SelectedUpdateSender.Request input) {
+    public org.springframework.http.ResponseEntity<com.rlibanez.eplsync.torrent.bulk.BulkStore.View> send(@RequestBody SelectedUpdateSender.Request input,jakarta.servlet.http.HttpServletRequest request) {
+        return progress.track(request,input,()->send(input));
+    }
+    private org.springframework.http.ResponseEntity<com.rlibanez.eplsync.torrent.bulk.BulkStore.View> send(SelectedUpdateSender.Request input) {
         synchronized(bulk) {
             var job=sender.create(input);
             return org.springframework.http.ResponseEntity.accepted().location(java.net.URI.create("/api/torrent/jobs/"+job.jobId())).body(job);

@@ -12,15 +12,20 @@ import org.springframework.web.bind.annotation.*;
 public class TorrentDownloadController {
     private final TorrentDownloadService service;
     private final BulkStore jobs;
+    private final TorrentPreparationProgress progress;
     private final com.rlibanez.eplsync.events.EventJournal events;
-    public TorrentDownloadController(TorrentDownloadService service, BulkStore jobs, com.rlibanez.eplsync.events.EventJournal events) {
-        this.service = service; this.jobs = jobs; this.events = events;
+    public TorrentDownloadController(TorrentDownloadService service, BulkStore jobs, com.rlibanez.eplsync.events.EventJournal events,TorrentPreparationProgress progress) {
+        this.service = service; this.jobs = jobs; this.events = events;this.progress=progress;
     }
     public record Request(boolean dryRun, TorrentDownloadRequest options, Integer batchSize, Integer concurrency, String interval) {}
     @PostMapping("/{eplId}")
     public ResponseEntity<?> downloadByEplId(@PathVariable Long eplId,
             @RequestBody java.util.Map<String,Object> body, jakarta.servlet.http.HttpServletRequest request) {
         var input = com.rlibanez.eplsync.api.OperationBody.read(body, Request.class, request);
+        return input.dryRun()?download(eplId,input):progress.track(request,input,()->download(eplId,input));
+    }
+    private ResponseEntity<?> download(Long eplId,Request input) {
+        TorrentPreparationProgress.report("PREPARING",0,1,0,null);
         var startedAt = java.time.Instant.now();
         com.rlibanez.eplsync.torrent.TorrentDownload command;
         try {
@@ -35,6 +40,7 @@ public class TorrentDownloadController {
         var options = new BulkRequest(null,input.batchSize(),input.concurrency(),input.interval());
         synchronized (jobs) {
             var job = jobs.createPrepared(java.util.List.of(command), options);
+            TorrentPreparationProgress.report("FINALIZING",1,1,1,job.jobId());
             return ResponseEntity.accepted().location(java.net.URI.create("/api/torrent/jobs/" + job.jobId())).body(job);
         }
     }

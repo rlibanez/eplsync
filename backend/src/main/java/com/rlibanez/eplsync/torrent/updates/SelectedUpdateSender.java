@@ -58,7 +58,10 @@ public class SelectedUpdateSender {
         var plan=new UpdatePlan();plan.setJobId(job.getId());plan.setClientInstanceId(tracking.instanceId());plan.setPreviousVersions(request.policy());
         plan.setDeleteHistory(Boolean.TRUE.equals(request.deleteHistory()));plan.setCleanupTiming(request.timing());plan.setAutomaticCleanup((request.policy()!=PreviousVersions.KEEP || Boolean.TRUE.equals(request.deleteHistory())));plan.setSnapshot("{\"items\":[]}");plan.setCreatedAt(Instant.now());plans.saveAndFlush(plan);
         long count=0,position=0,deadline=System.nanoTime()+java.time.Duration.ofMinutes(2).toNanos();
+        long checked=0;
+        TorrentPreparationProgress.report("PREPARING",0,input.ids().size(),0,job.getId());
         for(var id:input.ids()) {
+            TorrentPreparationProgress.report("PREPARING",checked++,input.ids().size(),position,job.getId());
             if(System.nanoTime()>=deadline || Thread.currentThread().isInterrupted()) throw new UserInputException("La preparación superó el tiempo máximo; reduce la selección");
             if(updates.search(selection,0,1,"eplId,asc",id).items().isEmpty()) continue;
             var book=books.findById(id).orElseThrow();var hashes=magnets.hashes(book.getLinks());
@@ -83,6 +86,7 @@ public class SelectedUpdateSender {
             }
         }
         if(count==0) throw new UserInputException("Los libros seleccionados ya no tienen actualizaciones pendientes que se puedan enviar");
+        TorrentPreparationProgress.report("FINALIZING",checked,input.ids().size(),position,job.getId());
         return bulk.finishPrepared(job.getId(),count);
     }
 }

@@ -2226,7 +2226,7 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 .library-cleanup-copies { margin-bottom: 20px; max-height: 340px; overflow: auto; }
 .library-cleanup-copy + .library-cleanup-copy { margin-top: 16px; }
 
-.calibre-preparation-feedback {
+.preparation-feedback {
   margin-block: var(--mantine-spacing-md);
 }
 
