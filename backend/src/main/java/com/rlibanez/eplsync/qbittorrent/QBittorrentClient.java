@@ -40,6 +40,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
     private record NativeClient(HttpClient http,boolean session) {}
     private final NativeClient apiKeyClient;
     private final RegistryHostTransport registryTransport;
+    private final QBittorrentCommunicationLog communicationLog=new QBittorrentCommunicationLog(log,System::nanoTime);
     private final org.apache.hc.client5.http.DnsResolver resolver;
     private final String authorizedDestination;
     private final NativeClient sessionClient;
@@ -623,7 +624,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
             for (Throwable cause = ex; cause != null; cause = cause.getCause())
                 if (cause instanceof com.rlibanez.eplsync.exception.TorrentConnectionException connection)
                     throw new QBittorrentConnectionException(connection.getReason());
-            log.debug("Fallo de comunicación qBittorrent {} {}: {}", request.method(), endpoint, ex.getClass().getSimpleName());
+            communicationLog.failed(request.method(),endpoint,ex);
             throw new QBittorrentConnectionException(UPSTREAM);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();

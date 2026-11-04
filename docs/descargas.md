@@ -303,3 +303,17 @@ las operaciones de lectura del contenido mantienen sus protecciones independient
 El popup distingue inventarios sin comprobar y fallidos, conserva el último
 inventario conocido y advierte de que los archivos pueden no estar completamente
 descargados. Las consultas y la paginación no modifican el inventario ni los torrents.
+
+Ante un fallo de comunicación con el cliente, el trabajador de inventario detiene
+el lote y espera un minuto antes de continuar: no prueba otros torrents cada
+segundo contra un servidor que no responde. La espera afecta solo a ese destino;
+un cambio de cliente permite comprobar el nuevo destino inmediatamente. Los fallos
+específicos de un archivo mantienen su reintento individual y no detienen el resto.
+El último inventario guardado se conserva durante la desconexión.
+
+Los envíos concurrentes de un mismo trabajo comparten durante cinco segundos el
+fallo transitorio al cargar el índice de hashes, evitando consultas idénticas en
+ráfaga. Esto no autoriza ningún alta: antes de enviar se sigue exigiendo un índice
+comprobado. Los avisos DEBUG de comunicación con qBittorrent se agrupan, con un
+máximo de uno por minuto para cada configuración activa y un contador de fallos
+acumulados. Los errores se siguen propagando a los trabajos.

@@ -548,6 +548,22 @@ class QBittorrentClientTests {
     }
 
     @Test
+    void concurrentFailedIndexReadsAreNotRepeatedAndNeverDispatchAnAdd() {
+        var qbit=client();var context=new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+        torrentInfo="{invalid";
+        var futures=java.util.stream.IntStream.range(0,10).mapToObj(n->java.util.concurrent.CompletableFuture.runAsync(()->
+            assertThatThrownBy(()->qbit.addTorrent(command(String.format("%040X",n+1)),context)).isInstanceOf(QBittorrentConnectionException.class)))
+            .toArray(java.util.concurrent.CompletableFuture[]::new);
+        java.util.concurrent.CompletableFuture.allOf(futures).join();
+        assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/info")).count()).isEqualTo(1);
+        assertThat(calls).noneMatch(c->c.path().endsWith("/torrents/add"));
+        torrentInfo="[]";
+        qbit.addTorrent(command("A".repeat(40)),new com.rlibanez.eplsync.torrent.TorrentSubmissionContext());
+        assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/info")).count()).isEqualTo(2);
+        assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
+    }
+
+    @Test
     void concurrentAddsShareInitialAuthenticationAndCategoryLookup() {
         var qbit = client();
         var context = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();

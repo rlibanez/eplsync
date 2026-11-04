@@ -19,21 +19,37 @@ public class DownloadFileInventory {
     private final com.rlibanez.eplsync.config.TorrentProperties properties;
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(DownloadFileInventory.class);
     private final AtomicBoolean running=new AtomicBoolean();
+    private final java.util.function.LongSupplier clock;
+    private record Cooldown(String instance,long until) {}
+    private volatile Cooldown cooldown;
+    private boolean coolingDown(String instance) {var value=cooldown;return value!=null && value.instance().equals(instance) && clock.getAsLong()-value.until()<0;}
+    private static boolean clientFailure(Throwable failure) {
+        var seen=Collections.newSetFromMap(new IdentityHashMap<Throwable,Boolean>());
+        for(var cause=failure;cause!=null && seen.add(cause);cause=cause.getCause())
+            if(cause instanceof com.rlibanez.eplsync.exception.TorrentConnectionException connection)
+                return Set.of(com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.UPSTREAM,com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.TIMEOUT,com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.AUTHENTICATION).contains(connection.getReason());
+        return false;
+    }
     private final com.rlibanez.eplsync.config.WorkerActivity.Probe probe=new com.rlibanez.eplsync.config.WorkerActivity.Probe();
     private final ExecutorService executor=Executors.newSingleThreadExecutor(Thread.ofVirtual().name("torrent-file-inventory").factory());
     @org.springframework.beans.factory.annotation.Value("${eplsync.torrent.inventory.worker-enabled:true}") private boolean enabled;
+    @org.springframework.beans.factory.annotation.Autowired
     public DownloadFileInventory(JdbcTemplate jdbc,org.springframework.transaction.PlatformTransactionManager manager,TorrentClientService client,DownloadTrackingService tracking,com.rlibanez.eplsync.maintenance.MaintenanceGate maintenance,com.rlibanez.eplsync.config.TorrentProperties properties) {
-        this.jdbc=jdbc;tx=new TransactionTemplate(manager);this.client=client;this.tracking=tracking;this.maintenance=maintenance;this.properties=properties;
+        this(jdbc,manager,client,tracking,maintenance,properties,System::nanoTime);
+    }
+    DownloadFileInventory(JdbcTemplate jdbc,org.springframework.transaction.PlatformTransactionManager manager,TorrentClientService client,DownloadTrackingService tracking,com.rlibanez.eplsync.maintenance.MaintenanceGate maintenance,com.rlibanez.eplsync.config.TorrentProperties properties,java.util.function.LongSupplier clock) {
+        this.clock=clock;this.jdbc=jdbc;tx=new TransactionTemplate(manager);this.client=client;this.tracking=tracking;this.maintenance=maintenance;this.properties=properties;
     }
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=1000)
     public void schedule() {
-        if(enabled && properties.isEnabled() && probe.ready() && running.compareAndSet(false,true))
+        if(enabled && properties.isEnabled() && !coolingDown(tracking.instanceId()) && probe.ready() && running.compareAndSet(false,true))
             try {executor.execute(()->{try {tick();}catch(RuntimeException ex) {log.debug("Inventario de archivos aplazado: causa={}",com.rlibanez.eplsync.exception.OperationDiagnostics.technical(ex));}finally {running.set(false);}});}catch(RejectedExecutionException ex) {running.set(false);}
     }
     public void tick() {
         if(!maintenance.enter(false)) return;
         try {
             long before=probe.snapshot();String instance=tracking.instanceId();
+            if(coolingDown(instance)) return;
             var rows=jdbc.queryForList("SELECT id,hash FROM torrent_downloads WHERE client_instance_id=? AND inventory_state<>'CHECKED' AND status<>'NOT_FOUND' AND inventory_next_check<=? ORDER BY inventory_next_check,id LIMIT 5",instance,System.currentTimeMillis());
             if(rows.isEmpty()) {probe.empty(before);return;}
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(1);
@@ -42,11 +58,14 @@ public class DownloadFileInventory {
                 String id=(String)row.get("id"),hash=(String)row.get("hash");
                 try {client.synchronizeClient(adapter->{
                     if(!instance.equals(tracking.instanceId())) return null;
-                    record(id,instance,hash,adapter.listFiles(hash));return null;
+                    record(id,instance,hash,adapter.listFiles(hash));cooldown=null;return null;
                 });} catch(RuntimeException ex) {
-                    if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) return;
+                    if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex) || Thread.currentThread().isInterrupted()) return;
+                    boolean unavailable=clientFailure(ex);
+                    if(unavailable) cooldown=new Cooldown(instance,clock.getAsLong()+TimeUnit.MINUTES.toNanos(1));
                     jdbc.update("UPDATE torrent_downloads SET inventory_state='ERROR',inventory_error=?,inventory_next_check=? WHERE id=? AND client_instance_id=? AND hash=?",
                         "No se pudo comprobar el contenido del torrent; se reintentará automáticamente",System.currentTimeMillis()+60_000,id,instance,hash);
+                    if(unavailable) return;
                 }
             }
         } finally {maintenance.leave(false);}
