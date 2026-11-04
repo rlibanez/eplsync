@@ -661,6 +661,9 @@ export function JobDetail() {
     (page + 1) * size,
   );
   const data = job.data;
+  const progress = data?.selectedItems
+    ? (100 * completedWorkItems(data)) / data.selectedItems
+    : 0;
   const omitDownload = useMutation({
     mutationFn: (itemId: string) =>
       post<Job>(
@@ -757,15 +760,14 @@ export function JobDetail() {
               <summary>
                 <span>{t("downloads.report")}</span>
                 <strong className="report-result">{status(data.status)}</strong>
+                <span className="report-result" title={t("downloads.progress")}>
+                  {number(Math.floor(progress))} %
+                </span>
               </summary>
               <div className="report-collapse-body">
                 <Progress
                   aria-label={t("downloads.progress")}
-                  value={
-                    data.selectedItems
-                      ? (100 * completedWorkItems(data)) / data.selectedItems
-                      : 0
-                  }
+                  value={progress}
                 />
                 <div className="job-report-groups">
                   {[

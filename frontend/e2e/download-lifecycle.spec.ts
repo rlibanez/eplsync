@@ -87,7 +87,10 @@ test("download jobs show submission and download separately and omit only failed
   await expect(
     page.getByRole("button", { name: "Pausar", exact: true }),
   ).toBeVisible();
+  const summary = page.locator("details.report-collapse > summary");
+  await expect(summary.getByText("50 %", { exact: true })).toBeVisible();
   await page.getByText("Informe del trabajo", { exact: true }).click();
+  await expect(summary.getByText("50 %", { exact: true })).toBeVisible();
   await expect(page.getByRole("progressbar")).toHaveAttribute(
     "aria-valuenow",
     "50",
@@ -108,6 +111,10 @@ test("download jobs show submission and download separately and omit only failed
   await expect(
     page.getByRole("button", { name: "Omitir seguimiento", exact: true }),
   ).toHaveCount(0);
+  await expect(summary.getByText("100 %", { exact: true })).toBeVisible();
+  await summary.click();
+  await expect(summary.getByText("100 %", { exact: true })).toBeVisible();
+  await expect(page.getByRole("progressbar")).not.toBeVisible();
   expect(commands).toEqual([
     "/api/torrent/jobs/lifecycle/items/failed/omit-download",
   ]);
