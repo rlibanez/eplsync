@@ -109,19 +109,63 @@ HTTPS. El Compose permite activar `EPLSYNC_SECURITY_REQUIRE_HTTPS=true`:
 rechaza las conexiones identificadas como HTTP y protege la cookie de sesión.
 Esta opción no configura certificados ni el proxy.
 
-Si el proxy termina HTTPS y conecta a EPL Sync mediante HTTP, añade estos valores
-al bloque `environment` de tu servicio en `docker-compose.yml`:
+Si el proxy termina HTTPS y conecta a EPL Sync mediante HTTP, configura estas
+variables en `.env`. Compose ya las transmite al contenedor:
 
-```yaml
-SERVER_FORWARD_HEADERS_STRATEGY: native
-SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES: '172[.]20[.]0[.]2'
+```dotenv
+EPLSYNC_SECURITY_REQUIRE_HTTPS=true
+SERVER_FORWARD_HEADERS_STRATEGY=native
+SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES=192.168.2.2/32
 ```
 
-Sustituye la expresión por la IP real del proxy vista desde el contenedor.
-Utiliza una IP estable y no confíes en clientes arbitrarios. EPL Sync y el proxy
-deben compartir una red Docker cuando se comunican por el nombre del servicio.
-El destino del proxy es `http://eplsync:8088`. Puedes retirar la publicación de
-`ports` si el acceso se realiza exclusivamente desde esa red.
+El ejemplo supone que el proxy se conecta desde `192.168.2.2`; `/32` limita la
+confianza a esa única dirección IPv4. Sustitúyela por la IP real vista desde EPL
+Sync y utiliza una dirección estable. Con los valores predeterminados se ignoran
+las cabeceras reenviadas; al activar `native`, el Compose limita por defecto la
+confianza a `127.0.0.1/32` hasta que configures el proxy.
+
+La lista admite redes CIDR separadas por comas:
+
+```dotenv
+# Una única IP IPv4:
+SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES=192.168.2.2/32
+# Una subred, solo si todos sus miembros deben ser proxies de confianza:
+SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES=192.168.2.0/24
+# Varios proxies concretos (incluido un ejemplo IPv6):
+SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES=192.168.2.2/32,192.168.2.4/32,::1/128
+```
+
+No se utiliza el formato de máscara decimal `255.255.255.0`: su equivalente CIDR
+es `/24`. Evita listas vacías, `.*` o redes como `0.0.0.0/0` y `::/0`, que amplían
+la confianza a cualquier origen de su familia de direcciones.
+
+También admite una expresión regular Java, por compatibilidad. En ese formato,
+`[.]` significa punto literal y `.` significa cualquier carácter; por eso se usa
+`192[.]168[.]2[.]2` y no una IP con puntos sin escapar. Para nuevas configuraciones,
+utiliza CIDR y evita la ambigüedad.
+
+Valores de `SERVER_FORWARD_HEADERS_STRATEGY`:
+
+| Valor | Comportamiento |
+| --- | --- |
+| `none` | Ignora las cabeceras reenviadas. Es el valor predeterminado. |
+| `native` | Tomcat interpreta las cabeceras del proxy, incluida `X-Forwarded-Proto`, y aplica la lista `SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES`. Recomendado para este despliegue. |
+| `framework` | Spring interpreta las cabeceras reenviadas. No utiliza la lista de proxies de Tomcat: requiere restringir el acceso al proxy y que este elimine o sustituya las cabeceras reenviadas que envíen los clientes. |
+
+El ejemplo anterior utiliza `native`. No es necesario usar `framework` para
+reconocer HTTPS terminado en un proxy inverso.
+
+Referencias: [Tomcat RemoteIpValve](https://tomcat.apache.org/tomcat-11.0-doc/api/org/apache/catalina/valves/RemoteIpValve.html) y
+[estrategias de Spring Boot](https://docs.spring.io/spring-boot/api/java/org/springframework/boot/web/server/autoconfigure/ServerProperties.ForwardHeadersStrategy.html).
+
+Recrea el servicio con `docker compose up -d`; no necesitas reconstruir la imagen.
+Si conservas un Compose antiguo, incorpora también las dos variables `SERVER_…`
+del Compose actualizado: añadirlas únicamente a `.env` no las pasa al contenedor.
+
+El proxy inverso puede seguir conectando por HTTP, por ejemplo a
+`http://192.168.2.3:8088` si está en otro servidor. Si ambos contenedores comparten
+una red Docker, puede utilizar `http://eplsync:8088` y se puede retirar la
+publicación de `ports`. Restringe el acceso al puerto de EPL Sync al proxy.
 
 ## Credenciales de qBittorrent
 

@@ -34,6 +34,8 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 | `EPLSYNC_SECRET_KEY` | Necesaria para guardar contraseñas/API keys de qBittorrent en SQLite. Base64 estándar de 32 bytes (44 caracteres). Generar con `openssl rand -base64 32`; conservar y no cambiar si hay credenciales guardadas. | Vacío |
 | `EPLSYNC_INITIAL_ADMIN_KEY` | Clave opcional para autorizar la creación del primer administrador. Generar con `openssl rand -hex 16`. Vacía no exige clave; después de crear la primera cuenta deja de tener efecto. | Vacío |
 | `EPLSYNC_SECURITY_REQUIRE_HTTPS` | true rechaza HTTP y marca la cookie como Secure; false permite HTTP y HTTPS. No configura certificados ni el proxy. | `false` |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | `none` ignora las cabeceras del proxy; `native` usa Tomcat y su lista de proxies de confianza (recomendado detrás de un proxy); `framework` usa Spring y no aplica esa lista. | `none` |
+| `SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES` | IP o redes CIDR de los proxies de confianza vistas desde EPL Sync, separadas por comas. Ejemplos: `192.168.2.2/32`, `192.168.2.0/24`. También admite una expresión regular Java. No usar vacío, `.*` ni redes que abarquen todos los clientes. Solo se aplica con estrategia `native`. | `127.0.0.1/32` |
 | `EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH` | Longitud mínima inicial de contraseña (8–128). Después se administra en Usuarios y seguridad. | `8` |
 | `EPLSYNC_CATALOG_ZIPURL` | URL del ZIP utilizado para importar el catálogo. | `https://www.dropbox.com/s/a9r4p7oyaftaz1b/csv_full_imgs.zip?dl=1` |
 | `EPLSYNC_CATALOG_IMPORT_RETENTION` | Tiempo de conservación del ZIP de importación guardado. | `24h` |
@@ -132,7 +134,7 @@ conserva ese significado.
 - Duraciones como `3s`, `500ms` y `24h` incluyen su unidad. Las listas de trackers y tags se separan con comas.
 - En `.env`, encierra entre comillas simples los valores que contengan un `$` literal, especialmente contraseñas. No guardes `.env` en Git.
 - Compose traduce `EPLSYNC_EVENTS_RETENTION_MAX_COUNT` y `EPLSYNC_EVENTS_RETENTION_MAX_AGE_DAYS` a `EPLSYNC_EVENTS_RETENTION_MAXCOUNT` y `EPLSYNC_EVENTS_RETENTION_MAXAGEDAYS` dentro del contenedor. La tabla usa los nombres de `.env`.
-- Las opciones avanzadas del proxy (`server.forward-headers-strategy` y `server.tomcat.remoteip.internal-proxies`) permanecen documentadas en `application.yaml` y fuera del Compose. Consulta [Usuarios y seguridad](seguridad.md) para configurarlas mediante un YAML externo o variables adicionales.
+- Compose incorpora `SERVER_FORWARD_HEADERS_STRATEGY` y `SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES` desde `.env`. Para HTTPS terminado en el proxy, utiliza `native` y su IP de confianza. Consulta [Usuarios y seguridad](seguridad.md).
 
 ### ARCHIVOS EPUB DESCARGADOS
 
