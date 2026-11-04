@@ -132,9 +132,28 @@ public class DownloadTrackingService {
     }
 
     public <T> T exclusive(Supplier<T> action) {
-        if (!coordination.writeLock().tryLock()) throw new TorrentBusyException();
+        // Non-waiting workers must not barge ahead of a queued synchronization.
+        // Reentrant calls inside the current operation still have to work.
+        if (!coordination.isWriteLockedByCurrentThread() && coordination.hasQueuedThreads()
+                || !coordination.writeLock().tryLock()) throw new TorrentBusyException();
         try { return action.get(); }
         finally { coordination.writeLock().unlock(); }
+    }
+
+    /** Wait at an operation boundary, without opening a database transaction or fetching stale remote data. */
+    public <T> T awaitExclusive(Supplier<T> action) {
+        try {
+            if (!coordination.writeLock().tryLock(0,java.util.concurrent.TimeUnit.SECONDS)) {
+                log.debug("Sincronización torrent esperando turno; se consultará el cliente al obtener el acceso");
+                if (!coordination.writeLock().tryLock(30,java.util.concurrent.TimeUnit.SECONDS))
+                    throw new TorrentBusyException("El cliente torrent sigue ocupado tras 30 segundos; no se ha iniciado la sincronización. Vuelve a intentarlo cuando termine la operación actual");
+            }
+        } catch(InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new TorrentBusyException("La espera para sincronizar el cliente torrent se ha interrumpido; no se ha iniciado la sincronización");
+        }
+        try {return action.get();}
+        finally {coordination.writeLock().unlock();}
     }
 
     public SyncResult sync(Supplier<List<RemoteTorrent>> remoteReader, boolean dryRun, boolean includeDetails) {
@@ -145,13 +164,7 @@ public class DownloadTrackingService {
                 "updated", result.records().updated(), "ignored", result.remote().ignored()));
     }
     private SyncResult performSync(Supplier<List<RemoteTorrent>> remoteReader, boolean dryRun, boolean includeDetails) {
-        try {
-            if (!coordination.writeLock().tryLock(30,java.util.concurrent.TimeUnit.SECONDS)) throw new TorrentBusyException();
-        } catch(InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            throw new TorrentBusyException();
-        }
-        try {
+        return awaitExclusive(() -> {
             com.rlibanez.eplsync.events.EventContext.routineLog(log).log("Sincronización {} de descargas: client={}, dryRun={}", com.rlibanez.eplsync.events.EventContext.operationOriginLabel(), properties.getClient(), dryRun);
             // Sin transacción/connection SQL durante la consulta de red. Si falla no se modifica ningún registro.
             var remote = remoteReader.get();
@@ -172,7 +185,7 @@ public class DownloadTrackingService {
                 return result;
             }
             }
-        } finally { coordination.writeLock().unlock(); }
+        });
     }
 
     public record LinkRequest(String clientInstanceId, String hash, Long eplId, Double revision) {}

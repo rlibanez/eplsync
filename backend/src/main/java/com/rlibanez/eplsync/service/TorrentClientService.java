@@ -72,11 +72,19 @@ public class TorrentClientService {
 
     public <T> T exclusiveClient(java.util.function.Function<TorrentClient, T> action) {
         requireEnabled();
-        return tracking.exclusive(() -> {
-            if (selectedClient instanceof com.rlibanez.eplsync.qbittorrent.QBittorrentClient qbittorrent)
-                return qbittorrent.withSnapshot(snapshot -> tracking.withInstance(snapshot.type(),snapshot.snapshotBaseUrl(),() -> action.apply(snapshot)));
-            return tracking.withInstance(properties.getClient(),properties.getBaseUrl(),() -> action.apply(selectedClient));
-        });
+        return tracking.exclusive(() -> withPinnedClient(action));
+    }
+
+    /** Synchronization queues behind the current operation; ordinary workers keep their non-blocking guard. */
+    public <T> T synchronizeClient(java.util.function.Function<TorrentClient, T> action) {
+        requireEnabled();
+        return tracking.awaitExclusive(() -> withPinnedClient(action));
+    }
+
+    private <T> T withPinnedClient(java.util.function.Function<TorrentClient,T> action) {
+        if (selectedClient instanceof com.rlibanez.eplsync.qbittorrent.QBittorrentClient qbittorrent)
+            return qbittorrent.withSnapshot(snapshot -> tracking.withInstance(snapshot.type(),snapshot.snapshotBaseUrl(),() -> action.apply(snapshot)));
+        return tracking.withInstance(properties.getClient(),properties.getBaseUrl(),() -> action.apply(selectedClient));
     }
 
     public void requireRenameEnabled() {

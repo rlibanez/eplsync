@@ -1502,6 +1502,80 @@ class UpdateTests {
         assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
     }
 
+    private <T> Future<T> authorized(ExecutorService executor,Callable<T> work) {
+        return executor.submit(new org.springframework.security.concurrent.DelegatingSecurityContextCallable<>(work));
+    }
+    @Test void synchronizationEndpointWaitsForCurrentSendAndNewSendsWaitForItsFreshSnapshot() throws Exception {
+        book(2L,1.0,OTHER);
+        var command=new TorrentDownload(NEW,"magnet:?xt=urn:btih:"+NEW,true,null,null,null,books.findById(1L).orElseThrow());
+        var later=new TorrentDownload(OTHER,"magnet:?xt=urn:btih:"+OTHER,true,null,null,null,books.findById(2L).orElseThrow());
+        var sending=new CountDownLatch(1);var finishSend=new CountDownLatch(1);
+        var reading=new CountDownLatch(1);var finishRead=new CountDownLatch(1);
+        var requests=new java.util.concurrent.atomic.AtomicInteger();
+        when(stubClient.addTorrent(any())).thenAnswer(call->{
+            if(requests.incrementAndGet()==1) {sending.countDown();assertThat(finishSend.await(5,TimeUnit.SECONDS)).isTrue();}
+            return TorrentDownloadResult.Status.ACCEPTED;
+        });
+        when(stubClient.listTorrents()).thenAnswer(call->{
+            reading.countDown();assertThat(finishRead.await(5,TimeUnit.SECONDS)).isTrue();
+            return List.of(remote(OLD,DownloadStatus.DOWNLOADED,null),remote(NEW,DownloadStatus.DOWNLOADED,null));
+        });
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var send=executor.submit(()->service.addTorrent(command));
+            try {
+                assertThat(sending.await(5,TimeUnit.SECONDS)).isTrue();
+                var sync=authorized(executor,()->mvc.perform(post("/api/torrent/downloads/sync").contentType("application/json").content("{\"dryRun\":false}"))
+                    .andExpect(status().isOk()).andReturn());
+                assertThatThrownBy(()->sync.get(100,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                assertThat(reading.getCount()).isEqualTo(1);
+                finishSend.countDown();assertThat(reading.await(5,TimeUnit.SECONDS)).isTrue();
+                var next=executor.submit(()->service.addTorrent(later));
+                try {
+                    assertThatThrownBy(()->next.get(100,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                    assertThat(requests).hasValue(1);
+                } finally {finishRead.countDown();}
+                sync.get(5,TimeUnit.SECONDS);send.get(5,TimeUnit.SECONDS);next.get(5,TimeUnit.SECONDS);
+            } finally {finishSend.countDown();finishRead.countDown();}
+        }
+        assertThat(downloads.findByClientInstanceIdAndEplIdAndHash(tracking.instanceId(),1L,NEW).orElseThrow().getStatus()).isEqualTo(DownloadStatus.DOWNLOADED);
+        assertThat(downloads.findByClientInstanceIdAndEplIdAndHash(tracking.instanceId(),2L,OTHER).orElseThrow().getStatus()).isEqualTo(DownloadStatus.SUBMITTED);
+        verify(stubClient,times(2)).addTorrent(any());verify(stubClient,times(1)).listTorrents();verify(stubClient,never()).deleteTorrent(any(),anyBoolean());
+    }
+    @Test void synchronizationWaitsForCleanupAndCannotResurrectOrDeleteTheRemovedTorrentAgain() throws Exception {
+        var job=create(PreviousVersions.REMOVE_TORRENT);
+        var remote=new java.util.concurrent.ConcurrentHashMap<String,RemoteTorrent>();
+        remote.put(OLD,remote(OLD,DownloadStatus.DOWNLOADED,null));remote.put(NEW,remote(NEW,DownloadStatus.DOWNLOADED,null));
+        when(stubClient.listTorrents()).thenAnswer(call->List.copyOf(remote.values()));
+        var deleting=new CountDownLatch(1);var finishDelete=new CountDownLatch(1);
+        doAnswer(call->{deleting.countDown();assertThat(finishDelete.await(5,TimeUnit.SECONDS)).isTrue();remote.remove(OLD);return null;})
+            .when(stubClient).deleteTorrent(OLD,false);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var cleaning=authorized(executor,()->cleaner.clean(job.jobId()));
+            try {
+                assertThat(deleting.await(5,TimeUnit.SECONDS)).isTrue();
+                int before=mockingDetails(stubClient).getInvocations().size();
+                var sync=authorized(executor,()->cleaner.synchronize(false,false));
+                assertThatThrownBy(()->sync.get(100,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                assertThat(mockingDetails(stubClient).getInvocations()).hasSize(before);
+                finishDelete.countDown();cleaning.get(5,TimeUnit.SECONDS);sync.get(5,TimeUnit.SECONDS);
+            } finally {finishDelete.countDown();}
+        }
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REMOVED);
+        assertThat(downloads.findByClientInstanceIdAndEplIdAndHash(tracking.instanceId(),1L,OLD).orElseThrow().getStatus()).isEqualTo(DownloadStatus.NOT_FOUND);
+        assertThat(downloads.findByClientInstanceIdAndEplIdAndHash(tracking.instanceId(),1L,NEW).orElseThrow().getStatus()).isEqualTo(DownloadStatus.DOWNLOADED);
+        verify(stubClient,times(1)).deleteTorrent(OLD,false);
+    }
+    @Test void synchronizationDoesNotRepeatUnconfirmedRemovalIntents() {
+        var job=create(PreviousVersions.REMOVE_TORRENT);
+        when(stubClient.listTorrents()).thenReturn(List.of(remote(OLD,DownloadStatus.DOWNLOADED,null),remote(NEW,DownloadStatus.DOWNLOADED,null)));
+        doThrow(new com.rlibanez.eplsync.exception.TorrentOperationException(org.springframework.http.HttpStatus.BAD_GATEWAY,"Respuesta perdida"))
+            .when(stubClient).deleteTorrent(OLD,false);
+        cleaner.clean(job.jobId());assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REQUESTED);
+        cleaner.synchronize(false,false);cleaner.synchronize(false,false);
+        assertThat(only(job.jobId()).getState()).isEqualTo(UpdateCleanup.State.REQUESTED);
+        verify(stubClient,times(1)).deleteTorrent(OLD,false);
+    }
+
     @Test void cleanupRejectsConcurrentSubmissionWithoutDeleting() throws Exception {
         var job = create(PreviousVersions.REMOVE_TORRENT);
         var entered = new CountDownLatch(1); var release = new CountDownLatch(1);

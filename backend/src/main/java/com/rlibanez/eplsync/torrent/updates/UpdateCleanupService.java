@@ -92,7 +92,7 @@ public class UpdateCleanupService {
             com.rlibanez.eplsync.security.Permission.require(com.rlibanez.eplsync.security.Permission.TORRENT_FILES_DELETE);
     }
     public DownloadTrackingService.SyncResult synchronize(boolean dryRun,boolean details) {
-        return events.runWithPolicy(!dryRun,com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,dryRun?"SYNC_PREVIEW":"SYNC",Map.of("dryRun",dryRun),()->client.exclusiveClient(adapter -> {
+        return events.runWithPolicy(!dryRun,com.rlibanez.eplsync.events.EventJournal.Category.TORRENT,dryRun?"SYNC_PREVIEW":"SYNC",Map.of("dryRun",dryRun),()->client.synchronizeClient(adapter -> {
             var remote=adapter.listTorrents();
             var result=tracking.sync(() -> remote,dryRun,details);
             if(!dryRun && (com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.TORRENT_CLEANUP) || com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.DOWNLOADS_DELETE))) {

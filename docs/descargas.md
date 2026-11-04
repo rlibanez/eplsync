@@ -48,6 +48,16 @@ se incorporan a los trabajos de su propietario al consultar la lista, sin ejecut
 
 - **Sincronizar con el cliente:** actualiza los registros según el estado de qBittorrent.
 
+La sincronización puede solicitarse mientras hay trabajos de envío o limpieza
+activos. Espera hasta 30 segundos para obtener turno al terminar la operación que
+esté accediendo al cliente; los nuevos envíos y comprobaciones ceden ese turno.
+La consulta se realiza después de obtener el acceso, y se mantiene la exclusión
+hasta aplicar el resultado y las limpiezas que correspondan. Así no se aplican
+instantáneas anteriores a un envío o borrado. Durante ese turno, las operaciones
+que modifican el cliente esperan o se aplazan; los trabajos conservan su estado.
+Si la operación actual tarda más de 30 segundos, la sincronización informa de la
+espera agotada sin iniciarse ni repetir envíos o borrados.
+
 El resultado se presenta en un informe plegable, con resumen y tablas de registros
 de descargas y torrents ignorados. Las limpiezas pendientes que correspondan se
 procesan también durante una sincronización real; la previsualización no solicita
