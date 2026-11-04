@@ -591,12 +591,13 @@ class CalibreTransfersTests {
     @Test void preparationExcludesAnUnavailableEpubWithoutBlockingAvailableOnes() {
         var failed=new DownloadRecord();failed.setEplId(38147L);failed.setRevision(1.1);failed.setHash("B".repeat(40));failed.setClient("qbittorrent");failed.setClientInstanceId(tracking.instanceId());failed.setStatus(DownloadStatus.DOWNLOADED);failed.setOrigin(DownloadRecord.Origin.EPLSYNC);failed.setCreatedAt(Instant.now());
         String failedId=downloads.save(failed).getId();
-        when(files.list(failedId)).thenThrow(new com.rlibanez.eplsync.exception.TorrentOperationException(org.springframework.http.HttpStatus.CONFLICT,"El torrent no contiene archivos EPUB completamente descargados"));
+        when(files.list(failedId)).thenThrow(new EpubFiles.PendingEpub());
         var prepared=transfers.prepare(List.of(failedId,record,"removed-record"));
         assertThat(prepared.files()).singleElement().satisfies(item -> assertThat(item.recordId()).isEqualTo(record));
-        assertThat(prepared.unavailable()).hasSize(2);
-        assertThat(prepared.unavailable().getFirst().message()).isEqualTo("Los archivos aún no están descargados");
-        var request=new CalibreTransfers.Request("main",prepared.files().stream().map(item -> new CalibreTransfers.FileChoice(item.recordId(),item.index())).toList(),List.of(),UUID.randomUUID().toString());
+        assertThat(prepared.unavailable()).hasSize(1);
+        assertThat(prepared.pending()).hasSize(1);
+        assertThat(prepared.deferredRecords()).containsExactly(failedId);
+        var request=new CalibreTransfers.Request("main",prepared.files().stream().map(item -> new CalibreTransfers.FileChoice(item.recordId(),item.index())).toList(),prepared.deferredRecords(),UUID.randomUUID().toString());
         var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
         var job=EventContext.withActor(actor,()->transfers.create(request));
         assertThat(EventContext.withActor(actor,()->transfers.create(request)).id()).isEqualTo(job.id());
@@ -605,6 +606,66 @@ class CalibreTransfersTests {
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
         verify(files,never()).download(eq(failedId),anyInt());
     }
+    @Test void busyDownloadedRecordCanBeQueuedAndRecoversAfterRestartWithoutDuplicateUploads() {
+        when(files.list(record)).thenThrow(new com.rlibanez.eplsync.exception.TorrentBusyException());
+        var prepared=transfers.prepare(List.of(record));
+        assertThat(prepared.files()).isEmpty();assertThat(prepared.unavailable()).isEmpty();
+        assertThat(prepared.deferredRecords()).containsExactly(record);assertThat(prepared.pending()).singleElement().satisfies(p->assertThat(p.message()).contains("automáticamente"));
+        var request=new CalibreTransfers.Request("main",List.of(),prepared.deferredRecords(),UUID.randomUUID().toString());
+        var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+        var job=EventContext.withActor(actor,()->transfers.create(request));
+        assertThat(EventContext.withActor(actor,()->transfers.create(request)).id()).isEqualTo(job.id());
+        transfers.cycle();assertThat(transfers.job(job.id()).state()).isEqualTo("RUNNING");
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items()).singleElement().satisfies(i->assertThat(i.state()).isEqualTo("WAITING_DOWNLOAD"));
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        doReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length))).when(files).list(record);
+        transfers.recoverInterrupted();for(int n=0;n<4;n++) transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void incompleteDownloadWaitsWithoutRequiringTorrentSyncPermissionOrAnotherDownloadJob() {
+        var limited=new Account(owner.id(),owner.username(),owner.email(),owner.role(),owner.status(),false,null,owner.securityVersion(),Set.of(Permission.CALIBRE_SEND,Permission.DOWNLOADS_FILES_READ),owner.authenticatedAt());
+        doReturn(limited).when(accounts).find(owner.id());
+        jdbc.update("UPDATE torrent_downloads SET status='DOWNLOADING' WHERE id=?",record);
+        when(files.list(record)).thenThrow(new EpubFiles.PendingEpub());
+        var prepared=transfers.prepare(List.of(record));assertThat(prepared.unavailable()).isEmpty();assertThat(prepared.deferredRecords()).containsExactly(record);
+        var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+        var job=EventContext.withActor(actor,()->transfers.create(new CalibreTransfers.Request("main",List.of(),prepared.deferredRecords())));
+        transfers.cycle();assertThat(transfers.job(job.id()).state()).isEqualTo("RUNNING");
+        doReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length))).when(files).list(record);
+        transfers.recoverInterrupted();for(int n=0;n<4;n++) transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(adapter,never()).addTorrent(any());verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void selectedFileIsPinnedWhenClientBecomesBusyBeforeConfirmation() {
+        assertThat(transfers.prepare(List.of(record)).files()).hasSize(1);
+        when(files.list(record)).thenThrow(new com.rlibanez.eplsync.exception.TorrentBusyException());
+        var job=create();
+        assertThat(jdbc.queryForObject("SELECT file_index FROM calibre_job_items WHERE job_id=?",Integer.class,job.id())).isZero();
+        doReturn(List.of(new EpubFiles.Item(1,"other.epub",100),new EpubFiles.Item(0,"book.epub",bytes.length))).when(files).list(record);
+        for(int n=0;n<4;n++) transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(files,never()).download(record,1);verify(files,times(1)).download(record,0);
+    }
+    @Test void waitingRecordCannotBeDuplicatedWithinRequestOrQueuedAfterItDisappears() {
+        var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+        assertThatThrownBy(()->EventContext.withActor(actor,()->transfers.create(new CalibreTransfers.Request("main",List.of(new CalibreTransfers.FileChoice(record,0)),List.of(record)))))
+            .hasMessageContaining("misma descarga");
+        downloads.deleteById(record);
+        assertThatThrownBy(()->EventContext.withActor(actor,()->transfers.create(new CalibreTransfers.Request("main",List.of(),List.of(record)))))
+            .hasMessageContaining("no disponibles");
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+
+    @Test void aQueuedRecordWithChangedIdentityIsNeverUploaded() {
+        var actor=new EventContext.Actor(owner.id(),owner.username(),"USER");
+        var job=EventContext.withActor(actor,()->transfers.create(new CalibreTransfers.Request("main",List.of(),List.of(record))));
+        jdbc.update("UPDATE torrent_downloads SET revision=2 WHERE id=?",record);transfers.cycle();
+        assertThat(transfers.job(job.id()).state()).isEqualTo("PAUSED");
+        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items()).singleElement().satisfies(i->assertThat(i.message()).contains("cambió"));
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+
     @Test void oversizedEpubDoesNotExcludeItsAvailableSibling() {
         when(files.list(record)).thenReturn(List.of(new EpubFiles.Item(0,"book.epub",bytes.length),new EpubFiles.Item(1,"large.epub",268435457)));
         var prepared=transfers.prepare(List.of(record));

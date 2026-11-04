@@ -739,3 +739,95 @@ test("partial download cancellation shows actual totals and the cause link",asyn
   await page.route("**/api/calibre/transfers/job/items?**",route=>route.fulfill({json:{items:[{id:"cancelled",position:0,recordId:null,index:0,name:"Libro cancelado",size:0,eplId:1,revision:"1",state:"CANCELLED",calibreId:null,message:"El trabajo de descarga relacionado se canceló. No se enviará este elemento a Calibre",downloadJobId:"original",cancelledByDownloadJobId:"cancelled-parent",coverAvailable:false}],meta:{...meta,totalItems:1}}}));
   await page.goto("/calibre/jobs/job");await page.locator("details.report-collapse summary").click();const report=page.locator(".report-collapse-body");await expect(report).toContainText("3/3");await expect(report.getByText("Cancelados",{exact:true})).toBeVisible();await expect(page.getByRole("progressbar",{name:"Progreso",exact:true})).toHaveAttribute("aria-valuenow","100");await expect(page.getByRole("link",{name:"Ver trabajo de descargas",exact:true})).toHaveAttribute("href","/downloads/jobs/cancelled-parent");
 });
+
+for (const mixed of [false, true]) {
+  test(`busy and pending downloads stay selectable and can be queued, mixed=${mixed}`, async ({
+    page,
+  }) => {
+    await records(page);
+    await jobRoutes(page);
+    const pending = rows
+      .slice(mixed ? 1 : 0)
+      .map((row) => ({
+        recordId: row.id,
+        name: `EPL ID ${row.eplId}`,
+        eplId: row.eplId,
+        revision: row.revision,
+        message:
+          row.id === "1"
+            ? "Cliente torrent ocupado; se comprobará el EPUB automáticamente"
+            : "Esperando la descarga del EPUB; se comprobará automáticamente",
+      }));
+    const available = mixed
+      ? [
+          {
+            recordId: "1",
+            index: 3,
+            name: "book.epub",
+            size: 100,
+            eplId: 1,
+            revision: 1.1,
+          },
+        ]
+      : [];
+    await page.route("**/api/calibre/transfers/prepare", (r) =>
+      r.fulfill({
+        json: {
+          libraries: [{ id: "main", name: "Main" }],
+          library: "main",
+          files: available,
+          unavailable: [],
+          deferredRecords: pending.map((p) => p.recordId),
+          pending,
+        },
+      }),
+    );
+    let submitted = 0;
+    await page.route("**/api/calibre/transfers", (r) => {
+      submitted++;
+      const body = r.request().postDataJSON();
+      expect(body.files).toEqual(
+        available.map((f) => ({ recordId: f.recordId, index: f.index })),
+      );
+      expect(body.deferredRecords).toEqual(pending.map((p) => p.recordId));
+      return r.fulfill({ json: { id: "job" } });
+    });
+    await page.goto("/downloads");
+    await page
+      .getByRole("button", { name: "Seleccionar todo (2)", exact: true })
+      .click();
+    await page
+      .locator(".selection-toolbar-actions")
+      .getByRole("button", { name: "Enviar a Calibre", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.locator("tbody tr")).toHaveCount(2);
+    await expect(dialog.locator(".app-modal-actions")).toContainText(
+      "2 libros seleccionados",
+    );
+    for (const box of await dialog
+      .locator("tbody")
+      .getByRole("checkbox")
+      .all()) {
+      await expect(box).toBeEnabled();
+      await expect(box).toBeChecked();
+    }
+    await dialog
+      .getByRole("button", { name: "Quitar selección (2)", exact: true })
+      .click();
+    await expect(
+      dialog.getByRole("button", { name: "Enviar a Calibre", exact: true }),
+    ).toBeDisabled();
+    await dialog
+      .getByRole("button", { name: "Seleccionar disponibles", exact: true })
+      .click();
+    await expect(dialog.locator(".app-modal-actions")).toContainText(
+      "2 libros seleccionados",
+    );
+    await dialog
+      .getByRole("button", { name: "Enviar a Calibre", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/calibre\/jobs\/job$/);
+    expect(submitted).toBe(1);
+  });
+}

@@ -25,7 +25,8 @@ public class CalibreTransfers {
     public record FileChoice(String recordId,int index) {}
     public record Candidate(String recordId,int index,String name,long size,long eplId,double revision,long expectedSize) {}
     public record Unavailable(String recordId,String name,Long eplId,Double revision,String message) {}
-    public record Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files,List<String> deferredRecords,List<Unavailable> unavailable) {
+    public record Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files,List<String> deferredRecords,List<Unavailable> unavailable,List<Unavailable> pending) {
+        public Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files,List<String> deferredRecords,List<Unavailable> unavailable) {this(libraries,library,files,deferredRecords,unavailable,List.of());}
         public Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files) {this(libraries,library,files,List.of(),List.of());}
         public Prepared(List<CalibreClient.Library> libraries,String library,List<Candidate> files,List<String> deferredRecords) {this(libraries,library,files,deferredRecords,List.of());}
     }
@@ -100,6 +101,7 @@ public class CalibreTransfers {
             downloads.findAllById(ids.subList(offset,Math.min(offset+500,ids.size()))).forEach(row -> records.put(row.getId(),row));
         var unavailable=new ArrayList<Unavailable>();
         var deferred=new ArrayList<String>();
+        var pending=new ArrayList<Unavailable>();
         var candidates=new ArrayList<Candidate>();
         boolean large=ids.size()>1000;
         if(large) files.requireRoots();
@@ -108,11 +110,11 @@ public class CalibreTransfers {
         for(String id:ids) {
             var row=records.get(id);
             if(row==null) {unavailable.add(new Unavailable(id,"—",null,null,"El registro de descarga ya no existe"));continue;}
+            if(!instance.equals(row.getClientInstanceId()) || row.getStatus()==DownloadStatus.NOT_FOUND || row.getStatus()==DownloadStatus.ERROR) {
+                unavailable.add(unavailable(row,"EPL ID "+row.getEplId(),"La descarga no está disponible en el cliente actual"));continue;
+            }
             if(large) {
-                if(!instance.equals(row.getClientInstanceId()) || row.getStatus()!=DownloadStatus.DOWNLOADED)
-                    unavailable.add(unavailable(row,"EPL ID "+row.getEplId(),"La descarga no está disponible en el cliente actual"));
-                else deferred.add(id);
-                continue;
+                deferred.add(id);pending.add(unavailable(row,"EPL ID "+row.getEplId(),"Se comprobará el EPUB automáticamente antes de enviarlo"));continue;
             }
             if(System.nanoTime()>deadline) {
                 unavailable.add(unavailable(row,"EPL ID "+row.getEplId(),"No se pudo comprobar la descarga a tiempo; vuelve a preparar el envío"));continue;
@@ -121,18 +123,23 @@ public class CalibreTransfers {
             try { available=files.list(id); }
             catch(com.rlibanez.eplsync.exception.TorrentOperationException | com.rlibanez.eplsync.exception.TorrentConnectionException | UserInputException ex) {
                 if(Thread.currentThread().isInterrupted() || ex instanceof com.rlibanez.eplsync.exception.TorrentConnectionException connectionFailure && connectionFailure.getReason()==com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.INTERRUPTED) throw ex;
+                if(ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException || ex instanceof EpubFiles.PendingEpub) {
+                    deferred.add(id);pending.add(unavailable(row,"EPL ID "+row.getEplId(),ex instanceof EpubFiles.PendingEpub
+                        ? "Esperando la descarga del EPUB; se comprobará automáticamente"
+                        : "Cliente torrent ocupado; se comprobará el EPUB automáticamente"));continue;
+                }
                 String reason=ex.getMessage()==null || ex.getMessage().isBlank() ? "No se puede comprobar o leer la descarga; revisa conexión y carpetas" : ex.getMessage().substring(0,Math.min(1024,ex.getMessage().length()));
                 if("El torrent no contiene archivos EPUB completamente descargados".equals(reason)) reason="Los archivos aún no están descargados";
                 log.debug("EPUB no disponible para enviar a Calibre: registro={}, EPL ID={}, revisión={}, motivo={}",id,row.getEplId(),row.getRevision(),reason);
                 unavailable.add(unavailable(row,"EPL ID "+row.getEplId(),reason));continue;
             }
-            if(available.isEmpty()) unavailable.add(unavailable(row,"EPL ID "+row.getEplId(),"Los archivos aún no están descargados"));
+            if(available.isEmpty()) {deferred.add(id);pending.add(unavailable(row,"EPL ID "+row.getEplId(),"Esperando la descarga del EPUB; se comprobará automáticamente"));}
             for(var file:available) {
                 if(file.size()>268435456) {unavailable.add(unavailable(row,file.name(),"El EPUB supera 256 MiB"));continue;}
                 candidates.add(new Candidate(id,file.index(),file.name(),file.size(),row.getEplId(),row.getRevision(),file.expectedSize()));
             }
         }
-        return new Prepared(check.libraries(),connection.library(),List.copyOf(candidates),List.copyOf(deferred),List.copyOf(unavailable));
+        return new Prepared(check.libraries(),connection.library(),List.copyOf(candidates),List.copyOf(deferred),List.copyOf(unavailable),List.copyOf(pending));
     }
     private static Unavailable unavailable(DownloadRecord row,String name,String message) {
         return new Unavailable(row.getId(),name,row.getEplId(),row.getRevision(),message);
@@ -142,9 +149,10 @@ public class CalibreTransfers {
             throw new UserInputException("Selecciona registros únicos");
     }
     private List<DownloadRecord> deferredDownloads(List<String> ids) {
+        if(ids.isEmpty()) return List.of();
         var result=new ArrayList<DownloadRecord>();
         for(int offset=0;offset<ids.size();offset+=500) result.addAll(downloads.findAllById(ids.subList(offset,Math.min(offset+500,ids.size()))));
-        if(result.size()!=ids.size() || result.stream().anyMatch(d->!tracking.instanceId().equals(d.getClientInstanceId()) || d.getStatus()!=DownloadStatus.DOWNLOADED)) throw new UserInputException("La selección contiene descargas no disponibles en el cliente actual");
+        if(result.size()!=ids.size() || result.stream().anyMatch(d->!tracking.instanceId().equals(d.getClientInstanceId()) || (d.getStatus()==DownloadStatus.ERROR || d.getStatus()==DownloadStatus.NOT_FOUND))) throw new UserInputException("La selección contiene descargas no disponibles en el cliente actual");
         var indexed=new HashMap<String,DownloadRecord>();result.forEach(record->indexed.put(record.getId(),record));
         return ids.stream().map(id->Objects.requireNonNull(indexed.get(id))).toList();
     }
@@ -154,48 +162,48 @@ public class CalibreTransfers {
         if(request!=null) {var previous=existingDirect(request);if(previous!=null) return previous;}
         if(request==null || request.library()==null || request.library().isBlank() || request.library().length()>256 || request.files()==null || (request.files().isEmpty() && request.deferredRecords().isEmpty()) || request.files().stream().anyMatch(f -> f==null || f.index()<0)) throw new UserInputException("Selecciona algún EPUB");
         if(new HashSet<>(request.files()).size()!=request.files().size()) throw new UserInputException("No selecciones el mismo EPUB dos veces");
-        if(!request.deferredRecords().isEmpty()) {
-            if(!request.files().isEmpty()) throw new UserInputException("Selección de archivos incompatible");
-            validateIds(request.deferredRecords());
-            return preparing(()-> {
-                var connection=settings.connection();String selectedSource=source();var check=client.check(connection);
-                if(check.libraries().stream().noneMatch(l->l.id().equals(request.library()))) throw new UserInputException("La biblioteca de destino no está disponible");
-                var records=deferredDownloads(request.deferredRecords());
-                return tx.execute(status->{
-                    var existing=existingDirect(request);if(existing!=null) return existing;
-                    if(!selectedSource.equals(source())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
-                    String id=createQueuedJob(connection,request.library());int position=0;
-                    for(var d:records) {
-                        var candidate=new Candidate(d.getId(),0,"EPL ID "+d.getEplId(),0,d.getEplId(),d.getRevision(),0);
-                        insertUpdate(id,position++,candidate,new CalibreUpdateFlow.Choice(0,d.getRevision(),true,List.of(),"KEEP",List.of(),false),null,true);
-                    }
-                    event(EventContext.actor(),id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",request.library(),"selected",records.size(),"waiting",records.size()));
-                    rememberDirect(request,id);
-                    return job(id);
-                });
-            });
-        }
-        lifecycle.readLock().lock();
-        try {
-            var connection=settings.connection();String source=source();
-            var prepared=prepare(request.files().stream().map(choice -> java.util.Objects.requireNonNull(choice).recordId()).distinct().toList());
-            if(prepared.libraries().stream().noneMatch(l -> l.id().equals(request.library()))) throw new UserInputException("La biblioteca de destino no está disponible");
-            var byFile=new HashMap<FileChoice,Candidate>();prepared.files().forEach(f -> byFile.put(new FileChoice(f.recordId(),f.index()),f));
-            var selected=request.files().stream().map(f -> {var candidate=byFile.get(f);if(candidate==null) throw new UserInputException("El EPUB seleccionado ya no está disponible");return candidate;}).toList();
-            var actor=EventContext.actor();String id=UUID.randomUUID().toString(),now=Instant.now().toString();
-            return tx.execute(s -> {
-                var existing=existingDirect(request);if(existing!=null) return existing;
-                if(!connection.equals(settings.connection()) || !source.equals(source())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
-                jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username()==null ? "Sistema" : actor.username(),destination(connection),request.library(),source);
-                for(int position=0;position<selected.size();position++) {
-                    var f=selected.get(position);
-                    jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,message) VALUES(?,?,?,?,?,?,?,?,?,'PENDING',?)",UUID.randomUUID().toString(),id,position,f.recordId(),f.index(),f.name(),f.size(),f.eplId(),BigDecimal.valueOf(f.revision()).stripTrailingZeros().toPlainString(),f.size()!=f.expectedSize()?SIZE_WARNING:null);
+        if(!request.deferredRecords().isEmpty()) validateIds(request.deferredRecords());
+        var deferredIds=new HashSet<>(request.deferredRecords());
+        if(request.files().stream().anyMatch(f->deferredIds.contains(f.recordId()))) throw new UserInputException("No selecciones la misma descarga como archivo y como pendiente");
+        return preparing(()-> {
+            var connection=settings.connection();String selectedSource=source();
+            var prepared=request.files().isEmpty()?null:prepare(request.files().stream().map(FileChoice::recordId).distinct().toList());
+            var availableLibraries=prepared==null?client.check(connection).libraries():prepared.libraries();
+            if(availableLibraries.stream().noneMatch(l->l.id().equals(request.library()))) throw new UserInputException("La biblioteca de destino no está disponible");
+            var records=deferredDownloads(request.deferredRecords());
+            var selected=new ArrayList<Candidate>();var pinned=new ArrayList<Candidate>();
+            if(prepared!=null) {
+                var byFile=new HashMap<FileChoice,Candidate>();prepared.files().forEach(f->byFile.put(new FileChoice(f.recordId(),f.index()),f));
+                var waitingRecords=new HashMap<String,DownloadRecord>();deferredDownloads(prepared.deferredRecords()).forEach(d->waitingRecords.put(d.getId(),d));
+                for(var choice:request.files()) {
+                    var candidate=byFile.get(choice);
+                    if(candidate!=null) selected.add(candidate);
+                    else if(waitingRecords.containsKey(choice.recordId())) {
+                        var row=waitingRecords.get(choice.recordId());
+                        pinned.add(new Candidate(row.getId(),choice.index(),"EPL ID "+row.getEplId(),0,row.getEplId(),row.getRevision(),0));
+                    } else throw new UserInputException("El EPUB seleccionado ya no está disponible");
                 }
-                event(actor,id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",request.library(),"selected",selected.size()));
-                rememberDirect(request,id);
-                return job(id);
+            }
+            return tx.execute(status->{
+                var existing=existingDirect(request);if(existing!=null) return existing;
+                if(!connection.equals(settings.connection()) || !selectedSource.equals(source())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
+                deferredDownloads(records.stream().map(DownloadRecord::getId).toList());
+                deferredDownloads(pinned.stream().map(Candidate::recordId).distinct().toList());
+                String id=createQueuedJob(connection,request.library());int position=0;
+                for(var f:selected) insertUpdate(id,position++,f,new CalibreUpdateFlow.Choice(0,f.revision(),true,List.of(),"KEEP",List.of(),false),null,false);
+                for(var f:pinned) {
+                    insertUpdate(id,position++,f,new CalibreUpdateFlow.Choice(0,f.revision(),true,List.of(),"KEEP",List.of(),false),null,true);
+                    // Preserve an explicitly selected file across a transient client lock.
+                    jdbc.update("UPDATE calibre_job_items SET file_index=? WHERE job_id=? AND position=?",f.index(),id,position-1);
+                }
+                for(var d:records) {
+                    var f=new Candidate(d.getId(),0,"EPL ID "+d.getEplId(),0,d.getEplId(),d.getRevision(),0);
+                    insertUpdate(id,position++,f,new CalibreUpdateFlow.Choice(0,d.getRevision(),true,List.of(),"KEEP",List.of(),false),null,true);
+                }
+                event(EventContext.actor(),id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",request.library(),"selected",position,"waiting",pinned.size()+records.size()));
+                rememberDirect(request,id);return job(id);
             });
-        } finally { lifecycle.readLock().unlock(); }
+        });
     }
     private String directSignature(Request request) {return fingerprint(EPUB_IDENTITIES.writeValueAsString(request));}
     private Job existingDirect(Request request) {

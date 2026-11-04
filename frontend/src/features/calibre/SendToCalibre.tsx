@@ -39,6 +39,7 @@ type Candidate = {
   eplId: number | null;
   revision: number | null;
   message?: string;
+  waiting?: boolean;
 };
 type Prepared = {
   libraries: { id: string; name: string }[];
@@ -53,6 +54,7 @@ type Prepared = {
   }[];
   books?: { eplId: number; revision: number; title: string }[];
   deferred?: { eplId: number; revision: number; title: string }[];
+  pending?: Omit<Candidate, "index" | "size">[];
   deferredRecords?: string[];
   missing?: { eplId: number; revision: number; title: string }[];
 };
@@ -63,7 +65,10 @@ type Selection = ({ ids: string[] } | { filters: Record<string, unknown> }) & {
 const Sender = createContext<((selection: Selection) => void) | null>(null);
 const requestIdentifier = () =>
   `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const key = (file: Candidate) => `${file.recordId}:${file.index}`;
+const key = (file: Candidate) =>
+  `${file.recordId}:${file.waiting ? "waiting" : file.index}`;
+const selectable = (file: Candidate) =>
+  file.index >= 0 || file.waiting === true;
 export function CalibreSendProvider({ children }: { children: ReactNode }) {
   const [opened, setOpened] = useState(false),
     [selection, setSelection] = useState<Selection>({ ids: [] }),
@@ -126,7 +131,12 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
         activeOperation.current !== selected.operationId
       )
         return;
-      setChosen(data.files.map(key));
+      setChosen([
+        ...data.files.map(key),
+        ...(data.pending ?? []).map((f) =>
+          key({ ...f, index: -1, size: 0, waiting: true }),
+        ),
+      ]);
       setLibrary(
         data.libraries.some((l) => l.id === data.library)
           ? data.library
@@ -136,6 +146,12 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
   });
   const previewFiles: Candidate[] = [
     ...(prepare.data?.files ?? []),
+    ...(prepare.data?.pending ?? []).map((item) => ({
+      ...item,
+      index: -1,
+      size: 0,
+      waiting: true,
+    })),
     ...(prepare.data?.unavailable ?? []).map((item, index) => ({
       ...item,
       index: -index - 1,
@@ -149,7 +165,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
   const selectRange = useRangeSelection(
     displayed
       .slice(filePage * 20, (filePage + 1) * 20)
-      .filter((file) => file.index >= 0)
+      .filter(selectable)
       .map(key),
     (ids, checked) => {
       setRequestId(requestIdentifier());
@@ -195,7 +211,17 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
           library,
           ...("filters" in selection || !prepare.data?.deferredRecords?.length
             ? {}
-            : { deferredRecords: prepare.data.deferredRecords }),
+            : {
+                deferredRecords: prepare.data.pending
+                  ? prepare.data.pending
+                      .filter((f) =>
+                        chosenSet.has(
+                          key({ ...f, index: -1, size: 0, waiting: true }),
+                        ),
+                      )
+                      .map((f) => f.recordId)
+                  : prepare.data.deferredRecords,
+              }),
           files: prepare.data?.files
             .filter((f) => chosenSet.has(key(f)))
             .map((f) => ({ recordId: f.recordId, index: f.index })),
@@ -352,7 +378,9 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                 ))}
               {!!(
                 (prepare.data.deferred?.length ?? 0) ||
-                (prepare.data.deferredRecords?.length ?? 0)
+                (!prepare.data.pending
+                  ? (prepare.data.deferredRecords?.length ?? 0)
+                  : 0)
               ) && (
                 <Alert>
                   {t("calibreSend.deferred", {
@@ -370,7 +398,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                       variant="subtle"
                       disabled={send.isPending}
                       onClick={() => {
-                        setChosen(prepare.data!.files.map(key));
+                        setChosen(previewFiles.filter(selectable).map(key));
                         setRequestId(requestIdentifier());
                       }}
                     >
@@ -417,7 +445,7 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                                   key={key(file)}
                                   aria-label={`${file.name} · EPL ID ${file.eplId} · ${t("downloads.revision")} ${revision(file.revision)}`}
                                   checked={chosenSet.has(key(file))}
-                                  disabled={send.isPending || file.index < 0}
+                                  disabled={send.isPending || !selectable(file)}
                                   onMouseDown={selectRange.preventTextSelection}
                                   onChange={(e) => selectRange(key(file), e)}
                                 />
@@ -506,7 +534,9 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
                   count:
                     chosen.length +
                     (prepare.data.deferred?.length ||
-                      prepare.data.deferredRecords?.length ||
+                      (!prepare.data.pending
+                        ? prepare.data.deferredRecords?.length
+                        : 0) ||
                       0) +
                     (download ? (prepare.data.missing?.length ?? 0) : 0),
                 })
@@ -528,7 +558,9 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
               !library ||
               (!chosen.length &&
                 !prepare.data?.deferred?.length &&
-                !prepare.data?.deferredRecords?.length &&
+                !(prepare.data?.pending
+                  ? false
+                  : prepare.data?.deferredRecords?.length) &&
                 !(download && prepare.data?.missing?.length))
             }
             loading={send.isPending}

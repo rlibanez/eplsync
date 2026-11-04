@@ -192,7 +192,7 @@ public class CalibreUpdateFlow {
         jdbc.update("UPDATE calibre_job_items SET next_check=? WHERE job_id=? AND state='WAITING_DOWNLOAD' AND next_check<=?",next,job,now);
     }
     boolean waiting(String job,CalibreTransfers.Item item) {
-        var row=jdbc.queryForMap("SELECT i.download_job_id,i.wait_until FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.id=?",item.id());
+        var row=jdbc.queryForMap("SELECT i.download_job_id,i.wait_until,i.file_index FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.id=?",item.id());
         if(((Number)row.get("wait_until")).longValue()<Instant.now().toEpochMilli()) throw new UserInputException("La espera superó 30 días; revisa la descarga y reanuda");
         String downloadId=(String)row.get("download_job_id");
         Set<String> hashes=new HashSet<>();
@@ -206,15 +206,20 @@ public class CalibreUpdateFlow {
             if(!d.getClientInstanceId().equals(tracking.instanceId()) || (downloadId==null?!d.getId().equals(item.recordId()):!hashes.contains(d.getHash())) || Double.compare(d.getRevision(),Double.parseDouble(item.revision()))!=0) continue;
             recordFound=true;
             if(d.getStatus()==DownloadStatus.NOT_FOUND || d.getStatus()==DownloadStatus.ERROR) throw new UserInputException("El torrent no está disponible o tiene un error; revisa Estado de las descargas");
-            if(d.getStatus()!=DownloadStatus.DOWNLOADED) continue;
+            if(downloadId!=null && d.getStatus()!=DownloadStatus.DOWNLOADED) continue;
             List<EpubFiles.Item> available;
             try {available=files.list(d.getId());}
             catch(EpubFiles.PendingEpub ex) {continue;}
+            if(downloadId==null && row.get("file_index")!=null) {
+                available=available.stream().filter(f->f.index()==((Number)row.get("file_index")).intValue()).toList();
+                if(available.isEmpty()) throw new EpubFiles.UnsupportedContent("El EPUB seleccionado ya no está disponible; revisa los archivos de la descarga");
+            }
             if(available.size()>1) throw new EpubFiles.UnsupportedContent("La descarga contiene varios EPUB; selecciona el archivo que corresponde al libro en Estado de las descargas");
             if(available.isEmpty()) continue;
             var f=available.getFirst();if(f.size()>268435456) throw new UserInputException("El EPUB supera 256 MiB");
             jdbc.update("UPDATE calibre_job_items SET state='PENDING',transient_attempts=0,next_check=0,record_id=?,file_index=?,name=?,size=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",d.getId(),f.index(),f.name(),f.size(),f.size()!=f.expectedSize()?CalibreTransfers.SIZE_WARNING:null,item.id());return true;
         }
+        if(downloadId==null && !recordFound) throw new UserInputException("El registro de descarga ya no existe o cambió; revisa Estado de las descargas");
         if(!hashes.isEmpty() && !recordFound) throw new UserInputException("El registro de la descarga aceptada ya no existe; prepara un nuevo envío desde el Catálogo");
         jdbc.update("UPDATE calibre_job_items SET next_check=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",Instant.now().plus(internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE)).toEpochMilli(),"Esperando la descarga del EPUB",item.id());return false;
     }

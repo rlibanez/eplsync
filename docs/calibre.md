@@ -172,6 +172,15 @@ En **Descargas → Estado** y en el **Historial de descargas** de la ficha de un
 usa el icono **Enviar a Calibre** o selecciona varios registros y pulsa ese botón.
 El formulario permite elegir una biblioteca accesible y los EPUB que se enviarán.
 Si un torrent contiene varios EPUB, puedes desmarcar los que no quieras enviar.
+Si el cliente está ocupado o la descarga aún no ha terminado, el libro puede
+seleccionarse como pendiente: se crea el trabajo de Calibre y la comprobación se
+reintenta automáticamente, sin crear otra descarga. Los EPUB disponibles y los
+pendientes pueden compartir trabajo. Antes de enviar se comprueba el archivo,
+la identidad del registro y la conexión de origen. Los errores reales de acceso,
+formatos incompatibles y descargas de otro cliente siguen protegidos.
+Si el cliente se ocupa después de elegir un EPUB concreto, se conserva esa selección;
+no se sustituye automáticamente por otro archivo. Sin selección previa, varios
+EPUB requieren resolver cuál corresponde al libro.
 
 El envío requiere `CALIBRE_SEND` y `DOWNLOADS_FILES_READ`. El permiso de envío
 implica `CALIBRE_READ`, pero no concede acceso a los archivos del cliente torrent:
