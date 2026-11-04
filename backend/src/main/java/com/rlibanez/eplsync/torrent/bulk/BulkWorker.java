@@ -220,7 +220,9 @@ public class BulkWorker {
 
     private Outcome send(BulkItem item, com.rlibanez.eplsync.torrent.TorrentSubmissionContext context) {
         try {
-            // addTorrent consulta el hash antes de escribir, también al recuperar un envío incierto.
+            // Attempts survive restarts. An uncertain earlier POST gets a live confirmation window
+            // before another POST, including additions still pending inside qBittorrent.
+            if(item.getAttempts()>1) context.recovering(item.getHash());
             var result = client.addTorrent(store.command(item), context);
             return new Outcome(result == TorrentDownloadResult.Status.ACCEPTED
                     ? BulkItem.State.ACCEPTED : BulkItem.State.ALREADY_EXISTS, null, false, false);

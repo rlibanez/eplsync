@@ -75,6 +75,57 @@ class JobRetriesTests {
     JobRetries.Preview selected(String kind,String parent,String... ids) {return retries.preview(kind,parent,new JobRetryController.Selection(List.of(ids),false));}
     JobRetries.Link create(String kind,String parent,JobRetries.Preview p) {return retries.create(kind,parent,new JobRetryController.Confirmation(p.token(),false));}
 
+    @Test void missingTorrentsAreRestoredInPlaceWithDurableIdempotentHistory() throws Exception {
+        var parent=torrentJob("DOWNLOAD_WAIT","ACCEPTED","ACCEPTED","ALREADY_EXISTS","ACCEPTED");
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='DOWNLOADED' WHERE job_id=?",parent);
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='NOT_FOUND' WHERE id IN (?,?)",parent+"-0",parent+"-2");
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='IGNORED' WHERE id=?",parent+"-3");
+        assertThat(retries.history("downloads",parent).missing()).isEqualTo(2);
+        var preview=retries.previewMissing(parent);assertThat(preview.send()).isEqualTo(2);
+        var result=create("downloads",parent,preview);
+        assertThat(result.jobId()).isEqualTo(parent);
+        assertThat(create("downloads",parent,preview)).isEqualTo(result);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForList("SELECT state FROM torrent_bulk_items WHERE job_id=? ORDER BY position",String.class,parent))
+            .containsExactly("PENDING","ACCEPTED","PENDING","ACCEPTED");
+        assertThat(jdbc.queryForObject("SELECT download_state FROM torrent_bulk_items WHERE id=?",String.class,parent+"-3")).isEqualTo("IGNORED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM job_retry_attempt_items WHERE attempt_id=? AND json_extract(before_item,'$.download_state')='NOT_FOUND'",Long.class,preview.token())).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE job_id=?",Long.class,parent)).isEqualTo(1);
+        bulk.recover();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Long.class)).isEqualTo(1);
+        assertThat(create("downloads",parent,preview)).isEqualTo(result);
+    }
+    @Test void restorationDoesNotReopenCleanupAndRejectsPendingDeletion() throws Exception {
+        var parent=torrentJob("DOWNLOAD_WAIT","ACCEPTED");String hash=String.format("%040d",1);
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='NOT_FOUND' WHERE job_id=?",parent);
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('old',1,1,?,'qbittorrent',?,'NOT_FOUND','EPLSYNC',0)",hash,tracking.instanceId());
+        jdbc.update("INSERT INTO torrent_update_cleanup(id,job_id,download_id,epl_id,hash,state,created_at,client_instance_id,previous_versions,target_hashes,automatic,immediate,replacement_accepted) VALUES('cleanup',?,'old',1,?,'REQUESTED',0,?,'REMOVE_TORRENT','[]',1,0,0)",parent,hash,tracking.instanceId());
+        assertThatThrownBy(()->retries.previewMissing(parent)).hasMessageContaining("trabajo");
+        jdbc.update("UPDATE torrent_update_cleanup SET state='BLOCKED' WHERE id='cleanup'");
+        var blocked=retries.previewMissing(parent);assertThat(blocked.send()).isZero();assertThat(blocked.excluded()).isEqualTo(1);
+        jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE id='cleanup'");
+        var preview=retries.previewMissing(parent);assertThat(preview.send()).isEqualTo(1);assertThat(preview.cleanup()).isZero();
+        create("downloads",parent,preview);
+        assertThat(jdbc.queryForObject("SELECT state FROM torrent_update_cleanup WHERE id='cleanup'",String.class)).isEqualTo("CANCELLED");
+    }
+    @Test void restorationRejectsChangedDestinationActiveOperationsAndStaleSelection() throws Exception {
+        var parent=torrentJob("DOWNLOAD_WAIT","ACCEPTED");
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='NOT_FOUND' WHERE job_id=?",parent);
+        var preview=retries.previewMissing(parent);
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='DOWNLOADING' WHERE job_id=?",parent);
+        assertThatThrownBy(()->create("downloads",parent,preview)).hasMessageContaining("cambiaron");
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='NOT_FOUND',state='IN_FLIGHT' WHERE job_id=?",parent);
+        assertThatThrownBy(()->selected("downloads",parent,parent+"-0")).hasMessageContaining("trabajo");
+        jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED' WHERE job_id=?",parent);
+        jdbc.update("UPDATE torrent_bulk_jobs SET target_fingerprint='different' WHERE id=?",parent);
+        assertThatThrownBy(()->retries.previewMissing(parent)).hasMessageContaining("configuración original");
+    }
+    @Test @WithMockUser(authorities={"TORRENT_JOBS_MANAGE"})
+    void restorationRequiresSendPermission() throws Exception {
+        var parent=torrentJob("COMPLETED","ACCEPTED");
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='NOT_FOUND' WHERE job_id=?",parent);
+        assertThatThrownBy(()->retries.previewMissing(parent)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
     @Test void torrentRetryReusesOriginalItemsKeepsHistoryAndIsIdempotent() throws Exception {
         var parent=torrentJob("COMPLETED","FAILED","ACCEPTED","CANCELLED");
         var preview=failed("downloads",parent);assertThat(preview.send()).isEqualTo(1);

@@ -38,6 +38,8 @@ class QBittorrentClientTests {
     private final CopyOnWriteArrayList<String> torrentQueries = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<String> fileQueries = new CopyOnWriteArrayList<>();
     private volatile String torrentInfo = "[]";
+    private final java.util.Set<String> addedHashes=java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private volatile boolean publishAdded=true;
     private volatile boolean primaryHashFilterOnly;
     private volatile String torrentFiles = "[]";
     private volatile int generatedTorrents;
@@ -336,16 +338,29 @@ class QBittorrentClientTests {
                             if(bodyDelay>0) try {Thread.sleep(bodyDelay);} catch(InterruptedException ex) {Thread.currentThread().interrupt();}
                             output.write(torrentInfo.getBytes(StandardCharsets.UTF_8));
                         }
-                    } else respond(exchange, 200, torrentInfo); }
+                    } else respond(exchange, 200, withAddedTorrents()); }
                 else if (call.path().endsWith("/torrents/files")) {fileQueries.add(String.valueOf(exchange.getRequestURI().getRawQuery()));respond(exchange, 200, torrentFiles);}
                 else if (call.path().endsWith("/torrents/categories")) respond(exchange, 200, categories);
-                else if (call.path().endsWith("/torrents/add")) respond(exchange, addStatus, addBody);
+                else if (call.path().endsWith("/torrents/add")) {
+                    if(publishAdded && addStatus<300 && (addBody.equals("Ok.") || addBody.contains("\"success_count\":1") || addBody.contains("\"pending_count\":1"))) {
+                        var fields=java.net.URLDecoder.decode(call.body(),StandardCharsets.UTF_8);
+                        var match=java.util.regex.Pattern.compile("urn:btih:([a-fA-F0-9]{40}|[a-fA-F0-9]{64})").matcher(fields);
+                        if(match.find()) addedHashes.add(match.group(1).toUpperCase(java.util.Locale.ROOT));
+                    }
+                    respond(exchange, addStatus, addBody);
+                }
                 else if (call.path().endsWith("/torrents/rename")) respond(exchange, renameStatus, "");
                 else respond(exchange, 200, call.path().endsWith("/version") ? version : "2.15.1");
             } else {
                 respond(exchange, 404, "Unexpected path");
             }
         }
+    }
+
+    private String withAddedTorrents() {
+        if(addedHashes.isEmpty()) return torrentInfo;
+        var extra=addedHashes.stream().map(hash->"{\"hash\":\""+hash+"\",\"state\":\"downloading\",\"progress\":0,\"amount_left\":1}").collect(java.util.stream.Collectors.joining(","));
+        return torrentInfo.substring(0,torrentInfo.length()-1)+(torrentInfo.length()>2?",":"")+extra+"]";
     }
 
     private com.rlibanez.eplsync.service.TorrentDownloadService downloadService(String links) {
@@ -473,15 +488,56 @@ class QBittorrentClientTests {
                 com.rlibanez.eplsync.model.CatalogBook.builder().language(com.rlibanez.eplsync.model.enums.Language.INGLES).build());
     }
 
+    @Test void pendingApiResponseWaitsForLivePresenceAndRestartDoesNotRepeatThePost() throws Exception {
+        publishAdded=false;
+        addBody="{\"success_count\":0,\"pending_count\":1,\"failure_count\":0}";
+        var qbit=client();String hash="A".repeat(40);
+        try(var tasks=Executors.newVirtualThreadPerTaskExecutor()) {
+            var result=tasks.submit(()->qbit.addTorrent(command(hash)));
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while(calls.stream().noneMatch(c->c.path().endsWith("/torrents/add")) && System.nanoTime()<deadline) Thread.sleep(10);
+            assertThat(calls).anyMatch(c->c.path().endsWith("/torrents/add"));
+            Thread.sleep(150);
+            assertThat(result.isDone()).isFalse();
+            addedHashes.add(hash);
+            assertThat(result.get(5,java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED);
+            assertThat(qbit.addTorrent(command(hash),new com.rlibanez.eplsync.torrent.TorrentSubmissionContext())).isEqualTo(com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS);
+            assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
+        }
+    }
+
+    @Test void restartDuringConfirmationWaitsForPendingAdditionWithoutAnotherPost() throws Exception {
+        publishAdded=false;var qbit=client();String hash="B".repeat(40);
+        try(var tasks=Executors.newVirtualThreadPerTaskExecutor()) {
+            var interrupted=tasks.submit(()->qbit.addTorrent(command(hash)));
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while(calls.stream().noneMatch(c->c.path().endsWith("/torrents/add")) && System.nanoTime()<deadline) Thread.sleep(10);
+            assertThat(calls).anyMatch(c->c.path().endsWith("/torrents/add"));
+            interrupted.cancel(true);
+            var recovered=new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();recovered.recovering(hash);
+            var resumed=tasks.submit(()->qbit.addTorrent(command(hash),recovered));
+            Thread.sleep(200);
+            assertThat(resumed.isDone()).isFalse();
+            assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
+            addedHashes.add(hash);
+            assertThat(resumed.get(5,java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS);
+            assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
+            // The partial recovery read must not hide unrelated torrents in the next full index.
+            String other="C".repeat(40);addedHashes.add(other);
+            assertThat(qbit.addTorrent(command(other),recovered)).isEqualTo(com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS);
+            assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
+        }
+    }
+
     @Test
     void bulkContextReusesCategoriesWhileExplicitConnectionCheckIsFresh() {
         var qbit = client();
         var context = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
         qbit.addTorrent(command("A".repeat(40)), context);
-        assertThat(calls).hasSize(5);
+        assertThat(calls).hasSize(6);
         calls.clear();
         qbit.addTorrent(command("B".repeat(40)), context);
-        assertThat(calls).extracting(value -> Objects.requireNonNull(value).path()).containsExactly("/qbit/api/v2/torrents/add");
+        assertThat(calls).extracting(value -> Objects.requireNonNull(value).path()).containsExactly("/qbit/api/v2/torrents/add", "/qbit/api/v2/torrents/info");
         calls.clear();
         qbit.checkConnection();
         assertThat(calls).extracting(value -> Objects.requireNonNull(value).path()).containsExactly("/qbit/api/v2/app/version", "/qbit/api/v2/app/webapiVersion");
@@ -559,7 +615,7 @@ class QBittorrentClientTests {
         assertThat(calls).noneMatch(c->c.path().endsWith("/torrents/add"));
         torrentInfo="[]";
         qbit.addTorrent(command("A".repeat(40)),new com.rlibanez.eplsync.torrent.TorrentSubmissionContext());
-        assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/info")).count()).isEqualTo(2);
+        assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/info")).count()).isEqualTo(3);
         assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
     }
 
@@ -575,7 +631,7 @@ class QBittorrentClientTests {
         assertThat(calls.stream().filter(c -> c.path().endsWith("/app/webapiVersion")).count()).isEqualTo(1);
         assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/categories")).count()).isEqualTo(1);
         assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/add")).count()).isEqualTo(3);
-        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/info")).count()).isEqualTo(1);
+        assertThat(calls.stream().filter(c -> c.path().endsWith("/torrents/info")).count()).isBetween(2L,4L);
     }
 
     @Test
@@ -604,7 +660,7 @@ class QBittorrentClientTests {
         assertThat(calls.getLast().authorization()).isNull();
         calls.clear();
         qbit.addTorrent(command("C".repeat(40)));
-        assertThat(calls).extracting(value -> Objects.requireNonNull(value).path()).containsExactly("/qbit/api/v2/torrents/info", "/qbit/api/v2/torrents/categories", "/qbit/api/v2/torrents/add");
+        assertThat(calls).extracting(value -> Objects.requireNonNull(value).path()).containsExactly("/qbit/api/v2/torrents/info", "/qbit/api/v2/torrents/categories", "/qbit/api/v2/torrents/add", "/qbit/api/v2/torrents/info");
         assertThat(calls).allMatch(c -> c.authorization() == null && c.cookie().contains("session1"));
     }
 

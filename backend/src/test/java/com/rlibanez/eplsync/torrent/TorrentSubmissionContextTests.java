@@ -33,4 +33,35 @@ class TorrentSubmissionContextTests {
         assertThatThrownBy(()->first.containsTorrent("A",()->{throw new TorrentConnectionException(TorrentConnectionException.Reason.TIMEOUT);})).isInstanceOf(TorrentConnectionException.class);
         assertThat(second.containsTorrent("A",()->Set.of("A"))).isTrue();
     }
+
+    @Test void acknowledgementsNeedLivePresenceAndConcurrentConfirmationsAreBatched() throws Exception {
+        var context=new TorrentSubmissionContext();
+        assertThat(context.containsTorrent("A",Set::of)).isFalse();
+        var reads=new AtomicInteger();var largest=new AtomicInteger();
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var start=new CountDownLatch(1);var futures=new java.util.ArrayList<Future<?>>();
+            for(int n=0;n<10;n++) {
+                String hash="HASH"+n;
+                futures.add(executor.submit(()->{start.await();context.confirmTorrent(hash, hashes->{reads.incrementAndGet();largest.accumulateAndGet(hashes.size(),Math::max);return hashes;});return true;}));
+            }
+            start.countDown();for(var future:futures) future.get(5,TimeUnit.SECONDS);
+        }
+        assertThat(largest.get()).isGreaterThan(1);
+        assertThat(reads.get()).isLessThan(10);
+    }
+    @Test void successfulAcknowledgementWithoutPresenceRemainsUnconfirmed() {
+        var context=new TorrentSubmissionContext();
+        assertThat(context.containsTorrent("A",Set::of)).isFalse();
+        assertThatThrownBy(()->context.confirmTorrent("A",hashes->Set.of(),java.time.Duration.ofMillis(150)))
+            .isInstanceOf(TorrentConnectionException.class).hasMessageContaining("confirmado");
+        assertThat(context.containsTorrent("A",()->Set.of("A"))).isFalse();
+        // A restarted execution must load the live index, rather than repeat the POST.
+        assertThat(new TorrentSubmissionContext().containsTorrent("A",()->Set.of("A"))).isTrue();
+    }
+    @Test void communicationFailureIsNotReportedAsAbsenceOrAcceptance() {
+        var context=new TorrentSubmissionContext();
+        var failure=new TorrentConnectionException(TorrentConnectionException.Reason.UPSTREAM);
+        assertThatThrownBy(()->context.confirmTorrent("A",hashes->{throw failure;})).isSameAs(failure);
+        assertThatThrownBy(()->context.confirmTorrent("B",hashes->Set.of("B"))).isSameAs(failure);
+    }
 }

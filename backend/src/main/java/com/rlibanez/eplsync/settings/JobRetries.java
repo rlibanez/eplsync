@@ -39,7 +39,7 @@ public class JobRetries {
         this.settings=settings;this.calibre=calibre;this.files=files;this.events=events;
     }
     public record Link(String kind,String jobId,String parentId,String rootId) {}
-    public record History(Link source,List<Link> retries,boolean terminal,long failed,String reason,long attemptCount,boolean settling) {}
+    public record History(Link source,List<Link> retries,boolean terminal,long failed,String reason,long attemptCount,boolean settling,long missing) {}
     public record Issue(String id,String detail) {}
     public record Preview(String token,int send,int verify,int waiting,int cleanup,int excluded,List<Issue> issues,List<String> changes,String library) {}
     public record Work(String id,String phase,Map<String,Object> row,List<Map<String,Object>> cleanup) {}
@@ -57,7 +57,10 @@ public class JobRetries {
         boolean replacementFailed=kind.equals("downloads") && ("DOWNLOAD_WAIT".equals(job.get("state")) || "PAUSED".equals(job.get("state")) && "UPDATE".equals(job.get("type")))
             && jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state='FAILED'",Long.class,id)>0
             && jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state IN ('PENDING','IN_FLIGHT')",Long.class,id)==0;
-        if(!Set.of("COMPLETED","CANCELLED").contains(job.get("state")) && !replacementFailed) return false;
+        boolean settledDownload=kind.equals("downloads") && ("DOWNLOAD_WAIT".equals(job.get("state")) || "PAUSED".equals(job.get("state"))
+                && jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state IN ('ACCEPTED','ALREADY_EXISTS') AND download_state='NOT_FOUND'",Long.class,id)>0)
+            && jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state IN ('PENDING','IN_FLIGHT')",Long.class,id)==0;
+        if(!Set.of("COMPLETED","CANCELLED").contains(job.get("state")) && !replacementFailed && !settledDownload) return false;
         if(jdbc.queryForObject("SELECT count(*) FROM "+items(kind)+" WHERE job_id=? AND state=?",Long.class,id,kind.equals("downloads")?"IN_FLIGHT":"SENDING")>0) return false;
         return !kind.equals("downloads") || jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id=? AND state='REQUESTED' AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs j WHERE j.update_job_id=torrent_update_cleanup.job_id) AND NOT EXISTS(SELECT 1 FROM deleted_work_receipts d WHERE d.source='downloads' AND d.kind='cleanup' AND d.request_id='update:'||torrent_update_cleanup.job_id)",Long.class,id)==0;
     }
@@ -68,7 +71,14 @@ public class JobRetries {
         long failed=jdbc.queryForObject("SELECT count(*) FROM "+items(kind)+" i WHERE job_id=? AND state='FAILED' AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind=? AND r.parent_id=? AND r.source_item_id=i.id)",Long.class,id,kind,id);
         boolean settling=jdbc.queryForObject("SELECT count(*) FROM "+items(kind)+" WHERE job_id=? AND state=?",Long.class,id,kind.equals("downloads")?"IN_FLIGHT":"SENDING")>0
             || kind.equals("downloads") && jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id=? AND state='REQUESTED' AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs j WHERE j.update_job_id=torrent_update_cleanup.job_id) AND NOT EXISTS(SELECT 1 FROM deleted_work_receipts d WHERE d.source='downloads' AND d.kind='cleanup' AND d.request_id='update:'||torrent_update_cleanup.job_id)",Long.class,id)>0;
-        return new History(source.isEmpty()?null:source.getFirst(),children,terminal,failed,terminal?null:"Para reintentar, termina o cancela el trabajo y espera a que finalicen las operaciones en curso. Los trabajos pausados se reanudan.",jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE kind=? AND job_id=?",Long.class,kind,id),settling);
+        return new History(source.isEmpty()?null:source.getFirst(),children,terminal,failed,terminal?null:"Para reintentar, termina o cancela el trabajo y espera a que finalicen las operaciones en curso. Los trabajos pausados se reanudan.",jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE kind=? AND job_id=?",Long.class,kind,id),settling,kind.equals("downloads")?jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state IN ('ACCEPTED','ALREADY_EXISTS') AND download_state='NOT_FOUND'",Long.class,id):0);
+    }
+    /** Uses the same durable preview, single-use token and attempt history as other same-job retries. */
+    public Preview previewMissing(String id) {
+        permission("downloads");Permission.require(Permission.TORRENT_SEND);
+        var ids=jdbc.queryForList("SELECT id FROM torrent_bulk_items WHERE job_id=? AND state IN ('ACCEPTED','ALREADY_EXISTS') AND download_state='NOT_FOUND' ORDER BY position LIMIT 1000",String.class,id);
+        if(ids.isEmpty()) throw new UserInputException("No hay torrents ausentes que reponer");
+        return preview("downloads",id,new JobRetryController.Selection(ids,false));
     }
     private String configuration(String kind) {
         if(kind.equals("downloads")) return digest(torrent.getClient()+"\n"+torrent.getBaseUrl().replaceAll("/+$",""));
@@ -113,6 +123,7 @@ public class JobRetries {
         var job=job(kind,id);if(!terminal(kind,id,job)) throw conflict("El trabajo debe estar terminado o cancelado y sin operaciones en curso. Reanuda los trabajos pausados.");
         String config=configuration(kind);var rows=selected(kind,id,failedOnly,selection);
         var work=new ArrayList<Work>();var issues=new ArrayList<Issue>();var changes=new LinkedHashSet<String>();
+        var restorationConflicts=kind.equals("downloads")?restorationConflicts(rows):Set.<String>of();
         boolean changed=kind.equals("downloads")?!Objects.equals(job.get("target_fingerprint"),config):!Objects.equals(job.get("destination"),destination());
         if(changed || kind.equals("calibre") && !Objects.equals(job.get("source"),source())) throw conflict("La conexión o las carpetas cambiaron; restaura la configuración original antes de reintentar este trabajo");
         var connection=kind.equals("calibre")?settings.connection():null;
@@ -125,7 +136,13 @@ public class JobRetries {
             var cleanup=kind.equals("downloads")?jdbc.queryForList("SELECT * FROM torrent_update_cleanup WHERE job_id=? AND epl_id=? AND state IN ('CANCELLED','WAITING','BLOCKED') AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs j WHERE j.update_job_id=torrent_update_cleanup.job_id) AND NOT EXISTS(SELECT 1 FROM deleted_work_receipts d WHERE d.source='downloads' AND d.kind='cleanup' AND d.request_id='update:'||torrent_update_cleanup.job_id) AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='downloads' AND r.parent_id=? AND r.source_item_id=torrent_update_cleanup.id) ORDER BY id",id,row.get("epl_id"),id):new ArrayList<Map<String,Object>>();
             String phase;
             if(kind.equals("downloads")) {
-                if(Set.of("FAILED","CANCELLED").contains(state) && row.get("command_json")!=null && row.get("hash")!=null) phase="SEND";
+                boolean restoring=Set.of("ACCEPTED","ALREADY_EXISTS").contains(state) && "NOT_FOUND".equals(row.get("download_state"));
+                if(restoring && restorationConflicts.contains(Objects.toString(row.get("hash"),""))) {
+                    issues.add(new Issue(item,"Hay un borrado pendiente o sin confirmar para este torrent; resuélvelo antes de reponerlo."));continue;
+                }
+                // Restoring a torrent must never revive cancelled or completed cleanup operations.
+                if(restoring) cleanup=new ArrayList<>();
+                if((Set.of("FAILED","CANCELLED").contains(state) || restoring) && row.get("command_json")!=null && row.get("hash")!=null) phase="SEND";
                 else if(Set.of("ACCEPTED","ALREADY_EXISTS").contains(state) && !cleanup.isEmpty()) phase="CLEANUP";
                 else {issues.add(new Issue(item,"Este elemento no tiene una operación recuperable pendiente."));continue;}
                 if(changed && !cleanup.isEmpty()) {issues.add(new Issue(item,"Restaura el cliente original antes de reintentar una operación con borrados."));continue;}
@@ -178,6 +195,12 @@ public class JobRetries {
         }
         return output.toString(java.nio.charset.StandardCharsets.UTF_8);
     }
+    private Set<String> restorationConflicts(List<Map<String,Object>> rows) {
+        String hashes=json.writeValueAsString(rows.stream().filter(row->"NOT_FOUND".equals(row.get("download_state"))).map(row->row.get("hash")).toList());
+        if(hashes.equals("[]")) return Set.of();
+        String query="SELECT DISTINCT d.hash FROM revision_cleanup_items i JOIN revision_cleanup_jobs j ON j.id=i.job_id JOIN torrent_downloads d ON d.id=i.old_id WHERE j.source='downloads' AND d.client_instance_id=? AND d.hash IN (SELECT value FROM json_each(?)) AND (i.state='UNCERTAIN' OR i.state IN ('PENDING','RUNNING','VERIFYING','BLOCKED','FAILED') AND j.state<>'CANCELLED') UNION SELECT hash FROM torrent_update_cleanup WHERE client_instance_id=? AND hash IN (SELECT value FROM json_each(?)) AND state IN ('WAITING','BLOCKED','REQUESTED')";
+        return new HashSet<>(jdbc.queryForList(query,String.class,tracking.instanceId(),hashes,tracking.instanceId(),hashes));
+    }
     private static boolean bool(Object value) {return Boolean.TRUE.equals(value) || value instanceof Number n && n.intValue()!=0;}
     private static long number(Map<String,Object> row,String key) {return ((Number)row.get(key)).longValue();}
     private void authorize(String kind,List<Work> work) {
@@ -215,6 +238,10 @@ public class JobRetries {
             var existing=existing(kind,id,confirmation.token(),actor.id());if(existing!=null) return existing;
             var parent=job(kind,id);
             if(!terminal(kind,id,parent) || !plan.signature().equals(signature(kind,id,parent,selected(kind,id,plan.failedOnly(),plan.selection()))) || !plan.configuration().equals(configuration(kind))) throw conflict("El trabajo o la configuración cambiaron; vuelve a preparar el reintento");
+            // Recheck competing deletions under the SQLite writer transaction too: a cleanup
+            // may have been created after the network-free preview validation above.
+            if(kind.equals("downloads") && !restorationConflicts(plan.work().stream().map(w->w.row()).toList()).isEmpty())
+                throw conflict("Hay un borrado pendiente para un torrent ausente; vuelve a preparar la reposición");
             // Freeze every prior attempt before changing any of its original items.
             audit.freeze(kind,id);
             long created=Math.max(Instant.now().toEpochMilli(),jdbc.queryForObject("SELECT coalesce(max(created_at),0)+1 FROM job_retry_attempts WHERE kind=? AND job_id=?",Long.class,kind,id));
@@ -227,6 +254,7 @@ public class JobRetries {
                 jdbc.update("INSERT INTO job_retry_attempt_items(attempt_id,item_id,position,phase,before_item) VALUES(?,?,?,?,?)",confirmation.token(),work.id(),position++,work.phase(),json.writeValueAsString(before));
             }
             if(kind.equals("downloads")) retryDownloads(id,plan,actor);else retryCalibre(id,plan);
+            org.slf4j.LoggerFactory.getLogger(JobRetries.class).info("Reintento en el trabajo original: tipo={}, trabajo={}, intento={}, elementos={}, usuario={}",kind,id,confirmation.token(),plan.work().size(),actor.username());
             String root=jdbc.queryForList("SELECT root_id FROM job_retry_jobs WHERE kind=? AND child_id=?",String.class,kind,id).stream().findFirst().orElse(id);
             events.live(EventContext.actor(),EventJournal.Category.JOB,kind.equals("downloads")?"DOWNLOAD":"CALIBRE_SEND",EventJournal.Outcome.STARTED,EventContext.origin(),id,Map.of("attemptId",confirmation.token(),"kind",kind,"selected",plan.work().size()));
             return new Link(kind,id,id,root);
@@ -253,7 +281,7 @@ public class JobRetries {
     private void retryDownloads(String id,Plan plan,Account actor) {
         var cleanups=new LinkedHashMap<String,Map<String,Object>>();
         for(var work:plan.work()) {
-            if(work.phase().equals("SEND")) jdbc.update("UPDATE torrent_bulk_items SET state='PENDING',attempts=0,message=NULL WHERE id=? AND job_id=?",work.id(),id);
+            if(work.phase().equals("SEND")) jdbc.update("UPDATE torrent_bulk_items SET state='PENDING',attempts=0,message='Reposición o reintento solicitado por el usuario; se comprobará el hash antes de enviar',download_state=NULL,download_message=NULL WHERE id=? AND job_id=?",work.id(),id);
             work.cleanup().forEach(c->cleanups.put(c.get("id").toString(),c));
         }
         for(var entry:cleanups.values()) {

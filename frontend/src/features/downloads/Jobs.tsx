@@ -613,8 +613,13 @@ export function JobDetail() {
         ? false
         : 3000,
   });
-  const retry = useJobRetry("downloads", id, job.data?.status, selected, () =>
-    setSelected([]),
+  const retry = useJobRetry(
+    "downloads",
+    id,
+    job.data?.status,
+    selected,
+    () => setSelected([]),
+    job.data?.updatedAt,
   );
   const control = useMutation({
     meta: {
@@ -716,6 +721,7 @@ export function JobDetail() {
             <div className="job-controls-heading">
               <div className="action-row">
                 {retry.failedAction}
+                {retry.missingAction}
                 {[
                   "QUEUED",
                   "RUNNING",

@@ -560,7 +560,7 @@ public class BulkStore {
             job.setState(BulkJob.State.PAUSED); job.setMessage("El destino configurado ha cambiado");
             event(job, com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED); return null;
         }
-        job.setState(BulkJob.State.RUNNING); return job;
+        job.setState(BulkJob.State.RUNNING); job.setRetryAt(null); return job;
     }
 
     @Transactional(readOnly = true)
@@ -575,6 +575,7 @@ public class BulkStore {
         var item = items.findById(id).orElseThrow();
         if (item.getState() != BulkItem.State.PENDING) return null;
         item.setState(BulkItem.State.IN_FLIGHT); item.setAttempts(item.getAttempts() + 1);
+        item.setMessage("Enviando al cliente; pendiente de confirmar su presencia");
         items.saveAndFlush(item); return item;
     }
 

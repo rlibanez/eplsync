@@ -472,6 +472,19 @@ class BulkTests {
         assertThatThrownBy(() -> store.control(job.jobId(), "resume")).isInstanceOf(TorrentOperationException.class);
     }
 
+    @Test void acknowledgementWaitingForPresenceIsNotCountedAsAccepted() throws Exception {
+        var checking=new CountDownLatch(1);var confirmed=new CountDownLatch(1);
+        when(client.addTorrent(any())).thenAnswer(call->{checking.countDown();confirmed.await(5,TimeUnit.SECONDS);return TorrentDownloadResult.Status.ACCEPTED;});
+        var job=create(null);start();worker.tick();
+        assertThat(checking.await(5,TimeUnit.SECONDS)).isTrue();
+        try {
+            worker.tick();var waiting=store.view(job.jobId());
+            assertThat(waiting.accepted()).isZero();assertThat(waiting.inFlight()).isEqualTo(1);
+            assertThat(items.findByJobIdAndStateOrderByPosition(job.jobId(),BulkItem.State.IN_FLIGHT,PageRequest.of(0,1)).getFirst().getMessage()).contains("confirmar");
+        } finally {confirmed.countDown();}
+        until(()->store.view(job.jobId()).accepted()>0);
+    }
+
     @Test void recoveryRequeuesUncertainItemsAndPreservesPausedJobs() {
         var job = create(null); store.next();
         var id = store.pending(job.jobId(), 1).getFirst(); store.claim(job.jobId(), id);

@@ -1919,7 +1919,10 @@
       "REQUESTED": "Unconfirmed",
       "REMOVED": "Removed",
       "CANCELLED": "Cancelled"
-    }
+    },
+    "restoreMissing": "Restore missing torrents ({{count}})",
+    "restoreTitle": "Restore missing torrents",
+    "restoreHelp": "Each hash will be checked before sending. Existing files, submissions and job history are preserved. Maximum: 1000 items per restoration."
   },
   "revisionCleanup": {
     "previewBooks": "Books",

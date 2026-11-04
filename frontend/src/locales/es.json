@@ -1919,7 +1919,10 @@
       "REQUESTED": "Sin confirmar",
       "REMOVED": "Eliminado",
       "CANCELLED": "Cancelado"
-    }
+    },
+    "restoreMissing": "Reponer torrents ausentes ({{count}})",
+    "restoreTitle": "Reponer torrents ausentes",
+    "restoreHelp": "Se comprobará cada hash antes de enviarlo. Se conservan los archivos, los envíos ya realizados y el historial del trabajo. Máximo: 1000 elementos por reposición."
   },
   "revisionCleanup": {
     "previewBooks": "Libros",

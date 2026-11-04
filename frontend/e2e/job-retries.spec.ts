@@ -214,3 +214,138 @@ for (const kind of ["downloads", "calibre"] as const) {
     ).toBeVisible();
   });
 }
+
+for (const send of [true, false]) {
+  test(`missing torrents restoration stays in the original job; send permission=${send}`, async ({
+    page,
+  }) => {
+    const meta = {
+      page: 0,
+      size: 20,
+      totalItems: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    };
+    await page.route("**/api/auth/me", (r) =>
+      r.fulfill({
+        json: {
+          id: "owner",
+          username: "Owner",
+          role: "USER",
+          mustChangePassword: false,
+          permissions: [
+            "TORRENT_JOBS_MANAGE",
+            ...(send ? ["TORRENT_SEND"] : []),
+          ],
+        },
+      }),
+    );
+    await page.route("**/api/torrent/jobs/parent**", (r) => {
+      if (new URL(r.request().url()).pathname.endsWith("/items"))
+        return r.fulfill({ json: { items: [], meta } });
+      return r.fulfill({
+        json: {
+          jobId: "parent",
+          type: "DOWNLOAD",
+          status: "DOWNLOAD_WAIT",
+          client: "qbittorrent",
+          selectedBooks: 208,
+          selectedItems: 208,
+          processedItems: 208,
+          accepted: 208,
+          pending: 0,
+          inFlight: 0,
+          failed: 0,
+          cancelled: 0,
+          alreadyExists: 0,
+          skipped: 0,
+          concurrency: 10,
+          batchSize: 100,
+          interval: "10ms",
+          createdAt: "2026-11-04T20:00:00Z",
+          updatedAt: "2026-11-04T21:00:00Z",
+          download: {
+            selected: 208,
+            downloaded: 0,
+            pending: 0,
+            attention: 208,
+            ignored: 0,
+          },
+        },
+      });
+    });
+    const tokens: string[] = [];
+    await page.route("**/api/job-retries/downloads/**", (r) => {
+      const path = new URL(r.request().url()).pathname;
+      if (r.request().method() === "GET") {
+        if (path.endsWith("/attempts"))
+          return r.fulfill({ json: { items: [], meta } });
+        return r.fulfill({
+          json: {
+            source: null,
+            retries: [],
+            terminal: true,
+            failed: 0,
+            missing: 208,
+            attemptCount: 0,
+            settling: false,
+          },
+        });
+      }
+      if (path.endsWith("/missing/preview"))
+        return r.fulfill({
+          json: {
+            token: "restore-token",
+            send: 208,
+            verify: 0,
+            waiting: 0,
+            cleanup: 0,
+            excluded: 0,
+            issues: [],
+            changes: [],
+            library: "",
+          },
+        });
+      tokens.push(r.request().postDataJSON().token);
+      if (tokens.length === 1)
+        return r.fulfill({
+          status: 503,
+          json: { details: "Respuesta perdida" },
+        });
+      return r.fulfill({
+        json: {
+          kind: "downloads",
+          jobId: "parent",
+          parentId: "parent",
+          rootId: "parent",
+        },
+      });
+    });
+    await page.goto("/downloads/jobs/parent");
+    const button = page.getByRole("button", {
+      name: "Reponer torrents ausentes (208)",
+      exact: true,
+    });
+    if (!send) {
+      await expect(button).toHaveCount(0);
+      return;
+    }
+    await button.click();
+    const modal = page.getByRole("dialog");
+    await expect(modal).toContainText(
+      "Se comprobará cada hash antes de enviarlo",
+    );
+    await expect(modal).toContainText("208");
+    await modal
+      .getByRole("button", { name: "Reponer torrents ausentes", exact: true })
+      .click();
+    await expect(modal).toContainText("Respuesta perdida");
+    await modal
+      .getByRole("button", { name: "Reintentar", exact: true })
+      .click();
+    await expect(modal).toHaveCount(0);
+    await expect(page).toHaveURL(/\/downloads\/jobs\/parent$/);
+    expect(tokens).toEqual(["restore-token", "restore-token"]);
+  });
+}

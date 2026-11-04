@@ -23,6 +23,7 @@ interface History {
   terminal: boolean;
   settling?: boolean;
   failed: number;
+  missing?: number;
   reason: string | null;
   attemptCount?: number;
 }
@@ -43,6 +44,7 @@ export function useJobRetry(
   state: string | undefined,
   selected: string[],
   clear: () => void,
+  updatedAt?: string,
 ) {
   const { t } = useTranslation();
   const { can } = useAuth();
@@ -55,15 +57,20 @@ export function useJobRetry(
     [confirmed, setConfirmed] = useState(false);
   const url = `/job-retries/${kind}/${id}`;
   const history = useQuery({
-    queryKey: ["job-retries", kind, id, state],
+    queryKey: ["job-retries", kind, id, state, updatedAt],
     queryFn: ({ signal }) => get<History>(url, signal),
     enabled: !!id && manage,
     retry: false,
     refetchInterval: (query) => (query.state.data?.settling ? 3000 : false),
   });
   const prepare = useMutation({
-    mutationFn: (items: string[] | null) =>
-      post<Preview>(`${url}/preview`, { items, failedOnly: items === null }),
+    mutationFn: (items: string[] | null | "missing") =>
+      items === "missing"
+        ? post<Preview>(`${url}/missing/preview`)
+        : post<Preview>(`${url}/preview`, {
+            items,
+            failedOnly: items === null,
+          }),
     retry: false,
   });
   const create = useMutation({
@@ -95,7 +102,7 @@ export function useJobRetry(
     prepare.reset();
     create.reset();
   }, [kind, id]);
-  function start(items: string[] | null) {
+  function start(items: string[] | null | "missing") {
     setConfirmed(false);
     create.reset();
     setOpened(true);
@@ -109,7 +116,7 @@ export function useJobRetry(
     manage &&
     permitted &&
     !!history.data?.terminal &&
-    ["COMPLETED", "CANCELLED", "PAUSED"].includes(state ?? "");
+    ["COMPLETED", "CANCELLED", "PAUSED", "DOWNLOAD_WAIT"].includes(state ?? "");
   const count = prepare.data
     ? prepare.data.send +
       prepare.data.verify +
@@ -124,6 +131,19 @@ export function useJobRetry(
         {t("jobRetry.selected", { count: selected.length })}
       </Button>
     ),
+    missingAction:
+      kind === "downloads" &&
+      can("TORRENT_SEND") &&
+      history.data?.terminal &&
+      !!history.data.missing ? (
+        <Button
+          variant="default"
+          leftSection={<RotateCcw size={16} />}
+          onClick={() => start("missing")}
+        >
+          {t("jobRetry.restoreMissing", { count: history.data.missing })}
+        </Button>
+      ) : null,
     failedAction:
       selectable && history.data?.failed ? (
         <Button
@@ -183,10 +203,20 @@ export function useJobRetry(
           onClose={() => {
             if (!create.isPending) setOpened(false);
           }}
-          title={t("jobRetry.title")}
+          title={t(
+            prepare.variables === "missing"
+              ? "jobRetry.restoreTitle"
+              : "jobRetry.title",
+          )}
           icon={RotateCcw}
         >
-          <p>{t("jobRetry.help")}</p>
+          <p>
+            {t(
+              prepare.variables === "missing"
+                ? "jobRetry.restoreHelp"
+                : "jobRetry.help",
+            )}
+          </p>
           {prepare.isPending && <Loading />}
           {prepare.isError && (
             <Failure
@@ -264,7 +294,11 @@ export function useJobRetry(
               }
               onClick={() => create.mutate()}
             >
-              {t("jobRetry.create")}
+              {t(
+                prepare.variables === "missing"
+                  ? "jobRetry.restoreTitle"
+                  : "jobRetry.create",
+              )}
             </Button>
           </ModalActions>
         </AppModal>
