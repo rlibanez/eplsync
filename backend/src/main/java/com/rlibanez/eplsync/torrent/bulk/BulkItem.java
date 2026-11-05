@@ -24,6 +24,9 @@ public class BulkItem {
     @Column(columnDefinition="TEXT") private String downloadMessage;
     private java.time.Instant downloadCheckedAt;
     private int attempts;
+    private long retryAfter;
+    private long submissionUntil;
+    @Transient private boolean resubmitAllowed=true;
     private String message;
     @Column(columnDefinition = "TEXT") private String commandJson;
     @ManyToOne(fetch = FetchType.LAZY)

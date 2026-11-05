@@ -76,6 +76,87 @@ class TorrentCoordinationTests {
         assertThat(calls).hasValue(1);assertThat(tracking.exclusive(()->"available")).isEqualTo("available");
         verifyNoInteractions(transactions,database);
     }
+    @Test void inventoryDoesNotQueueAnExclusiveLockAndYieldsToBulkPriority() throws Exception {
+        var called=new AtomicBoolean();
+        var priority=tracking.prioritizeSubmissions();
+        assertThat(tracking.inventory(()->called.set(true))).isFalse();assertThat(called).isFalse();
+        priority.close();priority.close();assertThat(tracking.inventoryAllowed()).isTrue();
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            tracking.exclusive(()->{
+                try {assertThat(executor.submit(()->tracking.inventory(()->called.set(true))).get(200,TimeUnit.MILLISECONDS)).isFalse();}
+                catch(Exception ex) {throw new AssertionError(ex);}return null;
+            });
+        }
+        assertThat(called).isFalse();verifyNoInteractions(transactions,database);
+    }
+    @Test void inProgressInventoryAllowsSharedReadsButKeepsDeletionExcluded() throws Exception {
+        var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var inventory=executor.submit(()->tracking.inventory(()->{entered.countDown();await(release);}));
+            try {
+                assertThat(entered.await(2,TimeUnit.SECONDS)).isTrue();
+                assertThat(tracking.inventory(()->{})).isTrue();
+                assertThatThrownBy(()->tracking.exclusive(()->"delete")).isInstanceOf(TorrentBusyException.class);
+            } finally {release.countDown();}
+            assertThat(inventory.get(2,TimeUnit.SECONDS)).isTrue();
+        }
+        assertThat(tracking.exclusive(()->"delete")).isEqualTo("delete");verifyNoInteractions(transactions,database);
+    }
+    private com.rlibanez.eplsync.torrent.TorrentDownload command(String hash) {
+        return new com.rlibanez.eplsync.torrent.TorrentDownload(hash,"magnet",true,null,null,null,com.rlibanez.eplsync.model.CatalogBook.builder().eplId(1L).revision(1.0).title("Book").build());
+    }
+    @Test void observationRunsDuringSubmissionButStillExcludesDeletion() throws Exception {
+        var sending=new CountDownLatch(1);var release=new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var send=executor.submit(()->tracking.submit(command("hash"),()->{sending.countDown();await(release);return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;}));
+            try {
+                assertThat(sending.await(2,TimeUnit.SECONDS)).isTrue();
+                assertThat(tracking.observation(()->"read during send")).isEqualTo("read during send");
+                assertThatThrownBy(()->tracking.exclusive(()->"delete")).isInstanceOf(TorrentBusyException.class);
+            } finally {release.countDown();}
+            send.get(2,TimeUnit.SECONDS);
+        }
+        assertThat(tracking.exclusive(()->"delete after observation")).isEqualTo("delete after observation");
+    }
+    @Test void snapshotSkipsBothAlreadyActiveAndNewSubmissionsButAppliesOtherHashes() throws Exception {
+        var service=spy(tracking);
+        doNothing().when(service).observeSelected(anyMap(),anySet());
+        var sending=new CountDownLatch(1);var release=new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var send=executor.submit(()->service.submit(command("active"),()->{sending.countDown();await(release);return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;}));
+            try {
+                assertThat(sending.await(2,TimeUnit.SECONDS)).isTrue();
+                service.observation(()->{
+                    service.observeConcurrent(java.util.Set.of("active","new","unchanged"),()->{
+                        service.submit(command("new"),()->com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED);
+                        return java.util.Map.of(); // Old snapshot: missing is safe only for unchanged.
+                    });return null;
+                });
+                verify(service).observeSelected(java.util.Map.of(),java.util.Set.of("unchanged"));
+            } finally {release.countDown();}
+            send.get(2,TimeUnit.SECONDS);
+        }
+        service.observation(()->{service.observeConcurrent(java.util.Set.of("active","new"),java.util.Map::of);return null;});
+        verify(service).observeSelected(java.util.Map.of(),java.util.Set.of("active","new"));
+    }
+    @Test void failedObservationReleasesGuardAndDoesNotApplyPartialResults() {
+        var service=spy(tracking);doNothing().when(service).observeSelected(anyMap(),anySet());
+        assertThatThrownBy(()->service.observation(()->{
+            service.observeConcurrent(java.util.Set.of("hash"),()->{throw new IllegalStateException("network");});return null;
+        })).hasMessage("network");
+        verify(service,never()).observeSelected(anyMap(),anySet());
+        assertThat(service.exclusive(()->"cleanup")).isEqualTo("cleanup");
+    }
+    @Test void observationYieldsToAnExclusiveOperationWithoutBorrowingSqlConnections() throws Exception {
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            tracking.exclusive(()->{
+                try {assertThatThrownBy(()->executor.submit(()->tracking.observation(()->"unsafe")).get(1,TimeUnit.SECONDS))
+                    .isInstanceOf(ExecutionException.class).hasCauseInstanceOf(TorrentBusyException.class);}
+                catch(Exception ex) {throw new AssertionError(ex);}return null;
+            });
+        }
+        verifyNoInteractions(transactions,database);
+    }
     private static void await(CountDownLatch latch) {
         try {assertThat(latch.await(5,TimeUnit.SECONDS)).isTrue();}
         catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}

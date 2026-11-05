@@ -30,6 +30,46 @@ public class DownloadTrackingService {
     // Compartido por envíos y sync: una instantánea no puede pisar un envío posterior.
     private final ReentrantReadWriteLock coordination = new ReentrantReadWriteLock(true);
     private final Object writes = new Object();
+    // Only live observations retain invalidations; no permanent per-torrent cache.
+    private final Map<String,Integer> activeSubmissionHashes = new HashMap<>();
+    private final Set<Set<String>> observationChanges = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    /** Shared with submissions, excluded from cleanup and full synchronization. Never queues a reader. */
+    public <T> T observation(Supplier<T> action) {
+        if (coordination.hasQueuedThreads() || !coordination.readLock().tryLock())
+            throw new com.rlibanez.eplsync.exception.TorrentBusyException("Hay una operación exclusiva con el cliente torrent en curso");
+        try {return action.get();}
+        finally {coordination.readLock().unlock();}
+    }
+
+    /** Ignore every hash submitted before/during the snapshot until its next observation. */
+    public void observeConcurrent(Set<String> hashes, Supplier<Map<String,RemoteTorrent>> reader) {
+        if (coordination.getReadHoldCount()==0 && !coordination.isWriteLockedByCurrentThread())
+            throw new IllegalStateException("La observación requiere el bloqueo compartido del cliente");
+        var changed = new HashSet<String>();
+        synchronized(writes) {changed.addAll(activeSubmissionHashes.keySet());observationChanges.add(changed);}
+        try {
+            var remote = reader.get(); // No SQL connection or write monitor held over HTTP.
+            synchronized(writes) {
+                var eligible = new HashSet<>(hashes);eligible.removeAll(changed);
+                if (!eligible.isEmpty()) observeSelected(remote,eligible);
+            }
+        } finally {synchronized(writes) {observationChanges.remove(changed);}}
+    }
+    private final java.util.concurrent.atomic.AtomicInteger submissionPriority=new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicInteger submissions=new java.util.concurrent.atomic.AtomicInteger();
+    public interface SubmissionPriority extends AutoCloseable { @Override void close(); }
+    public SubmissionPriority prioritizeSubmissions() {
+        submissionPriority.incrementAndGet();var released=new java.util.concurrent.atomic.AtomicBoolean();
+        return ()->{if(released.compareAndSet(false,true)) submissionPriority.decrementAndGet();};
+    }
+    public boolean inventoryAllowed() {return submissionPriority.get()==0 && submissions.get()==0;}
+    /** File inventory only reads the client. It must not queue a writer ahead of submissions. */
+    public boolean inventory(Runnable action) {
+        if(!inventoryAllowed() || coordination.hasQueuedThreads() || !coordination.readLock().tryLock()) return false;
+        try {if(!inventoryAllowed()) return false;action.run();return true;}
+        finally {coordination.readLock().unlock();}
+    }
     private final TorrentAccessWaitLog accessWaitLog=new TorrentAccessWaitLog(log,System::nanoTime);
     private final ThreadLocal<String> operationInstance = new ThreadLocal<>();
 
@@ -69,7 +109,14 @@ public class DownloadTrackingService {
     }
 
     public TorrentDownloadResult.Status submit(TorrentDownload command, Supplier<TorrentDownloadResult.Status> action) {
+        submissions.incrementAndGet();
+        long waiting=System.nanoTime();
         coordination.readLock().lock();
+        com.rlibanez.eplsync.torrent.TorrentWorkMetrics.record("espera_envio",System.nanoTime()-waiting,false);
+        synchronized(writes) {
+            activeSubmissionHashes.merge(command.hash(),1,Integer::sum);
+            observationChanges.forEach(changed->changed.add(command.hash()));
+        }
         try {
             // Persistir antes de la red: una interrupción del proceso deja un resultado incierto reconciliable.
             updateSubmission(command, DownloadStatus.UNKNOWN, true, null);
@@ -87,11 +134,18 @@ public class DownloadTrackingService {
             updateSubmission(command, result == TorrentDownloadResult.Status.ACCEPTED
                     ? DownloadStatus.SUBMITTED : DownloadStatus.ALREADY_EXISTS, false, null);
             return result;
-        } finally { coordination.readLock().unlock(); }
+        } finally {
+            synchronized(writes) {
+                observationChanges.forEach(changed->changed.add(command.hash()));
+                activeSubmissionHashes.computeIfPresent(command.hash(),(hash,count)->count==1?null:count-1);
+            }
+            coordination.readLock().unlock();submissions.decrementAndGet();
+        }
     }
 
     private void updateSubmission(TorrentDownload command, DownloadStatus status, boolean requested, String error) {
-        synchronized (writes) {
+        long started=System.nanoTime();boolean failed=true;
+        try { synchronized (writes) {
             transactions.executeWithoutResult(tx -> {
                 var now = Instant.now();
                 var row = downloads.findByClientInstanceIdAndEplIdAndHash(instanceId(), command.book().getEplId(), command.hash())
@@ -103,7 +157,8 @@ public class DownloadTrackingService {
                 row.setStatus(status); row.setLastError(error);
                 if (!entityManager.contains(row)) entityManager.persist(row);
             });
-        }
+        } failed=false;
+        } finally {com.rlibanez.eplsync.torrent.TorrentWorkMetrics.record("registro_envio",System.nanoTime()-started,failed);}
     }
 
     public record RemoteCounts(int total, int matched, int ignored) {}

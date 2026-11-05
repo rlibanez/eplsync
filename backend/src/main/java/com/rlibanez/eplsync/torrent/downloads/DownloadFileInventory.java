@@ -42,24 +42,30 @@ public class DownloadFileInventory {
     }
     @org.springframework.scheduling.annotation.Scheduled(fixedDelay=1000)
     public void schedule() {
-        if(enabled && properties.isEnabled() && !coolingDown(tracking.instanceId()) && probe.ready() && running.compareAndSet(false,true))
+        if(enabled && properties.isEnabled() && tracking.inventoryAllowed() && !coolingDown(tracking.instanceId()) && probe.ready() && running.compareAndSet(false,true))
             try {executor.execute(()->{try {tick();}catch(RuntimeException ex) {log.debug("Inventario de archivos aplazado: causa={}",com.rlibanez.eplsync.exception.OperationDiagnostics.technical(ex));}finally {running.set(false);}});}catch(RejectedExecutionException ex) {running.set(false);}
     }
     public void tick() {
         if(!maintenance.enter(false)) return;
         try {
             long before=probe.snapshot();String instance=tracking.instanceId();
-            if(coolingDown(instance)) return;
-            var rows=jdbc.queryForList("SELECT id,hash FROM torrent_downloads WHERE client_instance_id=? AND inventory_state<>'CHECKED' AND status<>'NOT_FOUND' AND inventory_next_check<=? ORDER BY inventory_next_check,id LIMIT 5",instance,System.currentTimeMillis());
+            if(coolingDown(instance) || !tracking.inventoryAllowed()) return;
+            // Queued preparations and automatic backoff also need the client to recover.
+            // The active worker lease normally avoids even this small database probe.
+            if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM torrent_bulk_jobs WHERE target_fingerprint=? AND state IN ('QUEUED','RUNNING','RETRY_WAIT'))",Boolean.class,instance))) {probe.empty(before);return;}
+            var rows=jdbc.queryForList("SELECT id,hash FROM torrent_downloads WHERE client_instance_id=? AND inventory_state<>'CHECKED' AND status='DOWNLOADED' AND inventory_next_check<=? ORDER BY inventory_next_check,id LIMIT 5",instance,System.currentTimeMillis());
+            if(rows.isEmpty()) rows=jdbc.queryForList("SELECT id,hash FROM torrent_downloads WHERE client_instance_id=? AND inventory_state<>'CHECKED' AND status NOT IN ('NOT_FOUND','DOWNLOADED') AND inventory_next_check<=? ORDER BY inventory_next_check,id LIMIT 5",instance,System.currentTimeMillis());
             if(rows.isEmpty()) {probe.empty(before);return;}
             long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(1);
             for(var row:rows) {
                 if(System.nanoTime()>deadline) break;
                 String id=(String)row.get("id"),hash=(String)row.get("hash");
-                try {client.synchronizeClient(adapter->{
-                    if(!instance.equals(tracking.instanceId())) return null;
-                    record(id,instance,hash,adapter.listFiles(hash));cooldown=null;return null;
-                });} catch(RuntimeException ex) {
+                try {
+                    if(!client.inventoryClient(adapter->{
+                        if(!instance.equals(tracking.instanceId())) return;
+                        record(id,instance,hash,adapter.listFiles(hash));cooldown=null;
+                    })) return;
+                } catch(RuntimeException ex) {
                     if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex) || Thread.currentThread().isInterrupted()) return;
                     boolean unavailable=clientFailure(ex);
                     if(unavailable) cooldown=new Cooldown(instance,clock.getAsLong()+TimeUnit.MINUTES.toNanos(1));

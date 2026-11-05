@@ -47,19 +47,23 @@ public class BulkDownloadMonitor {
             String id=(String)jobs.getFirst().get("id"),instance=(String)jobs.getFirst().get("target_fingerprint");
             if(!authorization.torrent(id,false,false)) {synchronized(store) {store.suspendDownloads(id,"El usuario del trabajo ya no puede consultar sus descargas; revisa los permisos");}return;}
             if(!Objects.equals(instance,tracking.instanceId())) {synchronized(store) {store.suspendDownloads(id,"El cliente torrent cambió; restaura el destino original antes de reanudar");}return;}
-            Set<String> hashes=new HashSet<>(jdbc.queryForList("SELECT DISTINCT hash FROM torrent_bulk_items WHERE job_id=? AND state IN ('ACCEPTED','ALREADY_EXISTS') AND coalesce(download_state,'') NOT IN ('DOWNLOADED','IGNORED') AND hash IS NOT NULL",String.class,id));
             try {
-                if(!hashes.isEmpty()) client.exclusiveClient(adapter->{
+                client.observationClient(adapter->{
                     if(!Objects.equals(instance,tracking.instanceId())) throw new IllegalStateException("El destino cambió durante la comprobación");
-                    var remote=new HashMap<String,RemoteTorrent>();
-                    for(var row:hashes.size()>1000?adapter.listTorrents():adapter.listTorrents(hashes)) for(String alias:row.aliases()) remote.put(alias,row);
-                    tracking.observeSelected(remote,hashes);return null;
+                    Set<String> hashes=new HashSet<>(jdbc.queryForList("SELECT DISTINCT hash FROM torrent_bulk_items WHERE job_id=? AND state IN ('ACCEPTED','ALREADY_EXISTS') AND coalesce(download_state,'') NOT IN ('DOWNLOADED','IGNORED') AND hash IS NOT NULL",String.class,id));
+                    if(hashes.isEmpty()) return null;
+                    tracking.observeConcurrent(hashes,()->{
+                        var remote=new HashMap<String,RemoteTorrent>();
+                        for(var row:hashes.size()>1000?adapter.listTorrents():adapter.listTorrents(hashes)) for(String alias:row.aliases()) remote.put(alias,row);
+                        return remote;
+                    });return null;
                 });
                 synchronized(store) {store.refreshDownloads(id,instance);}
             } catch(RuntimeException ex) {
                 if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) {log.debug("Seguimiento de descargas aplazado por SQLite: trabajo={}",id);return;}
-                synchronized(store) {store.deferDownloadCheck(id);}
-                log.debug("No se pudo observar la descarga: trabajo={}, tipo={}",id,ex.getClass().getSimpleName());
+                boolean busy=ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException;
+                synchronized(store) {store.deferDownloadCheck(id,!busy);}
+                if(!busy) log.debug("No se pudo observar la descarga: trabajo={}, tipo={}",id,ex.getClass().getSimpleName());
             }
         } finally {maintenance.leave(false);}
     }

@@ -175,6 +175,7 @@ export interface Job {
     pending: number;
     attention: number;
     ignored: number;
+    filesChecked?: number;
   } | null;
   type?: "DOWNLOAD" | "UPDATE" | "CLEANUP";
   deleteHistory?: boolean;
@@ -220,4 +221,35 @@ export function completedWorkItems(job: Job) {
         job.skipped +
         job.cancelled
     : job.processedItems;
+}
+
+export function phasePercent(done: number, total: number) {
+  return total > 0
+    ? Math.min(100, Math.max(0, Math.floor((100 * done) / total)))
+    : 0;
+}
+export function jobPhaseProgress(job: Job) {
+  const c = job.calibre?.counts;
+  return {
+    submission: phasePercent(
+      job.processedItems + job.cancelled,
+      job.selectedItems,
+    ),
+    downloads: job.download
+      ? phasePercent(job.download.downloaded, job.download.selected)
+      : null,
+    calibre: c?.total
+      ? phasePercent(
+          c.sent + c.existing + c.failed + c.cancelled + (c.omitted ?? 0),
+          c.total,
+        )
+      : null,
+  };
+}
+
+export function downloadPhaseState(job: Job) {
+  if (job.status === "CANCELLED" || job.status === "PAUSED") return job.status;
+  if (job.download?.attention) return "attention";
+  if (job.pending + job.inFlight > 0 || job.download?.pending) return "pending";
+  return job.download?.ignored ? "completedWithOmissions" : "COMPLETED";
 }

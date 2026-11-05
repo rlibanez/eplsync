@@ -276,3 +276,8 @@ completan en segundo plano. No es necesario vaciar la base de datos.
 `V1_8_3_5` añade los formatos conocidos a la copia local de la biblioteca de Calibre.
 Conserva las entradas anteriores; su formato queda sin comprobar hasta sincronizar
 la biblioteca. La actualización no cambia archivos ni metadatos en Calibre.
+
+`V1_8_3_6` añade los plazos persistentes de reconciliación y reintento de los elementos
+de Torrent e índices para la cola de envíos y los inventarios descargados. Conserva
+los trabajos, los archivos y el historial existentes. Los envíos que estaban en
+curso se recuperan comprobando su presencia antes de volver a incorporarlos.

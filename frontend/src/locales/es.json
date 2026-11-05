@@ -2062,7 +2062,10 @@
     "checking": "Esperando comprobación de la descarga",
     "omit": "Omitir seguimiento",
     "controlHelp": "Pausar o cancelar este trabajo no pausa ni elimina los torrents ya enviados al cliente.",
-    "homePending": "Descargas pendientes: {{count}}"
+    "homePending": "Descargas pendientes: {{count}}",
+    "filesChecked": "Torrents con archivos comprobados",
+    "completedWithOmissions": "Terminado con seguimiento omitido",
+    "progressLabel": "Descargas"
   },
   "jobCalibre": {
     "column": "Calibre",

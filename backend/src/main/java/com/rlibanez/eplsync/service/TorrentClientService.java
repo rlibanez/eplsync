@@ -75,6 +75,18 @@ public class TorrentClientService {
         return tracking.exclusive(() -> withPinnedClient(action));
     }
 
+    public com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.SubmissionPriority prioritizeSubmissions() {
+        return tracking.prioritizeSubmissions();
+    }
+    public <T> T observationClient(java.util.function.Function<TorrentClient,T> action) {
+        requireEnabled();
+        return tracking.observation(()->withPinnedClient(action));
+    }
+    public boolean inventoryClient(java.util.function.Consumer<TorrentClient> action) {
+        requireEnabled();
+        return tracking.inventory(()->withPinnedClient(adapter->{action.accept(adapter);return null;}));
+    }
+
     /** Synchronization queues behind the current operation; ordinary workers keep their non-blocking guard. */
     public <T> T synchronizeClient(java.util.function.Function<TorrentClient, T> action) {
         requireEnabled();

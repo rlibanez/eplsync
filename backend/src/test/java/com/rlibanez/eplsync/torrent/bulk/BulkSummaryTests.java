@@ -146,6 +146,23 @@ class BulkSummaryTests {
         assertThat(store.list(10,20,null).items()).isEmpty();
     }
 
+    @Test void inventoryCounterUsesMatchingClientHashAndRevisionWithoutBlockingCompletion() {
+        seed("inventory-report",false);
+        var job=jobs.findById("inventory-report").orElseThrow();job.setTrackDownloads(true);job.setTargetFingerprint("inventory-client");jobs.save(job);
+        jdbc.update("UPDATE torrent_bulk_items SET revision=1 WHERE job_id='inventory-report'");
+        try {
+            jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at,inventory_state) VALUES('report-file',10,1,'hash-0','qbittorrent','inventory-client','DOWNLOADED','EPLSYNC',0,'CHECKED')");
+            assertThat(store.view(job.getId()).download().filesChecked()).isEqualTo(1);
+            jdbc.update("UPDATE torrent_downloads SET client_instance_id='another-client' WHERE id='report-file'");
+            assertThat(store.view(job.getId()).download().filesChecked()).isZero();
+            jdbc.update("UPDATE torrent_downloads SET client_instance_id='inventory-client',revision=2 WHERE id='report-file'");
+            assertThat(store.view(job.getId()).download().filesChecked()).isZero();
+            jdbc.update("UPDATE torrent_downloads SET revision=1,inventory_state='ERROR' WHERE id='report-file'");
+            var view=store.view(job.getId());assertThat(view.download().filesChecked()).isZero();
+            assertThat(view.status()).isEqualTo(BulkJob.State.COMPLETED);
+        } finally {jdbc.update("DELETE FROM torrent_downloads WHERE id='report-file'");}
+    }
+
     @Test void trackedDownloadSummariesRemainBoundedForOneAndTwentyJobs() {
         for(int i=0;i<20;i++) {seed("tracked-"+i,false);var job=jobs.findById("tracked-"+i).orElseThrow();job.setTrackDownloads(true);jobs.save(job);}
         var stats=factory.unwrap(SessionFactory.class).getStatistics();boolean enabled=stats.isStatisticsEnabled();stats.setStatisticsEnabled(true);

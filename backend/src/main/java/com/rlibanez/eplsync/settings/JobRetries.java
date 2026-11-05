@@ -281,7 +281,7 @@ public class JobRetries {
     private void retryDownloads(String id,Plan plan,Account actor) {
         var cleanups=new LinkedHashMap<String,Map<String,Object>>();
         for(var work:plan.work()) {
-            if(work.phase().equals("SEND")) jdbc.update("UPDATE torrent_bulk_items SET state='PENDING',attempts=0,message='Reposición o reintento solicitado por el usuario; se comprobará el hash antes de enviar',download_state=NULL,download_message=NULL WHERE id=? AND job_id=?",work.id(),id);
+            if(work.phase().equals("SEND")) jdbc.update("UPDATE torrent_bulk_items SET state='PENDING',attempts=0,retry_after=0,submission_until=0,message='Reposición o reintento solicitado por el usuario; se comprobará el hash antes de enviar',download_state=NULL,download_message=NULL WHERE id=? AND job_id=?",work.id(),id);
             work.cleanup().forEach(c->cleanups.put(c.get("id").toString(),c));
         }
         for(var entry:cleanups.values()) {

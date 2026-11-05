@@ -49,6 +49,7 @@ public class BulkStore {
         events.recordAs(actor, com.rlibanez.eplsync.events.EventJournal.Category.JOB, "DOWNLOAD", outcome, origin, job.getId(), details);
     }
 
+    static final String PRESENCE_FAILED="No se confirmó la presencia del torrent tras el envío y tres reintentos; revisa el cliente antes de reintentar";
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BulkStore.class);
 
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.context.ApplicationEventPublisher publisher;
@@ -79,7 +80,9 @@ public class BulkStore {
     }
     public record RelatedCalibreJob(String id,String library,String state,CalibreCounts counts) {}
     public record CalibreSummary(CalibreCounts counts,List<RelatedCalibreJob> jobs) {}
-    public record DownloadSummary(long selected,long downloaded,long pending,long attention,long ignored) {}
+    public record DownloadSummary(long selected,long downloaded,long pending,long attention,long ignored,long filesChecked) {
+        public DownloadSummary(long selected,long downloaded,long pending,long attention,long ignored) {this(selected,downloaded,pending,attention,ignored,0);}
+    }
     public record CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled,String jobId) {
         public CleanupSummary(long waiting,long blocked,long requested,long removed,long cancelled) {this(waiting,blocked,requested,removed,cancelled,null);}
     }
@@ -524,6 +527,8 @@ public class BulkStore {
     @Transactional
     public void recover() {
         catalogPreparation.recover();
+        em.createQuery("update BulkItem i set i.submissionUntil=:until where i.submissionUntil=0 and (i.state=:flight or i.state=:pending and i.attempts>0)")
+            .setParameter("until",System.currentTimeMillis()+30_000).setParameter("flight",BulkItem.State.IN_FLIGHT).setParameter("pending",BulkItem.State.PENDING).executeUpdate();
         items.recover(BulkItem.State.IN_FLIGHT, BulkItem.State.PENDING);
         for (var state : List.of(BulkJob.State.RUNNING)) {
             for (var job : jobs.findByStateOrderByCreatedAtAsc(state, Pageable.unpaged())) {
@@ -565,18 +570,27 @@ public class BulkStore {
 
     @Transactional(readOnly = true)
     public List<String> pending(String id, int limit) {
-        return items.findByJobIdAndStateOrderByPosition(id, BulkItem.State.PENDING, PageRequest.of(0, limit))
-                .stream().map(value -> Objects.requireNonNull(value).getId()).toList();
+        return em.createQuery("select i.id from BulkItem i where i.jobId=:job and i.state=:state and i.retryAfter<=:now order by i.retryAfter,i.position",String.class)
+            .setParameter("job",id).setParameter("state",BulkItem.State.PENDING).setParameter("now",System.currentTimeMillis()).setMaxResults(limit).getResultList();
     }
 
     @Transactional
     public BulkItem claim(String jobId, String id) {
         if (!checkDispatchConfiguration(jobId)) return null;
         var item = items.findById(id).orElseThrow();
-        if (item.getState() != BulkItem.State.PENDING) return null;
-        item.setState(BulkItem.State.IN_FLIGHT); item.setAttempts(item.getAttempts() + 1);
+        if (item.getState() != BulkItem.State.PENDING || item.getRetryAfter()>System.currentTimeMillis()) return null;
+        long now=System.currentTimeMillis();
+        item.setResubmitAllowed(item.getSubmissionUntil()<=now && item.getAttempts()<4);
+        if(item.isResubmitAllowed()) {item.setAttempts(item.getAttempts()+1);item.setSubmissionUntil(now+30_000);}
+        item.setRetryAfter(0);job(jobId).setRetryAt(null);
+        item.setState(BulkItem.State.IN_FLIGHT);
         item.setMessage("Enviando al cliente; pendiente de confirmar su presencia");
         items.saveAndFlush(item); return item;
+    }
+
+    /** Cheap configuration check for an already-dispatched operation; claims still authorize every send. */
+    public boolean configurationMatches(BulkJob job) {
+        return properties.isEnabled() && job.getTargetFingerprint().equals(fingerprint());
     }
 
     /** Only prevents new claims; already dispatched requests retain their original snapshot. */
@@ -614,6 +628,7 @@ public class BulkStore {
                     : com.rlibanez.eplsync.events.EventJournal.Outcome.PAUSED);
             }
         } else item.setState(result);
+        if((result==BulkItem.State.ACCEPTED || result==BulkItem.State.ALREADY_EXISTS) && job.getState()==BulkJob.State.RUNNING) {job.setMessage(null);job.setRetryAt(null);}
         item.setMessage(message); job.setUpdatedAt(Instant.now());
         items.saveAndFlush(item);
         complete(job);
@@ -630,6 +645,19 @@ public class BulkStore {
         }
     }
 
+    /** Presence is not confirmed yet, or an isolated request failed. Other ready items may proceed. */
+    @Transactional
+    public BulkItem.State deferItem(String id,String message,boolean observedAbsent) {
+        var item=items.findById(id).orElseThrow();var job=job(item.getJobId());
+        long now=System.currentTimeMillis();
+        if(job.getState()==BulkJob.State.CANCELLED) item.setState(BulkItem.State.CANCELLED);
+        else if(observedAbsent && item.getAttempts()>=4 && item.getSubmissionUntil()<=now) {
+            item.setState(BulkItem.State.FAILED);message=PRESENCE_FAILED;
+        } else {item.setState(BulkItem.State.PENDING);item.setRetryAfter(now+5_000);}
+        item.setMessage(message);job.setUpdatedAt(Instant.now());items.saveAndFlush(item);complete(job);
+        return item.getState();
+    }
+
     @Transactional
     public void completeIfEmpty(String id) { complete(job(id)); }
     /** Legacy cleanup notifications still refresh download tracking; related cleanup has its own lifecycle. */
@@ -639,7 +667,7 @@ public class BulkStore {
     }
     private void complete(BulkJob job) {
         if (!List.of(BulkJob.State.RUNNING,BulkJob.State.QUEUED,BulkJob.State.DOWNLOAD_WAIT,BulkJob.State.CLEANUP_WAIT).contains(job.getState())
-                || count(job.getId(), BulkItem.State.PENDING)>0 || count(job.getId(), BulkItem.State.IN_FLIGHT)>0) return;
+                || hasItems(job.getId(),BulkItem.State.PENDING) || hasItems(job.getId(),BulkItem.State.IN_FLIGHT)) return;
         long unfinishedCleanup=job.getType()==BulkJob.Type.UPDATE && ((Number)em.createNativeQuery("SELECT count(*) FROM revision_cleanup_jobs WHERE update_job_id=:id").setParameter("id",job.getId()).getSingleResult()).longValue()==0 ? em.createQuery(
             "select count(c) from UpdateCleanup c where c.jobId=:job and c.state in :pending",Long.class)
             .setParameter("job",job.getId()).setParameter("pending",com.rlibanez.eplsync.torrent.updates.CleanupQueue.PENDING)
@@ -672,11 +700,13 @@ public class BulkStore {
         if(job.getMessage()!=null && job.getMessage().startsWith("No se pudo comprobar")) job.setMessage(null);
         complete(job);
     }
-    @Transactional public void deferDownloadCheck(String id) {
+    @Transactional public void deferDownloadCheck(String id) {deferDownloadCheck(id,true);}
+    @Transactional public void deferDownloadCheck(String id,boolean failed) {
         var job=job(id);
         if(!List.of(BulkJob.State.QUEUED,BulkJob.State.RUNNING,BulkJob.State.DOWNLOAD_WAIT,BulkJob.State.CLEANUP_WAIT).contains(job.getState())) return;
         job.setNextDownloadCheck(Instant.now().plus(internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.DOWNLOADS)).toEpochMilli());
-        job.setMessage("No se pudo comprobar el cliente torrent; se reintentará automáticamente");
+        if(failed) job.setMessage("No se pudo comprobar el cliente torrent; se reintentará automáticamente");
+        else if(job.getMessage()!=null && job.getMessage().startsWith("No se pudo comprobar")) job.setMessage(null);
     }
     @Transactional public void suspendDownloads(String id,String reason) {
         var job=job(id);
@@ -695,6 +725,10 @@ public class BulkStore {
         log.info("Seguimiento de descarga omitido: trabajo={}, elemento={}",id,itemId);
     }
     public BulkJob job(String id) { return jobs.findById(id).orElseThrow(() -> new TorrentOperationException(HttpStatus.NOT_FOUND, "Trabajo torrent inexistente")); }
+    private boolean hasItems(String id,BulkItem.State state) {
+        return !em.createQuery("select i.id from BulkItem i where i.jobId=:job and i.state=:state",String.class)
+            .setParameter("job",id).setParameter("state",state).setMaxResults(1).getResultList().isEmpty();
+    }
     private long count(String id, BulkItem.State state) { return items.countByJobIdAndState(id, state); }
     private String fingerprint() {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(

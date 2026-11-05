@@ -211,20 +211,20 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
             throw new com.rlibanez.eplsync.exception.UserInputException("savePath contiene caracteres de control");
         if (automatic && savePath != null && !savePath.isBlank())
             throw new com.rlibanez.eplsync.exception.UserInputException("savePath requiere autoManagement=false");
-        if (context.takeRecovery(download.hash())) {
+        var recovery=context.takeRecovery(download.hash());
+        if (recovery.isPresent()) {
             try {
-                context.confirmTorrent(download.hash(), hashes -> listTorrents(hashes).stream()
-                    .flatMap(torrent -> torrent.aliases().stream()).collect(java.util.stream.Collectors.toSet()));
+                context.confirmTorrent(download.hash(), hashes -> submissionPresence(hashes,context));
                 return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS;
             } catch (com.rlibanez.eplsync.torrent.TorrentPresenceUnconfirmedException absent) {
                 // Only successful observations reaching their grace deadline permit a fresh POST.
                 // Authentication/transport failures remain uncertain and never fall through here.
-                context.invalidateTorrents();
+                if(!recovery.get()) throw absent;
+                context.uncertain(download.hash());
             }
         }
         if (context.containsTorrent(download.hash(), this::submissionHashes)) {
-            context.confirmTorrent(download.hash(), hashes -> listTorrents(hashes).stream()
-                .flatMap(torrent -> torrent.aliases().stream()).collect(java.util.stream.Collectors.toSet()));
+            context.confirmTorrent(download.hash(), hashes -> submissionPresence(hashes,context));
             return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS;
         }
         if (!category.isEmpty()) validateCategory(category, context);
@@ -252,8 +252,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
             checkStatus(response);
             // qBittorrent 5.2.3 devuelve contadores JSON; versiones anteriores usaban Ok.
             if (response.statusCode() == 200 && response.body().trim().equals("Ok.")) {
-                context.confirmTorrent(download.hash(), hashes -> listTorrents(hashes).stream()
-                    .flatMap(torrent -> torrent.aliases().stream()).collect(java.util.stream.Collectors.toSet()));
+                context.confirmTorrent(download.hash(), hashes -> submissionPresence(hashes,context));
                 return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;
             }
             var result = parseJson(response.body());
@@ -261,14 +260,36 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
                     || result.path("failure_count").asInt(-1) != 0
                     || result.path("success_count").asInt(0) + result.path("pending_count").asInt(0) != 1)
                 throw new QBittorrentConnectionException(UPSTREAM);
-            context.confirmTorrent(download.hash(), hashes -> listTorrents(hashes).stream()
-                    .flatMap(torrent -> torrent.aliases().stream()).collect(java.util.stream.Collectors.toSet()));
+            var ids=new java.util.HashSet<String>();var added=result.path("added_torrent_ids");
+            if(added.isArray()) for(var id:added) {
+                String value=id.asString("").toUpperCase(java.util.Locale.ROOT);
+                if(!value.matches("[0-9A-F]{40}|[0-9A-F]{64}")) throw new QBittorrentConnectionException(UPSTREAM);
+                ids.add(value);
+            }
+            // One magnet was posted. Never bind a book to ambiguous returned identifiers.
+            if(ids.size()==1) context.acknowledged(download.hash(),ids);
+            context.confirmTorrent(download.hash(), hashes -> submissionPresence(hashes,context));
             return com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED;
         } catch (RuntimeException ex) {
             // El servidor puede haber aceptado un envío cuya respuesta se perdió.
-            context.invalidateTorrents();
+            context.uncertain(download.hash());
             throw ex;
         }
+    }
+
+    /** Submission confirmation needs identity only: unrelated progress values cannot poison it. */
+    private java.util.Set<String> submissionPresence(java.util.Set<String> requested,com.rlibanez.eplsync.torrent.TorrentSubmissionContext context) {
+        var ids=context.queryIds(requested).stream().sorted().toList();
+        var observed=new java.util.HashSet<String>();
+        for(int offset=0;offset<ids.size();offset+=50) {
+            var batch=ids.subList(offset,Math.min(offset+50,ids.size()));
+            for(var aliases:readArray("torrents/info?hashes="+encode(String.join("|",batch)),item->{
+                var values=torrentHashes(item);if(values.isEmpty()) throw new QBittorrentConnectionException(UPSTREAM);return values;
+            })) observed.addAll(aliases);
+        }
+        var result=context.matchedRequests(requested,observed);
+        if(!result.containsAll(requested)) result.addAll(context.aliasFallback(this::submissionHashes));
+        result.retainAll(requested);return result;
     }
 
     /** Índice por solicitud: el identificador remoto puede diferir del hash v1 del catálogo. */
@@ -362,6 +383,11 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
     }
     private <T> java.util.List<T> readArray(String path, java.util.function.Function<tools.jackson.databind.JsonNode,T> convert) {
         var mode = sendingAuth();
+        long started=System.nanoTime();boolean failed=true;
+        try {var result=readArrayWithAuthentication(path,mode,convert);failed=false;return result;}
+        finally {com.rlibanez.eplsync.torrent.TorrentWorkMetrics.record(path.equals("torrents/info")?"indice_completo":path.startsWith("torrents/info?")?"consulta_hashes":"consulta_archivos",System.nanoTime()-started,failed);}
+    }
+    private <T> java.util.List<T> readArrayWithAuthentication(String path,AuthMode mode,java.util.function.Function<tools.jackson.databind.JsonNode,T> convert) {
         try { return readArray(path, mode == AuthMode.API_KEY, convert); }
         catch (QBittorrentConnectionException ex) {
             if (ex.getReason() != AUTHENTICATION) throw ex;
@@ -420,7 +446,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
             double progress = item.path("progress").asDouble();
             long left = item.path("amount_left").asLong();
             if (!Double.isFinite(progress) || progress < 0 || progress > 1 || left < 0)
-                throw new QBittorrentConnectionException(UPSTREAM);
+                throw new QBittorrentConnectionException(UPSTREAM,"El cliente devolvió un progreso fuera de rango o un tamaño pendiente negativo; no se ha aplicado la comprobación");
             var status = remoteStatus(state, progress, left);
             long completion = item.path("completion_on").asLong(0);
             java.time.Instant completedAt = null;
@@ -626,14 +652,15 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         }
         String path = request.uri().getPath();
         String endpoint = path.substring(path.lastIndexOf("/api/v2/"));
-        long started = System.nanoTime();
+        long started = System.nanoTime();boolean failed=true;
         try {
-            var response = operation.execute();
+            var response = operation.execute();failed=response.statusCode()>=400;
             log.trace("qBittorrent {} {}: HTTP {}, {}ms", request.method(), endpoint, response.statusCode(),
                     java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
             if (response.statusCode() >= 400) log.debug("qBittorrent {} {}: HTTP {}", request.method(), endpoint, response.statusCode());
             return response;
         } catch (HttpTimeoutException ex) {
+            communicationLog.failed(request.method(),endpoint,ex);
             throw new QBittorrentConnectionException(TIMEOUT);
         } catch (IOException ex) {
             if(Thread.currentThread().isInterrupted()) throw new QBittorrentConnectionException(INTERRUPTED);
@@ -641,10 +668,13 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
                 if (cause instanceof com.rlibanez.eplsync.exception.TorrentConnectionException connection)
                     throw new QBittorrentConnectionException(connection.getReason());
             communicationLog.failed(request.method(),endpoint,ex);
-            throw new QBittorrentConnectionException(UPSTREAM);
+            throw new QBittorrentConnectionException(ex instanceof java.net.SocketTimeoutException?TIMEOUT:UPSTREAM);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             throw new QBittorrentConnectionException(INTERRUPTED);
+        } finally {
+            if(endpoint.equals("/api/v2/torrents/add") || endpoint.equals("/api/v2/torrents/files"))
+                com.rlibanez.eplsync.torrent.TorrentWorkMetrics.record(endpoint.endsWith("/add")?"http_envio":"http_archivos",System.nanoTime()-started,failed);
         }
     }
 

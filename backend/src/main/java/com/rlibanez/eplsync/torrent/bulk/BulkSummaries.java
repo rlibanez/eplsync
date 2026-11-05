@@ -60,9 +60,9 @@ final class BulkSummaries {
                 .put((UpdateCleanup.State)row[1],(Long)row[2]);
         var observations=new HashMap<String,BulkStore.DownloadSummary>();
         var trackedIds=jobs.stream().filter((BulkJob entryValue)->Objects.requireNonNull(entryValue).isTrackDownloads()).map(job->Objects.requireNonNull(job).getId()).toList();
-        if(!trackedIds.isEmpty()) for(Object result:em.createNativeQuery("SELECT job_id,count(*),sum(download_state='DOWNLOADED'),sum(download_state IN ('ERROR','NOT_FOUND','PAUSED')),sum(download_state='IGNORED') FROM torrent_bulk_items WHERE job_id IN (:ids) AND state IN ('ACCEPTED','ALREADY_EXISTS') GROUP BY job_id").setParameter("ids",trackedIds).getResultList()) {
+        if(!trackedIds.isEmpty()) for(Object result:em.createNativeQuery("SELECT job_id,count(*),sum(download_state='DOWNLOADED'),sum(download_state IN ('ERROR','NOT_FOUND','PAUSED')),sum(download_state='IGNORED'),sum(EXISTS(SELECT 1 FROM torrent_downloads d JOIN torrent_bulk_jobs j ON j.id=i.job_id WHERE d.client_instance_id=j.target_fingerprint AND d.epl_id=i.epl_id AND d.hash=i.hash AND d.revision=i.revision AND d.inventory_state='CHECKED')) FROM torrent_bulk_items i WHERE job_id IN (:ids) AND state IN ('ACCEPTED','ALREADY_EXISTS') GROUP BY job_id").setParameter("ids",trackedIds).getResultList()) {
             var row=(Object[])result;long total=number(row[1]),done=number(row[2]),attention=number(row[3]),ignored=number(row[4]);
-            observations.put(row[0].toString(),new BulkStore.DownloadSummary(total,done,total-done-attention-ignored,attention,ignored));
+            observations.put(row[0].toString(),new BulkStore.DownloadSummary(total,done,total-done-attention-ignored,attention,ignored,number(row[5])));
         }
         var related=relatedCalibre(em,ids);
         var cleanupLinks=new HashMap<String,String>();

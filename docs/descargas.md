@@ -251,7 +251,11 @@ Eliminar el registro elimina también su inventario, sin borrar archivos del cli
 
 Un trabajador consulta los inventarios pendientes en segundo plano, hasta cinco
 registros por ciclo y con un segundo de presupuesto entre consultas. No mantiene
-una transacción SQLite durante la red y obtiene turno entre operaciones torrent.
+una transacción SQLite durante la red. Los envíos masivos tienen prioridad: mientras
+están activos o esperando un reintento automático, el inventario cede sin consultar
+al cliente ni esperar un bloqueo.
+Cuando recupera el turno, comprueba primero los torrents descargados. Sus lecturas
+son compartidas con los envíos y siguen excluidas de los borrados.
 Los inventarios comprobados no se consultan continuamente: las comprobaciones
 reales de archivos actualizan también el inventario. Los torrents sin metadatos
 se reintentan más tarde; una respuesta vacía o un fallo conserva el inventario
@@ -317,3 +321,44 @@ ráfaga. Esto no autoriza ningún alta: antes de enviar se sigue exigiendo un í
 comprobado. Los avisos DEBUG de comunicación con qBittorrent se agrupan, con un
 máximo de uno por minuto para cada configuración activa y un contador de fallos
 acumulados. Los errores se siguen propagando a los trabajos.
+
+## Confirmación y prioridad de envíos masivos
+
+«Aceptado» requiere comprobar la presencia del torrent en el cliente. Las
+comprobaciones simultáneas se agrupan y utilizan los identificadores devueltos por
+qBittorrent cuando están disponibles. No necesitan interpretar el progreso de
+descarga. La resolución alternativa de hashes híbridos comparte una consulta
+completa limitada a una por cada 30 segundos, en lugar de repetirla por elemento.
+
+Una incorporación todavía no visible queda pendiente de confirmación en el mismo
+trabajo. Los demás elementos pueden avanzar. El plazo para reconciliar el envío y
+la fecha de reintento se conservan en SQLite; reiniciar no autoriza a repetir un
+POST incierto sin comprobar antes el hash. Los reintentos individuales tienen un
+límite y conservan la protección de las revisiones de sustitución.
+
+Los fallos de comunicación aislados se aplazan por elemento. Ante fallos
+consecutivos se mantiene la espera global y la pausa por agotamiento de reintentos,
+para no saturar un cliente caído. Los reintentos automáticos del mismo trabajo
+conservan su índice y categorías; un cambio de destino o trabajo no comparte ese
+contexto. Cancelar conserva lo ya incorporado y no reactiva elementos pendientes.
+
+La cabecera del informe muestra por separado el progreso de Envío, Descargas y,
+si hay trabajos relacionados y permisos para consultarlos, Calibre. Envío cuenta
+los elementos procesados o cancelados; Calibre cuenta los enviados, existentes,
+fallidos, cancelados u omitidos, manteniendo aparte los pendientes y sin confirmar.
+Llegar al 100 % de procesamiento no implica que todos hayan terminado con éxito.
+Descargas cuenta únicamente los torrents descargados sobre los aceptados o
+existentes; mientras se incorporan más torrents, su denominador puede aumentar.
+
+El apartado Descarga muestra también el estado y los torrents con archivos
+comprobados en el inventario local, sin consultar al cliente al abrir el informe.
+Este contador no condiciona la finalización del trabajo: puede haber descargas
+terminadas cuyo inventario todavía esté pendiente o tenga un error de comprobación.
+
+El seguimiento automático comparte el acceso al cliente con los envíos: puede
+consultar el estado mientras se incorporan torrents. Mantiene la exclusión con
+borrados y sincronizaciones completas, sin esperar en la cola por delante de ellos.
+Si un hash está enviándose o se envía durante una consulta, esa instantánea no se
+aplica a su registro; lo revisará el siguiente ciclo. Los demás hashes sí se
+actualizan. Esta protección solo conserva información durante la consulta y no
+crea un historial ni una caché permanente por torrent.

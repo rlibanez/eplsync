@@ -64,4 +64,37 @@ class TorrentSubmissionContextTests {
         assertThatThrownBy(()->context.confirmTorrent("A",hashes->{throw failure;})).isSameAs(failure);
         assertThatThrownBy(()->context.confirmTorrent("B",hashes->Set.of("B"))).isSameAs(failure);
     }
+    @Test void hybridFallbackIsSharedAndRateLimitedAcrossManyUnmatchedHashes() {
+        var clock=new AtomicLong();var context=new TorrentSubmissionContext(clock::get);var scans=new AtomicInteger();
+        assertThat(context.aliasFallback(()->{scans.incrementAndGet();return Set.of("A");})).contains("A");
+        clock.set(TimeUnit.SECONDS.toNanos(2));
+        for(int n=0;n<1000;n++) assertThat(context.aliasFallback(()->{scans.incrementAndGet();return Set.of("B");})).isEmpty();
+        assertThat(scans).hasValue(1);
+        clock.set(TimeUnit.SECONDS.toNanos(30));
+        assertThat(context.aliasFallback(()->{scans.incrementAndGet();return Set.of("B");})).containsExactly("B");
+        assertThat(scans).hasValue(2);
+        clock.set(TimeUnit.SECONDS.toNanos(60));
+        assertThatThrownBy(()->context.aliasFallback(()->{throw new IllegalStateException("down");})).isInstanceOf(IllegalStateException.class);
+        assertThat(context.aliasFallback(()->Set.of("B"))).isEmpty();
+    }
+    @Test void uncertainHashKeepsTheIndexAndCategoriesOfOtherSubmissions() {
+        var context=new TorrentSubmissionContext();var loads=new AtomicInteger();
+        assertThat(context.containsTorrent("A",()->{loads.incrementAndGet();return Set.of("A","B");})).isTrue();
+        context.uncertain("A");context.resumed();
+        assertThat(context.containsTorrent("B",()->{throw new AssertionError("full rescan");})).isTrue();
+        assertThat(context.containsTorrent("A",()->{throw new AssertionError("full rescan");})).isFalse();
+        assertThat(context.takeRecovery("A")).contains(true);assertThat(loads).hasValue(1);
+    }
+    @Test void waitingBehindASlowCheckIsNeitherAbsenceNorATransportFailure() throws Exception {
+        var context=new TorrentSubmissionContext();var reading=new CountDownLatch(1);var release=new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var first=executor.submit(()->context.confirmTorrent("A",hashes->{reading.countDown();try {release.await(3,TimeUnit.SECONDS);}catch(InterruptedException ex) {throw new AssertionError(ex);}return Set.of("A");}));
+            try {
+                assertThat(reading.await(2,TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(()->context.confirmTorrent("B",hashes->{throw new AssertionError("A shared read is already running");},java.time.Duration.ofMillis(100)))
+                    .isInstanceOf(TorrentPresencePendingException.class).isNotInstanceOf(TorrentPresenceUnconfirmedException.class);
+            } finally {release.countDown();}
+            first.get(3,TimeUnit.SECONDS);
+        }
+    }
 }

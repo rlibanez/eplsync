@@ -83,6 +83,40 @@ class DownloadFileInventoryTests {
         assertThat(ids).containsExactlyInAnyOrder(record,pdf,pending,failed,cached,noExtension,other);
         if(selection.equals("epub")) assertThat(opposite.items()).extracting(DownloadRecord::getId).containsExactlyInAnyOrder(pdf,pending,failed,noExtension,other);
     }
+    @Test void inventoryYieldsBeforeSqlWhileBulkSendsHavePriorityAndPrioritizesDownloadedBooksAfterwards() {
+        String pending=create("B");jdbc.update("UPDATE torrent_downloads SET status='DOWNLOADED' WHERE id=?",pending);
+        var service=org.mockito.Mockito.mock(com.rlibanez.eplsync.service.TorrentClientService.class);
+        var gate=org.mockito.Mockito.mock(com.rlibanez.eplsync.maintenance.MaintenanceGate.class);org.mockito.Mockito.when(gate.enter(false)).thenReturn(true);
+        var sql=org.mockito.Mockito.spy(jdbc);
+        var worker=new DownloadFileInventory(sql,transactions,service,tracking,gate,new com.rlibanez.eplsync.config.TorrentProperties(),System::nanoTime);
+        try {
+            try(var priority=tracking.prioritizeSubmissions()) {
+                for(int n=0;n<50;n++) worker.tick();
+                org.mockito.Mockito.verifyNoInteractions(sql,service);
+            }
+            var adapter=org.mockito.Mockito.mock(TorrentClient.class);
+            org.mockito.Mockito.when(adapter.listFiles(org.mockito.ArgumentMatchers.anyString())).thenReturn(List.of(new TorrentClient.TorrentFile(0,"book.epub",10,1,"/downloads")));
+            org.mockito.Mockito.doAnswer(call->{java.util.function.Consumer<TorrentClient> action=call.getArgument(0);action.accept(adapter);return true;}).when(service).inventoryClient(org.mockito.ArgumentMatchers.any());
+            worker.tick();
+            org.mockito.Mockito.verify(adapter).listFiles("B".repeat(40));org.mockito.Mockito.verify(adapter,org.mockito.Mockito.never()).listFiles("A".repeat(40));
+            worker.tick();org.mockito.Mockito.verify(adapter).listFiles("A".repeat(40));
+        } finally {worker.close();}
+    }
+    @Test void automaticSubmissionBackoffDoesNotLetInventoryLoadTheRecoveringClient() {
+        String job=UUID.randomUUID().toString(),instance=tracking.instanceId();
+        jdbc.update("INSERT INTO torrent_bulk_jobs(id,state,type,client,target_fingerprint,multiple_hashes,batch_size,concurrency,interval_millis,selected_books,created_at,updated_at) VALUES(?,'RETRY_WAIT','DOWNLOAD','qbittorrent',?,'FIRST',100,5,0,1,0,0)",job,instance);
+        var service=org.mockito.Mockito.mock(com.rlibanez.eplsync.service.TorrentClientService.class);
+        var gate=org.mockito.Mockito.mock(com.rlibanez.eplsync.maintenance.MaintenanceGate.class);org.mockito.Mockito.when(gate.enter(false)).thenReturn(true);
+        var worker=new DownloadFileInventory(jdbc,transactions,service,tracking,gate,new com.rlibanez.eplsync.config.TorrentProperties(),System::nanoTime);
+        try {
+            worker.tick();org.mockito.Mockito.verifyNoInteractions(service);
+            jdbc.update("UPDATE torrent_bulk_jobs SET state='PAUSED' WHERE id=?",job);
+            var adapter=org.mockito.Mockito.mock(TorrentClient.class);
+            org.mockito.Mockito.when(adapter.listFiles(org.mockito.ArgumentMatchers.anyString())).thenReturn(List.of(new TorrentClient.TorrentFile(0,"book.epub",10,1,"/downloads")));
+            org.mockito.Mockito.doAnswer(call->{java.util.function.Consumer<TorrentClient> action=call.getArgument(0);action.accept(adapter);return true;}).when(service).inventoryClient(org.mockito.ArgumentMatchers.any());
+            worker.tick();org.mockito.Mockito.verify(adapter).listFiles("A".repeat(40));
+        } finally {worker.close();jdbc.update("DELETE FROM torrent_bulk_jobs WHERE id=?",job);}
+    }
     @Test void anUnavailableClientDefersTheWholeInventoryAndRecoveryResumesWithoutDroppingCachedFiles() {
         downloads.deleteAll();String instance=tracking.instanceId();
         for(String id:List.of("a","b","c")) jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES(?,123,1,?,'qbittorrent',?,'DOWNLOADING','EPLSYNC',0)",id,id.toUpperCase(Locale.ROOT).repeat(40),instance);
@@ -94,8 +128,8 @@ class DownloadFileInventoryTests {
         var properties=new com.rlibanez.eplsync.config.TorrentProperties();
         var worker=new DownloadFileInventory(sql,transactions,service,tracking,gate,properties,clock::get);
         try {
-            org.mockito.Mockito.when(service.synchronizeClient(org.mockito.ArgumentMatchers.any())).thenThrow(new com.rlibanez.eplsync.qbittorrent.QBittorrentConnectionException(com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.UPSTREAM));
-            worker.tick();org.mockito.Mockito.verify(service,org.mockito.Mockito.times(1)).synchronizeClient(org.mockito.ArgumentMatchers.any());
+            org.mockito.Mockito.when(service.inventoryClient(org.mockito.ArgumentMatchers.any())).thenThrow(new com.rlibanez.eplsync.qbittorrent.QBittorrentConnectionException(com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.UPSTREAM));
+            worker.tick();org.mockito.Mockito.verify(service,org.mockito.Mockito.times(1)).inventoryClient(org.mockito.ArgumentMatchers.any());
             assertThat(jdbc.queryForObject("SELECT inventory_state FROM torrent_downloads WHERE id='a'",String.class)).isEqualTo("ERROR");
             assertThat(jdbc.queryForObject("SELECT inventory_state FROM torrent_downloads WHERE id='b'",String.class)).isEqualTo("PENDING");
             assertThat(jdbc.queryForObject("SELECT relative_path FROM torrent_download_files WHERE download_id='c'",String.class)).isEqualTo("cached.epub");
@@ -104,7 +138,7 @@ class DownloadFileInventoryTests {
             org.mockito.Mockito.verifyNoInteractions(service,sql);
             var adapter=org.mockito.Mockito.mock(TorrentClient.class);
             org.mockito.Mockito.when(adapter.listFiles(org.mockito.ArgumentMatchers.anyString())).thenReturn(List.of(new TorrentClient.TorrentFile(0,"book.epub",10,1,"/downloads")));
-            org.mockito.Mockito.doAnswer(call->{java.util.function.Function<TorrentClient,Object> action=call.getArgument(0);return action.apply(adapter);}).when(service).synchronizeClient(org.mockito.ArgumentMatchers.any());
+            org.mockito.Mockito.doAnswer(call->{java.util.function.Consumer<TorrentClient> action=call.getArgument(0);action.accept(adapter);return true;}).when(service).inventoryClient(org.mockito.ArgumentMatchers.any());
             clock.set(java.util.concurrent.TimeUnit.MINUTES.toNanos(1));worker.tick();
             org.mockito.Mockito.verify(adapter,org.mockito.Mockito.times(2)).listFiles(org.mockito.ArgumentMatchers.anyString());
             assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_downloads WHERE inventory_state='CHECKED'",Long.class)).isEqualTo(2);
@@ -114,17 +148,17 @@ class DownloadFileInventoryTests {
         downloads.deleteAll();
         for(String id:List.of("old","new")) jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES(?,123,1,?,'qbittorrent',?,'DOWNLOADING','EPLSYNC',0)",id,id,id);
         var instance=new java.util.concurrent.atomic.AtomicReference<>("old");
-        var source=org.mockito.Mockito.mock(DownloadTrackingService.class);org.mockito.Mockito.when(source.instanceId()).thenAnswer(call->instance.get());
+        var source=org.mockito.Mockito.mock(DownloadTrackingService.class);org.mockito.Mockito.when(source.instanceId()).thenAnswer(call->instance.get());org.mockito.Mockito.when(source.inventoryAllowed()).thenReturn(true);
         var service=org.mockito.Mockito.mock(com.rlibanez.eplsync.service.TorrentClientService.class);
         var gate=org.mockito.Mockito.mock(com.rlibanez.eplsync.maintenance.MaintenanceGate.class);org.mockito.Mockito.when(gate.enter(false)).thenReturn(true);
         var worker=new DownloadFileInventory(jdbc,transactions,service,source,gate,new com.rlibanez.eplsync.config.TorrentProperties(),()->0L);
         try {
-            org.mockito.Mockito.when(service.synchronizeClient(org.mockito.ArgumentMatchers.any())).thenThrow(new com.rlibanez.eplsync.qbittorrent.QBittorrentConnectionException(com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.UPSTREAM));
+            org.mockito.Mockito.when(service.inventoryClient(org.mockito.ArgumentMatchers.any())).thenThrow(new com.rlibanez.eplsync.qbittorrent.QBittorrentConnectionException(com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.UPSTREAM));
             worker.tick();instance.set("new");
             var adapter=org.mockito.Mockito.mock(TorrentClient.class);org.mockito.Mockito.when(adapter.listFiles("new")).thenReturn(List.of(new TorrentClient.TorrentFile(0,"new.epub",10,1,"/downloads")));
-            org.mockito.Mockito.doAnswer(call->{java.util.function.Function<TorrentClient,Object> action=call.getArgument(0);return action.apply(adapter);}).when(service).synchronizeClient(org.mockito.ArgumentMatchers.any());
+            org.mockito.Mockito.doAnswer(call->{java.util.function.Consumer<TorrentClient> action=call.getArgument(0);action.accept(adapter);return true;}).when(service).inventoryClient(org.mockito.ArgumentMatchers.any());
             worker.tick();
-            org.mockito.Mockito.verify(service,org.mockito.Mockito.times(2)).synchronizeClient(org.mockito.ArgumentMatchers.any());
+            org.mockito.Mockito.verify(service,org.mockito.Mockito.times(2)).inventoryClient(org.mockito.ArgumentMatchers.any());
             assertThat(jdbc.queryForObject("SELECT inventory_state FROM torrent_downloads WHERE id='new'",String.class)).isEqualTo("CHECKED");
             assertThat(jdbc.queryForObject("SELECT relative_path FROM torrent_download_files WHERE download_id='new'",String.class)).isEqualTo("new.epub");
         } finally {worker.close();}

@@ -1,5 +1,9 @@
 import { DownloadJobControls } from "../jobs/DownloadJobControls";
-import { completedWorkItems } from "./shared";
+import {
+  completedWorkItems,
+  jobPhaseProgress,
+  downloadPhaseState,
+} from "./shared";
 import { useAuth } from "../auth/Auth";
 import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
@@ -666,6 +670,7 @@ export function JobDetail() {
     (page + 1) * size,
   );
   const data = job.data;
+  const phases = data ? jobPhaseProgress(data) : null;
   const progress = data?.selectedItems
     ? (100 * completedWorkItems(data)) / data.selectedItems
     : 0;
@@ -766,9 +771,21 @@ export function JobDetail() {
               <summary>
                 <span>{t("downloads.report")}</span>
                 <strong className="report-result">{status(data.status)}</strong>
-                <span className="report-result" title={t("downloads.progress")}>
-                  {number(Math.floor(progress))} %
+                <span className="report-result">
+                  {t("jobReport.submission")} {number(phases!.submission)} %
                 </span>
+                {phases!.downloads !== null && (
+                  <span className="report-result">
+                    {t("downloadLifecycle.progressLabel")}{" "}
+                    {number(phases!.downloads)} %
+                  </span>
+                )}
+                {(can("CALIBRE_SEND") || can("CALIBRE_JOBS_MANAGE")) &&
+                  phases!.calibre !== null && (
+                    <span className="report-result">
+                      Calibre {number(phases!.calibre)} %
+                    </span>
+                  )}
               </summary>
               <div className="report-collapse-body">
                 <Progress
@@ -831,6 +848,26 @@ export function JobDetail() {
                           {
                             title: "downloadLifecycle.phase",
                             values: [
+                              [
+                                "jobReport.phaseStatus",
+                                [
+                                  "attention",
+                                  "pending",
+                                  "completedWithOmissions",
+                                ].includes(downloadPhaseState(data))
+                                  ? t(
+                                      `downloadLifecycle.${downloadPhaseState(data)}`,
+                                    )
+                                  : status(downloadPhaseState(data)),
+                              ],
+                              [
+                                "downloads.progress",
+                                `${number(phases!.downloads!)} %`,
+                              ],
+                              [
+                                "downloadLifecycle.filesChecked",
+                                `${number(data.download.filesChecked ?? 0)} / ${number(data.download.selected)}`,
+                              ],
                               [
                                 "downloadLifecycle.selected",
                                 number(data.download.selected),

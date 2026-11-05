@@ -15,7 +15,12 @@ final class QBittorrentCommunicationLog {
         if(!logger.isDebugEnabled()) return;
         failures++;long now=clock.getAsLong();
         if(reported && now-lastReport<TimeUnit.MINUTES.toNanos(1)) return;
-        logger.debug("Fallo de comunicación qBittorrent {} {}: {}; fallosDesdeUltimoAviso={}",method,endpoint,cause.getClass().getSimpleName(),failures);
+        logger.debug("Fallo de comunicación qBittorrent {} {}: {}; fallosDesdeUltimoAviso={}",method,endpoint,technicalCause(cause),failures);
         reported=true;lastReport=now;failures=0;
+    }
+    private static String technicalCause(Throwable cause) {
+        var names=new java.util.ArrayList<String>();var seen=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<Throwable,Boolean>());
+        for(var item=cause;item!=null && seen.add(item) && names.size()<5;item=item.getCause()) names.add(item.getClass().getSimpleName());
+        return String.join(" <- ",names);
     }
 }

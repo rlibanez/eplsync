@@ -85,3 +85,22 @@ La IP registrada corresponde al cliente que conecta con la aplicación. Con Dock
 o un proxy puede ser la dirección de la pasarela o del proxy, según la configuración.
 Los logs de acceso contienen las URL y sus parámetros; evita compartir información
 sensible cuando solicites ayuda.
+
+## Diagnóstico de envíos masivos
+
+Durante un envío activo, el progreso se registra también aproximadamente cada
+minuto, aunque no se haya alcanzado otro tramo del 10 %. Incluye el ritmo de
+elementos procesados en ese intervalo.
+
+`Rendimiento de operaciones torrent` agrupa, como máximo una vez por minuto,
+contadores, duración media, duración máxima y errores por fase: espera para enviar,
+registro en SQLite, estado del trabajo, incorporación HTTP, consulta de hashes,
+índice completo y archivos. La duración de las consultas incluye la lectura e
+interpretación de la respuesta, no solo la recepción de las cabeceras. Los tiempos
+de fases concurrentes no deben sumarse como si fueran tiempo total del trabajo.
+No hay consultas ni temporizadores adicionales para obtener estas medidas.
+
+Los avisos de comunicación siguen limitados en frecuencia y muestran los tipos de
+las causas técnicas sin incluir mensajes remotos, cuerpos, credenciales ni magnets.
+Que el seguimiento encuentre ocupado el acceso al cliente durante un envío no se
+presenta como una avería de conexión.

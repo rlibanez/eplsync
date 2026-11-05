@@ -76,9 +76,9 @@ class BulkTests {
     @Autowired com.rlibanez.eplsync.maintenance.MaintenanceGate maintenance;
     @Autowired com.rlibanez.eplsync.jobs.RetryAuthorization authorization;
     private BulkDownloadMonitor monitor(com.rlibanez.eplsync.torrent.TorrentClient adapter) {
-        when(client.exclusiveClient(any())).thenAnswer(invocation -> {
+        when(client.observationClient(any())).thenAnswer(invocation -> {
             java.util.function.Function<com.rlibanez.eplsync.torrent.TorrentClient,Object> action=invocation.getArgument(0);
-            return action.apply(adapter);
+            return tracking.observation(()->action.apply(adapter));
         });
         return new BulkDownloadMonitor(jdbc,store,client,tracking,maintenance,authorization);
     }
@@ -88,6 +88,32 @@ class BulkTests {
     private void downloadRecord(BulkItem item) {
         jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at,submitted_at) VALUES(?,?,?,?,?,?,'SUBMITTED','EPLSYNC',0,0)",item.getId(),item.getEplId(),item.getRevision(),item.getHash(),"qbittorrent",tracking.instanceId());
     }
+    @Test void lifecycleAppliesUnchangedDownloadsAndIgnoresAConcurrentSubmissionSnapshot() {
+        var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);var monitor=monitor(adapter);
+        try {
+            var job=create(null);
+            jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED' WHERE job_id=?",job.jobId());store.completeIfEmpty(job.jobId());
+            var rows=items.findByJobIdOrderByPosition(job.jobId(),PageRequest.of(0,20)).getContent();rows.forEach(this::downloadRecord);
+            var changed=rows.getFirst();
+            var command=new com.rlibanez.eplsync.torrent.TorrentDownload(changed.getHash(),"magnet",true,null,null,null,books.findById(changed.getEplId()).orElseThrow());
+            when(adapter.listTorrents(anySet())).thenAnswer(invocation->{
+                tracking.submit(command,()->TorrentDownloadResult.Status.ACCEPTED);
+                // Response started before this submission: its missing hash must not overwrite SUBMITTED.
+                return rows.stream().skip(1).map(row->remote(row,com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADED)).toList();
+            });
+            monitor.tick();
+            assertThat(jdbc.queryForObject("SELECT status FROM torrent_downloads WHERE id=?",String.class,changed.getId())).isEqualTo("SUBMITTED");
+            assertThat(store.view(job.jobId()).download().downloaded()).isEqualTo(4);
+            assertThat(store.view(job.jobId()).download().attention()).isZero();
+            assertThat(store.view(job.jobId()).download().pending()).isEqualTo(1);
+            jdbc.update("UPDATE torrent_bulk_jobs SET next_download_check=0 WHERE id=?",job.jobId());
+            when(adapter.listTorrents(anySet())).thenReturn(rows.stream().map(row->remote(row,com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADED)).toList());
+            monitor.tick();assertThat(store.view(job.jobId()).download().downloaded()).isEqualTo(5);
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
+            verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());verify(client,never()).addTorrent(any(),any());
+        } finally {monitor.close();jdbc.update("DELETE FROM torrent_downloads");}
+    }
+
     @Test void lifecycleWaitsForRealCompletionAndRecoversErrorsWithoutResending() throws Exception {
         var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);
         var monitor=monitor(adapter);
@@ -512,16 +538,73 @@ class BulkTests {
         assertThat(store.view(job.jobId()).alreadyExists()).isEqualTo(5);
     }
 
-    @Test void timeoutSchedulesBoundedRetryAndChecksExistingHashOnNextAttempt() throws Exception {
+    @Test void isolatedTimeoutDoesNotPauseUnrelatedItemsAndReconcilesBeforeRetry() throws Exception {
         when(client.addTorrent(any())).thenThrow(new TorrentConnectionException(TorrentConnectionException.Reason.TIMEOUT))
                 .thenReturn(TorrentDownloadResult.Status.ALREADY_EXISTS);
-        var job = create(null); start();
-        until(() -> store.view(job.jobId()).status() == BulkJob.State.RETRY_WAIT);
-        assertThat(store.view(job.jobId()).retryAt()).isAfter(Instant.now());
-        var persisted = jobs.findById(job.jobId()).orElseThrow(); persisted.setRetryAt(Instant.now().minusSeconds(1)); jobs.save(persisted);
-        until(() -> store.view(job.jobId()).status() == BulkJob.State.DOWNLOAD_WAIT);
+        var job=create(null);start();
+        until(()->store.view(job.jobId()).alreadyExists()==4);
+        assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.RUNNING);
+        assertThat(store.view(job.jobId()).pending()).isEqualTo(1);
+        assertThat(store.pending(job.jobId(),100)).isEmpty();
+        jdbc.update("UPDATE torrent_bulk_items SET retry_after=0 WHERE job_id=?",job.jobId());
+        until(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
         assertThat(store.view(job.jobId()).alreadyExists()).isEqualTo(5);
         assertThat(store.view(job.jobId()).retryAt()).isNull();
+    }
+
+    @Test void pendingConfirmationDefersOnlyItsItemAndKeepsTheGracePeriodAcrossRestart() throws Exception {
+        when(client.addTorrent(any())).thenThrow(new com.rlibanez.eplsync.torrent.TorrentPresenceUnconfirmedException())
+            .thenReturn(TorrentDownloadResult.Status.ACCEPTED);
+        var job=create(null);start();until(()->store.view(job.jobId()).accepted()==4);
+        var item=items.findByJobIdAndStateOrderByPosition(job.jobId(),BulkItem.State.PENDING,PageRequest.of(0,1)).getFirst();
+        assertThat(item.getAttempts()).isEqualTo(1);assertThat(item.getSubmissionUntil()).isGreaterThan(System.currentTimeMillis());
+        assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.RUNNING);
+        worker.close();worker=null;store.recover();
+        jdbc.update("UPDATE torrent_bulk_items SET retry_after=0 WHERE id=?",item.getId());
+        store.next();var claim=store.claim(job.jobId(),item.getId());
+        assertThat(claim.isResubmitAllowed()).isFalse();assertThat(claim.getAttempts()).isEqualTo(1);
+        store.deferItem(item.getId(),"Pendiente de confirmar",true);
+        assertThat(items.findById(item.getId()).orElseThrow().getState()).isEqualTo(BulkItem.State.PENDING);
+    }
+    @Test void persistentAbsentSubmissionIsBoundedWithoutDiscardingOtherItems() {
+        var job=create(null);store.next();var id=store.pending(job.jobId(),1).getFirst();
+        for(int attempt=0;attempt<4;attempt++) {
+            jdbc.update("UPDATE torrent_bulk_items SET retry_after=0,submission_until=0 WHERE id=?",id);
+            var claim=store.claim(job.jobId(),id);assertThat(claim.isResubmitAllowed()).isTrue();
+            store.deferItem(id,"Presencia no confirmada",true);
+        }
+        jdbc.update("UPDATE torrent_bulk_items SET retry_after=0,submission_until=0 WHERE id=?",id);
+        var confirmation=store.claim(job.jobId(),id);assertThat(confirmation.isResubmitAllowed()).isFalse();
+        assertThat(store.deferItem(id,"Presencia no confirmada",true)).isEqualTo(BulkItem.State.FAILED);
+        assertThat(store.view(job.jobId()).failed()).isEqualTo(1);assertThat(store.view(job.jobId()).pending()).isEqualTo(4);
+        assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.RUNNING);
+    }
+    @Test void anUnfinishedSharedPresenceCheckNeverBecomesAConfirmedAbsence() {
+        var job=create(null);store.next();var id=store.pending(job.jobId(),1).getFirst();
+        jdbc.update("UPDATE torrent_bulk_items SET attempts=4,submission_until=1 WHERE id=?",id);
+        var item=store.claim(job.jobId(),id);assertThat(item.isResubmitAllowed()).isFalse();
+        assertThat(store.deferItem(id,"Comprobación en curso",false)).isEqualTo(BulkItem.State.PENDING);
+        assertThat(store.view(job.jobId()).failed()).isZero();assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.RUNNING);
+    }
+
+    @Test void cancelledJobNeverResubmitsDeferredItems() {
+        var job=create(null);store.next();var id=store.pending(job.jobId(),1).getFirst();store.claim(job.jobId(),id);
+        store.control(job.jobId(),"cancel");
+        assertThat(store.deferItem(id,"Incierto",false)).isEqualTo(BulkItem.State.CANCELLED);
+        store.recover();assertThat(store.pending(job.jobId(),100)).isEmpty();
+    }
+
+    @Test void sustainedTransportFailureKeepsTheCircuitOpenAndDoesNotVisitEveryPendingBook() throws Exception {
+        when(client.addTorrent(any())).thenThrow(new TorrentConnectionException(TorrentConnectionException.Reason.UPSTREAM));
+        var job=create(null);start();until(()->store.view(job.jobId()).status()==BulkJob.State.RETRY_WAIT);
+        for(int n=0;n<4 && store.view(job.jobId()).status()!=BulkJob.State.PAUSED;n++) {
+            jdbc.update("UPDATE torrent_bulk_jobs SET retry_at=0 WHERE id=?",job.jobId());
+            jdbc.update("UPDATE torrent_bulk_items SET retry_after=0,submission_until=0 WHERE job_id=?",job.jobId());
+            worker.tick();until(()->List.of(BulkJob.State.RETRY_WAIT,BulkJob.State.PAUSED).contains(store.view(job.jobId()).status()));
+        }
+        assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);
+        verify(client,atMost(8)).addTorrent(any());
+        assertThat(store.view(job.jobId()).accepted()).isZero();assertThat(store.view(job.jobId()).failed()).isZero();
     }
 
     @Test void changedDestinationRequiresRestoringOriginalClient() {
@@ -908,6 +991,7 @@ class BulkTests {
                 assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.RETRY_WAIT);
                 var persisted = jobs.findById(job.jobId()).orElseThrow();
                 persisted.setRetryAt(Instant.now().minusSeconds(1)); jobs.save(persisted);
+                jdbc.update("UPDATE torrent_bulk_items SET submission_until=0 WHERE id=?",id);
             }
         }
         assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);

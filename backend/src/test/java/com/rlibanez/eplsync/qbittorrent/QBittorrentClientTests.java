@@ -40,6 +40,8 @@ class QBittorrentClientTests {
     private volatile String torrentInfo = "[]";
     private final java.util.Set<String> addedHashes=java.util.concurrent.ConcurrentHashMap.newKeySet();
     private volatile boolean publishAdded=true;
+    private volatile boolean filterInfo,badAddedState;
+    private volatile String addedHashOverride;
     private volatile boolean primaryHashFilterOnly;
     private volatile String torrentFiles = "[]";
     private volatile int generatedTorrents;
@@ -338,14 +340,14 @@ class QBittorrentClientTests {
                             if(bodyDelay>0) try {Thread.sleep(bodyDelay);} catch(InterruptedException ex) {Thread.currentThread().interrupt();}
                             output.write(torrentInfo.getBytes(StandardCharsets.UTF_8));
                         }
-                    } else respond(exchange, 200, withAddedTorrents()); }
+                    } else respond(exchange, 200, infoResponse(exchange.getRequestURI().getRawQuery())); }
                 else if (call.path().endsWith("/torrents/files")) {fileQueries.add(String.valueOf(exchange.getRequestURI().getRawQuery()));respond(exchange, 200, torrentFiles);}
                 else if (call.path().endsWith("/torrents/categories")) respond(exchange, 200, categories);
                 else if (call.path().endsWith("/torrents/add")) {
                     if(publishAdded && addStatus<300 && (addBody.equals("Ok.") || addBody.contains("\"success_count\":1") || addBody.contains("\"pending_count\":1"))) {
                         var fields=java.net.URLDecoder.decode(call.body(),StandardCharsets.UTF_8);
                         var match=java.util.regex.Pattern.compile("urn:btih:([a-fA-F0-9]{40}|[a-fA-F0-9]{64})").matcher(fields);
-                        if(match.find()) addedHashes.add(match.group(1).toUpperCase(java.util.Locale.ROOT));
+                        if(match.find()) addedHashes.add(addedHashOverride==null?match.group(1).toUpperCase(java.util.Locale.ROOT):addedHashOverride);
                     }
                     respond(exchange, addStatus, addBody);
                 }
@@ -357,9 +359,17 @@ class QBittorrentClientTests {
         }
     }
 
+    private String infoResponse(String query) {
+        String response=withAddedTorrents();if(!filterInfo || query==null) return response;
+        var ids=java.util.Set.of(java.net.URLDecoder.decode(query,StandardCharsets.UTF_8).substring("hashes=".length()).split("\\|"));
+        var mapper=tools.jackson.databind.json.JsonMapper.builder().build();var result=mapper.createArrayNode();
+        for(var item:mapper.readTree(response)) if(ids.contains(item.path("hash").asString("").toUpperCase(java.util.Locale.ROOT))) result.add(item);
+        return result.toString();
+    }
+
     private String withAddedTorrents() {
         if(addedHashes.isEmpty()) return torrentInfo;
-        var extra=addedHashes.stream().map(hash->"{\"hash\":\""+hash+"\",\"state\":\"downloading\",\"progress\":0,\"amount_left\":1}").collect(java.util.stream.Collectors.joining(","));
+        var extra=addedHashes.stream().map(hash->"{\"hash\":\""+hash+"\",\"state\":\"downloading\",\"progress\":"+(badAddedState?-1:0)+",\"amount_left\":"+(badAddedState?-1:1)+"}").collect(java.util.stream.Collectors.joining(","));
         return torrentInfo.substring(0,torrentInfo.length()-1)+(torrentInfo.length()>2?",":"")+extra+"]";
     }
 
@@ -527,6 +537,28 @@ class QBittorrentClientTests {
             assertThat(qbit.addTorrent(command(other),recovered)).isEqualTo(com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS);
             assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/add")).count()).isEqualTo(1);
         }
+    }
+
+    @Test void confirmationUsesReturnedPrimaryIdWithoutScanningTheEntireLibraryForAHybridAlias() {
+        String original="A".repeat(40),primary="B".repeat(40);
+        filterInfo=true;addedHashOverride=primary;
+        addBody="{\"success_count\":1,\"pending_count\":0,\"failure_count\":0,\"added_torrent_ids\":[\""+primary+"\"]}";
+        assertThat(client().addTorrent(command(original),com.rlibanez.eplsync.torrent.TorrentSubmissionContext.bulk()))
+            .isEqualTo(com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED);
+        assertThat(torrentQueries).containsExactly("null","hashes="+primary);
+    }
+    @Test void confirmationDoesNotParseDownloadProgressAndStatusQueriesStillRejectInvalidStates() {
+        badAddedState=true;var qbit=client();
+        assertThat(qbit.addTorrent(command("A".repeat(40)))).isEqualTo(com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ACCEPTED);
+        assertThatThrownBy(qbit::listTorrents).isInstanceOf(QBittorrentConnectionException.class).hasMessageContaining("progreso fuera de rango");
+    }
+    @Test void missingConfirmationDoesNotScanTheEntireLibraryAtEveryPollOrRepeatThePost() {
+        publishAdded=false;filterInfo=true;var qbit=client();var context=com.rlibanez.eplsync.torrent.TorrentSubmissionContext.bulk();String hash="A".repeat(40);
+        assertThatThrownBy(()->qbit.addTorrent(command(hash),context)).isInstanceOf(com.rlibanez.eplsync.torrent.TorrentPresenceUnconfirmedException.class);
+        context.recovering(hash,false);
+        assertThatThrownBy(()->qbit.addTorrent(command(hash),context)).isInstanceOf(com.rlibanez.eplsync.torrent.TorrentPresenceUnconfirmedException.class);
+        assertThat(torrentQueries.stream().filter(query->query.equals("null")).count()).isEqualTo(2);
+        assertThat(calls.stream().filter(call->call.path().endsWith("/torrents/add")).count()).isEqualTo(1);
     }
 
     @Test

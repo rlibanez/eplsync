@@ -36,6 +36,12 @@ public class BulkWorker {
     private long activeProcessedItems;
     private int lastProgressCheckpoint;
     private long nextDispatch;
+    private String retainedId,retainedTarget;
+    private com.rlibanez.eplsync.torrent.TorrentSubmissionContext retainedContext;
+    private com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService.SubmissionPriority priority;
+    private int consecutiveFailures,retainedFailures;
+    private long lastProgressAt,lastProgressItems;
+    private void releasePriority() {if(priority!=null) {priority.close();priority=null;}}
     private boolean ready;
     private boolean closing;
     private Thread coordinator;
@@ -43,8 +49,10 @@ public class BulkWorker {
 
     private record PendingSend(BulkItem item, Future<Outcome> future) {}
 
-    record Outcome(BulkItem.State state, String message, boolean pause, boolean retry, String cause) {
-        Outcome(BulkItem.State state, String message, boolean pause, boolean retry) {this(state,message,pause,retry,"");}
+    record Outcome(BulkItem.State state, String message, boolean pause, boolean retry, String cause,boolean deferred,boolean observedAbsent) {
+        Outcome(BulkItem.State state,String message,boolean pause,boolean retry,String cause,boolean deferred) {this(state,message,pause,retry,cause,deferred,deferred);}
+        Outcome(BulkItem.State state,String message,boolean pause,boolean retry,String cause) {this(state,message,pause,retry,cause,false,false);}
+        Outcome(BulkItem.State state, String message, boolean pause, boolean retry) {this(state,message,pause,retry,"",false);}
     }
 
     public BulkWorker(BulkStore store, TorrentClientService client, TorrentProperties properties) {
@@ -94,6 +102,7 @@ public class BulkWorker {
         synchronized (store) {
             if (!inFlight.isEmpty()) throw new IllegalStateException("Hay envíos en curso");
             buffer.clear(); activeId = null; submissionContext = null;
+            retainedId=null;retainedTarget=null;retainedContext=null;releasePriority();
             activeSelectedItems = 0; activeProcessedItems = 0; lastProgressCheckpoint = 0;
             nextDispatch = 0;
             store.notifyAll();
@@ -123,7 +132,17 @@ public class BulkWorker {
             Outcome outcome;
             try { outcome = entry.getValue().future().get(); }
             catch (Exception ex) { outcome = new Outcome(BulkItem.State.FAILED, "Ejecución interrumpida; revisar antes de reanudar", true, false, OperationDiagnostics.technical(ex)); }
-            store.finish(entry.getKey(), outcome.state(), outcome.message(), outcome.pause(), outcome.retry());
+            boolean transientFailure=outcome.retry() && !outcome.pause() && !outcome.cause().isBlank();
+            boolean isolate=transientFailure && consecutiveFailures<2;
+            long persistence=System.nanoTime();
+            if(outcome.deferred() || isolate) {
+                var result=store.deferItem(entry.getKey(),outcome.message(),outcome.observedAbsent());
+                if(result==BulkItem.State.FAILED || result==BulkItem.State.CANCELLED)
+                    outcome=new Outcome(result,result==BulkItem.State.FAILED?BulkStore.PRESENCE_FAILED:outcome.message(),false,false,outcome.cause());
+            } else store.finish(entry.getKey(), outcome.state(), outcome.message(), outcome.pause(), outcome.retry());
+            com.rlibanez.eplsync.torrent.TorrentWorkMetrics.record("estado_trabajo",System.nanoTime()-persistence,false);
+            if(outcome.state()==BulkItem.State.ACCEPTED || outcome.state()==BulkItem.State.ALREADY_EXISTS || outcome.deferred()) consecutiveFailures=0;
+            else if(transientFailure) consecutiveFailures++;
             recordProgress(outcome);
             log.trace("Resultado bulk: jobId={}, itemId={}, estado={}, pausa={}, reintento={}",
                     activeId, entry.getKey(), outcome.state(), outcome.pause(), outcome.retry());
@@ -136,9 +155,10 @@ public class BulkWorker {
             if (outcome.retry() && !outcome.pause()) log.debug("Envío torrent aplazado: elemento={}, motivo={}, causa={}",entry.getKey(),safeLog(outcome.message()),outcome.cause());
             iterator.remove();
         }
+        if(activeId!=null && System.nanoTime()-lastProgressAt>=TimeUnit.MINUTES.toNanos(1)) logProgress(store.view(activeId),progressPercent());
         if (!properties.isEnabled() && activeId == null) return IDLE_WAIT;
         BulkJob job = activeId == null ? null : store.job(activeId);
-        if (job != null && job.getState() == BulkJob.State.RUNNING) {
+        if (job != null && job.getState() == BulkJob.State.RUNNING && !store.configurationMatches(job)) {
             store.checkDispatchConfiguration(job.getId());
             job = store.job(activeId);
         }
@@ -149,7 +169,10 @@ public class BulkWorker {
             log.info("Trabajo bulk sin envíos en curso: jobId={}, estado={}, accepted={}, alreadyExists={}, skipped={}, failed={}, pending={}, cancelled={}",
                     activeId, job.getState(), summary.accepted(), summary.alreadyExists(), summary.skipped(),
                     summary.failed(), summary.pending(), summary.cancelled());
-            activeId = null; job = null; submissionContext = null;
+            if(job.getState()==BulkJob.State.RETRY_WAIT) {
+                retainedId=activeId;retainedTarget=job.getTargetFingerprint();retainedContext=submissionContext;retainedFailures=consecutiveFailures;
+            } else if(Objects.equals(retainedId,activeId)) {retainedId=null;retainedContext=null;retainedTarget=null;}
+            releasePriority();activeId = null; job = null; submissionContext = null;
         }
         if (job == null) {
             if (!properties.isEnabled()) return IDLE_WAIT;
@@ -159,7 +182,10 @@ public class BulkWorker {
             if (job == null) {idleProbe.emptyUntil(beforeQuery,store.nextRetryMillis());return IDLE_WAIT;}
             activeId = job.getId(); buffer.clear();
             activeSettings = settings == null ? null : settings.snapshot();
-            submissionContext = new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+            boolean reuse=Objects.equals(activeId,retainedId) && Objects.equals(job.getTargetFingerprint(),retainedTarget) && retainedContext!=null;
+            submissionContext=reuse?retainedContext:com.rlibanez.eplsync.torrent.TorrentSubmissionContext.bulk();
+            submissionContext.resumed();consecutiveFailures=reuse?retainedFailures:0;
+            priority=client.prioritizeSubmissions();
             var progress = store.view(activeId);
             activeSelectedItems = progress.selectedItems();
             activeProcessedItems = progress.processedItems();
@@ -172,9 +198,11 @@ public class BulkWorker {
         long remaining = nextDispatch - System.nanoTime();
         if (remaining > 0) return Math.min(remaining, IDLE_WAIT);
         if (buffer.isEmpty()) buffer.addAll(store.pending(job.getId(), job.getBatchSize()));
-        if (buffer.isEmpty()) { store.completeIfEmpty(job.getId()); return IDLE_WAIT; }
+        if (buffer.isEmpty()) { store.completeIfEmpty(job.getId()); return TimeUnit.SECONDS.toNanos(1); }
         while (!buffer.isEmpty() && inFlight.size() < job.getConcurrency() && System.nanoTime() >= nextDispatch) {
+            long claiming=System.nanoTime();
             var item = store.claim(job.getId(), buffer.removeFirst());
+            com.rlibanez.eplsync.torrent.TorrentWorkMetrics.record("preparar_elemento",System.nanoTime()-claiming,false);
             if (item == null) { buffer.clear(); return IDLE_WAIT; }
             log.trace("Envío bulk: jobId={}, itemId={}, eplId={}, hash={}, intento={}",
                     job.getId(), item.getId(), item.getEplId(), item.getHash(), item.getAttempts());
@@ -213,19 +241,26 @@ public class BulkWorker {
     }
 
     private void logProgress(BulkStore.View progress, int progressPercent) {
-        log.info("Progreso bulk: jobId={}, progreso={}%, processedItems={}/{}, accepted={}, alreadyExists={}, skipped={}, failed={}, pending={}, inFlight={}",
+        long now=System.nanoTime();
+        double rate=lastProgressAt==0?0:Math.max(0,progress.processedItems()-lastProgressItems)*1_000_000_000.0/Math.max(1,now-lastProgressAt);
+        log.info("Progreso bulk: jobId={}, progreso={}%, processedItems={}/{}, accepted={}, alreadyExists={}, skipped={}, failed={}, pending={}, inFlight={}, elementosPorSegundo={}",
                 activeId, progressPercent, progress.processedItems(), progress.selectedItems(), progress.accepted(),
-                progress.alreadyExists(), progress.skipped(), progress.failed(), progress.pending(), progress.inFlight());
+                progress.alreadyExists(), progress.skipped(), progress.failed(), progress.pending(), progress.inFlight(),String.format(Locale.ROOT,"%.2f",rate));
+        lastProgressAt=now;lastProgressItems=progress.processedItems();
     }
 
     private Outcome send(BulkItem item, com.rlibanez.eplsync.torrent.TorrentSubmissionContext context) {
         try {
             // Attempts survive restarts. An uncertain earlier POST gets a live confirmation window
             // before another POST, including additions still pending inside qBittorrent.
-            if(item.getAttempts()>1) context.recovering(item.getHash());
+            if(item.getAttempts()>1 || !item.isResubmitAllowed()) context.recovering(item.getHash(),item.isResubmitAllowed());
             var result = client.addTorrent(store.command(item), context);
             return new Outcome(result == TorrentDownloadResult.Status.ACCEPTED
                     ? BulkItem.State.ACCEPTED : BulkItem.State.ALREADY_EXISTS, null, false, false);
+        } catch (com.rlibanez.eplsync.torrent.TorrentPresencePendingException ex) {
+            return new Outcome(null,ex.getMessage(),false,false,OperationDiagnostics.technical(ex),true,false);
+        } catch (com.rlibanez.eplsync.torrent.TorrentPresenceUnconfirmedException ex) {
+            return new Outcome(null,"Pendiente de confirmar la presencia del torrent; se comprobará automáticamente sin detener los otros envíos",false,false,OperationDiagnostics.technical(ex),true);
         } catch (TorrentConnectionException ex) {
             boolean retry = ex.getReason() == TorrentConnectionException.Reason.UPSTREAM
                     || ex.getReason() == TorrentConnectionException.Reason.TIMEOUT;
@@ -250,7 +285,7 @@ public class BulkWorker {
 
     @PreDestroy
     public void close() {
-        synchronized (store) { closing = true; store.notifyAll(); }
+        synchronized (store) { closing = true; releasePriority();store.notifyAll(); }
         executor.shutdownNow();
         // Los IN_FLIGHT persistidos se reconcilian por hash en el siguiente arranque.
     }
