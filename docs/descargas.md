@@ -347,8 +347,10 @@ si hay trabajos relacionados y permisos para consultarlos, Calibre. Envío cuent
 los elementos procesados o cancelados; Calibre cuenta los enviados, existentes,
 fallidos, cancelados u omitidos, manteniendo aparte los pendientes y sin confirmar.
 Llegar al 100 % de procesamiento no implica que todos hayan terminado con éxito.
-Descargas cuenta únicamente los torrents descargados sobre los aceptados o
-existentes; mientras se incorporan más torrents, su denominador puede aumentar.
+Descargas cuenta únicamente los torrents descargados sobre el total de elementos
+seleccionados, igual que Envío. Su denominador no aumenta conforme se incorporan
+torrents. Los omitidos, fallidos y cancelados no cuentan como descargados; un
+trabajo terminado con incidencias puede quedarse por debajo del 100 % de descarga.
 
 El apartado Descarga muestra también el estado y los torrents con archivos
 comprobados en el inventario local, sin consultar al cliente al abrir el informe.

@@ -861,7 +861,7 @@ export function JobDetail() {
                                   : status(downloadPhaseState(data)),
                               ],
                               [
-                                "downloads.progress",
+                                "downloadLifecycle.progress",
                                 `${number(phases!.downloads!)} %`,
                               ],
                               [

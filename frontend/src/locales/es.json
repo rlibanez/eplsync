@@ -2065,7 +2065,8 @@
     "homePending": "Descargas pendientes: {{count}}",
     "filesChecked": "Torrents con archivos comprobados",
     "completedWithOmissions": "Terminado con seguimiento omitido",
-    "progressLabel": "Descargas"
+    "progressLabel": "Descargas",
+    "progress": "Progreso de descarga"
   },
   "jobCalibre": {
     "column": "Calibre",

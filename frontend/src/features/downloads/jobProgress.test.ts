@@ -37,7 +37,7 @@ describe("independent job phases", () => {
           },
         }),
       ),
-    ).toEqual({ submission: 78, downloads: 12, calibre: 3 });
+    ).toEqual({ submission: 78, downloads: 6, calibre: 3 });
   });
   it("does not turn omissions or errors into downloaded files", () => {
     const value = job({
@@ -49,8 +49,28 @@ describe("independent job phases", () => {
         ignored: 5,
       },
     });
-    expect(jobPhaseProgress(value).downloads).toBe(30);
+    expect(jobPhaseProgress(value).downloads).toBe(3);
     expect(downloadPhaseState(value)).toBe("attention");
+  });
+  it("uses the fixed selection even when most torrents are not yet submitted", () => {
+    const value = job({
+      selectedItems: 66047,
+      processedItems: 1183,
+      download: {
+        selected: 1183,
+        downloaded: 310,
+        pending: 873,
+        attention: 0,
+        ignored: 0,
+      },
+    });
+    expect(jobPhaseProgress(value)).toEqual({
+      submission: 1,
+      downloads: 0,
+      calibre: null,
+    });
+    value.download!.selected = 2000;
+    expect(jobPhaseProgress(value).downloads).toBe(0);
   });
   it("handles missing phases, empty totals and cancellation", () => {
     expect(

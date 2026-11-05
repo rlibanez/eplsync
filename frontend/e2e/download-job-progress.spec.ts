@@ -80,21 +80,21 @@ for (const calibre of [true, false]) {
       .locator("summary")
       .filter({ hasText: "Informe del trabajo" });
     await expect(summary).toContainText("Envío 78 %");
-    await expect(summary).toContainText("Descargas 12 %");
+    await expect(summary).toContainText("Descargas 6 %");
     if (calibre) await expect(summary).toContainText("Calibre 3 %");
     else await expect(summary).not.toContainText("Calibre");
     await summary.click();
     await expect(
       page.getByText("Torrents con archivos comprobados", { exact: true }),
     ).toBeVisible();
-    const downloads = page
-      .locator("section.job-report-group")
-      .filter({
-        has: page.getByRole("heading", { name: "Descarga", exact: true }),
-      });
+    const downloads = page.locator("section.job-report-group").filter({
+      has: page.getByRole("heading", { name: "Descarga", exact: true }),
+    });
     await expect(downloads).toContainText("5 / 50");
-    await expect(downloads).toContainText("12 %");
+    await expect(downloads).toContainText("6 %");
+    await expect(downloads).toContainText("Progreso de descarga");
+    await expect(downloads).not.toContainText("Progreso de envío");
     await summary.click();
-    await expect(summary).toContainText("Descargas 12 %");
+    await expect(summary).toContainText("Descargas 6 %");
   });
 }

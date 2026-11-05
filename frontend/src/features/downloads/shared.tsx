@@ -236,7 +236,7 @@ export function jobPhaseProgress(job: Job) {
       job.selectedItems,
     ),
     downloads: job.download
-      ? phasePercent(job.download.downloaded, job.download.selected)
+      ? phasePercent(job.download.downloaded, job.selectedItems)
       : null,
     calibre: c?.total
       ? phasePercent(
