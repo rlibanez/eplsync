@@ -36,7 +36,7 @@ public class RevisionCleanup {
     public record RetryInput(String requestId,boolean confirm,boolean confirmDestructive) {}
     public record Confirmation(List<String> ids,boolean confirm,boolean confirmDestructive) {}
     public record Job(String id,String source,String action,String state,String result,String message,String username,String library,
-        boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain,boolean libraryCleanup,String updateJobId,String updateCleanupTiming,long skipped) {}
+        boolean allowUndownloaded,boolean deleteHistory,boolean directRemoval,long createdAt,long updatedAt,long expiresAt,long total,long selected,long ready,long excluded,long pending,long succeeded,long blocked,long failed,long uncertain,boolean libraryCleanup,String updateJobId,String updateCleanupTiming,long skipped,boolean priorityRequested) {}
     public record Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,
         List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author,String reason,boolean previewSelected) {
         public Item(String id,Long eplId,String title,String revision,String oldId,String replacementId,String replacementRevision,List<String> formats,String state,String message,boolean dispatched,String oldHash,String replacementHash,String blockingCalibreJobId,Boolean blockingRequiresIntervention,String author,String reason) {this(id,eplId,title,revision,oldId,replacementId,replacementRevision,formats,state,message,dispatched,oldHash,replacementHash,blockingCalibreJobId,blockingRequiresIntervention,author,reason,false);}
@@ -59,7 +59,7 @@ public class RevisionCleanup {
         FROM revision_cleanup_items GROUP BY job_id
         """;
     private static final String SELECT="""
-        SELECT j.id,j.source,j.action,j.state,j.result,j.message,j.owner_username,j.library,
+        SELECT j.id,j.source,j.action,j.state,j.result,j.message,j.owner_username,j.library,j.priority_requested,
         j.update_job_id,(SELECT p.cleanup_timing FROM torrent_update_plans p WHERE p.job_id=j.update_job_id) update_cleanup_timing,j.allow_undownloaded,j.delete_history,j.direct_removal,j.created_at,j.updated_at,j.expires_at,
         (j.library_plan IS NOT NULL) has_library_plan,coalesce(c.total,0) total,
         CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.total,0) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected,0) ELSE coalesce(json_array_length(j.confirmation),0) END selected,
@@ -186,7 +186,7 @@ public class RevisionCleanup {
     }
 
     private static PageResponse.PageMeta meta(int page,int size,long total) {int pages=(int)((total+size-1)/size);return new PageResponse.PageMeta(page,size,total,pages,page==0,page>=pages-1,page+1<pages,page>0);}
-    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"),r.getBoolean("has_library_plan"),r.getString("update_job_id"),r.getString("update_cleanup_timing"),r.getLong("skipped"));}
+    private static Job job(ResultSet r,int n) throws SQLException {return new Job(r.getString("id"),r.getString("source"),r.getString("action"),r.getString("state"),r.getString("result"),r.getString("message"),r.getString("owner_username"),r.getString("library"),r.getBoolean("allow_undownloaded"),r.getBoolean("delete_history"),r.getBoolean("direct_removal"),r.getLong("created_at"),r.getLong("updated_at"),r.getLong("expires_at"),r.getLong("total"),r.getLong("selected"),r.getLong("ready"),r.getLong("excluded"),r.getLong("pending"),r.getLong("succeeded"),r.getLong("blocked"),r.getLong("failed"),r.getLong("uncertain"),r.getBoolean("has_library_plan"),r.getString("update_job_id"),r.getString("update_cleanup_timing"),r.getLong("skipped"),r.getBoolean("priority_requested"));}
     private Item item(ResultSet r,int n) throws SQLException {
         var formats=new ArrayList<String>();for(var format:json.readTree(r.getString("formats"))) formats.add(format.asString());
         return new Item(r.getString("id"),r.getObject("epl_id")==null?null:((Number)r.getObject("epl_id")).longValue(),r.getString("title"),r.getString("revision"),r.getString("old_id"),r.getString("replacement_id"),r.getString("replacement_revision"),List.copyOf(formats),r.getString("state"),r.getString("message"),r.getBoolean("dispatched"),r.getString("old_hash"),r.getString("replacement_hash"),null,null,null,r.getString("cleanup_reason"),r.getBoolean("preview_selected"));
@@ -585,13 +585,26 @@ public class RevisionCleanup {
             jdbc.update("UPDATE revision_cleanup_jobs SET state='QUEUED',next_check=0,result=NULL,message=NULL,cancel_requested=0,updated_at=? WHERE id=?",Instant.now().toEpochMilli(),id);
         });return get(id);
     });}
+    public Job prioritize(String id) {
+        tx.executeWithoutResult(status->{
+            var job=get(id);
+            authorize(sessions.current().id(),job.source(),job.action(),job.directRemoval(),job.deleteHistory());
+            if(!job.source().equals("downloads") || job.action().equals("RECORD")
+                    || !Set.of("QUEUED","RUNNING").contains(job.state()) || job.pending()==0)
+                throw new UserInputException("Solo se pueden priorizar limpiezas torrent pendientes y activas");
+            if(jdbc.update("UPDATE revision_cleanup_jobs SET priority_requested=1,next_check=0 WHERE id=? AND state IN ('QUEUED','RUNNING') AND cancel_requested=0 AND priority_requested=0",id)>0)
+                log.info("Prioridad de limpieza solicitada: trabajo={}, usuario={}",id,sessions.current().username());
+        });
+        return get(id);
+    }
+
     public Job control(String id,String command) {
         var job=get(id);
         if(!Set.of("cancel","continue","verify").contains(command)) throw new UserInputException("Acción desconocida");
         tx.executeWithoutResult(status->{
             if(command.equals("cancel")) {
                 if(!Set.of("QUEUED","RUNNING","PAUSED").contains(job.state()) && !(job.directRemoval() && job.blocked()+job.failed()>0)) throw new UserInputException("El trabajo no está pendiente");
-                jdbc.update("UPDATE revision_cleanup_jobs SET cancel_requested=1,updated_at=? WHERE id=?",Instant.now().toEpochMilli(),id);
+                jdbc.update("UPDATE revision_cleanup_jobs SET cancel_requested=1,priority_requested=0,updated_at=? WHERE id=?",Instant.now().toEpochMilli(),id);
                 if(job.directRemoval()) jdbc.update("UPDATE torrent_update_cleanup SET state='CANCELLED' WHERE job_id=? AND state IN ('WAITING','BLOCKED')",job.updateJobId()==null?"revision:"+id:job.updateJobId());
                 if(job.directRemoval()) jdbc.update("UPDATE revision_cleanup_items SET state='CANCELLED' WHERE job_id=? AND state IN ('BLOCKED','FAILED')",id);
                 jdbc.update("UPDATE revision_cleanup_items SET state=CASE WHEN state='VERIFYING' THEN 'UNCERTAIN' ELSE 'CANCELLED' END,message='Cancelado antes de iniciar la operación' WHERE job_id=? AND state IN ('PENDING','VERIFYING')",id);
@@ -757,9 +770,11 @@ public class RevisionCleanup {
             if(!maintenance.enter(false)) return;
             try {
                 long beforeQuery=idleProbe.snapshot();
-                var jobs=jdbc.queryForList("SELECT id FROM revision_cleanup_jobs WHERE state IN ('QUEUED','RUNNING') AND next_check<=? ORDER BY updated_at,id LIMIT 1",String.class,Instant.now().toEpochMilli());
+                var jobs=jdbc.queryForList("SELECT id FROM revision_cleanup_jobs WHERE state IN ('QUEUED','RUNNING') AND next_check<=? ORDER BY priority_requested DESC,updated_at,id LIMIT 1",String.class,Instant.now().toEpochMilli());
                 if(jobs.isEmpty()) {idleProbe.empty(beforeQuery);return;}
                 String id=jobs.getFirst();
+                // Priority buys one bounded turn, then ordinary round-robin resumes.
+                jdbc.update("UPDATE revision_cleanup_jobs SET priority_requested=0,updated_at=? WHERE id=?",Instant.now().toEpochMilli(),id);
                 jdbc.update("""
                     UPDATE revision_cleanup_items AS i SET state=CASE (SELECT c.state FROM torrent_update_cleanup c JOIN revision_cleanup_jobs j ON j.update_job_id=c.job_id WHERE j.id=i.job_id AND c.download_id=i.old_id) WHEN 'REMOVED' THEN 'SUCCEEDED' ELSE 'CANCELLED' END,
                       message='Resultado de la solicitud original comprobado; no se ha repetido el borrado'
@@ -786,7 +801,13 @@ public class RevisionCleanup {
                         if(find(id).pending()>0) jdbc.update("UPDATE revision_cleanup_jobs SET message='Esperando las revisiones de sustitución de la actualización relacionada',next_check=? WHERE id=?",Instant.now().plus(internalTasks.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CLEANUP)).toEpochMilli(),id);
                         break;
                     }
-                    try {if(executeDownloadBatch(id,pending)) break;execute(id,pending.getFirst());}
+                    try {
+                        var current=find(id);
+                        boolean batchDone=current.source().equals("downloads") && !current.action().equals("RECORD")
+                            ? tracking.cleanupTurn(()->{if(executeDownloadBatch(id,pending)) return true;execute(id,pending.getFirst());return false;})
+                            : executeCleanupStep(id,pending);
+                        if(batchDone) break;
+                    }
                     catch(UpdateCleanupJobs.DependencyPending | CalibreTransfers.OperationBusy | com.rlibanez.eplsync.exception.TorrentBusyException ex) {
                         String waiting=ex instanceof UpdateCleanupJobs.DependencyPending?ex.getMessage():ex instanceof CalibreTransfers.OperationBusy ? "Esperando a que termine la operación de Calibre; la limpieza se reintentará automáticamente" : "Esperando a que termine la operación del cliente torrent; la limpieza se reintentará automáticamente";
                         jdbc.update("UPDATE revision_cleanup_jobs SET message=?,updated_at=?,next_check=? WHERE id=?",waiting,Instant.now().toEpochMilli(),ex instanceof UpdateCleanupJobs.DependencyPending?Instant.now().plus(internalTasks.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CLEANUP)).toEpochMilli():0,id);
@@ -796,6 +817,10 @@ public class RevisionCleanup {
                 finish(id);
             } finally {maintenance.leave(false);}
         } finally {lifecycle.unlock();}
+    }
+    private boolean executeCleanupStep(String id,List<Item> pending) {
+        if(executeDownloadBatch(id,pending)) return true;
+        execute(id,pending.getFirst());return false;
     }
     /** Bounded multi-selection safety executor: sequential deletes and a 30-second remote deadline. */
     private boolean executeDownloadBatch(String id,List<Item> batch) {
@@ -951,7 +976,7 @@ public class RevisionCleanup {
         boolean cancelled=Boolean.TRUE.equals(jdbc.queryForObject("SELECT cancel_requested FROM revision_cleanup_jobs WHERE id=?",Boolean.class,id));
         if(j.pending()>0 && !cancelled) {jdbc.update("UPDATE revision_cleanup_jobs SET updated_at=? WHERE id=?",Instant.now().toEpochMilli(),id);return;}
         long errors=j.blocked()+j.failed()+j.uncertain();String outcome=cancelled?"CANCELLED":errors==0?"SUCCEEDED":j.succeeded()>0?"PARTIAL":"FAILED";
-        jdbc.update("UPDATE revision_cleanup_jobs SET state=?,result=?,updated_at=? WHERE id=?",cancelled?"CANCELLED":"COMPLETED",outcome,Instant.now().toEpochMilli(),id);
+        jdbc.update("UPDATE revision_cleanup_jobs SET state=?,result=?,priority_requested=0,updated_at=? WHERE id=?",cancelled?"CANCELLED":"COMPLETED",outcome,Instant.now().toEpochMilli(),id);
         var actor=new EventContext.Actor(jdbc.queryForObject("SELECT owner_id FROM revision_cleanup_jobs WHERE id=?",String.class,id),j.username(),"USER");
         var details=Map.<String,Object>of("source",j.source(),"selected",j.selected(),"removed",j.succeeded(),"blocked",j.blocked(),"failed",j.failed(),"unconfirmed",j.uncertain(),"skipped",j.skipped(),"jobId",id);
         var terminal=EventJournal.Outcome.valueOf(outcome);

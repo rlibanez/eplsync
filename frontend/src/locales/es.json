@@ -2028,7 +2028,9 @@
       "LEGACY_RETRY": "Reintento anterior"
     },
     "noRetryHistory": "No hay actuaciones registradas.",
-    "legacyRetry": "No se conservan los detalles de este reintento anterior."
+    "legacyRetry": "No se conservan los detalles de este reintento anterior.",
+    "prioritize": "Priorizar limpieza",
+    "priorityRequested": "Prioridad solicitada"
   },
   "calibreRemoval": {
     "confirmDeletion": "Confirmo el borrado irreversible de los libros seleccionados.",

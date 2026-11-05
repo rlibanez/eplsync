@@ -104,3 +104,10 @@ Los avisos de comunicación siguen limitados en frecuencia y muestran los tipos 
 las causas técnicas sin incluir mensajes remotos, cuerpos, credenciales ni magnets.
 Que el seguimiento encuentre ocupado el acceso al cliente durante un envío no se
 presenta como una avería de conexión.
+
+Al arrancar se registra en INFO la identificación del artefacto desplegado:
+`Compilación de EPL Sync: versión=1.8.2, commit=53e82ce`.
+El commit se lee de los metadatos del JAR, no del repositorio del servidor. Se
+incorpora con `--build-arg REVISION=$(git rev-parse HEAD)` al construir la imagen
+(el script de liberación ya lo hace), o con `-Deplsync.build.commit=...` en Maven.
+Si el artefacto no contiene un commit válido, se indica `commit=desconocido`.

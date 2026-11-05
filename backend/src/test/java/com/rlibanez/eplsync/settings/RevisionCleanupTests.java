@@ -942,6 +942,96 @@ class RevisionCleanupTests {
     @Test void torrentOnlyKeepsFiles() {var job=start(preview("downloads","TORRENT"));cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);verify(adapter).deleteTorrent("A".repeat(40),false);}
     @Test void explicitDestructiveConfirmationIsMandatoryAndStartIdempotent() {var job=preview("downloads","FILES");var selection=List.of(item(job).id());assertThatThrownBy(()->cleanup.start(job.id(),new RevisionCleanup.Confirmation(selection,true,false))).hasMessageContaining("irreversible");start(job);start(job);cleanup.cycle();verify(adapter,times(1)).deleteTorrent(anyString(),anyBoolean());}
     @Test void unconfirmedDeletionIsNeverAutomaticallyRepeated() {doNothing().when(adapter).deleteTorrent(anyString(),anyBoolean());var job=start(preview("downloads","TORRENT"));cleanup.cycle();assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);cleanup.cycle();cleanup.control(job.id(),"verify");cleanup.cycle();verify(adapter,times(1)).deleteTorrent(anyString(),anyBoolean());assertThat(cleanup.get(job.id()).uncertain()).isEqualTo(1);remote.remove(0);cleanup.control(job.id(),"verify");cleanup.cycle();assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);}
+    @Test void cleanupPriorityIsDurableIdempotentAndDoesNotDeleteUntilTheWorkerRuns() throws Exception {
+        var job=start(preview("downloads","FILES"));
+        var mvc=org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context).build();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/revision-cleanups/"+job.id()+"/prioritize"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.priorityRequested").value(true));
+        cleanup.prioritize(job.id());
+        assertThat(cleanup.get(job.id()).priorityRequested()).isTrue();
+        assertThat(jdbc.queryForObject("SELECT priority_requested FROM revision_cleanup_jobs WHERE id=?",Boolean.class,job.id())).isTrue();
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isEqualTo(1);
+        assertThat(cleanup.get(job.id()).priorityRequested()).isFalse();
+        cleanup.cycle();verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);
+        assertThatThrownBy(()->cleanup.prioritize(job.id())).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+    }
+    @Test void cleanupPriorityRejectsPreviewsLocalActionsAndCalibre() {
+        var preview=preview("downloads","FILES");
+        assertThatThrownBy(()->cleanup.prioritize(preview.id())).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        var local=start(preview("downloads","RECORD"));
+        assertThatThrownBy(()->cleanup.prioritize(local.id())).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        cleanup.control(local.id(),"cancel");cleanup.cycle();
+        var calibre=start(preview("calibre","BOOK"));
+        assertThatThrownBy(()->cleanup.prioritize(calibre.id())).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void cleanupPriorityRequiresOwnershipAndCurrentDestructivePermissions() {
+        var job=start(preview("downloads","FILES"));
+        accounts.policy(new AccountStore.Policy(true,false,30,12));accounts.register("Viewer","viewer@example.com","password123");
+        var viewerId=accounts.users().stream().filter(a->a.username().equals("Viewer")).findFirst().orElseThrow().id();
+        accounts.update(viewerId,"USER","ACTIVE",Map.of("TORRENT_SYNC","ALLOW"),owner.id());var viewer=accounts.find(viewerId);
+        login(viewer);
+        assertThatThrownBy(()->cleanup.prioritize(job.id())).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        jdbc.update("UPDATE revision_cleanup_jobs SET owner_id=? WHERE id=?",viewer.id(),job.id());
+        assertThatThrownBy(()->cleanup.prioritize(job.id())).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(jdbc.queryForObject("SELECT priority_requested FROM revision_cleanup_jobs WHERE id=?",Boolean.class,job.id())).isFalse();
+    }
+    @Test void prioritizedCleanupStillChecksItsReplacementBeforeDeleting() {
+        var job=start(preview("downloads","FILES"));cleanup.prioritize(job.id());
+        remote.removeIf(row->row.hash().equals("B".repeat(40)));
+        cleanup.cycle();
+        assertThat(cleanup.get(job.id()).succeeded()).isZero();
+        assertThat(cleanup.get(job.id()).blocked()).isEqualTo(1);
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+    }
+    @Test void priorityAdvancesOneJobThenReturnsToOrdinaryScheduling() {
+        var first=start(preview("downloads","FILES"));
+        download(2,1,"C");download(2,2,"D");remote.add(remote("C","/downloads/old2.epub"));remote.add(remote("D","/downloads/new2.epub"));
+        var secondPreview=preview("downloads","FILES");
+        var ready=cleanup.items(secondPreview.id(),0,1000).items().stream().filter(row->row.state().equals("READY")).findFirst().orElseThrow();
+        var second=cleanup.start(secondPreview.id(),new RevisionCleanup.Confirmation(List.of(ready.id()),true,true));
+        jdbc.update("UPDATE revision_cleanup_jobs SET updated_at=1 WHERE id=?",first.id());
+        jdbc.update("UPDATE revision_cleanup_jobs SET updated_at=2 WHERE id=?",second.id());
+        cleanup.prioritize(second.id());cleanup.cycle();
+        assertThat(cleanup.get(second.id()).succeeded()).isEqualTo(1);
+        assertThat(cleanup.get(first.id()).pending()).isEqualTo(1);
+        assertThat(cleanup.get(second.id()).priorityRequested()).isFalse();
+        cleanup.cycle();assertThat(cleanup.get(first.id()).succeeded()).isEqualTo(1);
+        verify(adapter,times(1)).deleteTorrent("A".repeat(40),true);verify(adapter,times(1)).deleteTorrent("C".repeat(40),true);
+    }
+    @Test @org.junit.jupiter.api.Timeout(15)
+    void cancellingWhileCleanupWaitsForItsTurnNeverDispatchesDeletion() throws Exception {
+        var job=start(preview("downloads","FILES"));cleanup.prioritize(job.id());
+        var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call->{Function<TorrentClient,?> action=call.getArgument(0);return tracking.exclusive(()->action.apply(adapter));}).when(torrent).exclusiveClient(any());
+        try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            var reader=executor.submit(()->tracking.observation(()->{
+                entered.countDown();try {if(!release.await(8,java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Reader not released");}
+                catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}return null;
+            }));
+            try {
+                assertThat(entered.await(2,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                var running=executor.submit(cleanup::cycle);
+                try {
+                    boolean queued=false;
+                    for(int i=0;i<200 && !queued;i++) {
+                        try {tracking.observation(()->null);Thread.sleep(5);}
+                        catch(com.rlibanez.eplsync.exception.TorrentBusyException expected) {queued=true;}
+                    }
+                    assertThat(queued).isTrue();
+                    cleanup.control(job.id(),"cancel");
+                } finally {release.countDown();}
+                running.get(5,java.util.concurrent.TimeUnit.SECONDS);
+            } finally {release.countDown();}
+            reader.get(2,java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertThat(cleanup.get(job.id()).state()).isEqualTo("CANCELLED");
+        verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());
+        assertThat(downloads.findById(old)).isPresent();
+    }
     @Test void cancellationKeepsEverything() {var job=start(preview("downloads","FILES"));cleanup.control(job.id(),"cancel");cleanup.cycle();assertThat(cleanup.get(job.id()).state()).isEqualTo("CANCELLED");verify(adapter,never()).deleteTorrent(anyString(),anyBoolean());assertThat(downloads.findById(old)).isPresent();}
     @Test void previewExpiresAndCannotBeTamperedWith() {var job=preview("downloads","RECORD");assertThatThrownBy(()->cleanup.start(job.id(),new RevisionCleanup.Confirmation(List.of(UUID.randomUUID().toString()),true,false))).hasMessageContaining("selección");jdbc.update("UPDATE revision_cleanup_jobs SET expires_at=0 WHERE id=?",job.id());assertThatThrownBy(()->start(job)).hasMessageContaining("caducó");}
     @Test void changedConnectionInvalidatesPreview() {var job=preview("calibre","BOOK");settings.save(new CalibreSettings.Input("http://localhost:8081","","",true,"other"));assertThatThrownBy(()->start(job)).hasMessageContaining("conexión");}

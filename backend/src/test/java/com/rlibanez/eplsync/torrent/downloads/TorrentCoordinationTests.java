@@ -157,6 +157,45 @@ class TorrentCoordinationTests {
         }
         verifyNoInteractions(transactions,database);
     }
+    @Test void ordinaryCleanupQueuesBehindReadersAndGetsATurnBeforeNewObservations() throws Exception {
+        var readEntered=new CountDownLatch(1);var releaseRead=new CountDownLatch(1);
+        var cleanupEntered=new CountDownLatch(1);var releaseCleanup=new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var reader=executor.submit(()->tracking.observation(()->{readEntered.countDown();await(releaseRead);return null;}));
+            try {
+                assertThat(readEntered.await(2,TimeUnit.SECONDS)).isTrue();
+                var cleanup=executor.submit(()->tracking.cleanupTurn(()->tracking.exclusive(()->{
+                    cleanupEntered.countDown();await(releaseCleanup);return tracking.exclusive(()->"nested cleanup");
+                })));
+                try {
+                    boolean queued=false;
+                    for(int i=0;i<100 && !queued;i++) {
+                        try {tracking.observation(()->null);Thread.sleep(5);}
+                        catch(TorrentBusyException expected) {queued=true;}
+                    }
+                    assertThat(queued).isTrue();
+                    assertThat(tracking.inventory(()->{})).isFalse();
+                    releaseRead.countDown();
+                    assertThat(cleanupEntered.await(2,TimeUnit.SECONDS)).isTrue();
+                    assertThatThrownBy(()->tracking.observation(()->"new read")).isInstanceOf(TorrentBusyException.class);
+                } finally {releaseRead.countDown();releaseCleanup.countDown();}
+                assertThat(cleanup.get(2,TimeUnit.SECONDS)).isEqualTo("nested cleanup");
+            } finally {releaseRead.countDown();releaseCleanup.countDown();}
+            reader.get(2,TimeUnit.SECONDS);
+        }
+        assertThat(tracking.observation(()->"next read")).isEqualTo("next read");
+        verifyNoInteractions(transactions,database);
+    }
+    @Test void cleanupTurnFailureRestoresOrdinaryNonBlockingAccess() throws Exception {
+        assertThatThrownBy(()->tracking.cleanupTurn(()->{throw new IllegalStateException("failed cleanup");})).hasMessage("failed cleanup");
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            tracking.observation(()->{
+                try {assertThatThrownBy(()->executor.submit(()->tracking.exclusive(()->"unsafe")).get(200,TimeUnit.MILLISECONDS))
+                    .isInstanceOf(ExecutionException.class).hasCauseInstanceOf(TorrentBusyException.class);}
+                catch(Exception ex) {throw new AssertionError(ex);}return null;
+            });
+        }
+    }
     private static void await(CountDownLatch latch) {
         try {assertThat(latch.await(5,TimeUnit.SECONDS)).isTrue();}
         catch(InterruptedException ex) {Thread.currentThread().interrupt();throw new IllegalStateException(ex);}

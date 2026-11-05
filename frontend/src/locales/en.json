@@ -2028,7 +2028,9 @@
       "LEGACY_RETRY": "Previous retry"
     },
     "noRetryHistory": "No recorded actions.",
-    "legacyRetry": "Details of this previous retry were not retained."
+    "legacyRetry": "Details of this previous retry were not retained.",
+    "prioritize": "Prioritize cleanup",
+    "priorityRequested": "Priority requested"
   },
   "calibreRemoval": {
     "confirmDeletion": "I confirm the irreversible deletion of the selected books.",

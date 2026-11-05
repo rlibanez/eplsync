@@ -45,6 +45,7 @@ import { useAuth } from "../auth/Auth";
 
 type Source = "downloads" | "calibre";
 interface Job {
+  priorityRequested?: boolean;
   skipped?: number;
   updateJobId?: string | null;
   updateCleanupTiming?: string | null;
@@ -1070,6 +1071,23 @@ export function CleanupJob() {
                 {t("revisionCleanup.cancel")}
               </Button>
             )}
+            {data.source === "downloads" &&
+              data.action !== "RECORD" &&
+              actions.includes(data.action) &&
+              ["QUEUED", "RUNNING"].includes(data.state) &&
+              data.pending > 0 && (
+                <Button
+                  variant="light"
+                  disabled={command.isPending || data.priorityRequested}
+                  onClick={() => command.mutate("prioritize")}
+                >
+                  {t(
+                    data.priorityRequested
+                      ? "revisionCleanup.priorityRequested"
+                      : "revisionCleanup.prioritize",
+                  )}
+                </Button>
+              )}
             {(actions.includes(data.action) ||
               (data.action === "EPUB" && actions.includes("BOOK"))) && (
               <>

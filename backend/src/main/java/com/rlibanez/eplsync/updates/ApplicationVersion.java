@@ -20,5 +20,10 @@ public class ApplicationVersion {
             releasesUrl += "/tag/v" + version.replaceFirst("^v", "");
         info=new Info(version,commit,releasesUrl);
     }
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationStartedEvent.class)
+    public void logBuild() {
+        org.slf4j.LoggerFactory.getLogger(com.rlibanez.eplsync.EplsyncApplication.class)
+            .info("Compilación de EPL Sync: versión={}, commit={}",info.version(),info.commit()==null?"desconocido":info.commit());
+    }
     public Info get() {return info;}
 }

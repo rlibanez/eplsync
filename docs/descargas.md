@@ -364,3 +364,17 @@ Si un hash está enviándose o se envía durante una consulta, esa instantánea 
 aplica a su registro; lo revisará el siguiente ciclo. Los demás hashes sí se
 actualizan. Esta protección solo conserva información durante la consulta y no
 crea un historial ni una caché permanente por torrent.
+
+En el trabajo de limpieza de revisiones torrent, «Priorizar limpieza» adelanta
+una limpieza activa y pendiente para su próximo turno acotado. La solicitud se
+conserva tras reiniciar y se consume al tomar el turno; después vuelve al orden
+normal, sin monopolizar la cola. Solo el propietario con los permisos de la
+operación puede solicitarla. No reanuda trabajos pausados ni reintenta elementos
+fallidos, bloqueados o sin confirmar: para eso siguen existiendo sus controles.
+
+También sin prioridad manual, las limpiezas torrent esperan en la cola justa de
+acceso exclusivo al cliente, hasta 30 segundos por intento, en lugar de fallar
+inmediatamente si una lectura está en curso. Los envíos ya iniciados terminan;
+las observaciones y el inventario ceden mientras espera ese turno. Se conservan
+los lotes acotados y las verificaciones de revisiones, permisos, dependencias y
+borrados inciertos, sin mantener una conexión SQL durante la espera de acceso.
