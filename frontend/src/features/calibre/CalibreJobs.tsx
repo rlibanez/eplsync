@@ -611,7 +611,6 @@ export function CalibreJobDetail() {
         description={t("calibreSend.jobsHelp")}
       />
       <p className="hash-text">{id}</p>
-      {retry.content}
 
       <section className="panel settings-section job-report-panel">
         {(retry.failedAction ||
@@ -702,6 +701,7 @@ export function CalibreJobDetail() {
           </div>
         </details>
       </section>
+      {retry.content}
       {value.message && (
         <Alert color="yellow" mb="md">
           {value.message}

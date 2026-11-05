@@ -351,48 +351,52 @@ function RetryAttempts({
     retry: false,
   });
   return (
-    <details
-      className="panel report-collapse"
-      onToggle={(event) => setOpened(event.currentTarget.open)}
-    >
-      <summary>{t("jobRetry.history", { count })}</summary>
-      <div className="report-collapse-body">
-        {opened &&
-          (result.isPending ? (
-            <Loading />
-          ) : result.isError ? (
-            <Failure error={result.error} retry={() => result.refetch()} />
-          ) : (
-            <>
-              {result.data.items.map((attempt) => (
-                <RetryAttempt
-                  key={attempt.id}
-                  kind={kind}
-                  job={id}
-                  attempt={attempt}
-                  state={state}
-                />
-              ))}
-              <div className="action-row">
-                <Button
-                  variant="subtle"
-                  disabled={page === 0}
-                  onClick={() => setPage(page - 1)}
-                >
-                  {t("jobRetry.previous")}
-                </Button>
-                <Button
-                  variant="subtle"
-                  disabled={!result.data.meta.hasNext}
-                  onClick={() => setPage(page + 1)}
-                >
-                  {t("jobRetry.next")}
-                </Button>
-              </div>
-            </>
-          ))}
-      </div>
-    </details>
+    <section className="panel settings-section job-report-panel retry-history-panel">
+      <details
+        className="report-collapse"
+        onToggle={(event) => setOpened(event.currentTarget.open)}
+      >
+        <summary>{t("jobRetry.history", { count })}</summary>
+        <div className="report-collapse-body">
+          {opened &&
+            (result.isPending ? (
+              <Loading />
+            ) : result.isError ? (
+              <Failure error={result.error} retry={() => result.refetch()} />
+            ) : (
+              <>
+                {result.data.items.map((attempt) => (
+                  <RetryAttempt
+                    key={attempt.id}
+                    kind={kind}
+                    job={id}
+                    attempt={attempt}
+                    state={state}
+                  />
+                ))}
+                {(page > 0 || result.data.meta.hasNext) && (
+                  <div className="action-row retry-history-pagination">
+                    <Button
+                      variant="subtle"
+                      disabled={page === 0}
+                      onClick={() => setPage(page - 1)}
+                    >
+                      {t("jobRetry.previous")}
+                    </Button>
+                    <Button
+                      variant="subtle"
+                      disabled={!result.data.meta.hasNext}
+                      onClick={() => setPage(page + 1)}
+                    >
+                      {t("jobRetry.next")}
+                    </Button>
+                  </div>
+                )}
+              </>
+            ))}
+        </div>
+      </details>
+    </section>
   );
 }
 function RetryAttempt({
@@ -410,7 +414,10 @@ function RetryAttempt({
   const { date } = useLocale();
   const [opened, setOpened] = useState(false);
   return (
-    <details onToggle={(event) => setOpened(event.currentTarget.open)}>
+    <details
+      className="retry-history-attempt"
+      onToggle={(event) => setOpened(event.currentTarget.open)}
+    >
       <summary>
         {date(new Date(attempt.createdAt).toISOString())} · {attempt.username} ·{" "}
         {t(

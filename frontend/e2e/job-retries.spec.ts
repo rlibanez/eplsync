@@ -189,6 +189,35 @@ for (const kind of ["downloads", "calibre"] as const) {
     await page
       .getByText("Historial de reintentos (1)", { exact: true })
       .click();
+    const historyPanel = page.locator(".retry-history-panel");
+    const reportPanel = page
+      .locator(".job-report-panel:not(.retry-history-panel)")
+      .first();
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      const geometry = await historyPanel.evaluate((el) => ({
+        left: el.getBoundingClientRect().left,
+        padding: getComputedStyle(el).paddingLeft,
+        bottom: parseFloat(getComputedStyle(el).marginBottom),
+        heading: el.querySelector("summary")!.getBoundingClientRect().left,
+      }));
+      const report = await reportPanel.evaluate((el) => ({
+        left: el.getBoundingClientRect().left,
+        padding: getComputedStyle(el).paddingLeft,
+      }));
+      const reportBottom = await reportPanel.evaluate(
+        (el) => el.getBoundingClientRect().bottom,
+      );
+      const historyTop = await historyPanel.evaluate(
+        (el) => el.getBoundingClientRect().top,
+      );
+      expect(historyTop).toBeGreaterThan(reportBottom);
+      expect(geometry.left).toBe(report.left);
+      expect(geometry.padding).toBe(report.padding);
+      expect(geometry.bottom).toBeGreaterThan(0);
+      expect(geometry.heading - geometry.left).toBeGreaterThan(18);
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.locator("details details > summary").click();
     await expect(
       page.getByText("Detalle anterior: Fallo de prueba"),

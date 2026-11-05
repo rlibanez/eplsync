@@ -2322,3 +2322,8 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
 
 .cover-preview-button { padding: 0; border: 0; font: inherit; cursor: zoom-in; }
 .cover-preview-button:focus-visible { outline: 2px solid var(--mantine-primary-color-filled); outline-offset: 3px; }
+
+.retry-history-attempt { padding: 12px 0; }
+.retry-history-attempt + .retry-history-attempt { border-top: 1px solid var(--line); }
+.retry-history-attempt > summary { cursor: pointer; overflow-wrap: anywhere; }
+.retry-history-pagination { justify-content: flex-end; margin-top: 12px; }

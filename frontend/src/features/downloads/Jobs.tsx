@@ -710,7 +710,6 @@ export function JobDetail() {
           </Link>
         </p>
       )}
-      {retry.content}
 
       {job.isPending ? (
         <Loading />
@@ -1036,6 +1035,7 @@ export function JobDetail() {
           </section>
         )
       )}
+      {retry.content}
       {data?.download && (
         <p className="muted">{t("downloadLifecycle.controlHelp")}</p>
       )}
