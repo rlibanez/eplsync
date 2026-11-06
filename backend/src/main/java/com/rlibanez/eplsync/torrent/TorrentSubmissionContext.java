@@ -5,6 +5,14 @@ import java.util.function.Supplier;
 
 /** Estado efímero exclusivo de un envío individual o una ejecución bulk. */
 public final class TorrentSubmissionContext {
+    private final ThreadLocal<Runnable> submissionCallback = new ThreadLocal<>();
+    public void onSubmission(Runnable callback) {submissionCallback.set(callback);}
+    public void clearSubmissionCallback() {submissionCallback.remove();}
+    /** Persist dispatch intent before HTTP; if persistence fails, no POST may be sent. */
+    public void submissionStarted() {
+        var callback=submissionCallback.get();submissionCallback.remove();
+        if(callback!=null) callback.run();
+    }
     private Set<String> categories;
     private Set<String> torrentHashes;
     private com.rlibanez.eplsync.exception.TorrentConnectionException hashFailure;

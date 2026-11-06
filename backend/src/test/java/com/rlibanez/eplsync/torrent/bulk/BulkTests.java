@@ -521,6 +521,50 @@ class BulkTests {
         assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.PAUSED);
     }
 
+    @Test void restartedOwnSubmissionCountsAsAcceptedWhilePreexistingHashesStaySeparate() throws Exception {
+        var job=create(null);store.next();
+        String id=store.pending(job.jobId(),1).getFirst();store.claim(job.jobId(),id);
+        store.markSubmissionStarted(id);
+        assertThat(items.findById(id).orElseThrow().isSubmissionStarted()).isTrue();
+        store.recover();
+        when(client.addTorrent(any())).thenReturn(TorrentDownloadResult.Status.ALREADY_EXISTS);
+        start();until(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
+        assertThat(store.view(job.jobId()).accepted()).isEqualTo(1);
+        assertThat(store.view(job.jobId()).alreadyExists()).isEqualTo(4);
+        assertThat(items.findById(id).orElseThrow().getState()).isEqualTo(BulkItem.State.ACCEPTED);
+        verify(client,times(5)).addTorrent(any());
+    }
+
+    @Test void retryBeforeDispatchDoesNotClaimOwnershipOfAPreexistingTorrent() throws Exception {
+        var job=create(null);store.next();
+        String id=store.pending(job.jobId(),1).getFirst();store.claim(job.jobId(),id);
+        store.recover();
+        when(client.addTorrent(any())).thenReturn(TorrentDownloadResult.Status.ALREADY_EXISTS);
+        start();until(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
+        assertThat(store.view(job.jobId()).accepted()).isZero();
+        assertThat(store.view(job.jobId()).alreadyExists()).isEqualTo(5);
+        assertThat(items.findById(id).orElseThrow().isSubmissionStarted()).isFalse();
+    }
+
+    @Test void lostPostConfirmationCountsAsAcceptedOnRetryWithoutAnotherDispatch() throws Exception {
+        var dispatched=new java.util.concurrent.atomic.AtomicBoolean();
+        doAnswer(invocation->{
+            var context=(com.rlibanez.eplsync.torrent.TorrentSubmissionContext)invocation.getArgument(1);
+            if(dispatched.compareAndSet(false,true)) {
+                context.submissionStarted();
+                throw new com.rlibanez.eplsync.torrent.TorrentPresencePendingException();
+            }
+            return TorrentDownloadResult.Status.ALREADY_EXISTS;
+        }).when(client).addTorrent(any(),any());
+        var job=create(null);start();
+        until(()->store.view(job.jobId()).alreadyExists()==4);
+        jdbc.update("UPDATE torrent_bulk_items SET retry_after=0 WHERE job_id=?",job.jobId());
+        until(()->store.view(job.jobId()).status()==BulkJob.State.DOWNLOAD_WAIT);
+        assertThat(store.view(job.jobId()).accepted()).isEqualTo(1);
+        assertThat(store.view(job.jobId()).alreadyExists()).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND submission_started=1",Integer.class,job.jobId())).isEqualTo(1);
+    }
+
     @Test void authenticationPausesWithoutLosingPendingWork() throws Exception {
         when(client.addTorrent(any())).thenThrow(new TorrentConnectionException(TorrentConnectionException.Reason.AUTHENTICATION));
         var job = create(null); start();

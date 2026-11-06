@@ -330,6 +330,12 @@ qBittorrent cuando están disponibles. No necesitan interpretar el progreso de
 descarga. La resolución alternativa de hashes híbridos comparte una consulta
 completa limitada a una por cada 30 segundos, en lugar de repetirla por elemento.
 
+Los envíos iniciados por el propio trabajo que se confirman después de un
+reintento o reinicio cuentan como **Aceptados**. **Ya existentes** se reserva para
+los encontrados sin que el elemento haya iniciado un envío. La intención de envío
+se conserva en SQLite antes de la petición HTTP; si no puede guardarse, no se envía.
+Los resultados anteriores a este registro no se reclasifican automáticamente.
+
 Una incorporación todavía no visible queda pendiente de confirmación en el mismo
 trabajo. Los demás elementos pueden avanzar. El plazo para reconciliar el envío y
 la fecha de reintento se conservan en SQLite; reiniciar no autoriza a repetir un

@@ -26,6 +26,7 @@ public class BulkItem {
     private int attempts;
     private long retryAfter;
     private long submissionUntil;
+    private boolean submissionStarted;
     @Transient private boolean resubmitAllowed=true;
     private String message;
     @Column(columnDefinition = "TEXT") private String commandJson;

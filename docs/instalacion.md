@@ -283,7 +283,12 @@ de Torrent e índices para la cola de envíos y los inventarios descargados. Con
 los trabajos, los archivos y el historial existentes. Los envíos que estaban en
 curso se recuperan comprobando su presencia antes de volver a incorporarlos.
 
-La versión 1.8.3 incorpora cinco migraciones desde 1.8.2 y alcanza el esquema
-`1.8.3.7`. Conserva los trabajos, las descargas, los ajustes y el historial. Los
+La versión 1.8.3 incorpora seis migraciones desde 1.8.2 y alcanza el esquema
+`1.8.3.8`. Conserva los trabajos, las descargas, los ajustes y el historial. Los
 archivos de los torrents existentes se inventarían gradualmente en segundo plano,
 cediendo ante los envíos. Consulta las [notas de 1.8.3](releases/1.8.3.md).
+
+`V1_8_3_8` registra la intención de envío de cada elemento antes de contactar con
+qBittorrent, para clasificar como aceptadas sus confirmaciones tras reintentos o
+reinicios. No altera los resultados históricos ni presume el origen de envíos
+anteriores que no disponían de esa información.

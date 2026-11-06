@@ -498,6 +498,21 @@ class QBittorrentClientTests {
                 com.rlibanez.eplsync.model.CatalogBook.builder().language(com.rlibanez.eplsync.model.enums.Language.INGLES).build());
     }
 
+    @Test void dispatchMustBePersistedBeforePostAndPreexistingTorrentsDoNotDispatch() {
+        var qbit=client();String hash="A".repeat(40);
+        var context=new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+        context.onSubmission(()->{throw new IllegalStateException("Persistence unavailable");});
+        assertThatThrownBy(()->qbit.addTorrent(command(hash),context)).isInstanceOf(IllegalStateException.class);
+        assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/add")).count()).isZero();
+        addedHashes.add(hash);
+        var existingContext=new com.rlibanez.eplsync.torrent.TorrentSubmissionContext();
+        var dispatched=new java.util.concurrent.atomic.AtomicBoolean();
+        existingContext.onSubmission(()->dispatched.set(true));
+        assertThat(qbit.addTorrent(command(hash),existingContext)).isEqualTo(com.rlibanez.eplsync.dto.TorrentDownloadResult.Status.ALREADY_EXISTS);
+        assertThat(dispatched).isFalse();
+        assertThat(calls.stream().filter(c->c.path().endsWith("/torrents/add")).count()).isZero();
+    }
+
     @Test void pendingApiResponseWaitsForLivePresenceAndRestartDoesNotRepeatThePost() throws Exception {
         publishAdded=false;
         addBody="{\"success_count\":0,\"pending_count\":1,\"failure_count\":0}";

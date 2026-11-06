@@ -242,6 +242,7 @@ public class QBittorrentClient implements TorrentClient, TorrentClient.KnownRemo
         var builder = request("torrents/add").header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(body);
         if (key) builder.header("Authorization", "Bearer " + qbittorrent.getAuth().getApiKey());
+        context.submissionStarted();
         try {
             var response = send(key ? apiKeyClient : sessionClient, builder.build());
             if (response.statusCode() == 401 || response.statusCode() == 403) invalidateSendingState();

@@ -588,6 +588,13 @@ public class BulkStore {
         items.saveAndFlush(item); return item;
     }
 
+    @Transactional
+    public void markSubmissionStarted(String id) {
+        int changed=em.createQuery("update BulkItem i set i.submissionStarted=true where i.id=:id and i.state=:flight")
+            .setParameter("id",id).setParameter("flight",BulkItem.State.IN_FLIGHT).executeUpdate();
+        if(changed!=1) throw new IllegalStateException("El elemento ya no está en envío");
+    }
+
     /** Cheap configuration check for an already-dispatched operation; claims still authorize every send. */
     public boolean configurationMatches(BulkJob job) {
         return properties.isEnabled() && job.getTargetFingerprint().equals(fingerprint());

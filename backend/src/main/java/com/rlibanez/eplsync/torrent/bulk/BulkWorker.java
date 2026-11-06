@@ -250,12 +250,16 @@ public class BulkWorker {
     }
 
     private Outcome send(BulkItem item, com.rlibanez.eplsync.torrent.TorrentSubmissionContext context) {
+        context.onSubmission(()->{
+            store.markSubmissionStarted(item.getId());
+            item.setSubmissionStarted(true);
+        });
         try {
             // Attempts survive restarts. An uncertain earlier POST gets a live confirmation window
             // before another POST, including additions still pending inside qBittorrent.
             if(item.getAttempts()>1 || !item.isResubmitAllowed()) context.recovering(item.getHash(),item.isResubmitAllowed());
             var result = client.addTorrent(store.command(item), context);
-            return new Outcome(result == TorrentDownloadResult.Status.ACCEPTED
+            return new Outcome(result == TorrentDownloadResult.Status.ACCEPTED || item.isSubmissionStarted()
                     ? BulkItem.State.ACCEPTED : BulkItem.State.ALREADY_EXISTS, null, false, false);
         } catch (com.rlibanez.eplsync.torrent.TorrentPresencePendingException ex) {
             return new Outcome(null,ex.getMessage(),false,false,OperationDiagnostics.technical(ex),true,false);
@@ -274,7 +278,7 @@ public class BulkWorker {
             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex))
                 return new Outcome(null,"SQLite ocupado; se comprobará el hash antes de continuar",false,true);
             return new Outcome(null, OperationDiagnostics.reason(ex, "No se pudo confirmar el envío al cliente torrent; revisa el elemento antes de reanudar"), true, false, OperationDiagnostics.technical(ex));
-        }
+        } finally {context.clearSubmissionCallback();}
     }
 
     private static String safeLog(String message) {
