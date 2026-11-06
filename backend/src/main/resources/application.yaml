@@ -9,7 +9,7 @@ spring:
       resolve-lazily: true # La admisión y autorización se comprueban antes de procesar el ZIP.
 
   datasource:
-    url: jdbc:sqlite:./data/eplsync.db
+    url: jdbc:sqlite:${EPLSYNC_DATA_DIR:${user.dir}/data}/db/eplsync.db
     driver-class-name: org.sqlite.JDBC
     hikari:
       maximum-pool-size: 2
@@ -62,7 +62,7 @@ server:
       internal-proxies: '127[.]0[.]0[.]1|::1'
     accesslog:
       enabled: true
-      directory: ${user.dir}/logs
+      directory: ${EPLSYNC_DATA_DIR:${user.dir}/data}/logs
       prefix: access
       suffix: .log
       encoding: UTF-8
@@ -75,11 +75,11 @@ server:
 
 logging:
   file:
-    name: ./logs/eplsync.log
+    name: ${EPLSYNC_DATA_DIR:${user.dir}/data}/logs/eplsync.log
 
   logback:
     rollingpolicy:
-      file-name-pattern: ./logs/eplsync.%d{yyyyMMdd}.%i.log
+      file-name-pattern: ${EPLSYNC_DATA_DIR:${user.dir}/data}/logs/eplsync.%d{yyyyMMdd}.%i.log
       max-file-size: 50MB
       max-history: 30
       total-size-cap: 1GB

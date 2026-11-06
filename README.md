@@ -135,8 +135,7 @@ Edita `.env`. Para empezar, revisa estas variables:
 | `PUID` | ID del usuario que puede escribir en las carpetas. En Linux, consulta su valor con `id -u`. | `1000` |
 | `PGID` | ID del grupo que puede escribir en las carpetas. En Linux, consulta su valor con `id -g`. | `1000` |
 | `HOST_PORT` | Puerto publicado. | `8088` |
-| `DATA_DIR` | Carpeta persistente de datos. | `./data` |
-| `LOGS_DIR` | Carpeta persistente de logs. | `./logs` |
+| `DATA_DIR` | Carpeta persistente: `db/` para SQLite y `logs/` para los logs. | `./data` |
 | `TZ` | Zona horaria. | `Europe/Madrid` |
 | `EPLSYNC_SECRET_KEY` | Necesaria para guardar credenciales de qBittorrent desde Ajustes. Genera su valor con `openssl rand -base64 32`, cópialo en `.env` y consérvalo. | Sin valor |
 | `EPLSYNC_INITIAL_ADMIN_KEY` | Clave opcional para proteger la creación del primer administrador. Genera su valor con `openssl rand -hex 16`. Vacía no exige clave. | Sin valor |
@@ -188,14 +187,15 @@ opcionales que se configuran por separado.
 
 Guárdalo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
 [`application.yaml` correspondiente a esa misma versión](https://raw.githubusercontent.com/rlibanez/eplsync/v1.8.3/backend/src/main/resources/application.yaml), además de las carpetas
-`data` y `logs`:
+`data/db` y `data/logs` (créelas antes de ejecutar el JAR):
 
 ```text
 EPL-Sync/
 ├── eplsync-1.8.3.jar
 ├── application.yaml
-├── data/
-└── logs/
+└── data/
+    ├── db/
+    └── logs/
 ```
 
 ### 2. Configura la aplicación
@@ -251,8 +251,8 @@ Accede a **http://localhost:8088** y sigue los pasos de [Primer uso](#primer-uso
 Mantén la terminal abierta. Para detener EPL Sync, pulsa **Ctrl+C**.
 
 Para actualizar, detén la aplicación y descarga el paquete de la nueva Release.
-Sustituye el JAR y adapta su nombre en el comando de arranque. Conserva `data/`,
-`logs/` y tu configuración; revisa el YAML de la nueva versión para incorporar
+Sustituye el JAR y adapta su nombre en el comando de arranque. Conserva `data/`
+y tu configuración; revisa el YAML de la nueva versión para incorporar
 las opciones nuevas sin perder tus claves ni valores personalizados. Los ajustes
 guardados desde la interfaz tienen prioridad.
 

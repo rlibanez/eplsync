@@ -48,10 +48,12 @@ ARG PUID=1000
 ARG PGID=1000
 
 RUN command -v setpriv \
-    && mkdir -p -m 700 /app/data /app/logs \
-    && chown -R ${PUID}:${PGID} /app
+    && mkdir -p -m 700 /data/db /data/logs \
+    && mkdir -p /app \
+    && chown -R ${PUID}:${PGID} /app /data
 
 ENV PUID=${PUID} PGID=${PGID} \
+    EPLSYNC_DATA_DIR=/data \
     EPLSYNC_TORRENT_FILES_LOCAL_ROOT=/app/downloads
 
 WORKDIR /app

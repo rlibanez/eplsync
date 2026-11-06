@@ -19,11 +19,12 @@ siguientes se ejecutan desde ella.
 
 ## Carpetas y permisos
 
-Por defecto se conservan datos en `./data` y logs en `./logs`. No hace falta crear
+Todos los datos persistentes se conservan en `./data`, montada en `/data`:
+`db/` contiene SQLite (incluidos sus archivos WAL y SHM) y `logs/` los logs. No hace falta crear
 las carpetas antes del primer inicio: Docker Compose las crea si faltan y el contenedor arranca
 brevemente como root para asignarles el propietario `PUID:PGID` y permisos de
-lectura, escritura y acceso para ese usuario. Se respetan las rutas de `DATA_DIR`
-y `LOGS_DIR`. Después ejecuta Java con `PUID:PGID` en el mismo contenedor.
+lectura, escritura y acceso para ese usuario. `DATA_DIR` permite elegir la carpeta
+del host. Después ejecuta Java con `PUID:PGID` en el mismo contenedor.
 Si fuerzas un usuario con `user:` o `docker run --user`, debes preparar los
 permisos previamente, porque ese usuario no puede cambiar el propietario.
 
@@ -39,12 +40,12 @@ pertenecen. Para asignar carpetas existentes a otros identificadores, por ejempl
 `1000:1000`:
 
 ```sh
-sudo chown -R 1000:1000 data logs
+sudo chown -R 1000:1000 data
 ```
 
 Adapta los números y las rutas a tu configuración. Cambiar `PUID` o `PGID` no
 modifica automáticamente el propietario de los archivos existentes, solo el de
-las dos carpetas montadas. En sistemas que impiden cambiar el propietario (por
+la raíz de datos y sus subcarpetas `db/` y `logs/`. En sistemas que impiden cambiar el propietario (por
 ejemplo, algunos montajes NFS), prepara los permisos en el servidor de almacenamiento.
 
 Protege `.env`, que puede contener credenciales:

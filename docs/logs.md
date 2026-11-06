@@ -55,7 +55,7 @@ Desde la carpeta de la instalación:
 docker compose logs -f eplsync
 ```
 
-También se conservan en la carpeta `LOGS_DIR`, por defecto `./logs`:
+También se conservan en `logs/` dentro de `DATA_DIR`, por defecto `./data/logs`:
 
 - `eplsync.log`: actividad de la aplicación, errores e inicios y cierres de sesión.
 - `access.log`: peticiones recibidas, código de respuesta y duración.
@@ -73,7 +73,7 @@ independiente y no tiene ese límite de tamaño.
 ## Errores habituales
 
 - **Permiso denegado al iniciar:** revisa el propietario y permisos de las carpetas
-  `DATA_DIR` y `LOGS_DIR`, y los valores `PUID` y `PGID`.
+  `DATA_DIR`, `db/` y `logs/`, y los valores `PUID` y `PGID`.
 - **No se puede conectar con qBittorrent:** comprueba la URL, red Docker, puerto
   de la WebUI y autenticación en **Ajustes → Torrent**.
 - **Se requiere una conexión segura:** revisa HTTPS y las cabeceras del proxy

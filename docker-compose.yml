@@ -8,8 +8,7 @@ services:
     ports:
       - "${HOST_PORT:-8088}:8088"
     volumes:
-      - "${DATA_DIR:-./data}:/app/data"
-      - "${LOGS_DIR:-./logs}:/app/logs"
+      - "${DATA_DIR:-./data}:/data"
       # Opcional: carpeta de EPUB compartida con qBittorrent, solo lectura.
       - "${TORRENT_DIR:-./torrent}:/app/downloads:ro"
     environment:
