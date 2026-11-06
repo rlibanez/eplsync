@@ -118,8 +118,12 @@ export const test = base.extend<{ eventTransport: void }>({
             })
           : route.fallback(),
       );
-      await context.route("**/api/calibre/books/formats", route=>route.fulfill({json:[]}));
-      await context.route("**/api/torrent/downloads/extensions", route=>route.fulfill({json:[]}));
+      await context.route("**/api/calibre/books/formats", (route) =>
+        route.fulfill({ json: [] }),
+      );
+      await context.route("**/api/torrent/downloads/extensions", (route) =>
+        route.fulfill({ json: [] }),
+      );
       await context.route("**/api/torrent/downloads/sync-state", (route) =>
         route.fulfill({ json: { syncedAt: null } }),
       );
@@ -180,6 +184,23 @@ export const test = base.extend<{ eventTransport: void }>({
             })
           : route.fallback(),
       );
+      let appearance: {
+        userId: string;
+        scheme: string | null;
+        palette: string | null;
+      } = { userId: "test-admin", scheme: null, palette: null };
+      await context.route("**/api/auth/appearance", async (route) => {
+        if (route.request().method() === "PUT") {
+          const body = route.request().postDataJSON();
+          if (!body.initialize || appearance.scheme === null)
+            appearance = {
+              userId: body.userId,
+              scheme: body.scheme,
+              palette: body.palette,
+            };
+        }
+        await route.fulfill({ json: appearance });
+      });
       await page.route("**/api/auth/me", (route) =>
         route.fulfill({
           json: {

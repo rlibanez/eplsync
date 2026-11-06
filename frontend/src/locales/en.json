@@ -527,6 +527,7 @@
     "DOWNLOAD_WAIT": "Waiting for downloads"
   },
   "settings": {
+    "appearanceSyncError": "Could not sync appearance. It applies in this browser; change it again to retry saving.",
     "tasks": "Tasks",
     "home": "Home screen",
     "description": "Interface preferences for this browser.",

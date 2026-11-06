@@ -1,3 +1,4 @@
+import { useAppearance } from "../../layout/Appearance";
 import { useSettingsSaved } from "../settings/useSettingsSaved";
 import {
   createContext,
@@ -279,6 +280,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 function SessionWorkspace({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const { connectUser } = useAppearance();
+  useEffect(
+    () => (user ? connectUser(user.id) : undefined),
+    [user?.id, connectUser],
+  );
   // Old in-flight mutations retain their own cache; results cannot cross accounts.
   const [cache] = useState(
     () =>

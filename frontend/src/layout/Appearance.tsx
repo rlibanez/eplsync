@@ -1,5 +1,7 @@
 import {
   createContext,
+  useRef,
+  useCallback,
   useContext,
   useLayoutEffect,
   useEffect,
@@ -7,6 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { MantineProvider, createTheme } from "@mantine/core";
+import { AppearanceSession, type Appearance } from "./appearanceSession";
+import { secureFetch } from "../features/auth/transport";
 let faviconTemplate: Promise<string | null> | undefined;
 function loadFavicon() {
   // Files in public are served by URL, rather than imported as source modules.
@@ -28,6 +32,8 @@ export const palettes = {
 } as const;
 export type Palette = keyof typeof palettes;
 const Context = createContext<{
+  connectUser: (id: string) => () => void;
+  syncError: boolean;
   scheme: "light" | "dark";
   setScheme: (value: "light" | "dark") => void;
   palette: Palette;
@@ -43,14 +49,6 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       return "dark";
     }
   });
-  function setScheme(value: "light" | "dark") {
-    setMode(value);
-    try {
-      localStorage.setItem("eplsync:scheme", value);
-    } catch {
-      /* Optional storage. */
-    }
-  }
   const [palette, setValue] = useState<Palette>(() => {
     try {
       const saved = localStorage.getItem("eplsync:palette");
@@ -61,13 +59,59 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       return "teal";
     }
   });
-  function setPalette(value: Palette) {
-    setValue(value);
+  const current = useRef<Appearance>({ scheme, palette });
+  const session = useRef<AppearanceSession | null>(null);
+  const [syncError, setSyncError] = useState(false);
+  const apply = useCallback((value: Appearance) => {
+    current.current = value;
+    setMode(value.scheme);
+    setValue(value.palette);
     try {
-      localStorage.setItem("eplsync:palette", value);
+      localStorage.setItem("eplsync:scheme", value.scheme);
+      localStorage.setItem("eplsync:palette", value.palette);
     } catch {
-      /* Applies for this session. */
+      /* Local storage is optional. */
     }
+  }, []);
+  const connectUser = useCallback(
+    (id: string) => {
+      session.current?.dispose();
+      setSyncError(false);
+      const connected = new AppearanceSession(
+        id,
+        current.current,
+        async (method, body, signal) => {
+          const response = await secureFetch("/api/auth/appearance", {
+            method,
+            signal,
+            cache: "no-store",
+            headers: body ? { "Content-Type": "application/json" } : undefined,
+            body: body ? JSON.stringify(body) : undefined,
+          });
+          if (!response.ok) throw new Error("Appearance unavailable");
+          return response.json();
+        },
+        apply,
+        setSyncError,
+      );
+      session.current = connected;
+      void connected.load();
+      return () => {
+        connected.dispose();
+        if (session.current === connected) session.current = null;
+      };
+    },
+    [apply],
+  );
+  function change(patch: Partial<Appearance>) {
+    if (session.current) session.current.set(patch);
+    else apply({ ...current.current, ...patch });
+  }
+  function setScheme(value: "light" | "dark") {
+    change({ scheme: value });
+  }
+  function setPalette(value: Palette) {
+    change({ palette: value });
   }
   useLayoutEffect(() => {
     document.documentElement.style.setProperty(
@@ -96,7 +140,9 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     };
   }, [palette, scheme]);
   return (
-    <Context.Provider value={{ palette, setPalette, scheme, setScheme }}>
+    <Context.Provider
+      value={{ palette, setPalette, scheme, setScheme, connectUser, syncError }}
+    >
       <MantineProvider
         forceColorScheme={scheme}
         theme={createTheme({

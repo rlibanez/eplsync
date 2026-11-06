@@ -283,8 +283,8 @@ de Torrent e índices para la cola de envíos y los inventarios descargados. Con
 los trabajos, los archivos y el historial existentes. Los envíos que estaban en
 curso se recuperan comprobando su presencia antes de volver a incorporarlos.
 
-La versión 1.8.3 incorpora seis migraciones desde 1.8.2 y alcanza el esquema
-`1.8.3.8`. Conserva los trabajos, las descargas, los ajustes y el historial. Los
+La versión 1.8.3 incorpora siete migraciones desde 1.8.2 y alcanza el esquema
+`1.8.3.9`. Conserva los trabajos, las descargas, los ajustes y el historial. Los
 archivos de los torrents existentes se inventarían gradualmente en segundo plano,
 cediendo ante los envíos. Consulta las [notas de 1.8.3](releases/1.8.3.md).
 
@@ -292,3 +292,7 @@ cediendo ante los envíos. Consulta las [notas de 1.8.3](releases/1.8.3.md).
 qBittorrent, para clasificar como aceptadas sus confirmaciones tras reintentos o
 reinicios. No altera los resultados históricos ni presume el origen de envíos
 anteriores que no disponían de esa información.
+
+`V1_8_3_9` añade `user_appearance` para guardar el tema y la paleta por usuario.
+La apariencia local se adopta en el primer inicio de sesión si no existe una
+preferencia guardada; la actualización no asigna preferencias a otras cuentas.

@@ -527,6 +527,7 @@
     "DOWNLOAD_WAIT": "Esperando descargas"
   },
   "settings": {
+    "appearanceSyncError": "No se pudo sincronizar la apariencia. Se aplica en este navegador; vuelve a cambiarla para reintentar el guardado.",
     "tasks": "Tareas",
     "home": "Pantalla inicial",
     "description": "Preferencias de la interfaz para este navegador.",

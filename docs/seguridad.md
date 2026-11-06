@@ -202,3 +202,16 @@ Los inicios de sesión, intentos rechazados, cierres explícitos e invalidacione
 se registran en `eplsync.log`, sin contraseñas ni tokens. Si un error muestra una
 referencia de incidencia, úsala para localizar el detalle en los
 [logs](logs.md).
+
+## Apariencia personal
+
+El tema claro u oscuro y la paleta de colores se guardan por usuario en la base
+de datos. Se cargan al iniciar sesión desde cualquier navegador y sus cambios se
+guardan automáticamente, sin exigir permisos de administración de ajustes.
+Cada usuario solo puede leer y modificar su propia apariencia.
+
+El navegador conserva una copia local para mostrarla mientras carga la sesión y
+en la pantalla de acceso. En el primer inicio, si la cuenta aún no tiene una
+apariencia guardada, se adopta esa copia local. Una preferencia ya guardada en la
+cuenta tiene prioridad. Si falla el guardado, se conserva el cambio local y se
+muestra un aviso en Ajustes; cambiar de nuevo la apariencia reintenta el guardado.

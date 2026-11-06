@@ -1,10 +1,11 @@
+import { Alert } from "@mantine/core";
 import { SetupEntry } from "./setupState";
 import { useTranslation } from "react-i18next";
 import { palettes, useAppearance, type Palette } from "../../layout/Appearance";
 import { LanguagePicker } from "../../components/LanguagePicker";
 export function Settings() {
   const { t } = useTranslation();
-  const { palette, setPalette, scheme, setScheme } = useAppearance();
+  const { palette, setPalette, scheme, setScheme, syncError } = useAppearance();
   return (
     <>
       <section className="panel settings-section">
@@ -15,6 +16,11 @@ export function Settings() {
       </section>
       <section className="panel settings-section">
         <h2>{t("settings.appearance")}</h2>
+        {syncError && (
+          <Alert color="red" role="alert">
+            {t("settings.appearanceSyncError")}
+          </Alert>
+        )}
         <fieldset className="palette-options scheme-options">
           <legend>{t("settings.scheme")}</legend>
           {(["light", "dark"] as const).map((value) => (
