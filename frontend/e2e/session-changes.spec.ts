@@ -39,6 +39,10 @@ test("another tab renews the token even when the account stays the same", async 
         });
       if (path === "/api/auth/notifications")
         return route.fulfill({ json: { floating: true, unreadBadge: true } });
+      if (path === "/api/auth/appearance")
+        return route.fulfill({
+          json: { userId: account.id, scheme: "dark", palette: "teal" },
+        });
       if (path === "/api/auth/home")
         return route.fulfill({ json: { sections: [] } });
       if (path === "/api/auth/email") {
@@ -123,6 +127,10 @@ test("logout and a different login in another tab replace the account and discar
         });
       if (path === "/api/auth/notifications")
         return route.fulfill({ json: { floating: true, unreadBadge: true } });
+      if (path === "/api/auth/appearance")
+        return route.fulfill({
+          json: { userId: current?.id, scheme: "dark", palette: "teal" },
+        });
       if (path === "/api/auth/home")
         return route.fulfill({ json: { sections: [] } });
       if (path === "/api/auth/csrf")

@@ -283,10 +283,19 @@ de Torrent e índices para la cola de envíos y los inventarios descargados. Con
 los trabajos, los archivos y el historial existentes. Los envíos que estaban en
 curso se recuperan comprobando su presencia antes de volver a incorporarlos.
 
-La versión 1.8.3 incorpora siete migraciones desde 1.8.2 y alcanza el esquema
-`1.8.3.9`. Conserva los trabajos, las descargas, los ajustes y el historial. Los
+La versión 1.8.3 incorpora cinco migraciones desde 1.8.2 y alcanza el esquema
+`1.8.3.7`. Conserva los trabajos, las descargas, los ajustes y el historial. Los
 archivos de los torrents existentes se inventarían gradualmente en segundo plano,
 cediendo ante los envíos. Consulta las [notas de 1.8.3](releases/1.8.3.md).
+
+## Actualización a 1.8.4
+
+La versión 1.8.4 añade dos migraciones (`1.8.3.8` y `1.8.3.9`) sobre 1.8.3
+y alcanza el esquema `1.8.3.9`.
+Se conservan sus nombres y las migraciones publicadas. La primera registra la
+intención de envío para distinguir las confirmaciones recuperadas de los torrents
+preexistentes; la segunda guarda la apariencia por usuario. No se reclasifican
+los resultados antiguos que carecen de información de origen.
 
 `V1_8_3_8` registra la intención de envío de cada elemento antes de contactar con
 qBittorrent, para clasificar como aceptadas sus confirmaciones tras reintentos o
@@ -296,3 +305,17 @@ anteriores que no disponían de esa información.
 `V1_8_3_9` añade `user_appearance` para guardar el tema y la paleta por usuario.
 La apariencia local se adopta en el primer inicio de sesión si no existe una
 preferencia guardada; la actualización no asigna preferencias a otras cuentas.
+
+Los datos y logs se organizan ahora bajo una única raíz: `db/` para SQLite y
+`logs/` para los registros. En Docker, `DATA_DIR` se monta en `/data` y desaparece
+el montaje separado `LOGS_DIR`. Para el JAR se utiliza `data/` en el directorio de
+ejecución, salvo que se indique `EPLSYNC_DATA_DIR`.
+
+Si actualizas una instalación con datos, detén la aplicación y conserva una copia
+de seguridad junto con `EPLSYNC_SECRET_KEY`. Antes de arrancar, coloca la base
+`eplsync.db` y los archivos auxiliares SQLite que se conserven en `db/`, y los logs
+en `logs/` dentro de la raíz elegida. Sustituye o adapta Compose y el YAML externo:
+las rutas antiguas personalizadas no se trasladan automáticamente. No arranques
+con la nueva ruta vacía si quieres conservar tu biblioteca, cuentas y trabajos.
+
+Consulta las [notas de 1.8.4](releases/1.8.4.md).

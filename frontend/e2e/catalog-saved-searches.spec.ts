@@ -212,7 +212,7 @@ for (const button of ["Limpiar", "Limpiar filtros"]) {
         },
       }),
     );
-    await page.goto("/catalog");
+    await page.goto("/catalog?page=0&size=20&sort=title%2Casc");
     const heading = page.locator(".catalog-search summary");
     await heading.click();
     const selector = page.getByRole("textbox", {
