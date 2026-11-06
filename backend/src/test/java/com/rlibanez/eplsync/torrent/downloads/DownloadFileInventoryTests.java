@@ -31,7 +31,7 @@ class DownloadFileInventoryTests {
         var result=queries.search(filters);assertThat(result.items()).singleElement().satisfies(row->{assertThat(row.getFileExtensions()).containsExactly("epub","pdf");assertThat(row.getStatus()).isEqualTo(DownloadStatus.DOWNLOADING);});
         assertThat(jdbc.queryForObject("SELECT relative_path FROM torrent_download_files WHERE file_index=0",String.class)).isEqualTo("folder/book.EPUB");
         filters.set("extensionsOperator","ne");assertThat(queries.search(filters).items()).singleElement().satisfies(row->assertThat(row.getId()).isEqualTo(unknown));
-        filters.set("extensions","mobi");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactlyInAnyOrder(record,unknown);
+        filters.set("extensions","mobi");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactlyInAnyOrder(record,unknown);
         filters.clear();filters.set("inventoryState","UNKNOWN");assertThat(queries.search(filters).items()).singleElement().satisfies(row->assertThat(row.getId()).isEqualTo(unknown));
     }
     @Test void extensionsSortAndUnknownFilterUseTheEntireInventory() {
@@ -39,10 +39,10 @@ class DownloadFileInventoryTests {
         inventory.record(record,tracking.instanceId(),"A".repeat(40),List.of(new TorrentClient.TorrentFile(0,"book.pdf",10,1,"/downloads"),new TorrentClient.TorrentFile(1,"book.epub",10,1,"/downloads")));
         inventory.record(pdf,tracking.instanceId(),"B".repeat(40),List.of(new TorrentClient.TorrentFile(0,"book.pdf",10,1,"/downloads")));
         var filters=new LinkedMultiValueMap<String,String>();filters.set("sort","fileExtensions,asc");
-        assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactly(unknown,record,pdf);
+        assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactly(unknown,record,pdf);
         filters.set("extensions","UNKNOWN,pdf");assertThat(queries.search(filters).items()).hasSize(3);
-        filters.set("extensions","UNKNOWN");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactly(unknown);
-        filters.set("extensionsOperator","ne");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactly(record,pdf);
+        filters.set("extensions","UNKNOWN");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactly(unknown);
+        filters.set("extensionsOperator","ne");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactly(record,pdf);
     }
     @Test void unifiedExtensionFilterDistinguishesPendingErrorsAndOtherFormats() {
         String mixed=create("B"),other=create("C"),pending=create("D"),failed=create("E"),cached=create("F"),noExtension=create("0");
@@ -53,14 +53,14 @@ class DownloadFileInventoryTests {
         inventory.record(noExtension,tracking.instanceId(),"0".repeat(40),List.of(new TorrentClient.TorrentFile(0,"README",10,1,"/downloads")));
         jdbc.update("UPDATE torrent_downloads SET inventory_state='ERROR' WHERE id IN (?,?)",failed,cached);
         var filters=new LinkedMultiValueMap<String,String>();filters.set("extensions","OTHER");
-        assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactlyInAnyOrder(mixed,other,noExtension);
-        filters.set("extensionsOperator","ne");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactlyInAnyOrder(record,cached,pending,failed);
-        filters.remove("extensionsOperator");filters.set("extensions","UNKNOWN");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactly(pending);
-        filters.set("extensions","ERROR");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactlyInAnyOrder(failed,cached);
-        filters.set("extensions","ERROR,pdf");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactlyInAnyOrder(record,mixed,failed,cached);
-        filters.set("extensions","ERROR,UNKNOWN");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactlyInAnyOrder(failed,cached,pending);
-        filters.set("extensionsOperator","ne");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactlyInAnyOrder(record,mixed,other,noExtension);
-        filters.set("extensions","txt");filters.remove("extensionsOperator");assertThat(queries.search(filters).items()).extracting(DownloadRecord::getId).containsExactly(mixed);
+        assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactlyInAnyOrder(mixed,other,noExtension);
+        filters.set("extensionsOperator","ne");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactlyInAnyOrder(record,cached,pending,failed);
+        filters.remove("extensionsOperator");filters.set("extensions","UNKNOWN");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactly(pending);
+        filters.set("extensions","ERROR");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactlyInAnyOrder(failed,cached);
+        filters.set("extensions","ERROR,pdf");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactlyInAnyOrder(record,mixed,failed,cached);
+        filters.set("extensions","ERROR,UNKNOWN");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactlyInAnyOrder(failed,cached,pending);
+        filters.set("extensionsOperator","ne");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactlyInAnyOrder(record,mixed,other,noExtension);
+        filters.set("extensions","txt");filters.remove("extensionsOperator");assertThat(queries.search(filters).items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactly(mixed);
     }
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings={"epub","pdf","OTHER","ERROR","UNKNOWN","epub,ERROR","epub,pdf"})
@@ -81,7 +81,7 @@ class DownloadFileInventoryTests {
         var ids=new HashSet<String>();matching.items().forEach(row->ids.add(row.getId()));
         for(var row:opposite.items()) assertThat(ids.add(row.getId())).isTrue();
         assertThat(ids).containsExactlyInAnyOrder(record,pdf,pending,failed,cached,noExtension,other);
-        if(selection.equals("epub")) assertThat(opposite.items()).extracting(DownloadRecord::getId).containsExactlyInAnyOrder(pdf,pending,failed,noExtension,other);
+        if(selection.equals("epub")) assertThat(opposite.items()).extracting(value->java.util.Objects.requireNonNull(value).getId()).containsExactlyInAnyOrder(pdf,pending,failed,noExtension,other);
     }
     @Test void inventoryYieldsBeforeSqlWhileBulkSendsHavePriorityAndPrioritizesDownloadedBooksAfterwards() {
         String pending=create("B");jdbc.update("UPDATE torrent_downloads SET status='DOWNLOADED' WHERE id=?",pending);
@@ -90,7 +90,8 @@ class DownloadFileInventoryTests {
         var sql=org.mockito.Mockito.spy(jdbc);
         var worker=new DownloadFileInventory(sql,transactions,service,tracking,gate,new com.rlibanez.eplsync.config.TorrentProperties(),System::nanoTime);
         try {
-            try(var priority=tracking.prioritizeSubmissions()) {
+            var priority=tracking.prioritizeSubmissions();
+            try(priority) {
                 for(int n=0;n<50;n++) worker.tick();
                 org.mockito.Mockito.verifyNoInteractions(sql,service);
             }

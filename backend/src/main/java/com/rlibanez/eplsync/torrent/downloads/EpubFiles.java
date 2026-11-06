@@ -62,7 +62,7 @@ public class EpubFiles {
             if(!row.getClientInstanceId().equals(tracking.instanceId())) throw unavailable("El registro pertenece a otro cliente torrent");
             return adapter.listTorrents(Set.of(row.getHash())).stream()
                     .filter(t -> t.aliases().contains(row.getHash().toUpperCase(Locale.ROOT)))
-                    .map(RemoteTorrent::status).findFirst().orElseThrow(() -> unavailable("El torrent ya no está disponible en el cliente"));
+                    .map(value->java.util.Objects.requireNonNull(value).status()).findFirst().orElseThrow(() -> unavailable("El torrent ya no está disponible en el cliente"));
         });
         if(status==DownloadStatus.ERROR || status==DownloadStatus.NOT_FOUND) throw unavailable("El torrent no está disponible o tiene un error; revisa Estado de las descargas");
         if(status!=DownloadStatus.DOWNLOADED) throw new PendingEpub();

@@ -27,13 +27,14 @@ class CalibreFormatsNativeTests {
                     long independent=client.uploadBook(c,file,"book."+format,"native-"+format);created.add(independent);
                     Path independentCopy=directory.resolve("independent."+format);client.downloadOriginalFormat(c,independent,independentCopy,268435456,format);assertThat(Files.readAllBytes(independentCopy)).isEqualTo(Files.readAllBytes(file));
                 }
-                Path copy=directory.resolve("original."+format);client.downloadOriginalFormat(c,target,copy,268435456,format);
+                Path copy=directory.resolve("original."+format);client.downloadOriginalFormat(c,Objects.requireNonNull(target),copy,268435456,format);
                 assertThat(Files.readAllBytes(copy)).isEqualTo(Files.readAllBytes(file));
             }
-            assertThat(client.formats(c,target)).contains("EPUB","PDF","MOBI","AZW3");
+            long targetId=Objects.requireNonNull(target);
+            assertThat(client.formats(c,targetId)).contains("EPUB","PDF","MOBI","AZW3");
             Path changed=directory.resolve("changed.pdf");Files.writeString(changed,"%PDF-1.7 changed");
-            assertThat(client.addFormat(c,target,changed,"changed.pdf",client.book(c,target).uuid())).isFalse();
-            Path untouched=directory.resolve("untouched.pdf");client.downloadOriginalFormat(c,target,untouched,268435456,"pdf");assertThat(Files.readAllBytes(untouched)).isEqualTo(Files.readAllBytes(directory.resolve("book.pdf")));
+            assertThat(client.addFormat(c,targetId,changed,"changed.pdf",client.book(c,targetId).uuid())).isFalse();
+            Path untouched=directory.resolve("untouched.pdf");client.downloadOriginalFormat(c,targetId,untouched,268435456,"pdf");assertThat(Files.readAllBytes(untouched)).isEqualTo(Files.readAllBytes(directory.resolve("book.pdf")));
         } finally {for(long id:created) client.remove(c,id,true);}
     }
 }

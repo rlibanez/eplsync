@@ -74,7 +74,7 @@ public class DownloadQueryService {
 
     void loadExtensions(List<DownloadRecord> records) {
         var extensions=new HashMap<String,List<String>>();
-        if(!records.isEmpty()) for(var entry:entityManager.createQuery("select distinct f.downloadId,f.extension from DownloadFile f where f.downloadId in :ids order by f.extension",Object[].class).setParameter("ids",records.stream().map(DownloadRecord::getId).toList()).getResultList())
+        if(!records.isEmpty()) for(var entry:entityManager.createQuery("select distinct f.downloadId,f.extension from DownloadFile f where f.downloadId in :ids order by f.extension",Object[].class).setParameter("ids",records.stream().map(value->java.util.Objects.requireNonNull(value).getId()).toList()).getResultList())
             extensions.computeIfAbsent((String)entry[0],ignored->new ArrayList<>()).add((String)entry[1]);
         records.forEach(row->row.setFileExtensions(List.copyOf(extensions.getOrDefault(row.getId(),List.of()))));
     }

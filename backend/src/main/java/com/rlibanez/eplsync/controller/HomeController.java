@@ -65,7 +65,7 @@ public class HomeController {
         var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if(!(auth.getPrincipal() instanceof com.rlibanez.eplsync.security.Account account)) return;
         jdbc.query("SELECT state,count(*) AS total FROM revision_cleanup_jobs WHERE source=? AND owner_id=? AND state<>'PREVIEW' GROUP BY state",
-            row->{counts.merge(row.getString("state"),row.getLong("total"),Long::sum);},source,account.id());
+            row->{counts.merge(row.getString("state"),row.getLong("total"),(left,right)->java.util.Objects.requireNonNull(left)+java.util.Objects.requireNonNull(right));},source,account.id());
     }
 
 }

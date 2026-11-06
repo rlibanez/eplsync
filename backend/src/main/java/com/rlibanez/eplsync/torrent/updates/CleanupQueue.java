@@ -278,7 +278,7 @@ public class CleanupQueue {
     private void reportProblems(List<UpdateCleanup> selected,boolean automatic) {
         synchronized(bulk) {tx.executeWithoutResult(status -> {
             var changed=new LinkedHashMap<String,UpdateCleanup>();
-            var parents=selected.stream().map(UpdateCleanup::getJobId).filter(Objects::nonNull).distinct().toList();
+            var parents=selected.stream().map(value->Objects.requireNonNull(value).getJobId()).filter(Objects::nonNull).distinct().toList();
             var related=parents.isEmpty()?Set.<String>of():new HashSet<>(em.createQuery("select r.updateJobId from RelatedCleanup r where r.updateJobId in :ids",String.class).setParameter("ids",parents).getResultList());
             for(var candidate:selected) {
                 if(related.contains(candidate.getJobId())) continue;

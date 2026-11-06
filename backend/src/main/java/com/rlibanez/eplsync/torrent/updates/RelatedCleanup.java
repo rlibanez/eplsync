@@ -6,4 +6,5 @@ package com.rlibanez.eplsync.torrent.updates;
 public class RelatedCleanup {
     @jakarta.persistence.Id private String id;
     private String updateJobId;
+    public String getUpdateJobId() {return updateJobId;}
 }

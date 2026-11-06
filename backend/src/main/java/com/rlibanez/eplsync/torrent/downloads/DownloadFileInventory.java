@@ -92,7 +92,7 @@ public class DownloadFileInventory {
                 jdbc.update("UPDATE torrent_downloads SET inventory_state=CASE WHEN inventory_checked_at IS NULL THEN 'PENDING' ELSE inventory_state END,inventory_next_check=? WHERE id=?",System.currentTimeMillis()+300_000,id);return;
             }
             var previous=jdbc.queryForList("SELECT file_index,relative_path,size FROM torrent_download_files WHERE download_id=? ORDER BY file_index",id);
-            var sorted=files.stream().sorted(Comparator.comparingInt(TorrentFile::index)).toList();
+            var sorted=files.stream().sorted(Comparator.comparingInt(value->java.util.Objects.requireNonNull(value).index())).toList();
             boolean same=previous.size()==sorted.size();
             if(same) for(int n=0;n<sorted.size();n++) {
                 var a=previous.get(n);var b=sorted.get(n);

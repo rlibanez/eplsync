@@ -30,7 +30,7 @@ public class BulkCatalogPreparation {
     public static final class Failed extends TorrentOperationException {
         private final String jobId;
         Failed(String jobId,RuntimeException cause) {
-            super(HttpStatus.UNPROCESSABLE_ENTITY,jobId==null
+            super(HttpStatus.UNPROCESSABLE_CONTENT,jobId==null
                 ? "La preparación no pudo completarse. No se ha creado ningún trabajo ni enviado torrents"
                 : "La preparación no pudo completarse. El trabajo se ha cancelado sin enviar torrents; puedes consultar su detalle");
             this.jobId=jobId;initCause(cause);

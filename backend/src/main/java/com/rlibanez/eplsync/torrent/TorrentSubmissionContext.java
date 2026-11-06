@@ -101,7 +101,7 @@ public final class TorrentSubmissionContext {
     void confirmTorrent(String hash, java.util.function.Function<Set<String>, Set<String>> loader, java.time.Duration timeout) {
         String normalized = hash.toUpperCase(java.util.Locale.ROOT);
         long deadline = System.nanoTime() + timeout.toNanos();
-        synchronized (this) { awaiting.merge(normalized,1,Integer::sum); }
+        synchronized (this) { awaiting.merge(normalized,1,(left,right)->java.util.Objects.requireNonNull(left)+java.util.Objects.requireNonNull(right)); }
         try {
             while (true) {
                 Set<String> batch;

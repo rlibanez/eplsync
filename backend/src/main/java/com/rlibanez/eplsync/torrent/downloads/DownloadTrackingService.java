@@ -114,7 +114,7 @@ public class DownloadTrackingService {
         coordination.readLock().lock();
         com.rlibanez.eplsync.torrent.TorrentWorkMetrics.record("espera_envio",System.nanoTime()-waiting,false);
         synchronized(writes) {
-            activeSubmissionHashes.merge(command.hash(),1,Integer::sum);
+            activeSubmissionHashes.merge(command.hash(),1,(left,right)->java.util.Objects.requireNonNull(left)+java.util.Objects.requireNonNull(right));
             observationChanges.forEach(changed->changed.add(command.hash()));
         }
         try {

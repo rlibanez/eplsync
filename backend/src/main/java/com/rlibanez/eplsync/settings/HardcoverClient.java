@@ -55,7 +55,7 @@ public class HardcoverClient {
         return search(title,authors,page,true,true);
     }
     public Search search(String title,List<String> authors,int page,boolean useTitle,boolean useAuthor) {
-        page(page);if((useTitle && (title==null || title.isBlank())) || (useAuthor && (authors==null || authors.isEmpty() || authors.stream().allMatch(String::isBlank)))) throw invalid("Se necesita el título y el autor del libro de Calibre");
+        page(page);if((useTitle && (title==null || title.isBlank())) || (useAuthor && (authors==null || authors.isEmpty() || authors.stream().allMatch(value->java.util.Objects.requireNonNull(value).isBlank())))) throw invalid("Se necesita el título y el autor del libro de Calibre");
         if(!useTitle && !useAuthor) throw invalid("Selecciona al menos un campo de búsqueda");
         String fields=useTitle?(useAuthor?"title,author_names":"title"):"author_names";
         String query=((useTitle?title:"")+" "+(useAuthor?String.join(" ",authors):"")).strip();if(query.length()>1500) throw invalid("El título y los autores son demasiado largos");

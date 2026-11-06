@@ -169,7 +169,7 @@ public class CalibreTransfers {
         if(request.files().stream().anyMatch(f->deferredIds.contains(f.recordId()))) throw new UserInputException("No selecciones la misma descarga como archivo y como pendiente");
         return preparing(()-> {
             var connection=settings.connection();String selectedSource=source();
-            var prepared=request.files().isEmpty()?null:prepare(request.files().stream().map(FileChoice::recordId).distinct().toList());
+            var prepared=request.files().isEmpty()?null:prepare(request.files().stream().map(value->Objects.requireNonNull(value).recordId()).distinct().toList());
             var availableLibraries=prepared==null?client.check(connection).libraries():prepared.libraries();
             if(availableLibraries.stream().noneMatch(l->l.id().equals(request.library()))) throw new UserInputException("La biblioteca de destino no está disponible");
             var records=deferredDownloads(request.deferredRecords());
@@ -191,8 +191,8 @@ public class CalibreTransfers {
             return tx.execute(status->{
                 var existing=existingDirect(request);if(existing!=null) return existing;
                 if(!connection.equals(settings.connection()) || !selectedSource.equals(source())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
-                deferredDownloads(records.stream().map(DownloadRecord::getId).toList());
-                deferredDownloads(pinned.stream().map(Candidate::recordId).distinct().toList());
+                deferredDownloads(records.stream().map(value->Objects.requireNonNull(value).getId()).toList());
+                deferredDownloads(pinned.stream().map(value->Objects.requireNonNull(value).recordId()).distinct().toList());
                 String id=createQueuedJob(connection,request.library());int position=0;
                 for(var f:selected) insertUpdate(id,position++,f,new CalibreUpdateFlow.Choice(0,f.revision(),true,List.of(),"KEEP",List.of(),false),null,false);
                 for(var f:pinned) {
