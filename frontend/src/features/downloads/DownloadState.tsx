@@ -51,6 +51,7 @@ export interface Download {
   id: string;
   eplId: number;
   title?: string | null;
+  author?: string | null;
   coverUrl?: string | null;
   coverAvailable?: boolean | null;
   revision: number;
@@ -73,6 +74,8 @@ const initialFilters = {
   eplIdOperator: "eq",
   title: "",
   titleOperator: "eq",
+  author: "",
+  authorOperator: "eq",
   status: "",
   statusOperator: "eq",
   extensions: "",
@@ -99,6 +102,7 @@ function DownloadHistory() {
     };
     if (inventoryState !== undefined) setFilters(remaining);
   }, [filters, setFilters]);
+  const [draftAuthor, setDraftAuthor] = useBookViewState("draftAuthor", "");
   const [draftTitle, setDraftTitle] = useBookViewState("draftTitle", "");
   const [page, setPage] = useBookViewState("page", 0);
   const [size, setSize] = useBookViewState("size", 20);
@@ -126,6 +130,20 @@ function DownloadHistory() {
     return () => window.clearTimeout(timer);
   }, [draftTitle, filters.title]);
 
+  useEffect(() => {
+    const author = draftAuthor.trim();
+    if (author === (filters.author ?? "")) return;
+    const timer = window.setTimeout(() => {
+      setFilters((current) => ({
+        ...current,
+        author,
+        authorOperator: author ? current.authorOperator : "eq",
+      }));
+      setPage(0);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [draftAuthor, filters.author]);
+
   const extensionOptions = useQuery({
     queryKey: ["download-extensions"],
     queryFn: ({ signal }) =>
@@ -142,7 +160,7 @@ function DownloadHistory() {
         !key.endsWith("Operator") ||
         (filters[
           key.slice(0, -8) as
-            "status" | "origin" | "title" | "eplId" | "extensions"
+            "status" | "origin" | "title" | "author" | "eplId" | "extensions"
         ] &&
           value === "ne")
       )
@@ -207,6 +225,7 @@ function DownloadHistory() {
     [
       { field: "eplId", label: "filters.eplId", width: 100 },
       { field: "title", label: "downloads.book", width: 360 },
+      { field: "author", label: "catalog.author", width: 240 },
       { field: "hash", label: "downloads.hash", width: 340 },
       { field: "revision", label: "downloads.revision", width: 110 },
       { field: "status", label: "downloads.status", width: 160 },
@@ -232,7 +251,7 @@ function DownloadHistory() {
     {
       defaults: "createdAt,desc",
       selection: selectable,
-      newColumnsAfter: { fileExtensions: "status" },
+      newColumnsAfter: { author: "title", fileExtensions: "status" },
       revealOnce: ["fileExtensions"],
       hidden: selectable ? [] : ["actions"],
       extraSort: [
@@ -356,6 +375,40 @@ function DownloadHistory() {
               if (!e.currentTarget.value.trim()) filter("titleOperator", "eq");
             }}
           />
+          <TextInput
+            name="author"
+            label={t("catalog.author")}
+            value={draftAuthor}
+            maxLength={256}
+            {...textOperatorProps(filters.authorOperator === "ne", () =>
+              filter(
+                "authorOperator",
+                filters.authorOperator === "ne" ? "eq" : "ne",
+              ),
+            )}
+            rightSectionPointerEvents="auto"
+            rightSection={
+              draftAuthor ? (
+                <CloseButton
+                  size="sm"
+                  aria-label={`${t("catalog.clear")}: ${t("catalog.author")}`}
+                  onClick={() => {
+                    setDraftAuthor("");
+                    setFilters((current) => ({
+                      ...current,
+                      author: "",
+                      authorOperator: "eq",
+                    }));
+                    setPage(0);
+                  }}
+                />
+              ) : undefined
+            }
+            onChange={(e) => {
+              setDraftAuthor(e.currentTarget.value);
+              if (!e.currentTarget.value.trim()) filter("authorOperator", "eq");
+            }}
+          />
           <MultiSelect
             searchable
             styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
@@ -455,6 +508,7 @@ function DownloadHistory() {
             onClick={() => {
               setFilters(initialFilters);
               setDraftTitle("");
+              setDraftAuthor("");
               setPage(0);
               setSize(20);
             }}
@@ -567,6 +621,27 @@ function DownloadHistory() {
                                   </td>,
                                   <td className="catalog-title-cell">
                                     <DownloadBook book={d} />
+                                  </td>,
+                                  <td>
+                                    {d.author ? (
+                                      <button
+                                        type="button"
+                                        className="catalog-value-filter"
+                                        onClick={() => {
+                                          setDraftAuthor(d.author!);
+                                          setFilters((current) => ({
+                                            ...current,
+                                            author: d.author!,
+                                            authorOperator: "eq",
+                                          }));
+                                          setPage(0);
+                                        }}
+                                      >
+                                        {d.author}
+                                      </button>
+                                    ) : (
+                                      "—"
+                                    )}
                                   </td>,
                                   <td>
                                     <small className="hash-text">

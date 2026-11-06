@@ -43,6 +43,7 @@ public class DownloadRecord {
     @com.fasterxml.jackson.annotation.JsonIgnore private String extensionsSort;
     @Transient private java.util.List<String> fileExtensions=java.util.List.of();
     @Transient private String title;
+    @Transient private String author;
     @Transient private String coverUrl;
     @Transient private Boolean coverAvailable;
 }

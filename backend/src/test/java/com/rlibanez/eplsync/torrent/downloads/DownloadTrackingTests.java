@@ -366,6 +366,23 @@ class DownloadTrackingTests {
         mvc.perform(get("/api/torrent/downloads").param("title","x".repeat(257))).andExpect(status().isBadRequest());
     }
 
+    @Test void authorFilterSupportsNegationSortingAndSummaryWithoutDroppingMissingBooks() throws Exception {
+        book(1.0,HASH);
+        books.save(CatalogBook.builder().eplId(33L).revision(1.0).title("Other").author("Zed").build());
+        for(long id:List.of(32L,33L,34L)) {
+            var row=new DownloadRecord();row.setEplId(id);row.setRevision(1.0);row.setHash(String.format("%040X",id));
+            row.setClient("stub");row.setClientInstanceId(tracking.instanceId());row.setOrigin(DownloadRecord.Origin.EPLSYNC);
+            row.setStatus(DownloadStatus.DOWNLOADED);row.setCreatedAt(Instant.now());downloads.save(row);
+        }
+        mvc.perform(get("/api/torrent/downloads").param("author"," aUtH ").param("sort","author,asc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].author").value("Author"));
+        mvc.perform(get("/api/torrent/downloads").param("author","author").param("authorOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(get("/api/torrent/downloads/summary").param("author","author").param("authorOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(2));
+        mvc.perform(get("/api/torrent/downloads").param("authorOperator","invalid")).andExpect(status().isBadRequest());
+    }
+
     @Test void stateExclusionAppliesBeforePagingAndToAllResults() throws Exception {
         for(int i=0;i<5;i++) {
             var row=new DownloadRecord();row.setEplId(32L);row.setRevision(1.0+i);row.setHash(String.format("%040X",i+1));

@@ -14,7 +14,7 @@ import java.util.*;
 public class DownloadQueryService {
     private static final Set<String> MAIN_EXTENSIONS=Set.of("epub","azw3","mobi","pdf","rar","zip","7z","cbr");
     private static final Set<String> DATE_FIELDS = Set.of("createdAt", "requestedAt", "submittedAt", "completedAt", "discoveredAt", "lastCheckedAt", "lastSeenAt");
-    private static final Set<String> SORT_FIELDS = Set.of("fileExtensions", "title", "lastError", "id", "eplId", "revision", "hash", "status", "origin", "client", "clientInstanceId",
+    private static final Set<String> SORT_FIELDS = Set.of("fileExtensions", "author", "title", "lastError", "id", "eplId", "revision", "hash", "status", "origin", "client", "clientInstanceId",
             "createdAt", "requestedAt", "submittedAt", "completedAt", "discoveredAt", "lastCheckedAt", "lastSeenAt");
     private final DownloadRepository repository;
     private final jakarta.persistence.EntityManager entityManager;
@@ -56,7 +56,7 @@ public class DownloadQueryService {
         for (var value : params.getOrDefault("sort", List.of("createdAt,desc"))) {
             var parts = value.split(",", -1);
             if (parts.length > 2 || !SORT_FIELDS.contains(parts[0])) throw new com.rlibanez.eplsync.exception.UserInputException("Ordenación de descargas inválida");
-            orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]), parts[0].equals("fileExtensions") ? "extensionsSort" : parts[0].equals("title") ? "catalogBook.title" : parts[0]));
+            orders.add(new Sort.Order(parts.length == 1 ? Sort.Direction.ASC : Sort.Direction.fromString(parts[1]), parts[0].equals("fileExtensions") ? "extensionsSort" : Set.of("title","author").contains(parts[0]) ? "catalogBook."+parts[0] : parts[0]));
         }
         com.rlibanez.eplsync.config.QueryLimits.sort(Sort.by(orders));
         if (orders.stream().noneMatch(order -> order.getProperty().equals("id"))) orders.add(Sort.Order.asc("id"));
@@ -66,7 +66,7 @@ public class DownloadQueryService {
         loadExtensions(result.getContent());
         result.forEach(row -> {
             var book = metadata.get(row.getEplId());
-            if (book != null) { row.setTitle(book.title()); row.setCoverUrl(book.coverUrl()); row.setCoverAvailable(book.coverAvailable()); }
+            if (book != null) { row.setTitle(book.title()); row.setAuthor(book.author()); row.setCoverUrl(book.coverUrl()); row.setCoverAvailable(book.coverAvailable()); }
         });
         return new PageResponse<>(result.getContent(), new PageResponse.PageMeta(result.getNumber(), result.getSize(), result.getTotalElements(),
                 result.getTotalPages(), result.isFirst(), result.isLast(), result.hasNext(), result.hasPrevious()));
@@ -80,7 +80,7 @@ public class DownloadQueryService {
     }
 
     private void validate(MultiValueMap<String, String> params, boolean listing) {
-        var allowed = new HashSet<>(Set.of("extensions","extensionsOperator","inventoryState","title", "titleOperator", "eplId", "eplIdOperator", "hash", "revision", "status", "statusOperator", "originOperator", "origin", "client", "clientInstanceId", "completed"));
+        var allowed = new HashSet<>(Set.of("author","authorOperator","extensions","extensionsOperator","inventoryState","title", "titleOperator", "eplId", "eplIdOperator", "hash", "revision", "status", "statusOperator", "originOperator", "origin", "client", "clientInstanceId", "completed"));
         if (listing) allowed.addAll(Set.of("page", "size", "sort"));
         DATE_FIELDS.forEach(field -> { allowed.add(field + "From"); allowed.add(field + "To"); });
         if (!allowed.containsAll(params.keySet())) throw new com.rlibanez.eplsync.exception.UserInputException("Filtro de descargas desconocido");
@@ -98,13 +98,13 @@ public class DownloadQueryService {
             try {
                 switch (key) {
                     case "page", "size", "sort" -> { }
-                    case "extensionsOperator", "titleOperator", "statusOperator", "originOperator", "eplIdOperator" -> com.rlibanez.eplsync.ordering.StateOperator.excluded(text);
+                    case "authorOperator", "extensionsOperator", "titleOperator", "statusOperator", "originOperator", "eplIdOperator" -> com.rlibanez.eplsync.ordering.StateOperator.excluded(text);
                     case "extensions" -> {
                         var extensions=Arrays.stream(text.toLowerCase(Locale.ROOT).split(",",-1)).distinct().toList();
                         if(extensions.size()>50 || extensions.stream().anyMatch(v->!v.matches("[a-z0-9]{1,16}|unknown"))) throw new IllegalArgumentException();values.put(key,extensions);
                     }
                     case "inventoryState" -> {if(!Set.of("UNKNOWN","CHECKED","ERROR").contains(text)) throw new IllegalArgumentException();values.put(key,text);}
-                    case "title" -> { if(text.length()>256) throw new com.rlibanez.eplsync.exception.UserInputException(); if(!text.isBlank()) values.put(key,text.trim()); }
+                    case "title", "author" -> { if(text.length()>256) throw new com.rlibanez.eplsync.exception.UserInputException(); if(!text.isBlank()) values.put(key,text.trim()); }
                     case "eplId" -> values.put(key, com.rlibanez.eplsync.filter.EplIds.delimited(com.rlibanez.eplsync.filter.EplIds.parse(text)));
                     case "revision" -> { double revision = Double.parseDouble(text); if (!Double.isFinite(revision) || revision < 0) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, revision); }
                     case "completed" -> { if (!text.equals("true") && !text.equals("false")) throw new com.rlibanez.eplsync.exception.UserInputException(); values.put(key, Boolean.valueOf(text)); }
@@ -134,10 +134,10 @@ public class DownloadQueryService {
                     predicates.add("ne".equals(params.getFirst("extensionsOperator"))?cb.not(match):match);
                 }
                 else if(key.equals("inventoryState")) predicates.add(value.equals("UNKNOWN")?cb.isNull(root.get("inventoryCheckedAt")):cb.equal(root.get("inventoryState"),value));
-                else if(key.equals("title")) {
-                    var title=cb.coalesce(root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).<String>get("title"),"");
+                else if(key.equals("title") || key.equals("author")) {
+                    var title=cb.coalesce(root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).<String>get(key),"");
                     var position=cb.locate(cb.lower(title),((String)value).toLowerCase(Locale.ROOT));
-                    predicates.add("ne".equals(params.getFirst("titleOperator"))?cb.equal(position,0):cb.greaterThan(position,0));
+                    predicates.add("ne".equals(params.getFirst(key+"Operator"))?cb.equal(position,0):cb.greaterThan(position,0));
                 }
                 else if(key.equals("eplId")) {
                     var match=cb.gt(cb.locate(cb.literal((String)value),cb.concat(cb.concat(",",root.get("eplId").as(String.class)),",")),0);
