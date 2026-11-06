@@ -163,7 +163,7 @@ test("Downloads origin has no operator and EPL ID can be cleared", async ({
       name: "Incluir valores seleccionados",
       exact: true,
     }),
-  ).toHaveCount(2);
+  ).toHaveCount(3);
   await page.getByRole("textbox", { name: "EPL ID", exact: true }).fill("123");
   await page
     .getByRole("textbox", { name: "EPL ID", exact: true })

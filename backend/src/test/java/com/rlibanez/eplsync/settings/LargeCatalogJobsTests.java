@@ -97,8 +97,8 @@ class LargeCatalogJobsTests {
         jdbc.update("UPDATE torrent_downloads SET status='DOWNLOADING' WHERE id='record-extra'");
         var mixed=new ArrayList<>(ids);mixed.add("removed-record");
         var partial=transfers.prepare(mixed);
-        assertThat(partial.deferredRecords()).hasSize(1001).doesNotContain("record-extra");
-        assertThat(partial.unavailable()).hasSize(2);
+        assertThat(partial.deferredRecords()).hasSize(1002).contains("record-extra");
+        assertThat(partial.unavailable()).hasSize(1);
         jdbc.update("UPDATE torrent_downloads SET status='DOWNLOADED' WHERE id='record-extra'");
         assertThat(EventContext.withActor(actor,()->transfers.create(new CalibreTransfers.Request("main",List.of(),ids))).total()).isEqualTo(1002);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class)).isEqualTo(1);
@@ -109,6 +109,8 @@ class LargeCatalogJobsTests {
         var payloads=new HashMap<String,byte[]>();
         when(files.list(anyString())).thenAnswer(call->{String record=call.getArgument(0);long id=Long.parseLong(record.substring(7));var bytes=CalibreTransfersTests.epub(id,"1");payloads.put(record,bytes);return List.of(new EpubFiles.Item(0,id+".epub",bytes.length));});
         when(files.download(anyString(),eq(0))).thenAnswer(call->{String record=call.getArgument(0);var bytes=payloads.get(record);return new EpubFiles.Opened(record.substring(7)+".epub",bytes.length,new java.io.ByteArrayInputStream(bytes));});
+        when(client.findRevision(any(),anyLong(),any())).thenReturn(null);
+        when(client.findBookRevision(any(),anyLong(),any())).thenReturn(null);
         when(client.uploadEpub(any(),any(),anyString(),anyString())).thenReturn(9L);
         when(client.book(any(),eq(9L))).thenReturn(new CalibreClient.Book(9,"Book 1",List.of("Author"),1L,java.math.BigDecimal.ONE,true));
         when(client.hasEpub(any(),eq(9L))).thenReturn(true);

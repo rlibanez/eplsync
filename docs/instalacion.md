@@ -281,3 +281,8 @@ la biblioteca. La actualización no cambia archivos ni metadatos en Calibre.
 de Torrent e índices para la cola de envíos y los inventarios descargados. Conserva
 los trabajos, los archivos y el historial existentes. Los envíos que estaban en
 curso se recuperan comprobando su presencia antes de volver a incorporarlos.
+
+La versión 1.8.3 incorpora cinco migraciones desde 1.8.2 y alcanza el esquema
+`1.8.3.7`. Conserva los trabajos, las descargas, los ajustes y el historial. Los
+archivos de los torrents existentes se inventarían gradualmente en segundo plano,
+cediendo ante los envíos. Consulta las [notas de 1.8.3](releases/1.8.3.md).

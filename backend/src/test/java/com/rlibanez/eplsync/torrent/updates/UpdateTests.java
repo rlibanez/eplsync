@@ -57,6 +57,7 @@ class UpdateTests {
     @Autowired BulkJobRepository jobs;
     @Autowired BulkItemRepository items;
     @Autowired DownloadRepository downloads;
+    @Autowired DownloadQueryService downloadQueries;
     @Autowired DownloadTrackingService tracking;
     @Autowired CatalogBookRepository books;
     @Autowired TorrentClientService service;
@@ -1033,7 +1034,7 @@ class UpdateTests {
         downloads.save(earliest);
         var latest=history(1L,3.0,"E".repeat(40),DownloadStatus.ERROR);
         latest.setLastCheckedAt(Instant.parse("2026-10-06T12:00:00Z")); latest.setLastError("Error de conexión"); downloads.save(latest);
-        var view=new CatalogDownloadViewService(downloads);
+        var view=new CatalogDownloadViewService(downloads,downloadQueries);
         var newest=view.history(1L,0,1,"lastCheckedAt,desc").items().getFirst();
         assertThat(newest.hash()).isEqualTo(latest.getHash());
         assertThat(newest.lastCheckedAt()).isEqualTo(latest.getLastCheckedAt());
@@ -1055,7 +1056,7 @@ class UpdateTests {
 
     @Test void catalogHistoryIsBoundedButCompleteHistoryRemainsPaged() {
         for (int index=0;index<45;index++) history(1L,2.0+index,String.format("%040X",1000+index),DownloadStatus.ERROR);
-        var view=new CatalogDownloadViewService(downloads);
+        var view=new CatalogDownloadViewService(downloads,downloadQueries);
         var embedded=view.enrich(java.util.List.of(books.findById(1L).orElseThrow())).getFirst().download();
         assertThat(embedded.items()).hasSize(20);
         assertThat(embedded.totalItems()).isEqualTo(46);

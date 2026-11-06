@@ -34,7 +34,7 @@ class CatalogDownloadViewTests {
             }).toList();
         });
         var books = LongStream.rangeClosed(1, 501).mapToObj(id -> CatalogBook.builder().eplId(id).build()).toList();
-        var response = new CatalogDownloadViewService(repository).enrich(books);
+        var response = new CatalogDownloadViewService(repository,mock(DownloadQueryService.class)).enrich(books);
         verify(repository, times(2)).historyWindow(any(),eq(20));
         assertThat(response).hasSize(501);
         assertThat(response.getFirst().download().items()).extracting(item -> item.id())
@@ -44,7 +44,7 @@ class CatalogDownloadViewTests {
     @Test void historyPreservesPaginationAndRejectsUnknownFields() {
         var repository=mock(DownloadRepository.class);
         when(repository.findAll(org.mockito.ArgumentMatchers.<@NonNull Specification<DownloadRecord>>any(),any(org.springframework.data.domain.Pageable.class))).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of()));
-        var service=new CatalogDownloadViewService(repository);
+        var service=new CatalogDownloadViewService(repository,mock(DownloadQueryService.class));
         service.history(1L,2,20,"revision,desc;status,asc");
         var capture=org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
         verify(repository).findAll(org.mockito.ArgumentMatchers.<@NonNull Specification<DownloadRecord>>any(),capture.capture());

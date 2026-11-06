@@ -10,9 +10,9 @@ import java.util.*;
 public class CatalogDownloadViewService {
     private final DownloadRepository repository;
     @org.springframework.beans.factory.annotation.Autowired private DownloadTrackingService tracking;
-    @org.springframework.beans.factory.annotation.Autowired private DownloadQueryService queries;
+    private final DownloadQueryService queries;
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
-    public CatalogDownloadViewService(DownloadRepository repository) { this.repository = repository; }
+    public CatalogDownloadViewService(DownloadRepository repository,DownloadQueryService queries) { this.repository = repository; this.queries=java.util.Objects.requireNonNull(queries); }
 
     @Transactional(readOnly = true)
     public List<CatalogBookResponse> enrich(List<CatalogBook> books) {

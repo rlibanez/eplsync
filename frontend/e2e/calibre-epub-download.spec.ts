@@ -115,12 +115,10 @@ for (const path of ["/calibre", "/catalog/1"]) {
     await expect(openAction).toHaveAttribute("target", "_blank");
     await expect(openAction).toHaveAttribute("rel", "noopener noreferrer");
     await expect(openAction).toHaveText("");
-    const actions = row
-      .locator(".mantine-Group-root")
-      .filter({
-        has: page.getByRole("link", { name: "Ver en Calibre", exact: true }),
-      });
-    await expect(actions.locator("button, a")).toHaveCount(4);
+    const actions = row.locator(".mantine-Group-root").filter({
+      has: page.getByRole("link", { name: "Ver en Calibre", exact: true }),
+    });
+    await expect(actions.locator("button, a")).toHaveCount(5);
     expect(
       await actions
         .locator("button, a")
@@ -131,6 +129,7 @@ for (const path of ["/calibre", "/catalog/1"]) {
       "Descargar EPUB",
       "Ver en Calibre",
       "Completar identificadores",
+      "Completar Hardcover",
       "Eliminar",
     ]);
     await openAction.focus();

@@ -92,7 +92,7 @@ test("shows Calibre copies in the individual book", async ({ page }) => {
     page.getByRole("menuitem").filter({ hasText: "Calibre ID 8" }),
   ).toHaveAttribute("target", "_blank");
   await page.keyboard.press("Escape");
-  await expect(section.getByRole("columnheader")).toHaveCount(7);
+  await expect(section.getByRole("columnheader")).toHaveCount(8);
   expect(
     await section
       .locator("th[data-table-column]")
@@ -102,6 +102,7 @@ test("shows Calibre copies in the individual book", async ({ page }) => {
   ).toEqual([
     "rowNumber",
     "calibreId",
+    "formats",
     "revision",
     "catalogRevision",
     "comparison",

@@ -126,7 +126,7 @@ test("sends selected EPUB files to a library and controls its job", async ({
     expect(r.request().postDataJSON()).toEqual({
       id: expect.any(String),
       library: "main",
-      formats:["epub"],
+      formats: ["epub"],
       files: [{ recordId: "1", index: 0 }],
     });
     return r.fulfill({ json: { id: "job" } });
@@ -158,7 +158,9 @@ test("sends selected EPUB files to a library and controls its job", async ({
     .getByRole("button", { name: "Enviar a Calibre", exact: true })
     .click();
   await expect(page).toHaveURL(/\/calibre\/jobs\/job$/);
-  await expect(page.getByRole("table")).toContainText("Libro.epub");
+  await expect(page.getByRole("table", { name: "Archivos" })).toContainText(
+    "Libro.epub",
+  );
   await page.getByRole("button", { name: "Pausar", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Reanudar", exact: true }),

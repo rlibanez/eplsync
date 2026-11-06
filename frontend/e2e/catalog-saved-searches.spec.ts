@@ -65,7 +65,12 @@ test("personal searches save drafts, apply, update, rename and delete without ta
   await page
     .getByRole("textbox", { name: "Búsquedas guardadas", exact: true })
     .click();
-  await page.getByRole("option", { name: "Mis autores", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Búsquedas guardadas", exact: true })
+    .press("ArrowDown");
+  await page
+    .getByRole("textbox", { name: "Búsquedas guardadas", exact: true })
+    .press("Enter");
   await expect(page).toHaveURL(/author=Orwell/);
   const url = new URL(page.url());
   expect(url.searchParams.get("page")).toBe("0");
@@ -78,7 +83,12 @@ test("personal searches save drafts, apply, update, rename and delete without ta
   await page
     .getByRole("textbox", { name: "Búsquedas guardadas", exact: true })
     .click();
-  await page.getByRole("option", { name: "Mis autores", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Búsquedas guardadas", exact: true })
+    .press("ArrowDown");
+  await page
+    .getByRole("textbox", { name: "Búsquedas guardadas", exact: true })
+    .press("Enter");
   await expect(page.getByLabel("Título", { exact: true })).toHaveValue("");
   await page.getByLabel("Título", { exact: true }).fill("1984");
   await page.getByRole("button", { name: "Gestionar", exact: true }).click();

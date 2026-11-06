@@ -21,7 +21,7 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 
 | Variable | Descripción | Valor en `.env.example` |
 | --- | --- | --- |
-| `EPLSYNC_VERSION` | Versión de la imagen de EPL Sync que descargará Docker Compose. Cambiarla antes de ejecutar `docker compose pull` y `docker compose up -d`. | `1.8.2` |
+| `EPLSYNC_VERSION` | Versión de la imagen de EPL Sync que descargará Docker Compose. Cambiarla antes de ejecutar `docker compose pull` y `docker compose up -d`. | `1.8.3` |
 | `PUID` | UID del usuario de la aplicación y propietario de las carpetas `DATA_DIR` y `LOGS_DIR`, preparado al arrancar el contenedor. | `1000` |
 | `PGID` | GID del usuario de la aplicación y grupo de las carpetas preparadas al arrancar el contenedor. | `1000` |
 | `TZ` | Zona horaria del contenedor. | `Europe/Madrid` |

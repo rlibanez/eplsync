@@ -189,6 +189,20 @@ test("failed send explains uncertainty without retrying", async ({ page }) => {
     calls++;
     return r.abort();
   });
+  await page.route("**/api/torrent/preparations/*", (r) =>
+    r.fulfill({
+      json: {
+        state: "FAILED",
+        phase: "FAILED",
+        processed: 0,
+        total: 1,
+        items: 0,
+        jobId: null,
+        result: null,
+        message: "Torrent client unavailable",
+      },
+    }),
+  );
   await page.goto("/catalog/32");
   const dialog = await openSend(page);
   await dialog.getByRole("button", { name: "Crear trabajo" }).click();
@@ -232,6 +246,20 @@ test("backend submission failure produces only one notification", async ({
       status: 502,
       headers: { "X-EPLSync-Operation-Id": "single-failure" },
       json: { details: "Torrent client unavailable" },
+    }),
+  );
+  await page.route("**/api/torrent/preparations/*", (r) =>
+    r.fulfill({
+      json: {
+        state: "FAILED",
+        phase: "FAILED",
+        processed: 0,
+        total: 1,
+        items: 0,
+        jobId: null,
+        result: null,
+        message: "Torrent client unavailable",
+      },
     }),
   );
   await page.goto("/catalog/32");
