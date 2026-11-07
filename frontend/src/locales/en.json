@@ -2133,6 +2133,7 @@
     "cancelFailed": "Cancellation could not be confirmed. You can try again."
   },
   "hardcover": {
+    "column": "Hardcover",
     "open": "Complete Hardcover identifiers",
     "failed": "The operation could not be completed; check it again before retrying.",
     "mapping": "Hardcover data",

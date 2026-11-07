@@ -24,7 +24,7 @@ class CalibreTests {
             String path = e.getRequestURI().getPath();
             String body = path.endsWith("library-info") ? "{\"library_map\":{\"main\":\"Library\"},\"default_library\":\"main\"}"
                 : path.contains("/search/") ? "{\"total_num\":2,\"book_ids\":[3,9]}"
-                : "{\"3\":{\"title\":\"Book\",\"authors\":[\"Author\"],\"identifiers\":{\"epl\":\"80899\",\"revision\":\"1.0\"}},\"9\":{\"title\":\"Other\",\"identifiers\":{}}}";
+                : "{\"3\":{\"title\":\"Book\",\"authors\":[\"Author\"],\"identifiers\":{\"epl\":\"80899\",\"revision\":\"1.0\",\"hardcover\":\"book-slug\",\"hardcover_book\":\"123\"}},\"9\":{\"title\":\"Other\",\"identifiers\":{}}}";
             if (large) body = " ".repeat(2 * 1024 * 1024 + 1);
             e.getResponseHeaders().add("Content-Type", "application/json");
             if (redirect) e.getResponseHeaders().add("Location", url + "/other");
@@ -42,6 +42,8 @@ class CalibreTests {
         assertThat(books.total()).isEqualTo(2);
         assertThat(books.items().getFirst().eplId()).isEqualTo(80899);
         assertThat(books.items().getFirst().revision()).isEqualByComparingTo("1.0");
+        assertThat(books.items().getFirst().identifiers()).containsEntry("hardcover","book-slug").containsEntry("hardcover_book","123");
+        assertThat(books.items().get(1).identifiers()).isEmpty();
         assertThat(books.items().get(1).linked()).isFalse();
         assertThat(calls).hasSize(3).contains("/ajax/books/main?ids=3,9");
     }

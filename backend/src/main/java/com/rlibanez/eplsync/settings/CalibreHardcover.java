@@ -218,6 +218,9 @@ public class CalibreHardcover {
             if(!p.source().connection().equals(settings.connection())) throw new UserInputException("La conexión o biblioteca cambió; vuelve a previsualizar");
             if(p.replacements().isEmpty()) calibre.addIdentifiers(p.source().connection(),p.source().calibreId(),p.source().metadata(),p.additions());
             else calibre.updateIdentifiers(p.source().connection(),p.source().calibreId(),p.source().metadata(),p.additions(),p.replacements());
+            var identifiers=new LinkedHashMap<>(p.source().metadata().identifiers());
+            identifiers.putAll(p.additions());
+            tx.executeWithoutResult(status->jdbc.update("UPDATE calibre_books SET identifiers=? WHERE active=true AND calibre_id=?",json.writeValueAsString(identifiers),p.source().calibreId()));
             log.info("Identificadores de Hardcover comprobados en Calibre: calibreId={}, campos={}, userId={}",p.source().calibreId(),p.additions().size(),owner);
             return new Preview(token,p.source().calibreId(),p.source().metadata().title(),p.values(),true);
         }));

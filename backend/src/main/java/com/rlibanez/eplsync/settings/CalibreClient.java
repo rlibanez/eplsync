@@ -28,9 +28,15 @@ public class CalibreClient {
     }
     public record Library(String id, String name) {}
     public record Check(boolean connected, List<Library> libraries, String defaultLibrary) {}
-    public record Book(long calibreId, String title, List<String> authors, Long eplId, BigDecimal revision, boolean linked, String uuid, List<String> formats) {
+    public record Book(long calibreId, String title, List<String> authors, Long eplId, BigDecimal revision, boolean linked, String uuid, List<String> formats, Map<String,String> identifiers) {
+        public Book(long calibreId,String title,List<String> authors,Long eplId,BigDecimal revision,boolean linked,String uuid,List<String> formats) {this(calibreId,title,authors,eplId,revision,linked,uuid,formats,null);}
         public Book(long calibreId,String title,List<String> authors,Long eplId,BigDecimal revision,boolean linked,String uuid) {this(calibreId,title,authors,eplId,revision,linked,uuid,null);}
         public Book(long calibreId,String title,List<String> authors,Long eplId,BigDecimal revision,boolean linked) {this(calibreId,title,authors,eplId,revision,linked,null);}
+    }
+    private Map<String,String> identifierValues(JsonNode book) {
+        var values=new LinkedHashMap<String,String>();
+        for(var entry:book.path("identifiers").properties()) if(entry.getValue().isString() && !entry.getValue().asString().isBlank()) values.put(entry.getKey(),entry.getValue().asString());
+        return Map.copyOf(values);
     }
     public record Books(List<Book> items, long total, int page, int size) {}
     private static final int MAX_BYTES = 2 * 1024 * 1024;
@@ -73,7 +79,7 @@ public class CalibreClient {
                 var identifiers = b.path("identifiers");
                 Long epl = positiveId(identifiers.path("epl").asString(""));
                 BigDecimal revision = revision(identifiers.path("revision").asString(""));
-                books.add(new Book(id, b.path("title").asString(""), authors, epl, revision, epl != null && revision != null,null,formats(b)));
+                books.add(new Book(id, b.path("title").asString(""), authors, epl, revision, epl != null && revision != null,null,formats(b),identifierValues(b)));
             }
             return new Books(books, total, page, size);
         });
@@ -218,7 +224,7 @@ public class CalibreClient {
             var authors=new ArrayList<String>();for(var a:b.path("authors")) authors.add(a.asString());
             var epl=positiveId(b.path("identifiers").path("epl").asString(""));
             var rev=revision(b.path("identifiers").path("revision").asString(""));
-            return new Book(id,b.path("title").asString(""),authors,epl,rev,epl!=null && rev!=null,b.path("uuid").asString(""),formats(b));
+            return new Book(id,b.path("title").asString(""),authors,epl,rev,epl!=null && rev!=null,b.path("uuid").asString(""),formats(b),identifierValues(b));
         });
     }
     /** Fill only absent identifiers on the exact entry. Read again after any uncertain POST. */
@@ -256,7 +262,7 @@ public class CalibreClient {
             for(var entry:values.entrySet()) if(!entry.getValue().equals(fields.path(entry.getKey()).asString("")))
                 throw failure("Calibre no conservó todos los identificadores; revisa la entrada");
             var authors=new ArrayList<String>();for(var author:after.path("authors")) authors.add(author.asString());
-            return new Book(id,after.path("title").asString(""),authors,epl,revision,true,uuid,formats(after));
+            return new Book(id,after.path("title").asString(""),authors,epl,revision,true,uuid,formats(after),identifierValues(after));
         });
     }
     public record IdentifierMetadata(String uuid,String title,List<String> authors,Map<String,String> identifiers) {}

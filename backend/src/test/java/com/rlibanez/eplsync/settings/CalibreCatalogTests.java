@@ -47,6 +47,61 @@ class CalibreCatalogTests {
         mvc.perform(get("/api/calibre/books").param("formats","bad/format")).andExpect(status().isBadRequest());
         verifyNoInteractions(client);
     }
+    @Test @WithMockUser(authorities={"CALIBRE_READ","CALIBRE_SYNC"})
+    void hardcoverIdentifiersAreSynchronizedAndEverySelectedFieldIsRequired() throws Exception {
+        when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(
+            new CalibreClient.Book(1,"One",List.of("Author"),1L,null,false,"uuid1",List.of("epub"),Map.of("hardcover","one","hardcover_book","11","hardcover_edition","111","isbn","other")),
+            new CalibreClient.Book(2,"Two",List.of("Author"),2L,null,false,"uuid2",List.of("epub"),Map.of("hardcover","two","hardcover_book","22")),
+            new CalibreClient.Book(3,"Three",List.of("Author"),3L,null,false,"uuid3",List.of("epub"),Map.of("hardcover_book","33","hardcover_edition","")),
+            new CalibreClient.Book(4,"Four",List.of("Author"),4L,null,false)),4,0,100));
+        snapshots.sync();clearInvocations(client);
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG,BOOK_ID"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG,BOOK_ID,EDITION_ID"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1))
+            .andExpect(jsonPath("$.items[0].hardcover.hardcover_edition").value("111"))
+            .andExpect(jsonPath("$.items[0].hardcover.isbn").doesNotExist());
+        mvc.perform(get("/api/calibre/books").param("hardcover","BOOK_ID"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3));
+        mvc.perform(get("/api/calibre/books").param("hardcover","EDITION_ID"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1));
+        mvc.perform(get("/api/calibre/books").param("hardcover","isbn"))
+            .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/calibre/books").param("sort","hardcover,asc"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].calibreId").value(4))
+            .andExpect(jsonPath("$.items[1].calibreId").value(3))
+            .andExpect(jsonPath("$.items[2].calibreId").value(1))
+            .andExpect(jsonPath("$.items[3].calibreId").value(2));
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG").param("sort","hardcover,desc").param("size","1"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2))
+            .andExpect(jsonPath("$.items[0].calibreId").value(2));
+        for(String fields:List.of("SLUG","SLUG,BOOK_ID")) {
+            mvc.perform(get("/api/calibre/books").param("hardcover",fields).param("hardcoverOperator","ne"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        }
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG,BOOK_ID,EDITION_ID").param("hardcoverOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3));
+        mvc.perform(get("/api/calibre/books").param("hardcover","BOOK_ID").param("hardcoverOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].calibreId").value(4));
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG").param("hardcoverOperator","invalid"))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(client);
+    }
+    @Test void hardcoverCustomNamesAreScopedToTheReaderAndDoNotNeedSendPermission() throws Exception {
+        jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,title,identifiers) VALUES('hc','hc',true,91,'Custom',?)","{\"hc_book\":\"123\",\"hardcover\":\"default-slug\"}");
+        jdbc.update("INSERT INTO app_settings(setting_key,setting_value) VALUES('hardcover.mapping.hc-reader',?) ON CONFLICT(setting_key) DO UPDATE SET setting_value=excluded.setting_value","{\"BOOK_ID\":\"hc_book\"}");
+        jdbc.update("INSERT INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('hc-reader','hc-reader','hc-reader','','hash','USER','ACTIVE','now','now')");
+        var reader=new com.rlibanez.eplsync.security.Account("hc-reader","reader","","USER","ACTIVE",false,null,0,Set.of(com.rlibanez.eplsync.security.Permission.CALIBRE_READ),java.time.Instant.now());
+        var auth=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(reader,null,List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("CALIBRE_READ")));
+        mvc.perform(get("/api/calibre/books").param("hardcover","BOOK_ID").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].hardcover.hc_book").value("123"));
+        mvc.perform(get("/api/calibre/books").param("hardcover","BOOK_ID").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("different").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("CALIBRE_READ"))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(0));
+        mvc.perform(get("/api/calibre/books").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("no-permission")))
+            .andExpect(status().isForbidden());
+    }
     @Test void syncsWaitForTransfersAndDoNotOverlapOrPauseThem() throws Exception {
         var active=new java.util.concurrent.atomic.AtomicInteger();var maximum=new java.util.concurrent.atomic.AtomicInteger();
         when(client.books(any(),eq(0),eq(100))).thenAnswer(call->{maximum.accumulateAndGet(active.incrementAndGet(),Math::max);try {Thread.sleep(20);return new CalibreClient.Books(List.of(book(1,1L,1d)),1,0,100);}finally {active.decrementAndGet();}});

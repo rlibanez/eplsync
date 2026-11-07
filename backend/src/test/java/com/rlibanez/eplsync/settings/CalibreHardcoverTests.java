@@ -43,8 +43,10 @@ class CalibreHardcoverTests {
         assertThatThrownBy(()->service.configure(Map.of(CalibreHardcover.Field.SLUG,"same",CalibreHardcover.Field.BOOK_ID,"same"))).hasMessageContaining("distinto");
     }
     @Test void previewsAndAppliesOnlyConfirmedIdentifiersOnTheSameEntry() {
+        jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,title) VALUES('test','test',true,9,'Book')");
         var search=service.search(9,null,1);var preview=service.preview(search.token(),7,11L,Map.of(CalibreHardcover.Field.SLUG,"hardcover",CalibreHardcover.Field.BOOK_ID,"hardcover_book",CalibreHardcover.Field.EDITION_ID,"hardcover_edition",CalibreHardcover.Field.ISBN13,"isbn"));
         assertThat(preview.values()).hasSize(4).allSatisfy(v->assertThat(v.state()).isEqualTo("READY"));assertThat(service.apply(preview.token()).saved()).isTrue();
+        assertThat(jdbc.queryForObject("SELECT identifiers FROM calibre_books WHERE calibre_id=9",String.class)).contains("book-slug","unrelated","keep","hardcover_edition");
         verify(calibre).addIdentifiers(connection,9,metadata,Map.of("hardcover","book-slug","hardcover_book","7","hardcover_edition","11","isbn","9780201616224"));verify(calibre,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
     @Test void explicitManualEditionReplacementIsPreviewedAndBoundToItsPlan() {

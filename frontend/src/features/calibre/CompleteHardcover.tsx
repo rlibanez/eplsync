@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Loader,
@@ -99,6 +100,7 @@ export function CompleteHardcover({
 }) {
   const auth = useAuth();
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [opened, setOpened] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -1368,6 +1370,9 @@ export function CompleteHardcover({
                     );
                     if (!signal.aborted) {
                       setPreview(result);
+                      void queryClient.invalidateQueries({
+                        queryKey: ["calibre-library"],
+                      });
                       savedIds.current.add(ids[index]);
                       setSavedCount(savedIds.current.size);
                     }

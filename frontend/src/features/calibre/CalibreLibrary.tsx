@@ -65,6 +65,11 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     [eplId, setEplId] = useBookViewState("eplId", ""),
     [comparison, setComparison] = useBookViewState("comparison", ""),
     [formats, setFormats] = useBookViewState("formats", ""),
+    [hardcover, setHardcover] = useBookViewState("hardcover", ""),
+    [excludeHardcover, setExcludeHardcover] = useBookViewState(
+      "excludeHardcover",
+      false,
+    ),
     [excludeFormats, setExcludeFormats] = useBookViewState(
       "excludeFormats",
       false,
@@ -96,7 +101,9 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       presence,
       sort,
       formats,
+      hardcover,
       excludeFormats,
+      excludeHardcover,
     ],
   );
   const pageSizeChoice = usePageSizeChoice(size);
@@ -120,6 +127,9 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     ...(!updates && formats
       ? { formats, formatsOperator: excludeFormats ? "ne" : "eq" }
       : {}),
+    ...(!updates && hardcover
+      ? { hardcover, hardcoverOperator: excludeHardcover ? "ne" : "eq" }
+      : {}),
     ...(updates ? { updatesOnly: "true" } : {}),
   });
   const [availability, setAvailability] = useBookViewState<string | null>(
@@ -132,6 +142,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     ? [
         "actions",
         "formats",
+        "hardcover",
         "presence",
         "comparison",
         ...(!canCheckFiles ? ["downloadAvailability"] : []),
@@ -264,7 +275,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     },
     {
       defaults: "title,asc",
-      newColumnsAfter: { formats: "authors" },
+      newColumnsAfter: { formats: "authors", hardcover: "presence" },
       selection: selectable,
     },
     (page + 1) * size,
@@ -507,6 +518,28 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             })}
           />
         )}
+        {!updates && (
+          <MultiSelect
+            label={t("hardcover.column")}
+            searchable
+            clearable
+            data={[
+              { value: "SLUG", label: "Hardcover" },
+              { value: "BOOK_ID", label: "Hardcover ID" },
+              { value: "EDITION_ID", label: "Hardcover edition" },
+            ]}
+            value={hardcover.split(",").filter(Boolean)}
+            onChange={(values) => {
+              setHardcover(values.join(","));
+              if (!values.length) setExcludeHardcover(false);
+              setPage(0);
+            }}
+            {...stateOperatorProps(excludeHardcover, () => {
+              setExcludeHardcover(!excludeHardcover);
+              setPage(0);
+            })}
+          />
+        )}
         {updates && canCheckFiles && (
           <Select
             label={t("calibreUpdateSend.availability")}
@@ -605,6 +638,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             setComparison("");
             setPresence("");
             setFormats("");
+            setHardcover("");
+            setExcludeHardcover(false);
             setExcludeFormats(false);
             setAvailability(null);
             setPage(0);

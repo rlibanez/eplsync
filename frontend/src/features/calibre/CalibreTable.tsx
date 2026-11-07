@@ -21,6 +21,7 @@ import {
 } from "../downloads/DownloadTable";
 export interface CalibreBook {
   formats?: string[] | null;
+  hardcover?: Record<string, string>;
   downloadAvailability?: string;
   calibreId: number;
   title: string;
@@ -47,6 +48,11 @@ export const calibreColumns: TableColumn[] = [
   },
   { field: "comparison", label: "calibre.comparison", width: 180 },
   { field: "presence", label: "calibre.presence", width: 170 },
+  {
+    field: "hardcover",
+    label: "hardcover.column",
+    width: 420,
+  },
   {
     field: "actions",
     label: "historyActions.actions",
@@ -262,6 +268,11 @@ export function CalibreTable({
                   </td>,
                   <td>{t(`calibre.filter.${book.comparison}`)}</td>,
                   <td>{t(`calibre.presenceValues.${book.presence}`)}</td>,
+                  <td>
+                    {Object.entries(book.hardcover ?? {})
+                      .map(([name, value]) => `${name}:${value}`)
+                      .join(" · ") || "—"}
+                  </td>,
                   <td>
                     <Group gap={4} wrap="nowrap">
                       {auth.can("CALIBRE_FILES_READ") && (

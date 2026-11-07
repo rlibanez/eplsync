@@ -203,3 +203,22 @@ ediciones. Los contadores se obtienen en las consultas existentes.
 
 Los desplegables de obra y edición muestran el texto completo de cada opción
 en su tooltip. El valor seleccionado incluye también el criterio de ordenación.
+
+## Identificadores en la Biblioteca de Calibre
+
+La columna **Hardcover**, situada antes de **Acciones**, muestra los identificadores
+Hardcover presentes en cada libro, con sus nombres y valores. El filtro rápido
+permite seleccionar Hardcover, Hardcover ID y Hardcover edition: cada libro debe
+contener todos los identificadores seleccionados, aunque también contenga otros.
+Se respetan los nombres personalizados del usuario y el permiso de lectura de Calibre.
+
+La información procede de la copia local de la biblioteca: se actualiza al
+sincronizar Calibre y tras guardar identificadores con «Completar Hardcover».
+Tras actualizar EPL Sync, sincroniza Calibre para completar estos datos en los
+registros anteriores. Mostrar la columna o filtrar no consulta la API de Hardcover
+ni realiza consultas individuales a Calibre.
+
+El botón de negación del filtro Hardcover excluye los libros que contienen todos
+los identificadores seleccionados; incluye los que carecen de alguno o de todos.
+La cabecera Hardcover permite ordenar ascendente o descendente por los valores
+del identificador de la obra, su ID y la edición, en ese orden.

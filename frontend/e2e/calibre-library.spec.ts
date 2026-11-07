@@ -25,6 +25,11 @@ test("browses the local library with filters and configurable columns", async ({
             calibreId: 3,
             title: "El reino del lenguaje",
             authors: "Tom Wolfe",
+            hardcover: {
+              hardcover: "the-kingdom-of-speech",
+              hardcover_book: "113379",
+              hardcover_edition: "31145475",
+            },
             eplId: 80899,
             revision: 1,
             catalogRevision: 2,
@@ -58,6 +63,59 @@ test("browses the local library with filters and configurable columns", async ({
     page.getByRole("heading", { name: "Biblioteca de Calibre" }),
   ).toBeVisible();
   await expect(page.getByRole("table")).toContainText("Tom Wolfe");
+  await expect(page.locator('th[data-table-column="hardcover"]')).toContainText(
+    "Hardcover",
+  );
+  const fields = await page
+    .locator("thead th[data-table-column]")
+    .evaluateAll((nodes) =>
+      nodes.map((n) => n.getAttribute("data-table-column")),
+    );
+  expect(fields.indexOf("hardcover")).toBe(fields.indexOf("actions") - 1);
+  await expect(page.getByRole("table")).toContainText(
+    "hardcover_edition:31145475",
+  );
+  const hardcover = page.getByRole("textbox", {
+    name: "Hardcover",
+    exact: true,
+  });
+  await hardcover.click();
+  await page.getByRole("option", { name: "Hardcover", exact: true }).click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("hardcover"))
+    .toBe("SLUG");
+  await hardcover.click();
+  await page.getByRole("option", { name: "Hardcover ID", exact: true }).click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("hardcover"))
+    .toBe("SLUG,BOOK_ID");
+  await hardcover.click();
+  await page
+    .getByRole("option", { name: "Hardcover edition", exact: true })
+    .click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("hardcover"))
+    .toBe("SLUG,BOOK_ID,EDITION_ID");
+  await page.keyboard.press("Escape");
+  const hardcoverFilter = hardcover.locator(
+    "xpath=ancestor::div[contains(@class, 'mantine-MultiSelect-root')]",
+  );
+  await hardcoverFilter
+    .getByRole("button", { name: "Incluir valores seleccionados" })
+    .click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("hardcoverOperator"))
+    .toBe("ne");
+  const hardcoverHeading = page.locator('th[data-table-column="hardcover"]');
+  await hardcoverHeading.getByRole("button").first().click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.getAll("sort"))
+    .toContain("hardcover,asc");
+  await hardcoverHeading.getByRole("button").first().click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.getAll("sort"))
+    .toContain("hardcover,desc");
+
   await expect(page.locator('th[data-table-column="actions"]')).toContainText(
     "Acciones",
   );
@@ -68,8 +126,12 @@ test("browses the local library with filters and configurable columns", async ({
   await expect(page.getByRole("columnheader").nth(2)).toContainText(
     "Calibre ID",
   );
-  await page.getByRole("textbox", { name: "EPL ID", exact: true }).fill("80899");
-  await page.getByRole("textbox", { name: "EPL ID", exact: true }).press("Enter");
+  await page
+    .getByRole("textbox", { name: "EPL ID", exact: true })
+    .fill("80899");
+  await page
+    .getByRole("textbox", { name: "EPL ID", exact: true })
+    .press("Enter");
   await expect
     .poll(() => requests.at(-1)?.searchParams.get("eplId"))
     .toBe("80899");
@@ -191,16 +253,67 @@ test("read-only Calibre users can browse without catalog links or synchronizatio
   );
 });
 
-test("formats are visible, sortable and provide quick filters", async ({page}) => {
-  await page.route("**/api/settings/calibre/snapshot", r=>r.fulfill({json:{snapshot:null}}));
-  await page.route("**/api/calibre/books/formats", r=>r.fulfill({json:["epub","pdf"]}));
-  await page.route("**/api/calibre/books?**", r=>r.fulfill({json:{items:[{calibreId:1,title:"Formats book",authors:"Author",eplId:1,revision:1,catalogRevision:1,comparison:"CURRENT",presence:"PRESENT",formats:["epub","pdf"]}],meta:{page:0,size:20,totalItems:1,totalPages:1,hasPrevious:false,hasNext:false}}}));
+test("formats are visible, sortable and provide quick filters", async ({
+  page,
+}) => {
+  await page.route("**/api/settings/calibre/snapshot", (r) =>
+    r.fulfill({ json: { snapshot: null } }),
+  );
+  await page.route("**/api/calibre/books/formats", (r) =>
+    r.fulfill({ json: ["epub", "pdf"] }),
+  );
+  await page.route("**/api/calibre/books?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            calibreId: 1,
+            title: "Formats book",
+            authors: "Author",
+            eplId: 1,
+            revision: 1,
+            catalogRevision: 1,
+            comparison: "CURRENT",
+            presence: "PRESENT",
+            formats: ["epub", "pdf"],
+          },
+        ],
+        meta: {
+          page: 0,
+          size: 20,
+          totalItems: 1,
+          totalPages: 1,
+          hasPrevious: false,
+          hasNext: false,
+        },
+      },
+    }),
+  );
   await page.goto("/calibre");
-  const column=page.locator('th[data-table-column="formats"]');
+  const column = page.locator('th[data-table-column="formats"]');
   await expect(column).toBeVisible();
-  const sorted=page.waitForRequest(r=>r.url().includes("/api/calibre/books?") && new URL(r.url()).searchParams.getAll("sort").includes("formats,asc"));
-  await column.click();await sorted;
-  const filtered=page.waitForRequest(r=>r.url().includes("/api/calibre/books?") && new URL(r.url()).searchParams.get("formats")==="pdf");
-  await page.locator("tbody").getByRole("button",{name:"PDF",exact:true}).click();await filtered;
-  await expect(page.getByRole("textbox",{name:"Extensión",exact:true}).locator("xpath=ancestor::*[contains(@class,'mantine-MultiSelect-root')]")).toContainText("PDF");
+  const sorted = page.waitForRequest(
+    (r) =>
+      r.url().includes("/api/calibre/books?") &&
+      new URL(r.url()).searchParams.getAll("sort").includes("formats,asc"),
+  );
+  await column.click();
+  await sorted;
+  const filtered = page.waitForRequest(
+    (r) =>
+      r.url().includes("/api/calibre/books?") &&
+      new URL(r.url()).searchParams.get("formats") === "pdf",
+  );
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "PDF", exact: true })
+    .click();
+  await filtered;
+  await expect(
+    page
+      .getByRole("textbox", { name: "Extensión", exact: true })
+      .locator(
+        "xpath=ancestor::*[contains(@class,'mantine-MultiSelect-root')]",
+      ),
+  ).toContainText("PDF");
 });
