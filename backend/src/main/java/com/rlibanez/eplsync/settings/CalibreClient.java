@@ -278,11 +278,15 @@ public class CalibreClient {
     }
     /** Add confirmed identifiers only; preserve all unrelated fields and reconcile lost responses. */
     public IdentifierMetadata addIdentifiers(CalibreSettings.Connection c,long id,IdentifierMetadata expected,Map<String,String> additions) {
+        return updateIdentifiers(c,id,expected,additions,Set.of());
+    }
+    /** Explicit replacements are limited to the fields authorized by the confirmed preview. */
+    IdentifierMetadata updateIdentifiers(CalibreSettings.Connection c,long id,IdentifierMetadata expected,Map<String,String> additions,Set<String> replacements) {
         return limited(()->{
             String path="/ajax/book/"+id+"/"+segment(c.library());
             var before=identifierMetadata(get(c,path));var desired=new LinkedHashMap<>(expected.identifiers());
             for(var entry:additions.entrySet()) {
-                if(!desired.getOrDefault(entry.getKey(),"").isBlank() && !desired.get(entry.getKey()).equals(entry.getValue())) throw new com.rlibanez.eplsync.exception.UserInputException("No se sobrescriben identificadores existentes");
+                if(!desired.getOrDefault(entry.getKey(),"").isBlank() && !desired.get(entry.getKey()).equals(entry.getValue()) && !replacements.contains(entry.getKey())) throw new com.rlibanez.eplsync.exception.UserInputException("No se sobrescriben identificadores existentes");
                 desired.put(entry.getKey(),entry.getValue());
             }
             if(!before.uuid().equals(expected.uuid()) || !before.title().equals(expected.title()) || !before.authors().equals(expected.authors()) ||

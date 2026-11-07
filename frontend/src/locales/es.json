@@ -2171,6 +2171,7 @@
       "READY": "Se añadirá",
       "MISSING": "No disponible; se omite",
       "UNCHANGED": "Ya coincide",
+      "REPLACE": "Se sustituirá",
       "CONFLICT": "Valor diferente; se conserva",
       "SAVED": "Guardado y comprobado",
       "INVALID": "Dato inválido; se omite",

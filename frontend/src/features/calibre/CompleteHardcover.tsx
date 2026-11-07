@@ -133,6 +133,7 @@ export function CompleteHardcover({
   const [editingEdition, setEditingEdition] = useState(false),
     [editionDraft, setEditionDraft] = useState("");
   const [manualEdition, setManualEdition] = useState(false);
+  const replaceFields = useRef<Field[]>([]);
   const editionInput = useRef<HTMLInputElement>(null);
   const [editingSlug, setEditingSlug] = useState(false);
   const [coverExpanded, setCoverExpanded] = useState(false);
@@ -205,6 +206,7 @@ export function CompleteHardcover({
     setOpened(false);
   }
   function open() {
+    replaceFields.current = [];
     preferredEditionLanguage.current = browserEditionLanguage();
     setEditionLanguage(preferredEditionLanguage.current);
     setEditionLanguages([]);
@@ -236,6 +238,7 @@ export function CompleteHardcover({
   }
   async function search(at: number, page = 1, custom = false) {
     const prior = page === 1 ? null : matches?.token;
+    if (page === 1) replaceFields.current = [];
     if (page === 1 && custom) setPreviewPending(true);
     if (page === 1 && !custom) {
       discard();
@@ -376,6 +379,7 @@ export function CompleteHardcover({
     value: string,
     signal: AbortSignal,
   ) {
+    replaceFields.current = [];
     setManualEdition(false);
     setBookId(value);
     setEditionId(null);
@@ -438,6 +442,9 @@ export function CompleteHardcover({
         bookId: Number(book),
         editionId: edition ? Number(edition) : null,
         mappings: mapping,
+        ...(replaceFields.current.length
+          ? { replaceFields: replaceFields.current }
+          : {}),
       },
       signal,
     );
@@ -479,6 +486,9 @@ export function CompleteHardcover({
           bookId: book.id,
           editionId: only ? Number(only) : null,
           mappings: mapping,
+          replaceFields: Object.keys(mapping).filter((field) =>
+            ["SLUG", "BOOK_ID", "EDITION_ID"].includes(field),
+          ),
         },
         signal,
       );
@@ -497,6 +507,9 @@ export function CompleteHardcover({
       setEditions(data);
       setEditionLanguages(setup.languages);
       setEditionLanguage(setup.language);
+      replaceFields.current = Object.keys(mapping).filter((field) =>
+        ["SLUG", "BOOK_ID", "EDITION_ID"].includes(field),
+      ) as Field[];
       setManualBook(true);
       setManualEdition(false);
       setPreview(result);
@@ -538,6 +551,9 @@ export function CompleteHardcover({
           bookId: linked.book.id,
           editionId: linked.edition.id,
           mappings: mapping,
+          replaceFields: Object.keys(mapping).filter((field) =>
+            ["SLUG", "BOOK_ID", "EDITION_ID"].includes(field),
+          ),
         },
         signal,
       );
@@ -571,6 +587,9 @@ export function CompleteHardcover({
       setEditingSlug(false);
       setEditingEdition(false);
       setManualBook(false);
+      replaceFields.current = Object.keys(mapping).filter((field) =>
+        ["SLUG", "BOOK_ID", "EDITION_ID"].includes(field),
+      ) as Field[];
       setManualEdition(true);
       setSlugDraft(
         result.values.find((row) => row.field === "SLUG")?.value ?? "",
@@ -1235,11 +1254,11 @@ export function CompleteHardcover({
                     </td>
                     <td
                       title={t(
-                        `hardcover.states.${displayedPreview.saved && row.state === "READY" ? "SAVED" : row.state}`,
+                        `hardcover.states.${displayedPreview.saved && ["READY", "REPLACE"].includes(row.state) ? "SAVED" : row.state}`,
                       )}
                     >
                       {t(
-                        `hardcover.states.${displayedPreview.saved && row.state === "READY" ? "SAVED" : row.state}`,
+                        `hardcover.states.${displayedPreview.saved && ["READY", "REPLACE"].includes(row.state) ? "SAVED" : row.state}`,
                       )}
                     </td>
                   </tr>
@@ -1336,7 +1355,9 @@ export function CompleteHardcover({
                     slugDraft.trim() !==
                       preview.values.find((row) => row.field === "SLUG")
                         ?.value) ||
-                  !preview.values.some((row) => row.state === "READY")
+                  !preview.values.some((row) =>
+                    ["READY", "REPLACE"].includes(row.state),
+                  )
                 }
                 onClick={() =>
                   void execute(async (signal) => {

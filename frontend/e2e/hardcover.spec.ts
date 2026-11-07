@@ -1560,39 +1560,48 @@ test("manual edition resolves its work and keeps the table at full container wid
       },
     });
   });
+  let previewResponse: Record<string, unknown> = {};
+  let applies = 0;
   await page.route("**/api/calibre/hardcover/preview", (r) => {
     const input = r.request().postDataJSON();
-    return r.fulfill({
-      json: {
-        token: `preview-${input.bookId}`,
-        calibreId: 9,
-        title: "Libro local",
-        saved: false,
-        values: [
-          {
-            field: "SLUG",
-            identifier: "hardcover",
-            existing: "",
-            value: input.bookId === 7 ? "old-book" : "new-book",
-            state: "READY",
-          },
-          {
-            field: "BOOK_ID",
-            identifier: "hardcover_book",
-            existing: "",
-            value: String(input.bookId),
-            state: "READY",
-          },
-          {
-            field: "EDITION_ID",
-            identifier: "hardcover_edition",
-            existing: "",
-            value: input.editionId ? String(input.editionId) : "",
-            state: input.editionId ? "READY" : "MISSING",
-          },
-        ],
-      },
-    });
+    const replacing = input.replaceFields?.includes("EDITION_ID");
+    if (replacing)
+      expect(input.replaceFields).toEqual(["SLUG", "BOOK_ID", "EDITION_ID"]);
+    previewResponse = {
+      token: `preview-${input.bookId}`,
+      calibreId: 9,
+      title: "Libro local",
+      saved: false,
+      values: [
+        {
+          field: "SLUG",
+          identifier: "hardcover",
+          existing: "old-book",
+          value: input.bookId === 7 ? "old-book" : "new-book",
+          state: replacing ? "REPLACE" : "UNCHANGED",
+        },
+        {
+          field: "BOOK_ID",
+          identifier: "hardcover_book",
+          existing: "7",
+          value: String(input.bookId),
+          state: replacing ? "REPLACE" : "UNCHANGED",
+        },
+        {
+          field: "EDITION_ID",
+          identifier: "hardcover_edition",
+          existing: "11",
+          value: input.editionId ? String(input.editionId) : "",
+          state: replacing ? "REPLACE" : "MISSING",
+        },
+      ],
+    };
+    return r.fulfill({ json: previewResponse });
+  });
+  await page.route("**/api/calibre/hardcover/apply", (r) => {
+    expect(r.request().postDataJSON()).toEqual({ token: "preview-8" });
+    applies++;
+    return r.fulfill({ json: { ...previewResponse, saved: true } });
   });
   await page.goto("/calibre");
   await page
@@ -1656,6 +1665,19 @@ test("manual edition resolves its work and keeps the table at full container wid
     container: element.parentElement!.clientWidth,
   }));
   expect(size.table).toBeGreaterThanOrEqual(size.container - 1);
+  await expect(table.getByText("Se sustituirá", { exact: true })).toHaveCount(
+    3,
+  );
+  const save = dialog.getByRole("button", {
+    name: "Guardar en Calibre",
+    exact: true,
+  });
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(
+    table.getByText("Guardado y comprobado", { exact: true }),
+  ).toHaveCount(3);
+  expect(applies).toBe(1);
 });
 
 test("current Calibre identifiers appear before a Hardcover selection and can seed manual lookup", async ({

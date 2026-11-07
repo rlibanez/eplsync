@@ -11,7 +11,7 @@ public class CalibreHardcoverController {
     private final CalibreHardcover service;
     public CalibreHardcoverController(CalibreHardcover service) {this.service=service;}
     public record Search(long calibreId,String token,int page,Boolean useTitle,Boolean useAuthor,Boolean useIsbn,Boolean useAsin,String queryTitle,String queryAuthor,String queryIsbn,String queryAsin) {}
-    public record Preview(String token,long bookId,Long editionId,Map<CalibreHardcover.Field,String> mappings) {}
+    public record Preview(String token,long bookId,Long editionId,Map<CalibreHardcover.Field,String> mappings,java.util.Set<CalibreHardcover.Field> replaceFields) {}
     public record Token(String token) {}
     public record Slug(String token,String slug) {}
     public record EditionId(String token,long editionId) {}
@@ -31,7 +31,7 @@ public class CalibreHardcoverController {
     }
     @GetMapping("/editions") public HardcoverClient.Editions editions(@RequestParam String token,@RequestParam long bookId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="") String language) {return service.editions(token,bookId,page,language);}
     @GetMapping("/edition-languages") public java.util.List<HardcoverClient.Language> editionLanguages(@RequestParam String token,@RequestParam long bookId) {return service.editionLanguages(token,bookId);}
-    @PostMapping("/preview") public CalibreHardcover.Preview preview(@RequestBody Preview input) {return service.preview(input.token(),input.bookId(),input.editionId(),input.mappings());}
+    @PostMapping("/preview") public CalibreHardcover.Preview preview(@RequestBody Preview input) {return service.preview(input.token(),input.bookId(),input.editionId(),input.mappings(),input.replaceFields());}
     @PostMapping("/apply") public CalibreHardcover.Preview apply(@RequestBody Token input) {return service.apply(input.token());}
     @PostMapping("/discard") public Map<String,Boolean> discard(@RequestBody Token input) {service.discard(input.token());return Map.of("discarded",true);}
 }

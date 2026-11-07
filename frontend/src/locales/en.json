@@ -2171,6 +2171,7 @@
       "READY": "Will be added",
       "MISSING": "Unavailable; skipped",
       "UNCHANGED": "Already matches",
+      "REPLACE": "Will be replaced",
       "CONFLICT": "Different value; preserved",
       "SAVED": "Saved and verified",
       "INVALID": "Invalid value; skipped",

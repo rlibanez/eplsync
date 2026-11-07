@@ -38,6 +38,28 @@ class CalibreIdentifierPatchTests {
         var before=client.identifierMetadata(connection,9);uuid="replacement";assertThatThrownBy(()->client.addIdentifiers(connection,9,before,Map.of("hardcover_book","7"))).hasMessageContaining("cambiaron");
         uuid="identity";ids.put("external","change");assertThatThrownBy(()->client.addIdentifiers(connection,9,before,Map.of("hardcover_book","7"))).hasMessageContaining("cambiaron");assertThat(posts).isZero();
     }
+    @Test void explicitlyReplacesOnlyAuthorizedFieldsAndReplaysWithoutAnotherPost() {
+        ids.put("hardcover_edition","11");ids.put("hardcover_book","7");
+        var before=client.identifierMetadata(connection,9);
+        var result=client.updateIdentifiers(connection,9,before,Map.of("hardcover_edition","22"),Set.of("hardcover_edition"));
+        assertThat(result.identifiers()).containsEntry("hardcover_edition","22").containsEntry("hardcover_book","7")
+            .containsEntry("epl","123").containsEntry("revision","1.2").containsEntry("isbn","9780201616224");
+        assertThat(client.updateIdentifiers(connection,9,before,Map.of("hardcover_edition","22"),Set.of("hardcover_edition"))).isEqualTo(result);
+        assertThat(posts).isEqualTo(1);
+    }
+    @Test void manualReplacementStillRejectsConcurrentChangesAndReconcilesLostResponses() {
+        ids.put("hardcover_edition","11");var before=client.identifierMetadata(connection,9);
+        ids.put("hardcover_edition","33");
+        assertThatThrownBy(()->client.updateIdentifiers(connection,9,before,Map.of("hardcover_edition","22"),Set.of("hardcover_edition"))).hasMessageContaining("cambiaron");
+        assertThat(posts).isZero();ids.put("hardcover_edition","11");loseResponse=true;
+        assertThat(client.updateIdentifiers(connection,9,before,Map.of("hardcover_edition","22"),Set.of("hardcover_edition")).identifiers()).containsEntry("hardcover_edition","22");
+        assertThat(posts).isEqualTo(1);
+    }
+    @Test void replacementAuthorizationCannotOverwriteOtherConflictingIdentifiers() {
+        ids.put("hardcover_edition","11");ids.put("hardcover_book","7");var before=client.identifierMetadata(connection,9);
+        assertThatThrownBy(()->client.updateIdentifiers(connection,9,before,Map.of("hardcover_edition","22","hardcover_book","8"),Set.of("hardcover_edition")))
+            .hasMessageContaining("sobrescriben");assertThat(posts).isZero();
+    }
     @Test void neverOverwritesExistingValues() {
         ids.put("hardcover_book","8");var before=client.identifierMetadata(connection,9);assertThatThrownBy(()->client.addIdentifiers(connection,9,before,Map.of("hardcover_book","7"))).hasMessageContaining("sobrescriben");assertThat(posts).isZero();
     }    @Test void coversUseABoundedAuthenticatedImageEndpoint() {

@@ -47,6 +47,25 @@ class CalibreHardcoverTests {
         assertThat(preview.values()).hasSize(4).allSatisfy(v->assertThat(v.state()).isEqualTo("READY"));assertThat(service.apply(preview.token()).saved()).isTrue();
         verify(calibre).addIdentifiers(connection,9,metadata,Map.of("hardcover","book-slug","hardcover_book","7","hardcover_edition","11","isbn","9780201616224"));verify(calibre,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
+    @Test void explicitManualEditionReplacementIsPreviewedAndBoundToItsPlan() {
+        metadata=new CalibreClient.IdentifierMetadata("uuid","Book",List.of("Author"),Map.of("hardcover","book-slug","hardcover_book","7","hardcover_edition","10","isbn","old-isbn"));
+        when(calibre.identifierMetadata(connection,9)).thenReturn(metadata);
+        var search=service.search(9,null,1);
+        var mapping=Map.of(CalibreHardcover.Field.SLUG,"hardcover",CalibreHardcover.Field.BOOK_ID,"hardcover_book",CalibreHardcover.Field.EDITION_ID,"hardcover_edition",CalibreHardcover.Field.ISBN13,"isbn");
+        var preview=service.preview(search.token(),7,11L,mapping,Set.of(CalibreHardcover.Field.EDITION_ID));
+        assertThat(preview.values()).extracting(v->v.state()).containsExactly("UNCHANGED","UNCHANGED","REPLACE","CONFLICT");
+        service.apply(preview.token());
+        verify(calibre).updateIdentifiers(connection,9,metadata,Map.of("hardcover_edition","11"),Set.of("hardcover_edition"));
+        verify(calibre,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+    @Test void explicitReplacementsRespectMappingsOwnershipAndPermissions() {
+        var search=service.search(9,null,1);var mapping=Map.of(CalibreHardcover.Field.BOOK_ID,"hardcover_book");
+        assertThatThrownBy(()->service.preview(search.token(),7,11L,mapping,Set.of(CalibreHardcover.Field.EDITION_ID))).hasMessageContaining("seleccionados");
+        assertThatThrownBy(()->service.preview(search.token(),7,11L,Map.of(CalibreHardcover.Field.BOOK_ID,"epl"),Set.of(CalibreHardcover.Field.BOOK_ID))).hasMessageContaining("protegidos");
+        owner("other");assertThatThrownBy(()->service.preview(search.token(),7,11L,mapping,Set.of(CalibreHardcover.Field.BOOK_ID))).hasMessageContaining("usuario");
+        owner("owner");SecurityContextHolder.clearContext();
+        assertThatThrownBy(()->service.preview(search.token(),7,11L,mapping,Set.of(CalibreHardcover.Field.BOOK_ID))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
     @Test void doesNotInventAnEditionAndPreservesConflictingIdentifiers() {
         metadata=new CalibreClient.IdentifierMetadata("uuid","Book",List.of("Author"),Map.of("hardcover","different"));when(calibre.identifierMetadata(connection,9)).thenReturn(metadata);
         var search=service.search(9,null,1);var p=service.preview(search.token(),7,null,Map.of(CalibreHardcover.Field.SLUG,"hardcover",CalibreHardcover.Field.EDITION_ID,"hardcover_edition",CalibreHardcover.Field.ISBN13,"isbn"));

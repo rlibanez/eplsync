@@ -120,8 +120,9 @@ Cambiar los nombres puede impedir que una aplicación externa los reconozca.
    edición y su relación con la obra en Hardcover para actualizar los IDs y el
    slug propuestos. La edición manual se conserva aunque inicialmente no esté
    entre las 20 opciones más populares. La selección manual queda indicada. Mientras el slug editado
-   no se compruebe no se puede guardar. Los identificadores existentes distintos
-   siguen protegidos.
+   no se compruebe no se puede guardar. Al comprobar una edición manual o un slug
+   manual, los cambios de los identificadores Hardcover seleccionados se marcan
+   como «Se sustituirá» y pueden guardarse con «Guardar en Calibre».
 4. El selector de idioma muestra todos los idiomas de las ediciones de la obra,
    no solo los de la página visible. Preselecciona el idioma del navegador si
    está disponible: por ejemplo CA para `ca-ES`, FR para `fr-FR` y PT para
@@ -162,9 +163,13 @@ conservan. Se sigue comprobando Calibre al previsualizar y antes de escribir.
 
 Los datos ausentes en Hardcover se omiten. También se omiten los ISBN con
 formato o dígito de control inválido y los ASIN con formato inválido. Los que ya coinciden no se vuelven a
-escribir. Los identificadores con un valor distinto se conservan y se señalan en
-la previsualización. No se sobrescriben ISBN, EPL, revisión ni otros valores
-existentes. Los títulos, autores, portadas y archivos no se modifican.
+escribir. Por defecto los identificadores con un valor distinto se conservan.
+La edición manual comprobada de `hardcover` o `hardcover_edition` permite sustituir
+los identificadores Hardcover seleccionados, incluidos los IDs relacionados que
+se obtienen de la obra y edición verificadas. La previsualización muestra el valor
+actual, el propuesto y «Se sustituirá» antes de guardar. Se conservan los ISBN,
+ASIN, EPL, revisión y los identificadores ajenos a esos cambios. Los títulos,
+autores, portadas y archivos no se modifican.
 
 La confirmación está ligada al usuario, biblioteca, UUID y metadatos observados.
 Si cambian, hay que volver a buscar o previsualizar. Las búsquedas caducan a los
