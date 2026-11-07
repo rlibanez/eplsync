@@ -140,6 +140,9 @@ test("maps Hardcover data to custom identifiers, previews conflicts and saves on
       token: "source-token",
       bookId: 7,
       editionId: r.request().postDataJSON().editionId,
+      ...(r.request().postDataJSON().editionId
+        ? { replaceFields: ["EDITION_ID"] }
+        : {}),
       mappings: {
         SLUG: "hardcover",
         BOOK_ID: "custom_book",
@@ -2345,4 +2348,122 @@ test("missing key does not offer admin settings links to other users", async ({
       exact: true,
     }),
   ).toHaveCount(0);
+});
+
+test("explicit edition selection can replace an existing identifier without authorizing other identifiers", async ({
+  page,
+}) => {
+  const mapping = {
+    SLUG: "hardcover",
+    BOOK_ID: "hardcover_book",
+    EDITION_ID: "hardcover_edition",
+  };
+  let saves = 0;
+  await page.route("**/api/calibre/hardcover", (r) =>
+    r.fulfill({ json: { configured: true, fields, mappings: mapping } }),
+  );
+  await page.route("**/api/calibre/hardcover/search", (r) =>
+    r.fulfill({
+      json: {
+        token: "source",
+        calibreId: 9,
+        title: "Libro local",
+        authors: ["Autor"],
+        page: 1,
+        hasNext: false,
+        identifiers: {
+          hardcover: "book",
+          hardcover_book: "7",
+          hardcover_edition: "10",
+        },
+        items: [{ id: 7, title: "Libro", slug: "book", authors: ["Autor"] }],
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover/editions?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            id: 11,
+            title: "Nueva edición",
+            language: "es",
+            publisher: "Editorial",
+          },
+          { id: 12, title: "Otra edición", language: "es", publisher: "Editorial" },
+        ],
+        hasNext: false,
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover/preview", (r) => {
+    const input = r.request().postDataJSON();
+    expect(input.editionId).toBe(input.replaceFields ? 11 : null);
+    if (input.replaceFields)
+      expect(input.replaceFields).toEqual(["EDITION_ID"]);
+    return r.fulfill({
+      json: {
+        token: "plan",
+        calibreId: 9,
+        title: "Libro local",
+        saved: false,
+        values: [
+          {
+            field: "SLUG",
+            identifier: "hardcover",
+            existing: "book",
+            value: "book",
+            state: "UNCHANGED",
+          },
+          {
+            field: "BOOK_ID",
+            identifier: "hardcover_book",
+            existing: "7",
+            value: "7",
+            state: "UNCHANGED",
+          },
+          {
+            field: "EDITION_ID",
+            identifier: "hardcover_edition",
+            existing: "10",
+            value: input.editionId ? "11" : "",
+            state: input.replaceFields ? "REPLACE" : "MISSING",
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/calibre/hardcover/apply", (r) => {
+    saves++;
+    return r.fulfill({
+      json: {
+        token: "plan",
+        calibreId: 9,
+        title: "Libro local",
+        saved: true,
+        values: [],
+      },
+    });
+  });
+  await page.goto("/calibre");
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Completar Hardcover", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Buscar", exact: true }).click();
+
+  await expect(
+    page.getByRole("button", { name: "Guardar en Calibre", exact: true }),
+  ).toBeDisabled();
+  const edition = page.getByRole("textbox", {
+    name: "Edición en Hardcover",
+    exact: true,
+  });
+  await edition.click();
+  await page.getByRole("option", { name: /Nueva edición/ }).click();
+  await expect(page.getByText("Se sustituirá", { exact: true })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Guardar en Calibre", exact: true })
+    .click();
+  await expect.poll(() => saves).toBe(1);
 });

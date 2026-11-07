@@ -1036,6 +1036,12 @@ export function CompleteHardcover({
                               </>
                             )}
                             onChange={(value) => {
+                              replaceFields.current =
+                                replaceFields.current.filter(
+                                  (field) => field !== "EDITION_ID",
+                                );
+                              if (value && mapping.EDITION_ID)
+                                replaceFields.current.push("EDITION_ID");
                               setEditionId(value);
                               setManualEdition(false);
                               setPreviewPending(true);

@@ -222,3 +222,7 @@ El botón de negación del filtro Hardcover excluye los libros que contienen tod
 los identificadores seleccionados; incluye los que carecen de alguno o de todos.
 La cabecera Hardcover permite ordenar ascendente o descendente por los valores
 del identificador de la obra, su ID y la edición, en ese orden.
+
+Elegir explícitamente una edición en el desplegable permite sustituir el
+identificador de edición existente. La selección automática sigue conservando
+los valores diferentes; los demás identificadores mantienen sus protecciones.
