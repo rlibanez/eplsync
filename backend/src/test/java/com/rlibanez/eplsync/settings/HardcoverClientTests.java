@@ -21,7 +21,7 @@ class HardcoverClientTests {
     @AfterEach void close() {server.stop(0);}
     @Test void searchesWithVariablesAndBothTitleAndAuthor() {
         var result=client.search("The \"Book\"",List.of("Author"),1);assertThat(result.items()).hasSize(1);assertThat(result.items().getFirst().id()).isEqualTo(7);assertThat(result.hasNext()).isFalse();
-        var data=JsonMapper.builder().build().readTree(request);assertThat(data.path("variables").path("q").asString()).isEqualTo("The \"Book\" Author");assertThat(data.path("query").asString()).doesNotContain("The \"Book\"");assertThat(authorization).isEqualTo("Bearer secret-test-only");assertThat(data.path("query").asString()).contains("title,author_names","sort:$sort");assertThat(data.path("variables").path("sort").asString()).contains("_eval(title:=`The \"Book\"`):desc","_text_match:desc,ratings_count:desc");
+        var data=JsonMapper.builder().build().readTree(request);assertThat(data.path("variables").path("q").asString()).isEqualTo("The \"Book\" Author");assertThat(data.path("query").asString()).doesNotContain("The \"Book\"");assertThat(authorization).isEqualTo("Bearer secret-test-only");assertThat(data.path("query").asString()).contains("title,alternative_titles,author_names","weights:\"3,3,1\"","typos:\"1,1,1\"","sort:$sort");assertThat(data.path("variables").path("sort").asString()).contains("_eval(title:=`The \"Book\"`):desc","_text_match:desc,ratings_count:desc");
     }
     @Test void exposesPopularityFromTheSameSearchBookAndEditionResponses() {
         body="{\"data\":{\"search\":{\"results\":{\"found\":1,\"hits\":[{\"document\":{\"id\":\"7\",\"slug\":\"book\",\"title\":\"Book\",\"author_names\":[\"Author\"],\"ratings_count\":1234}}]}}}}";
@@ -52,7 +52,7 @@ class HardcoverClientTests {
         client.search("Book",List.of(),1,true,false);
         var mapper=JsonMapper.builder().build();var data=mapper.readTree(request);
         assertThat(data.path("variables").path("q").asString()).isEqualTo("Book");
-        assertThat(data.path("query").asString()).contains("fields:\"title\"").doesNotContain("author_names");
+        assertThat(data.path("query").asString()).contains("fields:\"title,alternative_titles\"","weights:\"3,3\"","typos:\"1,1\"").doesNotContain("author_names");
         assertThatThrownBy(()->client.search("Book",List.of("Author"),1,false,false)).hasMessageContaining("al menos");
         assertThat(calls).isEqualTo(1);
     }

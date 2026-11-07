@@ -57,12 +57,12 @@ public class HardcoverClient {
     public Search search(String title,List<String> authors,int page,boolean useTitle,boolean useAuthor) {
         page(page);if((useTitle && (title==null || title.isBlank())) || (useAuthor && (authors==null || authors.isEmpty() || authors.stream().allMatch(value->java.util.Objects.requireNonNull(value).isBlank())))) throw invalid("Se necesita el título y el autor del libro de Calibre");
         if(!useTitle && !useAuthor) throw invalid("Selecciona al menos un campo de búsqueda");
-        String fields=useTitle?(useAuthor?"title,author_names":"title"):"author_names";
+        String fields=useTitle?(useAuthor?"title,alternative_titles,author_names":"title,alternative_titles"):"author_names";
         String query=((useTitle?title:"")+" "+(useAuthor?String.join(" ",authors):"")).strip();if(query.length()>1500) throw invalid("El título y los autores son demasiado largos");
         String sort="_text_match:desc,ratings_count:desc";
         // Only a quoted literal enters the optional filter; unusual delimiters retain normal relevance.
         if(useTitle && title.codePoints().noneMatch(c->c=='`' || c=='\\' || Character.isISOControl(c))) sort="_eval(title:=`"+title.strip()+"`):desc,"+sort;
-        var data=query("query Search($q:String!,$page:Int!,$sort:String!){search(query:$q,query_type:\"Book\",fields:\""+fields+"\",weights:\""+(useTitle && useAuthor?"3,1":"1")+"\",typos:\""+(useTitle && useAuthor?"1,1":"1")+"\",sort:$sort,per_page:20,page:$page){results}}",Map.of("q",query,"page",page,"sort",sort));
+        var data=query("query Search($q:String!,$page:Int!,$sort:String!){search(query:$q,query_type:\"Book\",fields:\""+fields+"\",weights:\""+(useTitle?(useAuthor?"3,3,1":"3,3"):"1")+"\",typos:\""+(useTitle?(useAuthor?"1,1,1":"1,1"):"1")+"\",sort:$sort,per_page:20,page:$page){results}}",Map.of("q",query,"page",page,"sort",sort));
         var results=data.path("search").path("results");if(results.isString()) results=json.readTree(results.asString());
         if(!results.path("hits").isArray() || results.path("hits").size()>20) throw failure("Hardcover devolvió resultados de búsqueda inválidos");
         var items=new ArrayList<Match>();

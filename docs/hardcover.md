@@ -107,6 +107,8 @@ Cambiar los nombres puede impedir que una aplicación externa los reconozca.
    un error sin consultar la API y permite corregir el campo. Puedes dejar los
    demás campos vacíos para usar solo un criterio. Estos cambios solo afectan a la consulta,
    no a los metadatos de Calibre. La paginación conserva la consulta utilizada.
+   La búsqueda por título incluye el título principal y los títulos alternativos de la obra,
+   también cuando se combina con el autor, dentro de la misma petición.
    Selecciona la obra correcta. Las búsquedas de texto priorizan el título exacto, después la relevancia y
    desempatan por número de valoraciones. Las búsquedas exactas de identificadores
    ordenan las obras por valoraciones y reseñas. Las ediciones se ordenan por
