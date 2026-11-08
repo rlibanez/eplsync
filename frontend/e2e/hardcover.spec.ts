@@ -131,7 +131,7 @@ test("maps Hardcover data to custom identifiers, previews conflicts and saves on
       identifier: "isbn",
       existing: "9780000000000",
       value: "9780201616224",
-      state: "CONFLICT",
+      state: "REPLACE",
     },
   ];
   await page.route("**/api/calibre/hardcover/preview", (r) => {
@@ -237,13 +237,11 @@ test("maps Hardcover data to custom identifiers, previews conflicts and saves on
     dialog.getByRole("table", { name: "Previsualizar" }),
   ).toContainText("custom_book");
   await expect(
-    dialog.getByText("Valor diferente; se conserva", { exact: true }),
+    dialog.getByText("Se sustituirá", { exact: true }),
   ).toBeVisible();
   await expect.poll(() => previews).toBe(2);
   expect(saves).toBe(0);
-  await dialog
-    .getByRole("button", { name: "Guardar en Calibre", exact: true })
-    .click();
+  await dialog.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect(dialog.locator(".app-modal-actions")).toContainText(
     "1 libro guardado",
   );
@@ -251,7 +249,7 @@ test("maps Hardcover data to custom identifiers, previews conflicts and saves on
     dialog.getByText("1 libro guardado", { exact: true }),
   ).toBeVisible();
   await expect(
-    dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
   ).toHaveCount(0);
   expect(saves).toBe(1);
   await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
@@ -412,17 +410,13 @@ test("search fields and previous-book navigation preserve the chosen query", asy
       exact: true,
     }),
   ).toBeVisible();
-  await dialog
-    .getByRole("button", { name: "Omitir libro", exact: true })
-    .click();
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
   await expect(
     dialog.getByText("Libro 2 de 2", {
       exact: true,
     }),
   ).toBeVisible();
-  await dialog
-    .getByRole("button", { name: "Libro anterior", exact: true })
-    .click();
+  await dialog.getByRole("button", { name: "Anterior", exact: true }).click();
   await expect(
     dialog.getByText("Libro 1 de 2", {
       exact: true,
@@ -483,8 +477,8 @@ test("missing ISBN and ASIN show per-book warnings without offering a save", asy
     "No hay criterios disponibles",
   );
   await expect(
-    dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
-  ).toHaveCount(0);
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeDisabled();
 });
 
 test("custom title and author lookup leaves the original book unchanged", async ({
@@ -681,17 +675,17 @@ test("manual slug resolves a new book, resets the edition and marks the selectio
     name: "Hardcover (slug) manual",
     exact: true,
   });
-  await expect(slug).toHaveAttribute("readonly", "");
+  await expect(slug).toBeEditable();
   await dialog
     .getByRole("button", { name: "Editar slug de Hardcover", exact: true })
     .click();
   await expect(slug).not.toHaveAttribute("readonly", "");
   await slug.fill("new-book");
   await expect(
-    dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
-  ).toBeDisabled();
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeEnabled();
   await dialog.getByRole("button", { name: "Comprobar", exact: true }).click();
-  await expect(slug).toHaveAttribute("readonly", "");
+  await expect(slug).toBeEditable();
   await expect(
     dialog.getByRole("button", {
       name: "Editar slug de Hardcover",
@@ -708,7 +702,7 @@ test("manual slug resolves a new book, resets the edition and marks the selectio
   await slug.press("Escape");
   await expect(dialog).toBeVisible();
   await expect(slug).toHaveValue("new-book");
-  await expect(slug).toHaveAttribute("readonly", "");
+  await expect(slug).toBeEditable();
   await expect(
     dialog.getByText(
       "Obra seleccionada manualmente mediante el slug de Hardcover.",
@@ -722,11 +716,11 @@ test("manual slug resolves a new book, resets the edition and marks the selectio
     dialog.getByRole("textbox", { name: "Edición en Hardcover", exact: true }),
   ).toHaveValue("");
   await expect(
-    dialog
-      .getByRole("table", { name: "Previsualizar" })
-      .getByRole("row")
-      .filter({ hasText: "hardcover_book" }),
-  ).toContainText("8");
+    dialog.getByRole("textbox", {
+      name: "Valor de hardcover_book",
+      exact: true,
+    }),
+  ).toHaveValue("8");
   await expect(
     dialog
       .getByRole("table", { name: "Previsualizar" })
@@ -1256,7 +1250,7 @@ test("edition updates keep the preview mounted and block stale confirmation on e
   await expect(table).toHaveAttribute("data-instance", "original");
   await expect(table).toHaveAttribute("aria-busy", "true");
   const save = dialog.getByRole("button", {
-    name: "Guardar en Calibre",
+    name: "Guardar",
     exact: true,
   });
   await expect(save).toBeDisabled();
@@ -1624,8 +1618,8 @@ test("manual edition resolves its work and keeps the table at full container wid
   });
   await edition.fill("22");
   await expect(
-    dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
-  ).toBeDisabled();
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeEnabled();
   await dialog
     .getByRole("button", { name: "Comprobar edición", exact: true })
     .click();
@@ -1649,8 +1643,11 @@ test("manual edition resolves its work and keeps the table at full container wid
   ).toHaveValue("new-book");
   await expect(edition).toHaveValue("22");
   await expect(
-    table.getByRole("row").filter({ hasText: "hardcover_book" }),
-  ).toContainText("8");
+    table.getByRole("textbox", {
+      name: "Valor de hardcover_book",
+      exact: true,
+    }),
+  ).toHaveValue("8");
   await expect(
     dialog.getByText(
       "Edición seleccionada manualmente mediante su ID de Hardcover.",
@@ -1672,7 +1669,7 @@ test("manual edition resolves its work and keeps the table at full container wid
     3,
   );
   const save = dialog.getByRole("button", {
-    name: "Guardar en Calibre",
+    name: "Guardar",
     exact: true,
   });
   await expect(save).toBeEnabled();
@@ -1792,24 +1789,25 @@ test("current Calibre identifiers appear before a Hardcover selection and can se
     dialog.getByRole("textbox", { name: "Libro en Hardcover", exact: true }),
   ).toHaveValue("");
   await expect(
-    table.getByRole("row").filter({ hasText: "hardcover_book" }),
-  ).toContainText("8");
+    table.getByRole("textbox", {
+      name: "Valor de hardcover_book",
+      exact: true,
+    }),
+  ).toHaveValue("8");
   await expect(
     table.getByRole("row").filter({ hasText: "hardcover_edition" }),
   ).toContainText("22");
   await expect(table).toContainText("existing-book");
-  await expect(table.getByText("Sin seleccionar", { exact: true })).toHaveCount(
-    3,
-  );
+  await expect(table.getByText("Ya coincide", { exact: true })).toHaveCount(3);
   await expect(
-    dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
-  ).toHaveCount(0);
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeDisabled();
   await expect(
     dialog.getByRole("textbox", {
       name: "Hardcover edition manual",
       exact: true,
     }),
-  ).toHaveValue("");
+  ).toHaveValue("22");
   await dialog
     .getByRole("button", { name: "Editar edición de Hardcover", exact: true })
     .click();
@@ -1827,7 +1825,7 @@ test("current Calibre identifiers appear before a Hardcover selection and can se
   ).toHaveValue(/Existing book/);
   await expect(table.getByText("Ya coincide", { exact: true })).toHaveCount(3);
   await expect(
-    dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
   ).toBeDisabled();
 });
 
@@ -1936,7 +1934,7 @@ test("reselecting a loaded work reuses languages and editions but still checks a
       .getByRole("option", { name: new RegExp(`^Work ${id} ·`) })
       .click();
     await expect(
-      dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
+      dialog.getByRole("button", { name: "Guardar", exact: true }),
     ).toBeEnabled();
   }
   expect(languages).toEqual([7, 8]);
@@ -2094,7 +2092,7 @@ test("all three covers follow the selected work and edition while metadata stays
       dialog.locator('img[alt="Portada de la edición en Hardcover"]'),
     ).toHaveAttribute("src", `https://assets.hardcover.app/edition-${id}.png`);
     await expect(
-      dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
+      dialog.getByRole("button", { name: "Guardar", exact: true }),
     ).toBeEnabled();
   }
   for (const [cover, method] of [
@@ -2129,7 +2127,7 @@ test("all three covers follow the selected work and edition while metadata stays
     await expect(trigger).toBeFocused();
     await expect(work).toHaveValue(/Work 7/);
     await expect(
-      dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
+      dialog.getByRole("button", { name: "Guardar", exact: true }),
     ).toBeEnabled();
   }
   expect(languages).toEqual([7, 8]);
@@ -2216,7 +2214,7 @@ test("failed covers use placeholders without blocking selection or saving", asyn
     }),
   ).toBeVisible();
   await expect(
-    dialog.getByRole("button", { name: "Guardar en Calibre", exact: true }),
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
   ).toBeEnabled();
 });
 
@@ -2390,7 +2388,12 @@ test("explicit edition selection can replace an existing identifier without auth
             language: "es",
             publisher: "Editorial",
           },
-          { id: 12, title: "Otra edición", language: "es", publisher: "Editorial" },
+          {
+            id: 12,
+            title: "Otra edición",
+            language: "es",
+            publisher: "Editorial",
+          },
         ],
         hasNext: false,
       },
@@ -2453,8 +2456,8 @@ test("explicit edition selection can replace an existing identifier without auth
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
 
   await expect(
-    page.getByRole("button", { name: "Guardar en Calibre", exact: true }),
-  ).toBeDisabled();
+    page.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeEnabled();
   const edition = page.getByRole("textbox", {
     name: "Edición en Hardcover",
     exact: true,
@@ -2462,8 +2465,720 @@ test("explicit edition selection can replace an existing identifier without auth
   await edition.click();
   await page.getByRole("option", { name: /Nueva edición/ }).click();
   await expect(page.getByText("Se sustituirá", { exact: true })).toBeVisible();
-  await page
-    .getByRole("button", { name: "Guardar en Calibre", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
   await expect.poll(() => saves).toBe(1);
+});
+
+test("no-match review advances, survives navigation and can be cleared without writing Calibre", async ({
+  page,
+}) => {
+  await page.route("**/api/calibre/hardcover/discard", (r) =>
+    r.fulfill({ json: { discarded: true } }),
+  );
+  const marked = new Set<number>();
+  const reviews: { token: string; noMatch: boolean }[] = [];
+  await page.route("**/api/calibre/books?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [9, 10].map((calibreId) => ({
+          calibreId,
+          title: `Libro ${calibreId}`,
+          authors: "Autor",
+          eplId: null,
+          revision: null,
+          catalogRevision: null,
+          comparison: "UNKNOWN",
+          presence: "UNIDENTIFIED",
+        })),
+        meta: { ...emptyMeta, totalItems: 2 },
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover", (r) =>
+    r.fulfill({
+      json: {
+        configured: true,
+        fields,
+        mappings: {
+          SLUG: "hardcover",
+          BOOK_ID: "hardcover_book",
+          EDITION_ID: "hardcover_edition",
+        },
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover/search", (r) => {
+    const id = r.request().postDataJSON().calibreId;
+    return r.fulfill({
+      json: {
+        token: `source-${id}`,
+        calibreId: id,
+        title: `Libro ${id}`,
+        authors: ["Autor"],
+        items: [],
+        page: 1,
+        hasNext: false,
+        noMatch: marked.has(id),
+      },
+    });
+  });
+  await page.route("**/api/calibre/hardcover/review", (r) => {
+    const value = r.request().postDataJSON();
+    reviews.push(value);
+    const id = Number(value.token.split("-")[1]);
+    if (value.noMatch) marked.add(id);
+    else marked.delete(id);
+    return r.fulfill({ json: { noMatch: value.noMatch } });
+  });
+  await page.goto("/calibre");
+  await page
+    .getByRole("checkbox", {
+      name: "Seleccionar registros de esta página",
+      exact: true,
+    })
+    .check();
+  await page
+    .getByRole("button", { name: "Completar Hardcover", exact: true })
+    .first()
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Sin correspondencia", exact: true }),
+  ).toHaveAttribute("data-variant", "outline");
+  await expect(
+    dialog.getByRole("button", { name: "Siguiente", exact: true }),
+  ).toHaveAttribute("data-variant", "light");
+  await expect(
+    dialog.getByRole("button", { name: "Cerrar", exact: true }),
+  ).toHaveAttribute("data-variant", "default");
+  await dialog
+    .getByRole("button", { name: "Sin correspondencia", exact: true })
+    .click();
+  await expect(dialog.getByText("Libro 2 de 2", { exact: true })).toBeVisible();
+  expect(marked.has(9)).toBe(true);
+  await expect(
+    dialog.getByRole("button", { name: "Anterior", exact: true }),
+  ).toHaveAttribute("data-variant", "light");
+  await dialog.getByRole("button", { name: "Anterior", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "Quitar marca", exact: true })
+    .click();
+  await expect(
+    dialog.getByRole("button", { name: "Sin correspondencia", exact: true }),
+  ).toBeVisible();
+  expect(marked.has(9)).toBe(false);
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await expect(dialog.getByText("Libro 2 de 2", { exact: true })).toBeVisible();
+  expect(reviews).toEqual([
+    { token: "source-9", noMatch: true },
+    { token: "source-9", noMatch: false },
+  ]);
+});
+
+test("changed work can replace both identifiers and delete stale or explicitly removed values", async ({
+  page,
+}) => {
+  const mapping = {
+    SLUG: "hardcover",
+    BOOK_ID: "hardcover_book",
+    EDITION_ID: "hardcover_edition",
+  };
+  let saves = 0;
+  let lastFields: string[] = [];
+  await page.route("**/api/calibre/hardcover", (r) =>
+    r.fulfill({ json: { configured: true, fields, mappings: mapping } }),
+  );
+  await page.route("**/api/calibre/hardcover/search", (r) =>
+    r.fulfill({
+      json: {
+        token: "source",
+        calibreId: 9,
+        title: "Libro local",
+        authors: ["Autor"],
+        page: 1,
+        hasNext: true,
+        identifiers: {
+          hardcover: "old",
+          hardcover_book: "99",
+          hardcover_edition: "22",
+        },
+        items: [
+          { id: 7, title: "Nueva obra", slug: "new", authors: ["Autor"] },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover/editions?**", (r) =>
+    r.fulfill({ json: { items: [], hasNext: false } }),
+  );
+  await page.route("**/api/calibre/hardcover/preview", (r) => {
+    const input = r.request().postDataJSON();
+    lastFields = input.removeFields ?? [];
+    return r.fulfill({
+      json: {
+        token: "plan",
+        calibreId: 9,
+        title: "Libro local",
+        saved: false,
+        values: [
+          {
+            field: "SLUG",
+            identifier: "hardcover",
+            existing: "old",
+            value: "new",
+            state: "REPLACE",
+          },
+          {
+            field: "BOOK_ID",
+            identifier: "hardcover_book",
+            existing: "99",
+            value: lastFields.includes("BOOK_ID") ? "" : "7",
+            state: lastFields.includes("BOOK_ID") ? "REMOVE" : "REPLACE",
+          },
+          {
+            field: "EDITION_ID",
+            identifier: "hardcover_edition",
+            existing: "22",
+            value: "",
+            state: "REMOVE",
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/calibre/hardcover/apply", (r) => {
+    saves++;
+    return r.fulfill({
+      json: {
+        token: "plan",
+        calibreId: 9,
+        title: "Libro local",
+        saved: true,
+        values: [],
+      },
+    });
+  });
+  await page.goto("/calibre");
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Completar Hardcover", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
+  await dialog
+    .getByRole("textbox", { name: "Libro en Hardcover", exact: true })
+    .click();
+  await page.getByRole("option", { name: /Nueva obra/ }).click();
+  await expect(dialog.getByText("Se sustituirá", { exact: true })).toHaveCount(
+    2,
+  );
+  await expect(dialog.getByText("Se eliminará", { exact: true })).toHaveCount(
+    1,
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeEnabled();
+  await dialog
+    .getByRole("textbox", { name: "Valor de hardcover_book", exact: true })
+    .fill("");
+  await expect(dialog.getByText("Se eliminará", { exact: true })).toHaveCount(
+    2,
+  );
+  await expect(dialog.getByRole("button", { name: /Eliminar / })).toHaveCount(
+    0,
+  );
+  await dialog
+    .getByRole("textbox", { name: "Valor de hardcover_book", exact: true })
+    .fill("7");
+  await expect(dialog.getByText("Se sustituirá", { exact: true })).toHaveCount(
+    2,
+  );
+  await dialog.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect.poll(() => saves).toBe(1);
+});
+
+test("save follows direct cell differences, including clearing an existing value without selecting a work", async ({
+  page,
+}) => {
+  const mapping = {
+    SLUG: "hardcover",
+    BOOK_ID: "hardcover_book",
+    EDITION_ID: "hardcover_edition",
+  };
+  let saves = 0;
+  await page.route("**/api/calibre/hardcover", (r) =>
+    r.fulfill({ json: { configured: true, fields, mappings: mapping } }),
+  );
+  await page.route("**/api/calibre/hardcover/search", (r) =>
+    r.fulfill({
+      json: {
+        token: "source",
+        calibreId: 9,
+        title: "Libro local",
+        authors: ["Autor"],
+        page: 1,
+        hasNext: false,
+        identifiers: {
+          hardcover: "same",
+          hardcover_book: "7",
+          hardcover_edition: "22",
+        },
+        items: [],
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover/preview", (r) => {
+    const input = r.request().postDataJSON();
+    expect(input.bookId).toBeNull();
+    expect(input.values).toEqual({
+      SLUG: "same",
+      BOOK_ID: "7",
+      EDITION_ID: "",
+    });
+    return r.fulfill({
+      json: {
+        token: "plan",
+        calibreId: 9,
+        title: "Libro local",
+        saved: false,
+        values: [
+          {
+            field: "SLUG",
+            identifier: "hardcover",
+            existing: "same",
+            value: "same",
+            state: "UNCHANGED",
+          },
+          {
+            field: "BOOK_ID",
+            identifier: "hardcover_book",
+            existing: "7",
+            value: "7",
+            state: "UNCHANGED",
+          },
+          {
+            field: "EDITION_ID",
+            identifier: "hardcover_edition",
+            existing: "22",
+            value: "",
+            state: "REMOVE",
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/calibre/hardcover/apply", (r) => {
+    saves++;
+    return r.fulfill({
+      json: {
+        token: "plan",
+        calibreId: 9,
+        title: "Libro local",
+        saved: true,
+        values: [],
+      },
+    });
+  });
+  await page.goto("/calibre");
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Completar Hardcover", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
+  const save = dialog.getByRole("button", { name: "Guardar", exact: true });
+  const edition = dialog.getByRole("textbox", {
+    name: "Hardcover edition manual",
+    exact: true,
+  });
+  await expect(edition).toHaveValue("22");
+  await expect(save).toBeDisabled();
+  await edition.fill("");
+  await expect(save).toBeEnabled();
+  await edition.fill("22");
+  await expect(save).toBeDisabled();
+  await edition.fill("");
+  await expect(save).toBeEnabled();
+  await expect(dialog.getByRole("button", { name: /Eliminar / })).toHaveCount(
+    0,
+  );
+  await save.click();
+  await expect.poll(() => saves).toBe(1);
+});
+
+for (const manual of [
+  {
+    label: "Hardcover (slug) manual",
+    value: "new-work",
+    endpoint: "resolve-slug",
+  },
+  { label: "Valor de hardcover_book", value: "7", endpoint: "resolve-book" },
+  {
+    label: "Hardcover edition manual",
+    value: "11",
+    endpoint: "resolve-edition",
+  },
+]) {
+  test(`direct ${manual.endpoint} edit can be saved without pressing a check`, async ({
+    page,
+  }) => {
+    const mapping = {
+      SLUG: "hardcover",
+      BOOK_ID: "hardcover_book",
+      EDITION_ID: "hardcover_edition",
+    };
+    let saves = 0,
+      resolutions = 0;
+    await page.route("**/api/calibre/hardcover", (r) =>
+      r.fulfill({ json: { configured: true, fields, mappings: mapping } }),
+    );
+    await page.route("**/api/calibre/hardcover/search", (r) =>
+      r.fulfill({
+        json: {
+          token: "source",
+          calibreId: 9,
+          title: "Libro local",
+          authors: ["Autor"],
+          page: 1,
+          hasNext: false,
+          identifiers: {},
+          items: [],
+        },
+      }),
+    );
+    await page.route(`**/api/calibre/hardcover/${manual.endpoint}`, (r) => {
+      resolutions++;
+      return r.fulfill({
+        json:
+          manual.endpoint === "resolve-edition"
+            ? {
+                book: {
+                  id: 7,
+                  title: "Nueva obra",
+                  slug: "new-work",
+                  authors: ["Autor"],
+                },
+                edition: {
+                  id: 11,
+                  title: "Nueva edición",
+                  language: "es",
+                  publisher: "Editorial",
+                },
+              }
+            : {
+                id: 7,
+                title: "Nueva obra",
+                slug: "new-work",
+                authors: ["Autor"],
+              },
+      });
+    });
+    await page.route("**/api/calibre/hardcover/editions?**", (r) =>
+      r.fulfill({ json: { items: [], hasNext: false } }),
+    );
+    const values = [
+      {
+        field: "SLUG",
+        identifier: "hardcover",
+        existing: "",
+        value: "new-work",
+        state: "READY",
+      },
+      {
+        field: "BOOK_ID",
+        identifier: "hardcover_book",
+        existing: "",
+        value: "7",
+        state: "READY",
+      },
+      {
+        field: "EDITION_ID",
+        identifier: "hardcover_edition",
+        existing: "",
+        value: manual.endpoint === "resolve-edition" ? "11" : "",
+        state: manual.endpoint === "resolve-edition" ? "READY" : "MISSING",
+      },
+    ];
+    await page.route("**/api/calibre/hardcover/preview", (r) => {
+      const input = r.request().postDataJSON();
+      expect(input.bookId).toBe(7);
+      if (input.values)
+        expect(input.values).toEqual({
+          SLUG: "new-work",
+          BOOK_ID: "7",
+          EDITION_ID: manual.endpoint === "resolve-edition" ? "11" : "",
+        });
+      return r.fulfill({
+        json: {
+          token: "plan",
+          calibreId: 9,
+          title: "Libro local",
+          saved: false,
+          values,
+        },
+      });
+    });
+    await page.route("**/api/calibre/hardcover/apply", (r) => {
+      saves++;
+      return r.fulfill({
+        json: {
+          token: "plan",
+          calibreId: 9,
+          title: "Libro local",
+          saved: true,
+          values,
+        },
+      });
+    });
+    await page.goto("/calibre");
+    await page
+      .locator("tbody")
+      .getByRole("button", { name: "Completar Hardcover", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
+    await dialog
+      .getByRole("textbox", { name: manual.label, exact: true })
+      .fill(manual.value);
+    const save = dialog.getByRole("button", { name: "Guardar", exact: true });
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect.poll(() => saves).toBe(1);
+    expect(resolutions).toBe(1);
+  });
+}
+
+test("lookup errors show a compact diagnosis and retry the same book without saving", async ({
+  page,
+}) => {
+  let searches = 0;
+  const requests: unknown[] = [];
+  await page.route("**/api/calibre/hardcover", (r) =>
+    r.fulfill({
+      json: {
+        configured: true,
+        fields,
+        mappings: {
+          SLUG: "hardcover",
+          BOOK_ID: "hardcover_book",
+          EDITION_ID: "hardcover_edition",
+        },
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover/search", (r) => {
+    searches++;
+    requests.push(r.request().postDataJSON());
+    if (searches === 1)
+      return r.fulfill({
+        status: 502,
+        json: { details: "No se pudo consultar Hardcover (HTTP 503)" },
+      });
+    if (searches === 2)
+      return r.fulfill({
+        status: 502,
+        json: {
+          details:
+            "Hardcover devolvió resultados de búsqueda inválidos (HTTP 200; search.results.hits ausente o no es una lista)",
+        },
+      });
+    return r.fulfill({
+      json: {
+        token: "retry-source",
+        calibreId: 9,
+        title: "Libro local",
+        authors: ["Autor"],
+        items: [],
+        page: 1,
+        hasNext: false,
+      },
+    });
+  });
+  await page.goto("/calibre");
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Completar Hardcover", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
+  const alert = dialog.getByRole("alert");
+  await expect(alert).toContainText("HTTP 503");
+  await alert.getByRole("button", { name: "Reintentar", exact: true }).click();
+  await expect(alert).toContainText("HTTP 200; search.results.hits");
+  await alert.getByRole("button", { name: "Reintentar", exact: true }).click();
+  await expect.poll(() => searches).toBe(3);
+  await expect(
+    dialog.getByRole("alert").filter({ hasText: /HTTP [0-9]/ }),
+  ).toHaveCount(0);
+  await expect(dialog.getByText("Libro 1 de 1", { exact: true })).toBeVisible();
+  expect(searches).toBe(3);
+  expect(requests[1]).toEqual(requests[0]);
+  expect(requests[2]).toEqual(requests[0]);
+  await expect(
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeDisabled();
+});
+
+test("a Hardcover lookup failure keeps editable Calibre metadata and allows a different search", async ({
+  page,
+}) => {
+  const searches: { queryTitle?: string; queryAuthor?: string }[] = [];
+  await page.route("**/api/calibre/hardcover", (r) =>
+    r.fulfill({
+      json: {
+        configured: true,
+        fields,
+        mappings: {
+          SLUG: "hardcover",
+          BOOK_ID: "hardcover_book",
+          EDITION_ID: "hardcover_edition",
+        },
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover/discard", (r) =>
+    r.fulfill({ json: { discarded: true } }),
+  );
+  await page.route("**/api/calibre/hardcover/search", (r) => {
+    searches.push(r.request().postDataJSON());
+    return r.fulfill({
+      json: {
+        token: `source-${searches.length}`,
+        calibreId: 9,
+        title: "Título de Calibre",
+        authors: ["Autor de Calibre"],
+        identifiers: {
+          hardcover: "current-slug",
+          hardcover_book: "7",
+          hardcover_edition: "11",
+        },
+        items: [],
+        page: 1,
+        hasNext: false,
+        error:
+          searches.length <= 2
+            ? "Hardcover devolvió resultados de búsqueda inválidos (HTTP 200; search.results.hits ausente o no es una lista)"
+            : null,
+      },
+    });
+  });
+  await page.goto("/calibre");
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Completar Hardcover", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("HTTP 200");
+  await expect(
+    dialog.getByRole("button", { name: "Reintentar", exact: true }),
+  ).toBeVisible();
+  const title = dialog.getByRole("textbox", { name: "Título", exact: true });
+  const author = dialog.getByRole("textbox", { name: "Autor", exact: true });
+  await expect(title).toHaveValue("Título de Calibre");
+  await expect(author).toHaveValue("Autor de Calibre");
+  const table = dialog.getByRole("table", { name: "Previsualizar" });
+  await expect(table).toContainText("current-slug");
+  await expect(
+    table.getByRole("textbox", {
+      name: "Valor de hardcover_book",
+      exact: true,
+    }),
+  ).toHaveValue("7");
+  await expect(
+    dialog.getByRole("button", { name: "Guardar", exact: true }),
+  ).toBeDisabled();
+  await dialog.getByRole("button", { name: "Reintentar", exact: true }).click();
+  await expect.poll(() => searches.length).toBe(2);
+  await expect(title).toHaveValue("Título de Calibre");
+  await expect(table).toContainText("current-slug");
+  await title.fill("Otro título");
+  await author.fill("Otro autor");
+  await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect.poll(() => searches.length).toBe(3);
+  await expect(
+    dialog.getByRole("alert").filter({ hasText: /HTTP [0-9]/ }),
+  ).toHaveCount(0);
+  expect(searches[2].queryTitle).toBe("Otro título");
+  expect(searches[2].queryAuthor).toBe("Otro autor");
+  await expect(table).toContainText("current-slug");
+});
+
+test("alternative search results remain usable and explain their ordering", async ({
+  page,
+}) => {
+  await page.route("**/api/calibre/hardcover", (r) =>
+    r.fulfill({
+      json: {
+        configured: true,
+        fields,
+        mappings: {
+          SLUG: "hardcover",
+          BOOK_ID: "hardcover_book",
+          EDITION_ID: "hardcover_edition",
+        },
+      },
+    }),
+  );
+  await page.route("**/api/calibre/hardcover/discard", (r) =>
+    r.fulfill({ json: { discarded: true } }),
+  );
+  await page.route("**/api/calibre/hardcover/search", (r) =>
+    r.fulfill({
+      json: {
+        token: "fallback-source",
+        calibreId: 9,
+        title: "Retrato del artista adolescente",
+        authors: ["James Joyce"],
+        page: 1,
+        hasNext: false,
+        notices: ["FALLBACK_SEARCH"],
+        identifiers: {
+          hardcover: "a-portrait-of-the-artist-as-a-young-man",
+          hardcover_book: "429802",
+          hardcover_edition: "11706895",
+        },
+        items: [
+          {
+            id: 429802,
+            slug: "a-portrait-of-the-artist-as-a-young-man",
+            title: "A Portrait of the Artist as a Young Man",
+            authors: ["James Joyce"],
+            ratingsCount: 322,
+          },
+          {
+            id: 1957707,
+            slug: "retrato-del-artista-adolescente",
+            title: "Retrato del artista adolescente",
+            authors: ["James Joyce"],
+            ratingsCount: 0,
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/calibre");
+  await page
+    .locator("tbody")
+    .getByRole("button", { name: "Completar Hardcover", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Buscar", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(dialog.getByRole("status")).toContainText(
+    "búsqueda alternativa",
+  );
+  const books = dialog.getByRole("textbox", {
+    name: "Libro en Hardcover",
+    exact: true,
+  });
+  await expect(books).toHaveAttribute("title", /Búsqueda alternativa/);
+  await books.click();
+  await expect(
+    page.getByRole("option", { name: /A Portrait.*322 valoraciones/ }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("table", { name: "Previsualizar" }),
+  ).toContainText("429802");
 });

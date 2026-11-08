@@ -25,6 +25,14 @@ class CalibreIdentifierPatchTests {
         });server.start();connection=new CalibreSettings.Connection("http://127.0.0.1:"+server.getAddress().getPort(),"","","main");
     }
     @AfterEach void close() {server.stop(0);}
+    @Test void explicitRemovalsAreVerifiedAndReplaysNeverRepeatTheWrite() {
+        ids.put("hardcover_edition","10");
+        var before=client.identifierMetadata(connection,9);
+        var result=client.updateIdentifiers(connection,9,before,Map.of("hardcover_edition",""),Set.of("hardcover_edition"));
+        assertThat(result.identifiers()).doesNotContainKey("hardcover_edition").containsEntry("epl","123").containsEntry("revision","1.2");
+        client.updateIdentifiers(connection,9,before,Map.of("hardcover_edition",""),Set.of("hardcover_edition"));
+        assertThat(posts).isEqualTo(1);
+    }
     @Test void addsIdentifiersWithoutChangingEplRevisionOrIsbnAndReplaysWithoutAnotherPost() {
         var before=client.identifierMetadata(connection,9);var additions=Map.of("hardcover","book-slug","hardcover_book","7","hardcover_edition","11");
         var result=client.addIdentifiers(connection,9,before,additions);assertThat(result.identifiers()).containsAllEntriesOf(before.identifiers()).containsAllEntriesOf(additions);

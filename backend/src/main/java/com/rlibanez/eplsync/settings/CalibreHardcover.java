@@ -16,10 +16,10 @@ import tools.jackson.databind.json.JsonMapper;
 public class CalibreHardcover {
     public enum Field {SLUG,BOOK_ID,EDITION_ID,ISBN10,ISBN13,ASIN}
     public record Configuration(boolean configured,List<Field> fields,Map<Field,String> mappings) {}
-    public record Matches(String token,long calibreId,String title,List<String> authors,List<HardcoverClient.Match> items,boolean hasNext,int page,List<String> notices,String queryIsbn,String queryAsin,Map<String,String> identifiers,String coverUrl) {}
+    public record Matches(String token,long calibreId,String title,List<String> authors,List<HardcoverClient.Match> items,boolean hasNext,int page,List<String> notices,String queryIsbn,String queryAsin,Map<String,String> identifiers,String coverUrl,boolean noMatch,String error) {}
     public record Value(Field field,String identifier,String existing,String value,String state) {}
     public record Preview(String token,long calibreId,String title,List<Value> values,boolean saved) {}
-    private record Source(String owner,Instant expires,long calibreId,CalibreSettings.Connection connection,CalibreClient.IdentifierMetadata metadata,Set<Long> matches,boolean useTitle,boolean useAuthor,List<String> isbns,String asin,List<String> notices,String queryTitle,List<String> queryAuthors,LookupCache cache) {}
+    private record Source(String owner,Instant expires,long calibreId,CalibreSettings.Connection connection,CalibreClient.IdentifierMetadata metadata,Set<Long> matches,boolean useTitle,boolean useAuthor,List<String> isbns,String asin,List<String> notices,String queryTitle,List<String> queryAuthors,LookupCache cache,java.util.concurrent.atomic.AtomicBoolean fallback) {}
     /** Bounded, short-lived data owned by one authenticated search, never shared across libraries. */
     private static final class LookupCache {
         private final LinkedHashMap<String,Object> entries=new LinkedHashMap<>(16,0.75f,true);
@@ -139,16 +139,26 @@ public class CalibreHardcover {
             if(useAuthor && !author) notices.add("AUTHOR_UNAVAILABLE");
             if(!isbns.isEmpty() || !asin.isBlank()) notices.add("EXACT_IDENTIFIERS");
             else if(!title && !author) notices.add("NO_CRITERIA");
-            s=new Source(owner,Instant.now().plusSeconds(900),id,c,book,ConcurrentHashMap.newKeySet(),title,author,List.copyOf(isbns),asin,List.copyOf(notices),titleQuery,authorQuery,new LookupCache());token=UUID.randomUUID().toString();
+            s=new Source(owner,Instant.now().plusSeconds(900),id,c,book,ConcurrentHashMap.newKeySet(),title,author,List.copyOf(isbns),asin,List.copyOf(notices),titleQuery,authorQuery,new LookupCache(),new java.util.concurrent.atomic.AtomicBoolean());token=UUID.randomUUID().toString();
         } else {s=source(token);if(id!=s.calibreId()) throw new UserInputException("La búsqueda corresponde a otro libro");}
         Source search=s;
-        var result=s.cache().get("search:"+page,()->{
+        sources.put(token,s);
+        HardcoverClient.Search result;
+        String error=null;
+        try {result=s.cache().get("search:"+page,()->{
             if(!search.isbns().isEmpty() || !search.asin().isBlank()) return hardcover.searchIdentifiers(search.isbns(),search.asin(),page);
             if(!search.useTitle() && !search.useAuthor()) return new HardcoverClient.Search(List.of(),false);
+            if(search.fallback().get()) return hardcover.searchFallback(search.queryTitle(),search.queryAuthors(),page,search.useTitle(),search.useAuthor());
             return search.useTitle() && search.useAuthor()?hardcover.search(search.queryTitle(),search.queryAuthors(),page):hardcover.search(search.queryTitle(),search.queryAuthors(),page,search.useTitle(),search.useAuthor());
-        });
+        });} catch(org.springframework.web.server.ResponseStatusException ex) {
+            error=ex.getReason()==null?"No se pudo consultar Hardcover":ex.getReason();
+            result=new HardcoverClient.Search(List.of(),false);
+        } catch(UserInputException ex) {
+            error=ex.getMessage();result=new HardcoverClient.Search(List.of(),false);
+        }
         for(var match:result.items()) {s.matches().add(match.id());rememberBook(s,match);}
-        sources.put(token,s);return new Matches(token,id,s.metadata().title(),s.metadata().authors(),result.items(),result.hasNext(),page,s.notices(),String.join(", ",s.isbns()),s.asin(),s.metadata().identifiers(),Permission.has(Permission.CALIBRE_FILES_READ)?"/api/calibre/hardcover/cover?token="+token:null);
+        var notices=new ArrayList<>(s.notices());if(result.fallback()) {s.fallback().set(true);notices.add("FALLBACK_SEARCH");}
+        sources.put(token,s);return new Matches(token,id,s.metadata().title(),s.metadata().authors(),result.items(),result.hasNext(),page,List.copyOf(notices),String.join(", ",s.isbns()),s.asin(),s.metadata().identifiers(),Permission.has(Permission.CALIBRE_FILES_READ)?"/api/calibre/hardcover/cover?token="+token:null,reviewed(s),error);
     }
     public CalibreClient.Cover cover(String token) {
         Permission.require(Permission.CALIBRE_FILES_READ);var s=source(token);
@@ -157,6 +167,10 @@ public class CalibreHardcover {
     public HardcoverClient.Match resolveSlug(String token,String slug) {
         var s=source(token);String value=slug==null?null:slug.strip();
         var book=s.cache().get("slug:"+value,()->hardcover.bookBySlug(value));
+        s.matches().add(book.id());rememberBook(s,book);return book;
+    }
+    public HardcoverClient.Match resolveBook(String token,long id) {
+        var s=source(token);var book=s.cache().get("book:"+id,()->hardcover.book(id));
         s.matches().add(book.id());rememberBook(s,book);return book;
     }
     public HardcoverClient.EditionBook resolveEdition(String token,long editionId) {
@@ -177,29 +191,49 @@ public class CalibreHardcover {
         return preview(token,bookId,editionId,input,Set.of());
     }
     public Preview preview(String token,long bookId,Long editionId,Map<Field,String> input,Set<Field> replaceFields) {
-        prune();var s=selected(token,bookId);var mapping=validate(input);
-        var book=s.cache().get("book:"+bookId,()->hardcover.book(bookId));
+        return preview(token,bookId,editionId,input,replaceFields,Set.of());
+    }
+    public Preview preview(String token,Long bookId,Long editionId,Map<Field,String> input,Set<Field> replaceFields,Set<Field> removeFields) {
+        return preview(token,bookId,editionId,input,replaceFields,removeFields,Map.of());
+    }
+    public Preview preview(String token,Long bookId,Long editionId,Map<Field,String> input,Set<Field> replaceFields,Set<Field> removeFields,Map<Field,String> values) {
+        prune();var s=bookId==null?source(token):selected(token,bookId);var mapping=validate(input);
+        if(bookId==null && editionId!=null) throw new UserInputException("Selecciona la obra de la edición");
+        var book=bookId==null?null:s.cache().get("book:"+bookId,()->hardcover.book(bookId));
         var edition=editionId==null?null:s.cache().get("edition:"+bookId+":"+editionId,()->hardcover.edition(bookId,editionId));
         var current=calibre.identifierMetadata(s.connection(),s.calibreId());
         if(!current.equals(s.metadata())) throw new UserInputException("Los metadatos de Calibre cambiaron; vuelve a buscar");
         var replace=replaceFields==null?Set.<Field>of():replaceFields;
         if(replace.stream().anyMatch(Objects::isNull) || !mapping.keySet().containsAll(replace)) throw new UserInputException("Solo puedes sustituir identificadores seleccionados en esta previsualización");
+        var remove=removeFields==null?Set.<Field>of():removeFields;
+        if(remove.stream().anyMatch(Objects::isNull) || !mapping.keySet().containsAll(remove)) throw new UserInputException("Solo puedes eliminar identificadores seleccionados en esta previsualización");
+        var removals=new HashSet<>(remove);
+        var overrides=values==null?Map.<Field,String>of():values;
+        if(!mapping.keySet().containsAll(overrides.keySet()) || overrides.values().stream().anyMatch(value->value==null || value.length()>2048)) throw new UserInputException("Valores de identificadores inválidos");
         var replacements=new HashSet<String>();
         var rows=new ArrayList<Value>();var additions=new LinkedHashMap<String,String>();
         for(var f:Field.values()) if(mapping.containsKey(f)) {
-            String value=switch(f) {case SLUG->book.slug();case BOOK_ID->Long.toString(book.id());case EDITION_ID->edition==null?"":Long.toString(edition.id());case ISBN10->edition==null?"":edition.isbn10();case ISBN13->edition==null?"":edition.isbn13();case ASIN->edition==null?"":edition.asin();};
-            value=value.strip();
+            String value=switch(f) {case SLUG->book==null?"":book.slug();case BOOK_ID->book==null?"":Long.toString(book.id());case EDITION_ID->edition==null?"":Long.toString(edition.id());case ISBN10->edition==null?"":edition.isbn10();case ISBN13->edition==null?"":edition.isbn13();case ASIN->edition==null?"":edition.asin();};
+            value=overrides.getOrDefault(f,value).strip();
+            if(removals.contains(f)) value="";
             if(f==Field.ISBN10 || f==Field.ISBN13) value=value.replaceAll("[-\\s]","").toUpperCase(Locale.ROOT);
             if(f==Field.ASIN) value=value.toUpperCase(Locale.ROOT);
             String name=mapping.get(f),existing=current.identifiers().getOrDefault(name,"");
-            String state=value.isBlank()?"MISSING":!validValue(f,value)?"INVALID":existing.equals(value)?"UNCHANGED":!existing.isBlank()?(replace.contains(f)?"REPLACE":"CONFLICT"):"READY";
-            rows.add(new Value(f,name,existing,value,state));if(state.equals("READY") || state.equals("REPLACE")) additions.put(name,value);
-            if(state.equals("REPLACE")) replacements.add(name);
+            if(overrides.containsKey(f) && !value.equals(existing) && !value.isBlank() && !validValue(f,value)) throw new UserInputException("Valor inválido para "+name);
+            if(overrides.containsKey(f) && !value.isBlank() && book!=null) {
+                if(f==Field.SLUG && !value.equals(book.slug()) || f==Field.BOOK_ID && !value.equals(Long.toString(book.id()))) throw new UserInputException("Los identificadores no corresponden a la obra seleccionada");
+                if(f==Field.EDITION_ID && (edition==null || !value.equals(Long.toString(edition.id())))) throw new UserInputException("El identificador no corresponde a la edición seleccionada");
+            }
+            String state=value.equals(existing)?(value.isBlank()?"MISSING":"UNCHANGED"):value.isBlank()?"REMOVE":!validValue(f,value)?"INVALID":!existing.isBlank()?"REPLACE":"READY";
+            rows.add(new Value(f,name,existing,value,state));if(state.equals("READY") || state.equals("REPLACE") || state.equals("REMOVE")) additions.put(name,value);
+            if(state.equals("REPLACE") || state.equals("REMOVE")) replacements.add(name);
         }
         String confirmation=UUID.randomUUID().toString();plans.put(confirmation,new Plan(s,Instant.now().plusSeconds(600),List.copyOf(rows),Map.copyOf(additions),Set.copyOf(replacements)));
         return new Preview(confirmation,s.calibreId(),s.metadata().title(),List.copyOf(rows),false);
     }
     static boolean validValue(Field field,String value) {
+        if(field==Field.BOOK_ID || field==Field.EDITION_ID) return value.matches("[1-9][0-9]{0,9}") && Long.parseLong(value)<=Integer.MAX_VALUE;
+        if(field==Field.SLUG) return value.length()<=512 && value.matches("[^\\s/:?#]+");
         if(field==Field.ASIN) return value.matches("[A-Z0-9]{10}");
         if(field==Field.ISBN10) {
             if(!value.matches("[0-9]{9}[0-9X]")) return false;
@@ -214,16 +248,42 @@ public class CalibreHardcover {
     public Preview apply(String token) {
         String owner=owner();var p=plans.get(token==null?"":token);
         if(p==null || !p.source().owner().equals(owner) || p.expires().isBefore(Instant.now())) throw new UserInputException("La previsualización ha caducado o pertenece a otro usuario");
+        if(p.values().stream().anyMatch(value->value.state().equals("INVALID"))) throw new UserInputException("Corrige los identificadores inválidos antes de guardar");
         return transfers.exclusive(()->catalog.exclusive(()->{
             if(!p.source().connection().equals(settings.connection())) throw new UserInputException("La conexión o biblioteca cambió; vuelve a previsualizar");
             if(p.replacements().isEmpty()) calibre.addIdentifiers(p.source().connection(),p.source().calibreId(),p.source().metadata(),p.additions());
             else calibre.updateIdentifiers(p.source().connection(),p.source().calibreId(),p.source().metadata(),p.additions(),p.replacements());
             var identifiers=new LinkedHashMap<>(p.source().metadata().identifiers());
-            identifiers.putAll(p.additions());
-            tx.executeWithoutResult(status->jdbc.update("UPDATE calibre_books SET identifiers=? WHERE active=true AND calibre_id=?",json.writeValueAsString(identifiers),p.source().calibreId()));
+            p.additions().forEach((key,value)->{if(value.isBlank()) identifiers.remove(key);else identifiers.put(key,value);});
+            tx.executeWithoutResult(status->{
+                jdbc.update("UPDATE calibre_books SET identifiers=? WHERE active=true AND calibre_id=?",json.writeValueAsString(identifiers),p.source().calibreId());
+                if(p.values().stream().anyMatch(value->(value.field()==Field.SLUG || value.field()==Field.BOOK_ID || value.field()==Field.EDITION_ID) && !value.value().isBlank() && Set.of("READY","REPLACE","UNCHANGED").contains(value.state()))) clearReview(p.source());
+            });
             log.info("Identificadores de Hardcover comprobados en Calibre: calibreId={}, campos={}, userId={}",p.source().calibreId(),p.additions().size(),owner);
             return new Preview(token,p.source().calibreId(),p.source().metadata().title(),p.values(),true);
         }));
+    }
+    private boolean reviewed(Source source) {
+        return jdbc.queryForObject("SELECT count(*) FROM calibre_hardcover_reviews WHERE destination=? AND library=? AND calibre_id=? AND calibre_uuid=? AND title=? AND authors=?",Long.class,source.connection().url(),source.connection().library(),source.calibreId(),source.metadata().uuid(),source.metadata().title(),String.join(", ",source.metadata().authors()))>0;
+    }
+    public void review(String token,boolean noMatch) {
+        String user=owner();var source=source(token);
+        transfers.exclusive(()->catalog.exclusive(()->{
+            var current=calibre.identifierMetadata(source.connection(),source.calibreId());
+            if(!current.equals(source.metadata())) throw new UserInputException("Los metadatos de Calibre cambiaron; vuelve a buscar");
+            if(current.uuid()==null || current.uuid().isBlank()) throw new UserInputException("No se puede identificar el libro de Calibre de forma segura");
+            tx.executeWithoutResult(status->{
+                if(!source.connection().equals(settings.connection())) throw new UserInputException("La conexión o biblioteca cambió; vuelve a buscar");
+                if(noMatch) jdbc.update("INSERT INTO calibre_hardcover_reviews(destination,library,calibre_id,calibre_uuid,title,authors,reviewed_at,reviewed_by) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(destination,library,calibre_id) DO UPDATE SET calibre_uuid=excluded.calibre_uuid,title=excluded.title,authors=excluded.authors,reviewed_at=excluded.reviewed_at,reviewed_by=excluded.reviewed_by",source.connection().url(),source.connection().library(),source.calibreId(),current.uuid(),current.title(),String.join(", ",current.authors()),Instant.now().toString(),user);
+                else clearReview(source);
+                jdbc.update("UPDATE calibre_books SET calibre_uuid=? WHERE active=true AND calibre_id=? AND title=? AND authors=?",current.uuid(),source.calibreId(),current.title(),String.join(", ",current.authors()));
+            });
+            log.info("Revisión de Hardcover: calibreId={}, sinCorrespondencia={}, userId={}",source.calibreId(),noMatch,user);
+            return null;
+        }));
+    }
+    private void clearReview(Source source) {
+        jdbc.update("DELETE FROM calibre_hardcover_reviews WHERE destination=? AND library=? AND calibre_id=?",source.connection().url(),source.connection().library(),source.calibreId());
     }
     public void discard(String token) {
         String owner=owner();var s=sources.get(token==null?"":token);if(s!=null && s.owner().equals(owner)) {

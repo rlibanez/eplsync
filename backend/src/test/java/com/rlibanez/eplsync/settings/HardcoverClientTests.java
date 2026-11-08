@@ -9,13 +9,13 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.*;
 
 class HardcoverClientTests {
-    HttpServer server;HardcoverClient client;int status;String body;String request;String authorization;int calls;String rateLimit,ratePolicy;
+    HttpServer server;HardcoverClient client;int status;String body;String request;String fallbackBody;String authorization;int calls;String rateLimit,ratePolicy;
     @BeforeEach void setup() throws Exception {
-        status=200;calls=0;rateLimit=null;ratePolicy=null;body="{\"data\":{\"search\":{\"results\":{\"found\":1,\"hits\":[{\"document\":{\"id\":\"7\",\"slug\":\"the-book\",\"title\":\"The Book\",\"author_names\":[\"Author\"]}}]}}}}";
+        status=200;calls=0;fallbackBody=null;rateLimit=null;ratePolicy=null;body="{\"data\":{\"search\":{\"results\":{\"found\":1,\"hits\":[{\"document\":{\"id\":\"7\",\"slug\":\"the-book\",\"title\":\"The Book\",\"author_names\":[\"Author\"]}}]}}}}";
         server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);server.createContext("/",e->{
             calls++;authorization=e.getRequestHeaders().getFirst("Authorization");request=new String(e.getRequestBody().readAllBytes(),StandardCharsets.UTF_8);
             if(rateLimit!=null) e.getResponseHeaders().add("RateLimit",rateLimit);if(ratePolicy!=null) e.getResponseHeaders().add("RateLimit-Policy",ratePolicy);
-            byte[] bytes=body.getBytes(StandardCharsets.UTF_8);e.getResponseHeaders().add("Content-Type","application/json");e.sendResponseHeaders(status,bytes.length);e.getResponseBody().write(bytes);e.close();
+            byte[] bytes=(fallbackBody!=null && request.contains("query FallbackBooks")?fallbackBody:body).getBytes(StandardCharsets.UTF_8);e.getResponseHeaders().add("Content-Type","application/json");e.sendResponseHeaders(status,bytes.length);e.getResponseBody().write(bytes);e.close();
         });server.start();client=new HardcoverClient("Bearer secret-test-only",URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/"));
     }
     @AfterEach void close() {server.stop(0);}
@@ -77,7 +77,42 @@ class HardcoverClientTests {
     }
     @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(ints={401,403,429,302,500})
     void rejectsHttpErrorsWithoutLeakingTheToken(int code) {
-        status=code;assertThatThrownBy(()->client.search("Book",List.of("Author"),1)).hasMessageNotContaining("secret-test-only");assertThat(calls).isEqualTo(1);
+        status=code;assertThatThrownBy(()->client.search("Book",List.of("Author"),1)).hasMessageContaining("HTTP "+code).hasMessageNotContaining("secret-test-only");assertThat(calls).isEqualTo(1);
+    }
+    @Test void invalidSearchShapesIncludeSafeTechnicalDetails() {
+        body="{\"data\":{\"search\":{\"results\":{\"error\":\"secret-test-only\"}}}}";
+        assertThatThrownBy(()->client.search("Book",List.of("Author"),1)).hasMessageContaining("HTTP 200","search.results.hits").hasMessageNotContaining("secret-test-only");
+        body="{\"data\":{\"search\":{\"results\":\"not-json-secret-test-only\"}}}";
+        assertThatThrownBy(()->client.search("Book",List.of("Author"),1)).hasMessageContaining("HTTP 200","JSON válido").hasMessageNotContaining("secret-test-only");
+        body="not-json-secret-test-only";
+        assertThatThrownBy(()->client.search("Book",List.of("Author"),1)).hasMessageContaining("JSON inválido","HTTP 200").hasMessageNotContaining("secret-test-only");
+    }
+    @Test void connectionFailuresDescribeTheTransportWithoutLeakingCredentials() {
+        server.stop(0);
+        assertThatThrownBy(()->client.search("Book",List.of("Author"),1)).hasMessageContaining("conexión").hasMessageNotContaining("secret-test-only");
+    }
+    @Test void malformedSearchResponsesAreLoggedWithoutResponseBodiesOrCredentials() {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(HardcoverClient.class);
+        var capture=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();capture.start();logger.addAppender(capture);
+        try {
+            body="{\"data\":{\"search\":{\"results\":{\"error\":\"secret-test-only\"}}}}";
+            assertThatThrownBy(()->client.search("Book",List.of("Author"),1)).hasMessageContaining("search.results.hits");
+            assertThat(capture.list).hasSize(1);
+            assertThat(capture.list.getFirst().getLevel()).isEqualTo(ch.qos.logback.classic.Level.WARN);
+            assertThat(capture.list.getFirst().getFormattedMessage()).contains("HTTP 200","search.results.hits").doesNotContain("secret-test-only");
+        } finally {logger.detachAppender(capture);capture.stop();}
+    }
+    @org.junit.jupiter.params.ParameterizedTest @org.junit.jupiter.params.provider.ValueSource(booleans={true,false})
+    void nullSearchUsesTheDatabaseWithEditionTitlesAndOptionalAuthor(boolean useAuthor) {
+        body="{\"data\":{\"search\":{\"results\":null}}}";
+        fallbackBody="{\"data\":{\"books\":[{\"id\":429802,\"title\":\"A Portrait of the Artist as a Young Man\",\"slug\":\"a-portrait-of-the-artist-as-a-young-man\",\"ratings_count\":322,\"contributions\":[{\"author\":{\"name\":\"James Joyce\"}}]}]}}";
+        var result=client.search("Retrato del artista adolescente",List.of("James Joyce"),2,true,useAuthor);
+        assertThat(result.fallback()).isTrue();assertThat(result.items()).extracting(value->value.id()).containsExactly(429802L);assertThat(calls).isEqualTo(2);
+        var data=JsonMapper.builder().build().readTree(request);
+        assertThat(data.path("variables").path("offset").asInt()).isEqualTo(20);
+        assertThat(data.path("variables").path("where").path("_and").size()).isEqualTo(useAuthor?2:1);
+        assertThat(data.path("variables").toString()).contains("editions","Retrato del artista adolescente","_eq").doesNotContain("_ilike");
+        assertThat(data.path("query").asString()).contains("limit:21","ratings_count:desc").doesNotContain("Retrato del artista adolescente");
     }
     @Test void requiresAKeyAndBothSearchFieldsWithoutSendingAnything() {
         var missing=new HardcoverClient("",URI.create("http://127.0.0.1:"+server.getAddress().getPort()));

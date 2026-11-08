@@ -79,7 +79,7 @@ public class CalibreClient {
                 var identifiers = b.path("identifiers");
                 Long epl = positiveId(identifiers.path("epl").asString(""));
                 BigDecimal revision = revision(identifiers.path("revision").asString(""));
-                books.add(new Book(id, b.path("title").asString(""), authors, epl, revision, epl != null && revision != null,null,formats(b),identifierValues(b)));
+                books.add(new Book(id, b.path("title").asString(""), authors, epl, revision, epl != null && revision != null,b.path("uuid").asString(""),formats(b),identifierValues(b)));
             }
             return new Books(books, total, page, size);
         });
@@ -293,7 +293,10 @@ public class CalibreClient {
             var before=identifierMetadata(get(c,path));var desired=new LinkedHashMap<>(expected.identifiers());
             for(var entry:additions.entrySet()) {
                 if(!desired.getOrDefault(entry.getKey(),"").isBlank() && !desired.get(entry.getKey()).equals(entry.getValue()) && !replacements.contains(entry.getKey())) throw new com.rlibanez.eplsync.exception.UserInputException("No se sobrescriben identificadores existentes");
-                desired.put(entry.getKey(),entry.getValue());
+                if(entry.getValue().isBlank()) {
+                    if(!replacements.contains(entry.getKey())) throw new com.rlibanez.eplsync.exception.UserInputException("La eliminación requiere una previsualización explícita");
+                    desired.remove(entry.getKey());
+                } else desired.put(entry.getKey(),entry.getValue());
             }
             if(!before.uuid().equals(expected.uuid()) || !before.title().equals(expected.title()) || !before.authors().equals(expected.authors()) ||
                 !before.identifiers().equals(expected.identifiers()) && !before.identifiers().equals(desired))

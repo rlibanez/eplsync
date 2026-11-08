@@ -19,11 +19,14 @@ import tools.jackson.databind.json.JsonMapper;
 /** Read-only, bounded GraphQL client. The endpoint is never supplied by the browser. */
 @Service
 public class HardcoverClient {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(HardcoverClient.class);
     public record Match(long id,String slug,String title,List<String> authors,String coverUrl,Long ratingsCount) {
         public Match(long id,String slug,String title,List<String> authors) {this(id,slug,title,authors,"",null);}
         public Match(long id,String slug,String title,List<String> authors,String coverUrl) {this(id,slug,title,authors,coverUrl,null);}
     }
-    public record Search(List<Match> items,boolean hasNext) {}
+    public record Search(List<Match> items,boolean hasNext,boolean fallback) {
+        public Search(List<Match> items,boolean hasNext) {this(items,hasNext,false);}
+    }
     public record Edition(long id,String title,String language,String publisher,String isbn10,String isbn13,String asin,String coverUrl,Long usersCount) {
         public Edition(long id,String title,String language,String publisher,String isbn10,String isbn13,String asin) {this(id,title,language,publisher,isbn10,isbn13,asin,"",null);}
         public Edition(long id,String title,String language,String publisher,String isbn10,String isbn13,String asin,String coverUrl) {this(id,title,language,publisher,isbn10,isbn13,asin,coverUrl,null);}
@@ -63,14 +66,45 @@ public class HardcoverClient {
         // Only a quoted literal enters the optional filter; unusual delimiters retain normal relevance.
         if(useTitle && title.codePoints().noneMatch(c->c=='`' || c=='\\' || Character.isISOControl(c))) sort="_eval(title:=`"+title.strip()+"`):desc,"+sort;
         var data=query("query Search($q:String!,$page:Int!,$sort:String!){search(query:$q,query_type:\"Book\",fields:\""+fields+"\",weights:\""+(useTitle?(useAuthor?"3,3,1":"3,3"):"1")+"\",typos:\""+(useTitle?(useAuthor?"1,1,1":"1,1"):"1")+"\",sort:$sort,per_page:20,page:$page){results}}",Map.of("q",query,"page",page,"sort",sort));
-        var results=data.path("search").path("results");if(results.isString()) results=json.readTree(results.asString());
-        if(!results.path("hits").isArray() || results.path("hits").size()>20) throw failure("Hardcover devolvió resultados de búsqueda inválidos");
+        var results=data.path("search").path("results");
+        if(results.isString()) {
+            try {results=json.readTree(results.asString());}
+            catch(RuntimeException ex) {throw failure("Hardcover devolvió resultados de búsqueda inválidos (HTTP 200; search.results no contiene JSON válido)");}
+        }
+        if(results==null || results.isNull() || results.isMissingNode()) {
+            log.debug("Buscador de Hardcover no disponible: HTTP 200, search.results=null; se usará la consulta alternativa");
+            return searchFallback(title,authors,page,useTitle,useAuthor);
+        }
+        if(results==null || !results.path("hits").isArray()) throw failure("Hardcover devolvió resultados de búsqueda inválidos (HTTP 200; search.results.hits ausente o no es una lista)");
+        if(results.path("hits").size()>20) throw failure("Hardcover devolvió resultados de búsqueda inválidos (HTTP 200; "+results.path("hits").size()+" resultados, máximo 20)");
         var items=new ArrayList<Match>();
         for(var hit:results.path("hits")) {
             var d=hit.path("document");long id=id(d.path("id"));var names=new ArrayList<String>();for(var name:d.path("author_names")) names.add(text(name));
             items.add(new Match(id,text(d.path("slug")),text(d.path("title")),List.copyOf(names),cover(d),count(d,"ratings_count")));
         }
         return new Search(List.copyOf(items),(long)page*20<results.path("found").asLong(0));
+    }
+    Search searchFallback(String title,List<String> authors,int page,boolean useTitle,boolean useAuthor) {
+        page(page);
+        var conditions=new ArrayList<Map<String,Object>>();
+        if(useTitle) {
+            String pattern=title.strip();
+            conditions.add(Map.of("_or",List.of(Map.of("title",Map.of("_eq",pattern)),Map.of("editions",Map.of("title",Map.of("_eq",pattern))))));
+        }
+        if(useAuthor) {
+            var names=new ArrayList<Map<String,Object>>();
+            for(String author:authors) if(!author.isBlank()) names.add(Map.of("contributions",Map.of("author",Map.of("name",Map.of("_eq",author.strip())))));
+            conditions.add(Map.of("_or",names));
+        }
+        var rows=query("query FallbackBooks($where:books_bool_exp!,$offset:Int!){books(where:$where,order_by:[{ratings_count:desc},{reviews_count:desc},{id:asc}],limit:21,offset:$offset){id slug title ratings_count image{url} contributions{author{name}}}}",Map.of("where",Map.of("_and",conditions),"offset",(page-1)*20)).path("books");
+        if(!rows.isArray() || rows.size()>21) throw failure("Hardcover devolvió una consulta alternativa inválida (HTTP 200; books no es una lista válida)");
+        var items=new ArrayList<Match>();
+        for(int n=0;n<Math.min(20,rows.size());n++) {
+            var book=rows.get(n);var names=new ArrayList<String>();for(var contribution:book.path("contributions")) names.add(text(contribution.path("author").path("name")));
+            items.add(new Match(id(book.path("id")),text(book.path("slug")),text(book.path("title")),List.copyOf(names),cover(book),count(book,"ratings_count")));
+        }
+        log.info("Consulta alternativa de Hardcover completada: página={}, resultados={}, hayMás={}",page,items.size(),rows.size()>20);
+        return new Search(List.copyOf(items),rows.size()>20,true);
     }
     public Search searchIdentifiers(List<String> isbns,String asin,int page) {
         page(page);
@@ -149,7 +183,7 @@ public class HardcoverClient {
     }
     private JsonNode query(String query,Map<String,?> variables,String apiKey) {
         if(apiKey.isBlank()) throw invalid("Configura la API key de Hardcover en Ajustes o mediante EPLSYNC_HARDCOVER_API_KEY");
-        if(!requests.tryAcquire()) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"Hardcover está ocupado; espera antes de volver a consultar");
+        if(!requests.tryAcquire()) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"Hardcover está ocupado; espera antes de volver a consultar (límite local de consultas)");
         try {
             long wait=nextRequest-System.nanoTime();if(wait>0) java.util.concurrent.TimeUnit.NANOSECONDS.sleep(wait);nextRequest=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(1);
             var manager=PoolingHttpClientConnectionManagerBuilder.create().setDefaultConnectionConfig(ConnectionConfig.custom().setConnectTimeout(Timeout.ofSeconds(3)).setSocketTimeout(Timeout.ofSeconds(10)).build()).build();
@@ -163,24 +197,37 @@ public class HardcoverClient {
                         usage.capture(apiKey,rate==null?null:rate.getValue(),policy==null?null:policy.getValue());
                     }
 
-                    if(status==401 || status==403) throw invalid("Hardcover ha rechazado la clave o sus permisos; revisa la API key en Ajustes > Calibre > Hardcover");
-                    if(status==429) throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"Se ha alcanzado el límite de consultas de Hardcover; espera antes de reintentar");
-                    if(status!=200 || response.getEntity()==null) throw failure("Hardcover no está disponible o no ha devuelto una respuesta válida");
-                    var type=response.getFirstHeader("Content-Type");if(type==null || !type.getValue().toLowerCase(Locale.ROOT).startsWith("application/json")) throw failure("Hardcover devolvió un formato de respuesta inesperado");
-                    byte[] bytes=response.getEntity().getContent().readNBytes(2097153);if(bytes.length>2097152) throw failure("La respuesta de Hardcover supera el tamaño permitido");
-                    var body=json.readTree(bytes);if(!body.path("errors").isMissingNode() && !body.path("errors").isNull() && (!body.path("errors").isArray() || body.path("errors").size()>0)) throw failure("Hardcover no pudo completar la consulta; no se utilizarán resultados parciales");
-                    if(!body.path("data").isObject()) throw failure("Hardcover devolvió datos inválidos");return body.path("data");
+                    if(status==401 || status==403) {log.warn("Hardcover rechazó la consulta: HTTP {}",status);throw invalid("Hardcover ha rechazado la clave o sus permisos; revisa la API key en Ajustes > Calibre > Hardcover (HTTP "+status+")");}
+                    if(status==429) {log.warn("Hardcover rechazó la consulta: HTTP 429 (límite de consultas)");throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"Se ha alcanzado el límite de consultas de Hardcover; espera antes de reintentar (HTTP 429)");}
+                    if(status!=200 || response.getEntity()==null) throw failure("Hardcover no está disponible o no ha devuelto una respuesta válida (HTTP "+status+")");
+                    var type=response.getFirstHeader("Content-Type");if(type==null || !type.getValue().toLowerCase(Locale.ROOT).startsWith("application/json")) throw failure("Hardcover devolvió un formato de respuesta inesperado (HTTP 200; contenido no JSON)");
+                    byte[] bytes=response.getEntity().getContent().readNBytes(2097153);if(bytes.length>2097152) throw failure("La respuesta de Hardcover supera el tamaño permitido (HTTP 200; máximo 2 MiB)");
+                    JsonNode body;
+                    try {body=json.readTree(bytes);}catch(RuntimeException ex) {throw failure("Hardcover devolvió JSON inválido (HTTP 200)");}
+                    if(body==null) throw failure("Hardcover devolvió una respuesta vacía (HTTP 200)");
+                    if(!body.path("errors").isMissingNode() && !body.path("errors").isNull() && (!body.path("errors").isArray() || body.path("errors").size()>0)) throw failure("Hardcover no pudo completar la consulta; no se utilizarán resultados parciales (HTTP 200; errores GraphQL)");
+                    if(!body.path("data").isObject()) throw failure("Hardcover devolvió datos inválidos (HTTP 200; data ausente o no es un objeto)");return body.path("data");
                 } finally {deadline.cancel(false);}
             }
         } catch(ResponseStatusException | com.rlibanez.eplsync.exception.UserInputException e) {throw e;}
         catch(InterruptedException e) {Thread.currentThread().interrupt();throw invalid("Consulta de Hardcover cancelada");}
-        catch(Exception e) {throw failure("No se pudo consultar Hardcover; comprueba la conexión y vuelve a intentarlo");}
+        catch(Exception e) {throw failure("No se pudo consultar Hardcover; comprueba la conexión y vuelve a intentarlo ("+transportDetail(e)+")");}
         finally {requests.release();}
+    }
+    private static String transportDetail(Throwable error) {
+        Throwable cause=error;
+        for(int depth=0;cause!=null && depth<6;depth++,cause=cause.getCause()) {
+            if(cause instanceof java.net.UnknownHostException) return "DNS: no se pudo resolver el servidor";
+            if(cause instanceof java.net.SocketTimeoutException || cause instanceof java.net.http.HttpTimeoutException || cause instanceof java.util.concurrent.CancellationException) return "tiempo de espera agotado";
+            if(cause instanceof javax.net.ssl.SSLException) return "fallo TLS";
+            if(cause instanceof java.net.ConnectException) return "fallo de conexión";
+        }
+        return "transporte: "+error.getClass().getSimpleName();
     }
     private static String text(JsonNode value) {String result=value.asString("");if(result.length()>2000) throw failure("Hardcover devolvió un texto demasiado largo");return result;}
     private static long id(JsonNode value) {long id=value.asLong(0);positive(id);return id;}
     private static void positive(long id) {if(id<=0 || id>Integer.MAX_VALUE) throw invalid("Identificador de Hardcover inválido");}
     private static void page(int page) {if(page<1 || page>10000) throw invalid("Página de Hardcover inválida");}
     private static com.rlibanez.eplsync.exception.UserInputException invalid(String message) {return new com.rlibanez.eplsync.exception.UserInputException(message);}
-    private static ResponseStatusException failure(String message) {return new ResponseStatusException(HttpStatus.BAD_GATEWAY,message);}
+    private static ResponseStatusException failure(String message) {log.warn("Consulta de Hardcover fallida: {}",message);return new ResponseStatusException(HttpStatus.BAD_GATEWAY,message);}
 }

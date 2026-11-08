@@ -66,6 +66,14 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     [comparison, setComparison] = useBookViewState("comparison", ""),
     [formats, setFormats] = useBookViewState("formats", ""),
     [hardcover, setHardcover] = useBookViewState("hardcover", ""),
+    [hardcoverReview, setHardcoverReview] = useBookViewState<string | null>(
+      "hardcoverReview",
+      null,
+    ),
+    [excludeHardcoverReview, setExcludeHardcoverReview] = useBookViewState(
+      "excludeHardcoverReview",
+      false,
+    ),
     [excludeHardcover, setExcludeHardcover] = useBookViewState(
       "excludeHardcover",
       false,
@@ -76,6 +84,16 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     ),
     [presence, setPresence] = useBookViewState("presence", ""),
     [sort, setSort] = useBookViewState("sort", "title,asc");
+  useEffect(() => {
+    if (!hardcover.split(",").includes("NO_MATCH")) return;
+    setHardcoverReview(excludeHardcover ? "UNREVIEWED" : "NO_MATCH");
+    setHardcover(
+      hardcover
+        .split(",")
+        .filter((value) => value !== "NO_MATCH")
+        .join(","),
+    );
+  }, [hardcover, excludeHardcover, setHardcover, setHardcoverReview]);
   const selectable = updates
     ? auth.can("CALIBRE_SEND") &&
       auth.can("DOWNLOADS_FILES_READ") &&
@@ -104,6 +122,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       hardcover,
       excludeFormats,
       excludeHardcover,
+      hardcoverReview,
+      excludeHardcoverReview,
     ],
   );
   const pageSizeChoice = usePageSizeChoice(size);
@@ -129,6 +149,12 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
       : {}),
     ...(!updates && hardcover
       ? { hardcover, hardcoverOperator: excludeHardcover ? "ne" : "eq" }
+      : {}),
+    ...(!updates && hardcoverReview
+      ? {
+          hardcoverReview,
+          hardcoverReviewOperator: excludeHardcoverReview ? "ne" : "eq",
+        }
       : {}),
     ...(updates ? { updatesOnly: "true" } : {}),
   });
@@ -540,6 +566,26 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             })}
           />
         )}
+        {!updates && (
+          <Select
+            label={t("hardcover.reviewFilter")}
+            clearable
+            data={[
+              { value: "NO_MATCH", label: t("hardcover.noMatch") },
+              { value: "UNREVIEWED", label: t("hardcover.unreviewed") },
+            ]}
+            value={hardcoverReview}
+            onChange={(value) => {
+              setHardcoverReview(value);
+              if (!value) setExcludeHardcoverReview(false);
+              setPage(0);
+            }}
+            {...stateOperatorProps(excludeHardcoverReview, () => {
+              setExcludeHardcoverReview(!excludeHardcoverReview);
+              setPage(0);
+            })}
+          />
+        )}
         {updates && canCheckFiles && (
           <Select
             label={t("calibreUpdateSend.availability")}
@@ -639,6 +685,8 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             setPresence("");
             setFormats("");
             setHardcover("");
+            setHardcoverReview(null);
+            setExcludeHardcoverReview(false);
             setExcludeHardcover(false);
             setExcludeFormats(false);
             setAvailability(null);

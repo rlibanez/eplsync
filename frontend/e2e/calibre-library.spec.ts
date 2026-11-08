@@ -106,6 +106,23 @@ test("browses the local library with filters and configurable columns", async ({
   await expect
     .poll(() => requests.at(-1)?.searchParams.get("hardcoverOperator"))
     .toBe("ne");
+  await page
+    .getByRole("textbox", { name: "Revisión Hardcover", exact: true })
+    .click();
+  await page
+    .getByRole("option", { name: "Sin correspondencia", exact: true })
+    .click();
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("hardcoverReview"))
+    .toBe("NO_MATCH");
+  expect(requests.at(-1)?.searchParams.get("hardcoverOperator")).toBe("ne");
+  expect(requests.at(-1)?.searchParams.get("hardcoverReviewOperator")).toBe(
+    "eq",
+  );
+  expect(requests.at(-1)?.searchParams.get("hardcover")).toBe(
+    "SLUG,BOOK_ID,EDITION_ID",
+  );
+  await page.keyboard.press("Escape");
   const hardcoverHeading = page.locator('th[data-table-column="hardcover"]');
   await hardcoverHeading.getByRole("button").first().click();
   await expect

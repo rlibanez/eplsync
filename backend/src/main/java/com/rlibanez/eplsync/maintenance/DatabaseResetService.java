@@ -86,6 +86,7 @@ public class DatabaseResetService {
                     if (suggestions != null) suggestions.invalidateAfterCommit();
                     int metadata = delete("CatalogMetadata");
                     delete("CalibreBook");
+                    em.createNativeQuery("DELETE FROM calibre_hardcover_reviews").executeUpdate();
                     em.createNativeQuery("DELETE FROM app_settings WHERE setting_key='calibre.snapshot'").executeUpdate();
                     em.createNativeQuery("DELETE FROM app_settings WHERE setting_key LIKE 'downloads.last-sync.%'").executeUpdate();
                     em.createNativeQuery("DELETE FROM calibre_preparation_operations").executeUpdate();

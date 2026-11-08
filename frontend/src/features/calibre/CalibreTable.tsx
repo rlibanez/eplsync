@@ -22,6 +22,7 @@ import {
 export interface CalibreBook {
   formats?: string[] | null;
   hardcover?: Record<string, string>;
+  hardcoverNoMatch?: boolean;
   downloadAvailability?: string;
   calibreId: number;
   title: string;
@@ -269,9 +270,15 @@ export function CalibreTable({
                   <td>{t(`calibre.filter.${book.comparison}`)}</td>,
                   <td>{t(`calibre.presenceValues.${book.presence}`)}</td>,
                   <td>
+                    {book.hardcoverNoMatch && (
+                      <span>
+                        {t("hardcover.noMatch")}
+                        {Object.keys(book.hardcover ?? {}).length ? " · " : ""}
+                      </span>
+                    )}
                     {Object.entries(book.hardcover ?? {})
                       .map(([name, value]) => `${name}:${value}`)
-                      .join(" · ") || "—"}
+                      .join(" · ") || (book.hardcoverNoMatch ? "" : "—")}
                   </td>,
                   <td>
                     <Group gap={4} wrap="nowrap">

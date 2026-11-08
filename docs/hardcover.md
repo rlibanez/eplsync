@@ -121,10 +121,10 @@ Cambiar los nombres puede impedir que una aplicación externa los reconozca.
    se descarta. También puedes editar `hardcover_edition`: se comprueba la
    edición y su relación con la obra en Hardcover para actualizar los IDs y el
    slug propuestos. La edición manual se conserva aunque inicialmente no esté
-   entre las 20 opciones más populares. La selección manual queda indicada. Mientras el slug editado
-   no se compruebe no se puede guardar. Al comprobar una edición manual o un slug
+   entre las 20 opciones más populares. La selección manual queda indicada. Guardar comprueba los cambios manuales de slug, ID de obra o edición
+   antes de escribir; el check es opcional para actualizar la selección antes. Al comprobar una edición manual o un slug
    manual, los cambios de los identificadores Hardcover seleccionados se marcan
-   como «Se sustituirá» y pueden guardarse con «Guardar en Calibre».
+   como «Se sustituirá» y pueden guardarse con «Guardar».
 4. El selector de idioma muestra todos los idiomas de las ediciones de la obra,
    no solo los de la página visible. Preselecciona el idioma del navegador si
    está disponible: por ejemplo CA para `ca-ES`, FR para `fr-FR` y PT para
@@ -163,15 +163,13 @@ propuestos por el navegador. La memoria está limitada y se libera al descartar
 la búsqueda o al caducar; no se guarda en SQLite. Las consultas fallidas no se
 conservan. Se sigue comprobando Calibre al previsualizar y antes de escribir.
 
-Los datos ausentes en Hardcover se omiten. También se omiten los ISBN con
-formato o dígito de control inválido y los ASIN con formato inválido. Los que ya coinciden no se vuelven a
-escribir. Por defecto los identificadores con un valor distinto se conservan.
-La edición manual comprobada de `hardcover` o `hardcover_edition` permite sustituir
-los identificadores Hardcover seleccionados, incluidos los IDs relacionados que
-se obtienen de la obra y edición verificadas. La previsualización muestra el valor
-actual, el propuesto y «Se sustituirá» antes de guardar. Se conservan los ISBN,
-ASIN, EPL, revisión y los identificadores ajenos a esos cambios. Los títulos,
-autores, portadas y archivos no se modifican.
+Los valores propuestos vacíos eliminan el identificador existente al guardar.
+Si ambos valores están vacíos no hay cambios. Los ISBN con formato
+o dígito de control inválido y los ASIN inválidos no se guardan. Los valores que
+ya coinciden no se vuelven a escribir. Los valores distintos se muestran como
+«Se sustituirá» y se aplican al pulsar Guardar, incluidos los ISBN y ASIN
+seleccionados. EPL, revisión y los identificadores ajenos al plan se conservan.
+Los títulos, autores, portadas y archivos no se modifican.
 
 La confirmación está ligada al usuario, biblioteca, UUID y metadatos observados.
 Si cambian, hay que volver a buscar o previsualizar. Las búsquedas caducan a los
@@ -223,6 +221,73 @@ los identificadores seleccionados; incluye los que carecen de alguno o de todos.
 La cabecera Hardcover permite ordenar ascendente o descendente por los valores
 del identificador de la obra, su ID y la edición, en ese orden.
 
-Elegir explícitamente una edición en el desplegable permite sustituir el
-identificador de edición existente. La selección automática sigue conservando
-los valores diferentes; los demás identificadores mantienen sus protecciones.
+Los cambios de obra y edición, también los propuestos automáticamente, se
+previsualizan antes de guardar. Ninguna selección escribe en Calibre por sí sola:
+Guardar aplica las altas, sustituciones y eliminaciones indicadas en la tabla.
+
+## Libros sin correspondencia
+
+En «Completar Hardcover», **Sin correspondencia** marca el libro como revisado
+sin escribir identificadores en Calibre ni modificar sus archivos, y avanza al
+siguiente libro. **Siguiente** avanza sin marcarlo. Al volver a un libro
+marcado, **Quitar marca** permite dejarlo pendiente de revisión otra vez.
+Guardar una correspondencia válida elimina la marca automáticamente.
+
+Los filtros **Hardcover** (identificadores) y **Revisión Hardcover** son independientes.
+Para buscar libros sin identificador pero ya revisados, selecciona **Hardcover ≠ Hardcover**
+y **Revisión Hardcover = Sin correspondencia**. Para trabajar solo con libros pendientes,
+usa **Hardcover ≠ Hardcover** y **Revisión Hardcover = Sin revisar**.
+Cada filtro conserva su propio botón de negación. Los enlaces antiguos que incluían
+la revisión dentro del filtro Hardcover siguen siendo compatibles.
+
+Las marcas son compartidas por los lectores de esa biblioteca de la instalación.
+Se guardan en EPL Sync con fecha y usuario, asociadas al servidor, biblioteca,
+Calibre ID y UUID del libro. Sobreviven a sincronizaciones y reinicios; un cambio
+de título, autores o identidad deja de considerarse revisado. Marcar o desmarcar
+requiere los mismos permisos de lectura y envío que el wizard, y una búsqueda
+vigente del mismo usuario y biblioteca. El filtro solo requiere lectura de Calibre.
+
+**Sin revisar** muestra exactamente las filas cuya columna Hardcover es «—»:
+no contienen ninguno de los tres identificadores configurados y no tienen la marca
+«Sin correspondencia». Su negación incluye tanto libros con identificadores como
+libros marcados sin correspondencia.
+
+## Guardar cualquier cambio explícito de identificadores
+
+La previsualización muestra «Se añadirá», «Se sustituirá» o «Se eliminará».
+Guardar aplica esas operaciones también al cambiar la obra del desplegable.
+Al cambiar a otra obra sin edición seleccionada, se elimina la edición anterior
+para no vincularla a una obra distinta. Los valores vacíos mostrados en la propuesta también se guardan como
+eliminaciones si había un valor previo. Todos los valores de la tabla son editables directamente. Vaciar un campo
+prepara su eliminación, sin botones de papelera ni pasos adicionales. Guardar
+se habilita siempre que difieran el valor actual y el propuesto. Al abrir un
+libro, los valores propuestos parten de los existentes; seleccionar una obra o
+edición reemplaza la propuesta con los datos consultados.
+
+No se escribe hasta pulsar Guardar. La escritura mantiene UUID, título, autores
+y los identificadores ajenos al plan, verifica el resultado y rechaza cambios
+concurrentes. Los EPUB permanecen sin modificar.
+
+## Errores de consulta y reintento
+
+Los avisos de Hardcover incluyen un diagnóstico breve: código HTTP del servidor,
+error de red (DNS, TLS, conexión o espera agotada), errores GraphQL o el campo de
+respuesta que falta. Una búsqueda puede devolver HTTP 200 y aun así contener una
+respuesta inválida; en ese caso el aviso identifica el problema de estructura.
+No se muestran la clave, las cabeceras de autenticación ni el cuerpo completo.
+
+**Reintentar**, a la derecha del aviso, repite la operación fallida sin cambiar de
+libro. Las consultas fallidas no se guardan en la caché. Navegar, cerrar o iniciar
+otra operación descarta el reintento anterior; no hay reintentos automáticos.
+Las escrituras mantienen sus comprobaciones de identidad, concurrencia y resultado.
+
+Si falla la búsqueda en Hardcover, el asistente conserva los metadatos que ha
+leído de Calibre: título, autores e identificadores actuales. Los campos de
+búsqueda siguen disponibles para corregir los criterios, y Reintentar repite la
+consulta fallida. Un fallo no se presenta como una búsqueda sin coincidencias
+ni se guarda como resultado válido en la caché.
+
+Los fallos de conexión, HTTP, GraphQL y estructura de respuesta se registran en
+`eplsync.log` con nivel WARN y diagnóstico breve, sin credenciales ni respuestas
+completas. La información de Calibre y la causa de la consulta fallida se
+transmiten por separado en la respuesta del asistente.

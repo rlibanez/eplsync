@@ -11,10 +11,14 @@ public class CalibreHardcoverController {
     private final CalibreHardcover service;
     public CalibreHardcoverController(CalibreHardcover service) {this.service=service;}
     public record Search(long calibreId,String token,int page,Boolean useTitle,Boolean useAuthor,Boolean useIsbn,Boolean useAsin,String queryTitle,String queryAuthor,String queryIsbn,String queryAsin) {}
-    public record Preview(String token,long bookId,Long editionId,Map<CalibreHardcover.Field,String> mappings,java.util.Set<CalibreHardcover.Field> replaceFields) {}
+    public record Preview(String token,Long bookId,Long editionId,Map<CalibreHardcover.Field,String> mappings,java.util.Set<CalibreHardcover.Field> replaceFields,java.util.Set<CalibreHardcover.Field> removeFields,Map<CalibreHardcover.Field,String> values) {}
     public record Token(String token) {}
+    public record Review(String token,boolean noMatch) {}
+    @PostMapping("/review") public Map<String,Boolean> review(@RequestBody Review input) {service.review(input.token(),input.noMatch());return Map.of("noMatch",input.noMatch());}
     public record Slug(String token,String slug) {}
     public record EditionId(String token,long editionId) {}
+    public record BookId(String token,long bookId) {}
+    @PostMapping("/resolve-book") public HardcoverClient.Match resolveBook(@RequestBody BookId input) {return service.resolveBook(input.token(),input.bookId());}
     @PostMapping("/resolve-edition") public HardcoverClient.EditionBook resolveEdition(@RequestBody EditionId input) {return service.resolveEdition(input.token(),input.editionId());}
     @PostMapping("/resolve-slug") public HardcoverClient.Match resolveSlug(@RequestBody Slug input) {return service.resolveSlug(input.token(),input.slug());}
     @GetMapping public CalibreHardcover.Configuration configuration() {return service.configuration();}
@@ -31,7 +35,7 @@ public class CalibreHardcoverController {
     }
     @GetMapping("/editions") public HardcoverClient.Editions editions(@RequestParam String token,@RequestParam long bookId,@RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="") String language) {return service.editions(token,bookId,page,language);}
     @GetMapping("/edition-languages") public java.util.List<HardcoverClient.Language> editionLanguages(@RequestParam String token,@RequestParam long bookId) {return service.editionLanguages(token,bookId);}
-    @PostMapping("/preview") public CalibreHardcover.Preview preview(@RequestBody Preview input) {return service.preview(input.token(),input.bookId(),input.editionId(),input.mappings(),input.replaceFields());}
+    @PostMapping("/preview") public CalibreHardcover.Preview preview(@RequestBody Preview input) {return service.preview(input.token(),input.bookId(),input.editionId(),input.mappings(),input.replaceFields(),input.removeFields(),input.values());}
     @PostMapping("/apply") public CalibreHardcover.Preview apply(@RequestBody Token input) {return service.apply(input.token());}
     @PostMapping("/discard") public Map<String,Boolean> discard(@RequestBody Token input) {service.discard(input.token());return Map.of("discarded",true);}
 }

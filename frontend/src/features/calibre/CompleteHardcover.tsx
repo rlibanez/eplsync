@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  Group,
   Loader,
   Button,
   Checkbox,
@@ -13,7 +14,14 @@ import {
 import { HardcoverCover } from "./HardcoverCover";
 import { HardcoverTable } from "./HardcoverTable";
 import { ActionIcon } from "@mantine/core";
-import { BookMarked, Check, Pencil, ExternalLink } from "lucide-react";
+import {
+  BookMarked,
+  Check,
+  Pencil,
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { AppModal, ModalActions } from "../../components/AppModal";
@@ -39,6 +47,8 @@ type Match = {
   ratingsCount?: number | null;
 };
 type Matches = {
+  error?: string | null;
+  noMatch?: boolean;
   token: string;
   calibreId: number;
   title: string;
@@ -136,13 +146,47 @@ export function CompleteHardcover({
     [editionDraft, setEditionDraft] = useState("");
   const [manualEdition, setManualEdition] = useState(false);
   const replaceFields = useRef<Field[]>([]);
-  const editionInput = useRef<HTMLInputElement>(null);
+  const removeFields = useRef<Field[]>([]);
   const [editingSlug, setEditingSlug] = useState(false);
   const [coverExpanded, setCoverExpanded] = useState(false);
-  const slugInput = useRef<HTMLInputElement>(null);
   const [slugDraft, setSlugDraft] = useState(""),
     [manualBook, setManualBook] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [draftValues, setDraftValues] = useState<
+    Partial<Record<Field, string>>
+  >({});
+  const previewRef = useRef<Preview | null>(null);
+  const selectionRef = useRef<{ book: string | null; edition: string | null }>({
+    book: null,
+    edition: null,
+  });
+  function rememberPreview(
+    value: Preview,
+    book?: string | null,
+    edition?: string | null,
+    preserveManualValues = false,
+  ) {
+    previewRef.current = value;
+    if (book !== undefined)
+      selectionRef.current = { book, edition: edition ?? null };
+    setPreview(value);
+    if (preserveManualValues)
+      setDraftValues((current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(
+            ([field]) => !["SLUG", "BOOK_ID", "EDITION_ID"].includes(field),
+          ),
+        ),
+      );
+    else setDraftValues({});
+  }
+  function resetPreview() {
+    previewRef.current = null;
+    selectionRef.current = { book: null, edition: null };
+    setPreview(null);
+    setDraftValues({});
+  }
+
   const [previewPending, setPreviewPending] = useState(false);
   const [loadingMore, setLoadingMore] = useState<"books" | "editions" | null>(
     null,
@@ -179,6 +223,16 @@ export function CompleteHardcover({
     },
     [],
   );
+  const retryOperation = useRef<
+    ((signal: AbortSignal) => Promise<void>) | null
+  >(null);
+  function reportError(
+    message: string,
+    retry?: (signal: AbortSignal) => Promise<void>,
+  ) {
+    retryOperation.current = retry ?? null;
+    setError(message);
+  }
   async function execute(
     work: (signal: AbortSignal) => Promise<void>,
     background = false,
@@ -187,12 +241,15 @@ export function CompleteHardcover({
     const request = new AbortController();
     running.current = request;
     if (!background) setBusy(true);
-    setError("");
+    reportError("");
     try {
       await work(request.signal);
     } catch (e) {
       if (!request.signal.aborted)
-        setError((e as { details?: string }).details || t("hardcover.failed"));
+        reportError(
+          (e as { details?: string }).details || t("hardcover.failed"),
+          work,
+        );
     } finally {
       if (running.current === request) {
         running.current = null;
@@ -206,9 +263,12 @@ export function CompleteHardcover({
     discard();
     setBusy(false);
     setOpened(false);
+    reportError("");
+    void queryClient.invalidateQueries({ queryKey: ["calibre-library"] });
   }
   function open() {
     replaceFields.current = [];
+    removeFields.current = [];
     preferredEditionLanguage.current = browserEditionLanguage();
     setEditionLanguage(preferredEditionLanguage.current);
     setEditionLanguages([]);
@@ -217,7 +277,7 @@ export function CompleteHardcover({
     setSavedCount(0);
     savedIds.current.clear();
     setStarted(false);
-    setPreview(null);
+    resetPreview();
     setPreviewPending(false);
     setManualBook(false);
     setSlugDraft("");
@@ -240,7 +300,10 @@ export function CompleteHardcover({
   }
   async function search(at: number, page = 1, custom = false) {
     const prior = page === 1 ? null : matches?.token;
-    if (page === 1) replaceFields.current = [];
+    if (page === 1) {
+      replaceFields.current = [];
+      removeFields.current = [];
+    }
     if (page === 1 && custom) setPreviewPending(true);
     if (page === 1 && !custom) {
       discard();
@@ -249,7 +312,7 @@ export function CompleteHardcover({
       setBookId(null);
       setEditionId(null);
       setEditions({ items: [], hasNext: false });
-      setPreview(null);
+      resetPreview();
     }
     await execute(async (signal) => {
       const data = await post<Matches>(
@@ -267,7 +330,8 @@ export function CompleteHardcover({
         signal,
       );
       if (signal.aborted) return;
-      if (page === 1 && custom) discard();
+      if (page === 1 && token.current && token.current !== data.token)
+        discard();
       token.current = data.token;
       setMatches(data);
       setSlugDraft("");
@@ -284,8 +348,10 @@ export function CompleteHardcover({
       }
       setBookId(null);
       setEditionId(null);
-      setPreview(null);
+      resetPreview();
       setEditions({ items: [], hasNext: false });
+      setPreviewPending(false);
+      if (data.error) throw { details: data.error };
       if (page === 1 && !data.hasNext && data.items.length === 1)
         await chooseBook(data, String(data.items[0].id), signal);
     });
@@ -317,6 +383,7 @@ export function CompleteHardcover({
             },
             signal,
           );
+          if (next.error && !signal.aborted) throw { details: next.error };
           if (!signal.aborted)
             setMatches((current) =>
               current?.token === matches.token
@@ -382,10 +449,11 @@ export function CompleteHardcover({
     signal: AbortSignal,
   ) {
     replaceFields.current = [];
+    removeFields.current = [];
     setManualEdition(false);
     setBookId(value);
     setEditionId(null);
-    setPreview(null);
+    resetPreview();
     setEditions({ items: [], hasNext: false });
     setEditionPage(1);
     const setup = needsEdition
@@ -432,7 +500,7 @@ export function CompleteHardcover({
   }
   async function refreshPreview(
     source: string,
-    book: string,
+    book: string | null,
     edition: string | null,
     signal: AbortSignal,
   ) {
@@ -441,9 +509,12 @@ export function CompleteHardcover({
       "/calibre/hardcover/preview",
       {
         token: source,
-        bookId: Number(book),
+        bookId: book ? Number(book) : null,
         editionId: edition ? Number(edition) : null,
         mappings: mapping,
+        ...(removeFields.current.length
+          ? { removeFields: removeFields.current }
+          : {}),
         ...(replaceFields.current.length
           ? { replaceFields: replaceFields.current }
           : {}),
@@ -451,7 +522,7 @@ export function CompleteHardcover({
       signal,
     );
     if (!signal.aborted) {
-      setPreview(result);
+      rememberPreview(result, book, edition);
       setPreviewPending(false);
       setEditingEdition(false);
       setEditionDraft(
@@ -463,12 +534,24 @@ export function CompleteHardcover({
       );
     }
   }
-  async function resolveSlug() {
+  async function resolveSlug(byId?: string) {
     if (!matches) return;
+    if (!byId && !slugDraft.trim()) {
+      setDraftValues((current) => ({ ...current, SLUG: "" }));
+      setEditingSlug(false);
+      return;
+    }
+    removeFields.current = removeFields.current.filter(
+      (field) => field !== "SLUG",
+    );
     await execute(async (signal) => {
       const book = await post<Match>(
-        "/calibre/hardcover/resolve-slug",
-        { token: matches.token, slug: slugDraft.trim() },
+        byId
+          ? "/calibre/hardcover/resolve-book"
+          : "/calibre/hardcover/resolve-slug",
+        byId
+          ? { token: matches.token, bookId: Number(byId) }
+          : { token: matches.token, slug: slugDraft.trim() },
         signal,
       );
       if (signal.aborted) return;
@@ -488,6 +571,9 @@ export function CompleteHardcover({
           bookId: book.id,
           editionId: only ? Number(only) : null,
           mappings: mapping,
+          ...(removeFields.current.length
+            ? { removeFields: removeFields.current }
+            : {}),
           replaceFields: Object.keys(mapping).filter((field) =>
             ["SLUG", "BOOK_ID", "EDITION_ID"].includes(field),
           ),
@@ -514,7 +600,7 @@ export function CompleteHardcover({
       ) as Field[];
       setManualBook(true);
       setManualEdition(false);
-      setPreview(result);
+      rememberPreview(result, String(book.id), only, true);
       setPreviewPending(false);
       setEditingEdition(false);
       setEditionDraft(
@@ -527,12 +613,22 @@ export function CompleteHardcover({
     });
   }
   async function resolveEdition() {
+    if (!editionDraft.trim()) {
+      setDraftValues((current) => ({ ...current, EDITION_ID: "" }));
+      setEditingEdition(false);
+      return;
+    }
+    removeFields.current = removeFields.current.filter(
+      (field) => field !== "EDITION_ID",
+    );
     if (
       !matches ||
       !/^[1-9][0-9]{0,9}$/.test(editionDraft.trim()) ||
       Number(editionDraft) > 2147483647
-    )
+    ) {
+      reportError(t("hardcover.invalidEdition"));
       return;
+    }
     await execute(async (signal) => {
       const linked = await post<{ book: Match; edition: Edition }>(
         "/calibre/hardcover/resolve-edition",
@@ -553,6 +649,9 @@ export function CompleteHardcover({
           bookId: linked.book.id,
           editionId: linked.edition.id,
           mappings: mapping,
+          ...(removeFields.current.length
+            ? { removeFields: removeFields.current }
+            : {}),
           replaceFields: Object.keys(mapping).filter((field) =>
             ["SLUG", "BOOK_ID", "EDITION_ID"].includes(field),
           ),
@@ -584,7 +683,12 @@ export function CompleteHardcover({
           ? setup.data.items
           : [linked.edition, ...setup.data.items],
       });
-      setPreview(result);
+      rememberPreview(
+        result,
+        String(linked.book.id),
+        String(linked.edition.id),
+        true,
+      );
       setPreviewPending(false);
       setEditingSlug(false);
       setEditingEdition(false);
@@ -624,7 +728,11 @@ export function CompleteHardcover({
   }));
   const bookTooltip = [
     bookOptions.find((option) => option.value === bookId)?.label,
-    t("hardcover.bookOrder"),
+    t(
+      matches?.notices?.includes("FALLBACK_SEARCH")
+        ? "hardcover.fallbackOrder"
+        : "hardcover.bookOrder",
+    ),
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -634,7 +742,7 @@ export function CompleteHardcover({
   ]
     .filter(Boolean)
     .join("\n\n");
-  const displayedPreview: Preview | null =
+  const basePreview: Preview | null =
     preview ??
     (matches
       ? {
@@ -649,8 +757,8 @@ export function CompleteHardcover({
                     field,
                     identifier: mapping[field]!,
                     existing: matches.identifiers?.[mapping[field]!] ?? "",
-                    value: "",
-                    state: "NOT_SELECTED",
+                    value: matches.identifiers?.[mapping[field]!] ?? "",
+                    state: "UNCHANGED",
                   },
                 ]
               : [],
@@ -658,6 +766,114 @@ export function CompleteHardcover({
         }
       : null);
   if (!auth.can("CALIBRE_READ") || !auth.can("CALIBRE_SEND")) return null;
+  const displayedPreview = basePreview
+    ? {
+        ...basePreview,
+        values: basePreview.values.map((row) => {
+          const value = draftValues[row.field] ?? row.value;
+          return {
+            ...row,
+            value,
+            state:
+              draftValues[row.field] === undefined && row.state === "INVALID"
+                ? "INVALID"
+                : value === row.existing
+                  ? value
+                    ? "UNCHANGED"
+                    : "MISSING"
+                  : !value
+                    ? "REMOVE"
+                    : !row.existing
+                      ? "READY"
+                      : "REPLACE",
+          };
+        }),
+      }
+    : null;
+  const hasChanges = !!displayedPreview?.values.some(
+    (row) => row.value !== row.existing,
+  );
+  async function saveChanges() {
+    if (!matches || !basePreview) return;
+    const drafts = { ...draftValues };
+    const handled = new Set<Field>();
+    const resolvedValues = new Map<Field, string>();
+    for (const field of ["SLUG", "BOOK_ID", "EDITION_ID"] as Field[]) {
+      const value = drafts[field]?.trim();
+      if (
+        !value ||
+        value === basePreview.values.find((row) => row.field === field)?.value
+      )
+        continue;
+      const previous = previewRef.current;
+      if (field === "SLUG") await resolveSlug();
+      else if (field === "BOOK_ID") await resolveSlug(value);
+      else await resolveEdition();
+      if (previewRef.current === previous) return;
+      handled.add(field);
+      resolvedValues.set(
+        field,
+        previewRef.current?.values.find((row) => row.field === field)?.value ??
+          "",
+      );
+    }
+    if (
+      [...resolvedValues].some(
+        ([field, value]) =>
+          previewRef.current?.values.find((row) => row.field === field)
+            ?.value !== value,
+      )
+    ) {
+      reportError(t("hardcover.inconsistentIdentifiers"));
+      return;
+    }
+    await execute(async (signal) => {
+      let plan = previewRef.current;
+      if (Object.keys(drafts).length || !plan) {
+        const values = Object.fromEntries(
+          (plan ?? basePreview).values.map((row) => [row.field, row.value]),
+        );
+        for (const [field, value] of Object.entries(drafts))
+          if (!handled.has(field as Field)) values[field] = value;
+        const selection = selectionRef.current;
+        plan = await post<Preview>(
+          "/calibre/hardcover/preview",
+          {
+            token: matches.token,
+            bookId: selection.book ? Number(selection.book) : null,
+            editionId:
+              drafts.EDITION_ID === ""
+                ? null
+                : selection.edition
+                  ? Number(selection.edition)
+                  : null,
+            mappings: mapping,
+            values,
+          },
+          signal,
+        );
+        if (signal.aborted) return;
+        rememberPreview(plan);
+      }
+      const result = await post<Preview>(
+        "/calibre/hardcover/apply",
+        { token: plan.token },
+        signal,
+      );
+      if (signal.aborted) return;
+      rememberPreview(result);
+      setMatches((current) =>
+        current ? { ...current, noMatch: false } : current,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["calibre-library"],
+        refetchType: "none",
+      });
+      savedIds.current.add(ids[index]);
+      setSavedCount(savedIds.current.size);
+    });
+  }
+
   return (
     <>
       {inline ? (
@@ -688,7 +904,27 @@ export function CompleteHardcover({
       >
         {error && (
           <Alert color="red" role="alert">
-            {error}
+            <Group
+              justify="space-between"
+              align="center"
+              wrap="nowrap"
+              gap="sm"
+            >
+              <span style={{ flex: 1, minWidth: 0 }}>{error}</span>
+              {retryOperation.current && (
+                <Button
+                  variant="light"
+                  color="red"
+                  disabled={busy}
+                  onClick={() => {
+                    const retry = retryOperation.current;
+                    if (retry) void execute(retry);
+                  }}
+                >
+                  {t("feedback.retry")}
+                </Button>
+              )}
+            </Group>
           </Alert>
         )}
         {!started && configuration && (
@@ -946,7 +1182,8 @@ export function CompleteHardcover({
                       </Button>
                     </div>
                   </div>
-                  {!matches.items.length &&
+                  {!matches.error &&
+                    !matches.items.length &&
                     !matches.notices?.includes("NO_CRITERIA") && (
                       <Alert>{t("hardcover.noMatches")}</Alert>
                     )}
@@ -1036,6 +1273,12 @@ export function CompleteHardcover({
                               </>
                             )}
                             onChange={(value) => {
+                              removeFields.current =
+                                removeFields.current.filter(
+                                  (field) => field !== "EDITION_ID",
+                                );
+                              if (!value && mapping.EDITION_ID)
+                                removeFields.current.push("EDITION_ID");
                               replaceFields.current =
                                 replaceFields.current.filter(
                                   (field) => field !== "EDITION_ID",
@@ -1114,146 +1357,113 @@ export function CompleteHardcover({
                     <td title={row.identifier}>{row.identifier}</td>
                     <td title={row.existing}>{row.existing || "—"}</td>
                     <td title={row.value}>
-                      {row.field === "SLUG" && !displayedPreview.saved ? (
+                      {!displayedPreview.saved ? (
                         <TextInput
                           variant="unstyled"
                           size="sm"
                           w="100%"
-                          aria-label={t("hardcover.manualSlug")}
-                          ref={slugInput}
-                          value={slugDraft}
-                          readOnly={!editingSlug}
+                          aria-label={
+                            row.field === "SLUG"
+                              ? t("hardcover.manualSlug")
+                              : row.field === "EDITION_ID"
+                                ? t("hardcover.manualEdition")
+                                : t("hardcover.manualValue", {
+                                    identifier: row.identifier,
+                                  })
+                          }
+                          value={row.value}
                           disabled={busy}
-                          onChange={(e) => setSlugDraft(e.currentTarget.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape" && editingSlug) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setSlugDraft(row.value);
-                              setEditingSlug(false);
+                          onChange={(event) => {
+                            const value = event.currentTarget.value;
+                            setDraftValues((current) => ({
+                              ...current,
+                              [row.field]: value,
+                            }));
+                            if (row.field === "SLUG") {
+                              setSlugDraft(value);
+                              setEditingSlug(true);
                             }
-                            if (
-                              e.key === "Enter" &&
-                              editingSlug &&
-                              !busy &&
-                              slugDraft.trim()
-                            ) {
-                              e.preventDefault();
-                              if (slugDraft.trim() === row.value)
-                                setEditingSlug(false);
-                              else void resolveSlug();
+                            if (row.field === "EDITION_ID") {
+                              setEditionDraft(value);
+                              setEditingEdition(true);
                             }
                           }}
-                          rightSection={
-                            <ActionIcon
-                              variant="subtle"
-                              size="sm"
-                              color={editingSlug ? "green" : undefined}
-                              aria-label={t(
-                                editingSlug
-                                  ? "hardcover.checkSlug"
-                                  : "hardcover.editSlug",
-                              )}
-                              title={t(
-                                editingSlug
-                                  ? "hardcover.checkSlug"
-                                  : "hardcover.editSlug",
-                              )}
-                              disabled={
-                                busy || (editingSlug && !slugDraft.trim())
-                              }
-                              onClick={() => {
-                                if (!editingSlug) {
-                                  setSlugDraft(row.value || row.existing);
-                                  setEditingSlug(true);
-                                  slugInput.current?.focus();
-                                  slugInput.current?.select();
-                                } else if (slugDraft.trim() === row.value)
-                                  setEditingSlug(false);
-                                else void resolveSlug();
-                              }}
-                            >
-                              {editingSlug ? (
-                                <Check size={16} />
-                              ) : (
-                                <Pencil size={16} />
-                              )}
-                            </ActionIcon>
-                          }
-                        />
-                      ) : row.field === "EDITION_ID" &&
-                        !displayedPreview.saved ? (
-                        <TextInput
-                          variant="unstyled"
-                          size="sm"
-                          w="100%"
-                          aria-label={t("hardcover.manualEdition")}
-                          ref={editionInput}
-                          value={editionDraft}
-                          readOnly={!editingEdition}
-                          disabled={busy}
-                          onChange={(e) =>
-                            setEditionDraft(e.currentTarget.value)
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape" && editingEdition) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setEditionDraft(row.value);
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && row.field === "SLUG") {
+                              event.preventDefault();
+                              void resolveSlug();
+                            }
+                            if (
+                              event.key === "Enter" &&
+                              row.field === "EDITION_ID"
+                            ) {
+                              event.preventDefault();
+                              void resolveEdition();
+                            }
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setDraftValues((current) => {
+                                const next = { ...current };
+                                delete next[row.field];
+                                return next;
+                              });
+                              setEditingSlug(false);
                               setEditingEdition(false);
                             }
-                            if (
-                              e.key === "Enter" &&
-                              editingEdition &&
-                              !busy &&
-                              editionDraft.trim()
-                            ) {
-                              e.preventDefault();
-                              if (editionDraft.trim() === row.value)
-                                setEditingEdition(false);
-                              else void resolveEdition();
-                            }
                           }}
                           rightSection={
-                            <ActionIcon
-                              variant="subtle"
-                              size="sm"
-                              color={editingEdition ? "green" : undefined}
-                              aria-label={t(
-                                editingEdition
-                                  ? "hardcover.checkEdition"
-                                  : "hardcover.editEdition",
-                              )}
-                              title={t(
-                                editingEdition
-                                  ? "hardcover.checkEdition"
-                                  : "hardcover.editEdition",
-                              )}
-                              disabled={
-                                busy ||
-                                (editingEdition &&
-                                  (!/^[1-9][0-9]{0,9}$/.test(
-                                    editionDraft.trim(),
-                                  ) ||
-                                    Number(editionDraft) > 2147483647))
-                              }
-                              onClick={() => {
-                                if (!editingEdition) {
-                                  setEditionDraft(row.value || row.existing);
-                                  setEditingEdition(true);
-                                  editionInput.current?.focus();
-                                  editionInput.current?.select();
-                                } else if (editionDraft.trim() === row.value)
-                                  setEditingEdition(false);
-                                else void resolveEdition();
-                              }}
-                            >
-                              {editingEdition ? (
-                                <Check size={16} />
-                              ) : (
-                                <Pencil size={16} />
-                              )}
-                            </ActionIcon>
+                            row.field === "SLUG" ||
+                            row.field === "EDITION_ID" ? (
+                              <ActionIcon
+                                variant="subtle"
+                                size="sm"
+                                color={
+                                  (
+                                    row.field === "SLUG"
+                                      ? editingSlug
+                                      : editingEdition
+                                  )
+                                    ? "green"
+                                    : undefined
+                                }
+                                aria-label={t(
+                                  row.field === "SLUG"
+                                    ? editingSlug
+                                      ? "hardcover.checkSlug"
+                                      : "hardcover.editSlug"
+                                    : editingEdition
+                                      ? "hardcover.checkEdition"
+                                      : "hardcover.editEdition",
+                                )}
+                                disabled={busy}
+                                onClick={() => {
+                                  if (row.field === "SLUG") {
+                                    if (editingSlug) void resolveSlug();
+                                    else {
+                                      setSlugDraft(row.value);
+                                      setEditingSlug(true);
+                                    }
+                                  } else {
+                                    if (editingEdition) void resolveEdition();
+                                    else {
+                                      setEditionDraft(row.value);
+                                      setEditingEdition(true);
+                                    }
+                                  }
+                                }}
+                              >
+                                {(
+                                  row.field === "SLUG"
+                                    ? editingSlug
+                                    : editingEdition
+                                ) ? (
+                                  <Check size={16} />
+                                ) : (
+                                  <Pencil size={16} />
+                                )}
+                              </ActionIcon>
+                            ) : undefined
                           }
                         />
                       ) : (
@@ -1262,11 +1472,11 @@ export function CompleteHardcover({
                     </td>
                     <td
                       title={t(
-                        `hardcover.states.${displayedPreview.saved && ["READY", "REPLACE"].includes(row.state) ? "SAVED" : row.state}`,
+                        `hardcover.states.${displayedPreview.saved && ["READY", "REPLACE", "REMOVE"].includes(row.state) ? "SAVED" : row.state}`,
                       )}
                     >
                       {t(
-                        `hardcover.states.${displayedPreview.saved && ["READY", "REPLACE"].includes(row.state) ? "SAVED" : row.state}`,
+                        `hardcover.states.${displayedPreview.saved && ["READY", "REPLACE", "REMOVE"].includes(row.state) ? "SAVED" : row.state}`,
                       )}
                     </td>
                   </tr>
@@ -1316,7 +1526,7 @@ export function CompleteHardcover({
                   setStarted(true);
                   setBookId(null);
                   setEditionId(null);
-                  setPreview(null);
+                  resetPreview();
                   setEditions({ items: [], hasNext: false });
                   // Start the first bounded lookup after saving this user's identifier mapping.
                   const result = await post<Matches>(
@@ -1332,12 +1542,15 @@ export function CompleteHardcover({
                     signal,
                   );
                   if (!signal.aborted) {
+                    if (token.current && token.current !== result.token)
+                      discard();
                     token.current = result.token;
                     setMatches(result);
                     setQueryTitle(result.title);
                     setQueryAuthor(result.authors.join(", "));
                     setQueryIsbn(result.queryIsbn ?? "");
                     setQueryAsin(result.queryAsin ?? "");
+                    if (result.error) throw { details: result.error };
                     if (!result.hasNext && result.items.length === 1)
                       await chooseBook(
                         result,
@@ -1351,47 +1564,54 @@ export function CompleteHardcover({
               {t("hardcover.search")}
             </Button>
           )}
-          {preview && !preview.saved && (
-            <>
-              <Button
-                disabled={
-                  busy ||
-                  previewPending ||
-                  editingSlug ||
-                  editingEdition ||
-                  (preview.values.some((row) => row.field === "SLUG") &&
-                    slugDraft.trim() !==
-                      preview.values.find((row) => row.field === "SLUG")
-                        ?.value) ||
-                  !preview.values.some((row) =>
-                    ["READY", "REPLACE"].includes(row.state),
-                  )
-                }
-                onClick={() =>
-                  void execute(async (signal) => {
-                    const result = await post<Preview>(
-                      "/calibre/hardcover/apply",
-                      { token: preview.token },
-                      signal,
-                    );
-                    if (!signal.aborted) {
-                      setPreview(result);
-                      void queryClient.invalidateQueries({
-                        queryKey: ["calibre-library"],
-                      });
-                      savedIds.current.add(ids[index]);
-                      setSavedCount(savedIds.current.size);
-                    }
-                  })
-                }
-              >
-                {t("hardcover.save")}
-              </Button>
-            </>
+          {started && matches && (
+            <Button
+              variant="outline"
+              color="orange"
+              disabled={busy || !!preview?.saved}
+              onClick={() =>
+                void execute(async (signal) => {
+                  const noMatch = !matches.noMatch;
+                  await post(
+                    "/calibre/hardcover/review",
+                    { token: matches.token, noMatch },
+                    signal,
+                  );
+                  if (signal.aborted) return;
+                  setMatches((current) =>
+                    current ? { ...current, noMatch } : current,
+                  );
+                  void queryClient.invalidateQueries({
+                    queryKey: ["calibre-library"],
+                    refetchType: "none",
+                  });
+                  if (noMatch && index + 1 < ids.length) {
+                    const next = index + 1;
+                    setIndex(next);
+                    await search(next);
+                  }
+                })
+              }
+            >
+              {t(
+                matches.noMatch
+                  ? "hardcover.clearNoMatch"
+                  : "hardcover.noMatch",
+              )}
+            </Button>
+          )}
+          {displayedPreview && !displayedPreview.saved && (
+            <Button
+              disabled={busy || previewPending || !hasChanges}
+              onClick={() => void saveChanges()}
+            >
+              {t("hardcover.save")}
+            </Button>
           )}
           {started && index > 0 && (
             <Button
-              variant="default"
+              variant="light"
+              leftSection={<ChevronLeft size={16} />}
               disabled={busy}
               onClick={() => {
                 setIndex(index - 1);
@@ -1404,6 +1624,7 @@ export function CompleteHardcover({
           {started && index + 1 < ids.length && (
             <Button
               variant="light"
+              rightSection={<ChevronRight size={16} />}
               disabled={busy}
               onClick={() => {
                 const next = index + 1;
@@ -1411,7 +1632,7 @@ export function CompleteHardcover({
                 void search(next);
               }}
             >
-              {t(preview?.saved ? "hardcover.nextBook" : "hardcover.skip")}
+              {t("hardcover.nextBook")}
             </Button>
           )}
         </ModalActions>

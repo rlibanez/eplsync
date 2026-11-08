@@ -30,6 +30,7 @@ class CalibreCatalogTests {
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.update("DELETE FROM app_settings WHERE setting_key IN ('calibre.connection','calibre.snapshot')");
         jdbc.update("DELETE FROM calibre_books");
+        jdbc.update("DELETE FROM calibre_hardcover_reviews");
         jdbc.update("DELETE FROM catalog_books");
         settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"main"));
     }
@@ -53,7 +54,7 @@ class CalibreCatalogTests {
             new CalibreClient.Book(1,"One",List.of("Author"),1L,null,false,"uuid1",List.of("epub"),Map.of("hardcover","one","hardcover_book","11","hardcover_edition","111","isbn","other")),
             new CalibreClient.Book(2,"Two",List.of("Author"),2L,null,false,"uuid2",List.of("epub"),Map.of("hardcover","two","hardcover_book","22")),
             new CalibreClient.Book(3,"Three",List.of("Author"),3L,null,false,"uuid3",List.of("epub"),Map.of("hardcover_book","33","hardcover_edition","")),
-            new CalibreClient.Book(4,"Four",List.of("Author"),4L,null,false)),4,0,100));
+            new CalibreClient.Book(4,"Four",List.of("Author"),4L,null,false,"uuid4")),4,0,100));
         snapshots.sync();clearInvocations(client);
         mvc.perform(get("/api/calibre/books").param("hardcover","SLUG"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
@@ -77,6 +78,32 @@ class CalibreCatalogTests {
         mvc.perform(get("/api/calibre/books").param("hardcover","SLUG").param("sort","hardcover,desc").param("size","1"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2))
             .andExpect(jsonPath("$.items[0].calibreId").value(2));
+        jdbc.update("UPDATE calibre_books SET calibre_uuid='uuid4' WHERE calibre_id=4");
+        jdbc.update("INSERT INTO calibre_hardcover_reviews VALUES('http://localhost:8080','main',4,'uuid4','Four','Author','now','reviewer')");
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG").param("hardcoverOperator","ne").param("hardcoverReview","NO_MATCH"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].calibreId").value(4));
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG").param("hardcoverOperator","ne").param("hardcoverReview","UNREVIEWED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(0));
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG").param("hardcoverOperator","ne").param("hardcoverReview","NO_MATCH").param("hardcoverReviewOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].calibreId").value(3));
+        mvc.perform(get("/api/calibre/books").param("hardcoverReview","INVALID"))
+            .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/calibre/books").param("hardcover","NO_MATCH"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1))
+            .andExpect(jsonPath("$.items[0].hardcoverNoMatch").value(true));
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG,NO_MATCH").param("hardcoverOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1))
+            .andExpect(jsonPath("$.items[0].calibreId").value(3));
+        mvc.perform(get("/api/calibre/books").param("hardcover","NO_MATCH").param("hardcoverOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(3));
+        mvc.perform(get("/api/calibre/books").param("hardcover","SLUG,NO_MATCH"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(0));
+        snapshots.sync();clearInvocations(client);
+        mvc.perform(get("/api/calibre/books").param("hardcover","NO_MATCH"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1));
+        jdbc.update("UPDATE calibre_books SET title='Changed' WHERE calibre_id=4");
+        mvc.perform(get("/api/calibre/books").param("hardcover","NO_MATCH"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(0));
         for(String fields:List.of("SLUG","SLUG,BOOK_ID")) {
             mvc.perform(get("/api/calibre/books").param("hardcover",fields).param("hardcoverOperator","ne"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
@@ -87,6 +114,19 @@ class CalibreCatalogTests {
             .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].calibreId").value(4));
         mvc.perform(get("/api/calibre/books").param("hardcover","SLUG").param("hardcoverOperator","invalid"))
             .andExpect(status().isBadRequest());
+        verifyNoInteractions(client);
+    }
+    @Test @WithMockUser(authorities={"CALIBRE_READ"})
+    void unreviewedMeansAnEmptyHardcoverCellAndItsNegationIsTheExactComplement() throws Exception {
+        for(int id=1;id<=5;id++) jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,title,authors,calibre_uuid,identifiers) VALUES(?, 'review-test',true,?,'Book','Author',?,?)","r"+id,id,"uuid"+id,switch(id) {case 1->"{\"hardcover\":\"book\"}";case 2->"{\"hardcover_book\":\"123\"}";case 3->"{\"hardcover_edition\":\"456\"}";default->null;});
+        jdbc.update("INSERT INTO calibre_hardcover_reviews VALUES('http://localhost:8080','main',4,'uuid4','Book','Author','now','reviewer')");
+        mvc.perform(get("/api/calibre/books").param("hardcoverReview","UNREVIEWED"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].calibreId").value(5))
+            .andExpect(jsonPath("$.items[0].hardcover").isEmpty()).andExpect(jsonPath("$.items[0].hardcoverNoMatch").value(false));
+        mvc.perform(get("/api/calibre/books").param("hardcoverReview","UNREVIEWED").param("hardcoverReviewOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4));
+        mvc.perform(get("/api/calibre/books").param("hardcoverReview","NO_MATCH").param("hardcoverReviewOperator","ne"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(4));
         verifyNoInteractions(client);
     }
     @Test void hardcoverCustomNamesAreScopedToTheReaderAndDoNotNeedSendPermission() throws Exception {

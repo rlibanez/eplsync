@@ -33,6 +33,87 @@ class CalibreHardcoverTests {
         SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(a,null,a.permissions().stream().map(p->new org.springframework.security.core.authority.SimpleGrantedAuthority(p.name())).toList()));
     }
     @AfterEach void clear() {SecurityContextHolder.clearContext();}
+    @Test void noMatchReviewIsIdempotentReversibleAndClearedByAConfirmedMatch() {
+        var search=service.search(9,null,1);
+        assertThat(search.noMatch()).isFalse();
+        service.review(search.token(),true);service.review(search.token(),true);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_hardcover_reviews",Long.class)).isEqualTo(1);
+        assertThat(service.search(9,null,1).noMatch()).isTrue();
+        verify(calibre,never()).addIdentifiers(any(),anyLong(),any(),any());
+        verify(calibre,never()).updateIdentifiers(any(),anyLong(),any(),any(),any());
+        verify(calibre,never()).uploadEpub(any(),any(),anyString(),anyString());
+        service.review(search.token(),false);
+        assertThat(service.search(9,null,1).noMatch()).isFalse();
+        service.review(search.token(),true);
+        var preview=service.preview(search.token(),7,11L,Map.of(CalibreHardcover.Field.BOOK_ID,"hardcover_book"));
+        service.apply(preview.token());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_hardcover_reviews",Long.class)).isZero();
+    }
+    @Test void reviewsRequireOwnershipPermissionsAndUnchangedMetadataAndLibrary() {
+        var search=service.search(9,null,1);
+        owner("other");assertThatThrownBy(()->service.review(search.token(),true)).hasMessageContaining("usuario");
+        owner("owner");
+        when(calibre.identifierMetadata(connection,9)).thenReturn(new CalibreClient.IdentifierMetadata("different","Book",List.of("Author"),metadata.identifiers()));
+        assertThatThrownBy(()->service.review(search.token(),true)).hasMessageContaining("cambiaron");
+        when(calibre.identifierMetadata(connection,9)).thenReturn(metadata);
+        service.review(search.token(),true);
+        when(settings.connection()).thenReturn(new CalibreSettings.Connection("http://other.test","","","main"));
+        assertThatThrownBy(()->service.review(search.token(),false)).hasMessageContaining("cambió");
+        when(settings.connection()).thenReturn(connection);SecurityContextHolder.clearContext();
+        assertThatThrownBy(()->service.review(search.token(),false)).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_hardcover_reviews",Long.class)).isEqualTo(1);
+    }
+    @Test void removingIdentifiersIsExplicitAndAChangedWorkDoesNotKeepTheOldEdition() {
+        metadata=new CalibreClient.IdentifierMetadata("uuid","Book",List.of("Author"),Map.of("hardcover","old-work","hardcover_book","999","hardcover_edition","22","epl","123"));
+        when(calibre.identifierMetadata(connection,9)).thenReturn(metadata);
+        var source=service.search(9,null,1);var mapping=Map.of(CalibreHardcover.Field.SLUG,"hardcover",CalibreHardcover.Field.BOOK_ID,"hardcover_book",CalibreHardcover.Field.EDITION_ID,"hardcover_edition");
+        var changed=service.preview(source.token(),7,null,mapping);
+        assertThat(changed.values()).extracting(v->v.state()).containsExactly("REPLACE","REPLACE","REMOVE");
+        service.apply(changed.token());
+        verify(calibre).updateIdentifiers(connection,9,metadata,Map.of("hardcover","book-slug","hardcover_book","7","hardcover_edition",""),Set.of("hardcover","hardcover_book","hardcover_edition"));
+        var removed=service.preview(source.token(),null,null,mapping,Set.of(),mapping.keySet());
+        assertThat(removed.values()).allSatisfy(value->assertThat(value.state()).isEqualTo("REMOVE"));
+        service.apply(removed.token());
+        verify(calibre).updateIdentifiers(connection,9,metadata,Map.of("hardcover","","hardcover_book","","hardcover_edition",""),Set.of("hardcover","hardcover_book","hardcover_edition"));
+        assertThatThrownBy(()->service.preview(source.token(),null,null,mapping,Set.of(),Set.of(CalibreHardcover.Field.ISBN13))).hasMessageContaining("seleccionados");
+    }
+    @Test void emptyProposedEditionRemovesTheExistingValueEvenWhenTheWorkIsUnchanged() {
+        metadata=new CalibreClient.IdentifierMetadata("uuid","Book",List.of("Author"),Map.of("hardcover","book-slug","hardcover_book","7","hardcover_edition","22","epl","123"));
+        when(calibre.identifierMetadata(connection,9)).thenReturn(metadata);
+        var source=service.search(9,null,1);var mapping=Map.of(CalibreHardcover.Field.SLUG,"hardcover",CalibreHardcover.Field.BOOK_ID,"hardcover_book",CalibreHardcover.Field.EDITION_ID,"hardcover_edition");
+        var preview=service.preview(source.token(),7,null,mapping);
+        assertThat(preview.values()).extracting(value->value.state()).containsExactly("UNCHANGED","UNCHANGED","REMOVE");
+        service.apply(preview.token());
+        verify(calibre).updateIdentifiers(connection,9,metadata,Map.of("hardcover_edition",""),Set.of("hardcover_edition"));
+        var manual=service.preview(source.token(),null,null,mapping,Set.of(),Set.of(),Map.of(CalibreHardcover.Field.SLUG,"book-slug",CalibreHardcover.Field.BOOK_ID,"",CalibreHardcover.Field.EDITION_ID,"22"));
+        service.apply(manual.token());
+        verify(calibre).updateIdentifiers(connection,9,metadata,Map.of("hardcover_book",""),Set.of("hardcover_book"));
+        assertThatThrownBy(()->service.preview(source.token(),null,null,mapping,Set.of(),Set.of(),Map.of(CalibreHardcover.Field.BOOK_ID,"invalid"))).hasMessageContaining("Valor inválido");
+        assertThatThrownBy(()->service.preview(source.token(),7L,null,mapping,Set.of(),Set.of(),Map.of(CalibreHardcover.Field.BOOK_ID,"999"))).hasMessageContaining("obra seleccionada");
+    }
+    @Test void aFailedLookupKeepsCalibreMetadataAndDoesNotCacheTheFailure() {
+        when(hardcover.search("Book",List.of("Author"),1)).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_GATEWAY,"HTTP 200; search.results.hits ausente"))
+            .thenReturn(new HardcoverClient.Search(List.of(new HardcoverClient.Match(7,"book-slug","Book",List.of("Author"))),false));
+        var failed=service.search(9,null,1);
+        assertThat(failed.error()).contains("HTTP 200");assertThat(failed.title()).isEqualTo("Book");assertThat(failed.authors()).containsExactly("Author");assertThat(failed.identifiers()).isEqualTo(metadata.identifiers());assertThat(failed.items()).isEmpty();
+        var retried=service.search(9,failed.token(),1);
+        assertThat(retried.error()).isNull();assertThat(retried.items()).hasSize(1);
+        service.search(9,failed.token(),1);
+        verify(hardcover,times(2)).search("Book",List.of("Author"),1);
+        verify(calibre).identifierMetadata(connection,9);
+        owner("other");assertThatThrownBy(()->service.search(9,failed.token(),1)).hasMessageContaining("usuario");
+    }
+    @Test void alternativeResultsAreCachedAndTheirPaginationKeepsTheSameSearchMode() {
+        var match=new HardcoverClient.Match(7,"book-slug","Book",List.of("Author"));
+        when(hardcover.search("Book",List.of("Author"),1)).thenReturn(new HardcoverClient.Search(List.of(match),true,true));
+        when(hardcover.searchFallback("Book",List.of("Author"),2,true,true)).thenReturn(new HardcoverClient.Search(List.of(match),false,true));
+        var source=service.search(9,null,1);
+        assertThat(source.notices()).contains("FALLBACK_SEARCH");
+        service.search(9,source.token(),1);service.search(9,source.token(),2);service.search(9,source.token(),2);
+        verify(hardcover).search("Book",List.of("Author"),1);
+        verify(hardcover).searchFallback("Book",List.of("Author"),2,true,true);
+        verify(hardcover,never()).search("Book",List.of("Author"),2);
+    }
     @Test void storesPersonalMappingsWithoutAnyApiKey() {
         service.configure(Map.of(CalibreHardcover.Field.BOOK_ID,"custom_book"));assertThat(service.configuration().mappings()).containsEntry(CalibreHardcover.Field.BOOK_ID,"custom_book");
         owner("other");assertThat(service.configuration().mappings()).containsEntry(CalibreHardcover.Field.BOOK_ID,"hardcover_book");
@@ -55,9 +136,9 @@ class CalibreHardcoverTests {
         var search=service.search(9,null,1);
         var mapping=Map.of(CalibreHardcover.Field.SLUG,"hardcover",CalibreHardcover.Field.BOOK_ID,"hardcover_book",CalibreHardcover.Field.EDITION_ID,"hardcover_edition",CalibreHardcover.Field.ISBN13,"isbn");
         var preview=service.preview(search.token(),7,11L,mapping,Set.of(CalibreHardcover.Field.EDITION_ID));
-        assertThat(preview.values()).extracting(v->v.state()).containsExactly("UNCHANGED","UNCHANGED","REPLACE","CONFLICT");
+        assertThat(preview.values()).extracting(v->v.state()).containsExactly("UNCHANGED","UNCHANGED","REPLACE","REPLACE");
         service.apply(preview.token());
-        verify(calibre).updateIdentifiers(connection,9,metadata,Map.of("hardcover_edition","11"),Set.of("hardcover_edition"));
+        verify(calibre).updateIdentifiers(connection,9,metadata,Map.of("hardcover_edition","11","isbn","9780201616224"),Set.of("hardcover_edition","isbn"));
         verify(calibre,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
     @Test void explicitReplacementsRespectMappingsOwnershipAndPermissions() {
@@ -68,10 +149,10 @@ class CalibreHardcoverTests {
         owner("owner");SecurityContextHolder.clearContext();
         assertThatThrownBy(()->service.preview(search.token(),7,11L,mapping,Set.of(CalibreHardcover.Field.BOOK_ID))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
-    @Test void doesNotInventAnEditionAndPreservesConflictingIdentifiers() {
+    @Test void replacesChangedValuesWithoutInventingAnEdition() {
         metadata=new CalibreClient.IdentifierMetadata("uuid","Book",List.of("Author"),Map.of("hardcover","different"));when(calibre.identifierMetadata(connection,9)).thenReturn(metadata);
         var search=service.search(9,null,1);var p=service.preview(search.token(),7,null,Map.of(CalibreHardcover.Field.SLUG,"hardcover",CalibreHardcover.Field.EDITION_ID,"hardcover_edition",CalibreHardcover.Field.ISBN13,"isbn"));
-        assertThat(p.values()).extracting(v->v.state()).containsExactly("CONFLICT","MISSING","MISSING");service.apply(p.token());verify(calibre).addIdentifiers(connection,9,metadata,Map.of());verify(hardcover,never()).edition(anyLong(),anyLong());
+        assertThat(p.values()).extracting(v->v.state()).containsExactly("REPLACE","MISSING","MISSING");service.apply(p.token());verify(calibre).updateIdentifiers(connection,9,metadata,Map.of("hardcover","book-slug"),Set.of("hardcover"));verify(hardcover,never()).edition(anyLong(),anyLong());
     }
     @Test void requiresTheSameOwnerConnectionAndMetadataAtConfirmation() {
         var s=service.search(9,null,1);var p=service.preview(s.token(),7,null,Map.of(CalibreHardcover.Field.BOOK_ID,"hardcover_book"));
