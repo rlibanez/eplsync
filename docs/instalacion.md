@@ -319,3 +319,10 @@ las rutas antiguas personalizadas no se trasladan automáticamente. No arranques
 con la nueva ruta vacía si quieres conservar tu biblioteca, cuentas y trabajos.
 
 Consulta las [notas de 1.8.4](releases/1.8.4.md).
+
+## Actualización a 1.8.5
+
+Desde 1.8.4, EPL Sync aplica las migraciones `1.8.4.1` y `1.8.4.2`
+en su base de datos SQLite para guardar los identificadores de Calibre y
+las revisiones de Hardcover. Conserva una copia de seguridad antes de actualizar.
+Consulta las [notas de 1.8.5](releases/1.8.5.md).

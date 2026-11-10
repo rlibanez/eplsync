@@ -115,7 +115,7 @@ cd eplsync
 ### 3. Descarga Docker Compose
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.8.4/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.8.5/docker-compose.yml -o docker-compose.yml
 ```
 
 ### 4. Configura `.env`
@@ -123,7 +123,7 @@ curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.8.4/docker-comp
 Después, descarga la plantilla de configuración:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.8.4/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/rlibanez/eplsync/v1.8.5/.env.example -o .env
 chmod 600 .env
 ```
 
@@ -131,7 +131,7 @@ Edita `.env`. Para empezar, revisa estas variables:
 
 | Variable | Descripción | Valor predeterminado |
 | --- | --- | --- |
-| `EPLSYNC_VERSION` | Versión de la imagen. | `1.8.4` |
+| `EPLSYNC_VERSION` | Versión de la imagen. | `1.8.5` |
 | `PUID` | ID del usuario que puede escribir en las carpetas. En Linux, consulta su valor con `id -u`. | `1000` |
 | `PGID` | ID del grupo que puede escribir en las carpetas. En Linux, consulta su valor con `id -g`. | `1000` |
 | `HOST_PORT` | Puerto publicado. | `8088` |
@@ -174,8 +174,8 @@ directamente en Windows, Linux y macOS.
 ### 1. Descarga el JAR y la configuración
 
 Instala [Java 25](https://adoptium.net/temurin/releases/?version=25) y descarga
-`eplsync-1.8.4.jar` desde los archivos de la
-[Release 1.8.4](https://github.com/rlibanez/eplsync/releases/tag/v1.8.4).
+`eplsync-1.8.5.jar` desde los archivos de la
+[Release 1.8.5](https://github.com/rlibanez/eplsync/releases/tag/v1.8.5).
 El mismo JAR sirve para Windows, Linux y macOS. En macOS, elige Java para
 **aarch64** si utilizas Apple Silicon (M1 o posterior) o **x64** si tu Mac es Intel.
 Comprueba con `java -version` que la terminal utiliza Java 25.
@@ -186,12 +186,12 @@ para ejecutarlo. qBittorrent y el servidor de contenido de Calibre son servicios
 opcionales que se configuran por separado.
 
 Guárdalo en una carpeta dedicada a EPL Sync. Incluye el JAR y el
-[`application.yaml` correspondiente a esa misma versión](https://raw.githubusercontent.com/rlibanez/eplsync/v1.8.4/backend/src/main/resources/application.yaml), además de las carpetas
+[`application.yaml` correspondiente a esa misma versión](https://raw.githubusercontent.com/rlibanez/eplsync/v1.8.5/backend/src/main/resources/application.yaml), además de las carpetas
 `data/db` y `data/logs` (créelas antes de ejecutar el JAR):
 
 ```text
 EPL-Sync/
-├── eplsync-1.8.4.jar
+├── eplsync-1.8.5.jar
 ├── application.yaml
 └── data/
     ├── db/
@@ -239,7 +239,7 @@ Conserva la configuración y no compartas sus claves.
 Abre una terminal en la carpeta del JAR y ejecuta en Windows, Linux o macOS:
 
 ```sh
-java --enable-native-access=ALL-UNNAMED -jar eplsync-1.8.4.jar --spring.config.additional-location=file:./application.yaml
+java --enable-native-access=ALL-UNNAMED -jar eplsync-1.8.5.jar --spring.config.additional-location=file:./application.yaml
 ```
 
 El comando carga el archivo externo de configuración. En esta modalidad no se
