@@ -14,11 +14,58 @@ import {
 export function EventSummary({ operation }: { operation: EventOperation }) {
   const { t, i18n } = useTranslation();
   const { can } = useAuth();
-  const jobHref =
-    operation.latest.action === "CALIBRE_SEND" &&
-    (can("CALIBRE_SEND") || can("CALIBRE_JOBS_MANAGE"))
-      ? `/calibre/jobs/${encodeURIComponent(operation.latest.operationId)}`
-      : null;
+  const canViewDownload = can("TORRENT_JOBS_MANAGE");
+  const canViewCalibre = can("CALIBRE_SEND") || can("CALIBRE_JOBS_MANAGE");
+  const jobLink = (
+    event: AppEvent,
+    field: "operationId" | "jobId" | "downloadJobId",
+  ) => {
+    const id =
+      field === "operationId" ? event.operationId : event.details[field];
+    if (typeof id !== "string" || !id || id.startsWith("manual:")) return null;
+    const encoded = encodeURIComponent(id);
+
+    if (field === "downloadJobId")
+      return event.action === "CALIBRE_JOB_CONTROL" && canViewDownload
+        ? `/downloads/jobs/${encoded}`
+        : null;
+
+    switch (event.action) {
+      case "DOWNLOAD":
+        return field === "operationId" && canViewDownload
+          ? `/downloads/jobs/${encoded}`
+          : null;
+      case "CLEANUP":
+        return field === "jobId" && canViewDownload
+          ? `/downloads/jobs/${encoded}`
+          : null;
+      case "CALIBRE_SEND":
+        return field === "operationId" && canViewCalibre
+          ? `/calibre/jobs/${encoded}`
+          : null;
+      case "CALIBRE_JOB_CONTROL":
+        return field === "jobId" && canViewCalibre
+          ? `/calibre/jobs/${encoded}`
+          : null;
+      case "REVISION_CLEANUP":
+      case "REVISION_CLEANUP_RETRY": {
+        if (
+          field !==
+          (event.action === "REVISION_CLEANUP" ? "operationId" : "jobId")
+        )
+          return null;
+        const source = event.details.source;
+        if (source === "downloads" && can("TORRENT_SYNC"))
+          return `/cleanup/jobs/${encoded}`;
+        if (source === "calibre" && can("CALIBRE_READ"))
+          return `/cleanup/jobs/${encoded}`;
+        return null;
+      }
+      default:
+        return null;
+    }
+  };
+  const jobHref = jobLink(operation.latest, "operationId");
   const [copyState, setCopyState] = useState<"copy" | "copied" | "copyFailed">(
     "copy",
   );
@@ -71,7 +118,9 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
       <p className="muted">
         {t("events.operation")}:{" "}
         {jobHref ? (
-          <Link to={jobHref}>{operation.latest.operationId}</Link>
+          <Link className="event-job-link" to={jobHref}>
+            {operation.latest.operationId}
+          </Link>
         ) : (
           operation.latest.operationId
         )}
@@ -89,24 +138,28 @@ export function EventSummary({ operation }: { operation: EventOperation }) {
             </p>
             {!!visibleDetails(event).length && (
               <dl className="event-details">
-                {visibleDetails(event).map(([key, value]) => (
-                  <div key={key}>
-                    <dt>{t("events.fields." + key, { defaultValue: key })}</dt>
-                    <dd>
-                      {key === "jobId" &&
-                      event.action === "CLEANUP" &&
-                      !String(value).startsWith("manual:") ? (
-                        <Link
-                          to={`/downloads/jobs/${encodeURIComponent(String(value))}`}
-                        >
-                          {String(value)}
-                        </Link>
-                      ) : (
-                        valueLabel(key, value)
-                      )}
-                    </dd>
-                  </div>
-                ))}
+                {visibleDetails(event).map(([key, value]) => {
+                  const href =
+                    key === "jobId" || key === "downloadJobId"
+                      ? jobLink(event, key)
+                      : null;
+                  return (
+                    <div key={key}>
+                      <dt>
+                        {t("events.fields." + key, { defaultValue: key })}
+                      </dt>
+                      <dd>
+                        {href ? (
+                          <Link className="event-job-link" to={href}>
+                            {String(value)}
+                          </Link>
+                        ) : (
+                          valueLabel(key, value)
+                        )}
+                      </dd>
+                    </div>
+                  );
+                })}
               </dl>
             )}
           </li>

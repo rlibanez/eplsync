@@ -1528,6 +1528,11 @@ summary {
 .event-details > div { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--line); }
 .event-details dt { color: var(--muted); }
 .event-details dd { margin: 0; font-variant-numeric: tabular-nums; }
+.event-job-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
 
 
 .import-progress { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 16px; margin: 12px 0 18px; background: var(--surface); border-left: 3px solid var(--accent); border-radius: 6px; }
