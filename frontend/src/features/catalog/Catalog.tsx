@@ -1,3 +1,4 @@
+import { CatalogDataExportButton } from "./CatalogDataExport";
 import { formatDate } from "../../locales/formatDate";
 import { applySavedFilters } from "./SavedCatalogSearches";
 import { useRangeSelection } from "../../components/useRangeSelection";
@@ -298,6 +299,11 @@ export function Catalog() {
               >
                 {t("selection.export")}
               </Button>
+              <CatalogDataExportButton
+                filters={selection.filters}
+                count={count}
+                ordering={ordering}
+              />
               {auth.can("TORRENT_SEND") && (
                 <Button
                   variant="light"

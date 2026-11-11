@@ -1324,6 +1324,23 @@
     "sectionTitle": "Catalog cleanup",
     "sectionDescription": "Review and remove catalog books no longer present in the EPL CSV. Download and job history is preserved."
   },
+  "catalogExport": {
+    "extension": "File extension",
+    "invalidExtension": "Use up to 32 letters, digits or separators (. _ -) between them.",
+    "title": "Export data",
+    "format": "Format",
+    "separator": "Separator",
+    "separators": { "COMMA": "Comma (,)", "SEMICOLON": "Semicolon (;)", "TAB": "Tab", "PIPE": "Vertical bar (|)" },
+    "preview": "Preview (up to 5 books)",
+    "loading": "Loading preview…",
+    "chooseColumns": "Select at least one column.",
+    "selected_one": "{{count, number}} selected book",
+    "selected_other": "{{count, number}} selected books",
+    "empty": "There are no books to export.",
+    "error": "Could not export the catalog.",
+    "close": "Close",
+    "download": "Download"
+  },
   "selection": {
     "column": "Selection",
     "page": "Select this page",

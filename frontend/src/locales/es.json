@@ -1324,6 +1324,23 @@
     "sectionTitle": "Limpieza del catálogo",
     "sectionDescription": "Revisa y elimina los libros del catálogo que ya no aparecen en el CSV de EPL. Se conserva el historial de descargas y trabajos."
   },
+  "catalogExport": {
+    "extension": "Extensión del archivo",
+    "invalidExtension": "Usa hasta 32 letras, números o separadores (. _ -) entre ellos.",
+    "title": "Exportar datos",
+    "format": "Formato",
+    "separator": "Separador",
+    "separators": { "COMMA": "Coma (,)", "SEMICOLON": "Punto y coma (;)", "TAB": "Tabulación", "PIPE": "Barra vertical (|)" },
+    "preview": "Vista previa (hasta 5 libros)",
+    "loading": "Cargando vista previa…",
+    "chooseColumns": "Selecciona al menos una columna.",
+    "selected_one": "{{count, number}} libro seleccionado",
+    "selected_other": "{{count, number}} libros seleccionados",
+    "empty": "No hay libros para exportar.",
+    "error": "No se pudo exportar el catálogo.",
+    "close": "Cerrar",
+    "download": "Descargar"
+  },
   "selection": {
     "column": "Selección",
     "page": "Seleccionar esta página",

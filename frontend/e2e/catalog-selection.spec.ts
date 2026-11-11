@@ -546,3 +546,91 @@ test("page count column can be hidden, restored and used for exact filtering", a
   await page.locator("tbody").getByRole("button", { name: /250/ }).click();
   await expect(page).toHaveURL(/pagesFrom=250&pagesTo=250/);
 });
+
+test("data export previews the filtered selection and remembers column order separator and file extensions", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "showSaveFilePicker", {
+      value: undefined,
+      configurable: true,
+    });
+  });
+  const filters = { author: ["Author"], excludedIds: [1] };
+  await page.route("**/api/catalog/data/export/preview", (route) => {
+    const body = route.request().postDataJSON();
+    expect(body.filters).toEqual(filters);
+    const separator = { COMMA: ",", TAB: "\t", PIPE: "|" }[
+      body.separator as "COMMA" | "TAB" | "PIPE"
+    ];
+    return route.fulfill({
+      json: { rows: 1, text: body.columns.join(separator) },
+    });
+  });
+  await page.route("**/api/catalog/data/export", (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({
+      filters,
+      ordering: "title,desc",
+      format: "CSV",
+      extension: "txt",
+      separator: "PIPE",
+      columns: ["revision", "eplId", "title"],
+    });
+    return route.fulfill({
+      contentType: "text/csv",
+      body: "revision|eplId|title\n1.4|2|Book 2\n",
+    });
+  });
+
+  await page.goto("/catalog?author=Author&sort=title,desc");
+  await page.getByRole("button", { name: "Seleccionar todo (40)" }).click();
+  await page
+    .getByRole("checkbox", { name: "Seleccionar Book 1", exact: true })
+    .uncheck();
+  await page.getByRole("button", { name: "Exportar datos" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("39 libros seleccionados");
+  const extension = dialog.getByRole("textbox", {
+    name: "Extensión del archivo",
+  });
+  await extension.fill(".txt");
+  await dialog.getByRole("textbox", { name: "Separador" }).click();
+  await page
+    .getByRole("option", { name: "Barra vertical (|)", exact: true })
+    .click();
+  await dialog.getByRole("checkbox", { name: "Autor", exact: true }).uncheck();
+  await dialog
+    .getByRole("button", { name: /mover.*revisión.*arriba/i })
+    .click();
+  await expect(
+    dialog.getByText("revision|eplId|title", { exact: true }),
+  ).toBeVisible();
+  const downloaded = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Descargar", exact: true }).click();
+  expect((await downloaded).suggestedFilename()).toBe("catalogo.txt");
+  await dialog.getByRole("button", { name: "Cerrar", exact: true }).click();
+  await page.getByRole("button", { name: "Exportar datos" }).click();
+  await expect(dialog.getByRole("textbox", { name: "Formato" })).toHaveValue(
+    "CSV",
+  );
+  await expect(dialog.getByRole("textbox", { name: "Separador" })).toHaveValue(
+    "Barra vertical (|)",
+  );
+  await expect(
+    dialog.getByText("revision|eplId|title", { exact: true }),
+  ).toBeVisible();
+  await expect(extension).toHaveValue("txt");
+  await dialog.getByRole("textbox", { name: "Formato" }).click();
+  await expect(
+    page.getByRole("option", { name: "TXT", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("option", { name: "JSON", exact: true }).click();
+  await expect(dialog.getByRole("textbox", { name: "Separador" })).toHaveCount(
+    0,
+  );
+  await expect(extension).toHaveValue("json");
+  await extension.fill("backup.json");
+  await dialog.getByRole("textbox", { name: "Formato" }).click();
+  await page.getByRole("option", { name: "CSV", exact: true }).click();
+  await expect(extension).toHaveValue("txt");
+});

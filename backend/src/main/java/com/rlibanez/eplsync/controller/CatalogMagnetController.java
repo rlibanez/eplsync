@@ -56,7 +56,12 @@ public class CatalogMagnetController {
     }
     private ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> exportResponse(
             CatalogBookFilter filter, Sort sort, jakarta.servlet.http.HttpServletRequest request) {
-        var file = exports.prepare(filter, sort);
+        return attachment(exports.prepare(filter, sort), "magnets.txt", "text/plain;charset=UTF-8", request);
+    }
+
+    static ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> attachment(
+            com.rlibanez.eplsync.service.MagnetExportService.Prepared file, String filename, String mediaType,
+            jakarta.servlet.http.HttpServletRequest request) {
         try {
             var async = org.springframework.web.context.request.async.WebAsyncUtils.getAsyncManager(request);
             async.getAsyncWebRequest().setTimeout(com.rlibanez.eplsync.service.MagnetExportService.TRANSFER_TIME.toMillis());
@@ -69,7 +74,7 @@ public class CatalogMagnetController {
                 @Override public <T> Object handleError(org.springframework.web.context.request.NativeWebRequest ignored,
                         java.util.concurrent.Callable<T> task, Throwable error) { file.close(); return RESULT_NONE; }
             });
-            return ResponseEntity.ok().contentType(org.springframework.http.MediaType.parseMediaType("text/plain;charset=UTF-8")).header("Content-Disposition", "attachment; filename=\"magnets.txt\"")
+            return ResponseEntity.ok().contentType(org.springframework.http.MediaType.parseMediaType(mediaType)).header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
                     .header("Cache-Control", "no-store").contentLength(file.size()).body(file::writeTo);
         } catch (RuntimeException | java.io.IOException ex) { file.close(); throw new IllegalStateException("No se pudo iniciar la exportación", ex); }
     }

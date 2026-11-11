@@ -1,5 +1,4 @@
-import { copyExportStream } from "./exportTransfer";
-import { secureFetch } from "../auth/transport";
+import { saveCatalogExport } from "./exportTransfer";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNotifications } from "../notifications/Notifications";
@@ -104,19 +103,6 @@ export function useCatalogSelection(query: URLSearchParams) {
       : { selectedIds: [...current.ids] },
   };
 }
-interface WritableFile {
-  write(data: Blob | Uint8Array): Promise<void>;
-  close(): Promise<void>;
-  abort(): Promise<void>;
-}
-interface SaveHandle {
-  createWritable(): Promise<WritableFile>;
-}
-type PickerWindow = Window & {
-  showSaveFilePicker?: (options: {
-    suggestedName: string;
-  }) => Promise<SaveHandle>;
-};
 export function useMagnetExport() {
   const { t } = useTranslation();
   const { notify } = useNotifications();
@@ -124,42 +110,16 @@ export function useMagnetExport() {
   async function save(filters: Record<string, unknown>) {
     if (busy) return;
     setBusy(true);
-    const picker = (window as PickerWindow).showSaveFilePicker;
-    let writable: WritableFile | undefined;
     try {
-      // Invoke the picker while the click still has user activation, before the network request.
-      const handle = picker
-        ? await picker.call(window, { suggestedName: "magnets.txt" })
-        : undefined;
-      const response = await secureFetch("/api/catalog/magnets/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/plain" },
-        body: JSON.stringify({ filters }),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => undefined);
-        throw new Error(typeof error?.details === "string" ? error.details : t("selection.exportError"));
-      }
-      if (response.headers.get("Content-Length") === "0") throw new Error(t("selection.noMagnets"));
-      if (handle) {
-        writable = await handle.createWritable();
-        await copyExportStream(response, writable, t("selection.noMagnets"));
-        await writable.close();
-        writable = undefined;
-      } else {
-        const blob = await response.blob();
-        if (!blob.size) throw new Error(t("selection.noMagnets"));
-        const url = URL.createObjectURL(blob),
-          link = document.createElement("a");
-        link.href = url;
-        link.download = "magnets.txt";
-        document.body.append(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      }
+      await saveCatalogExport(
+        "/api/catalog/magnets/export",
+        "magnets.txt",
+        { filters },
+        t("selection.exportError"),
+        t("selection.noMagnets"),
+        "text/plain",
+      );
     } catch (error) {
-      if (writable) await writable.abort().catch(() => {});
       if (!(error instanceof DOMException && error.name === "AbortError"))
         notify({
           title: t("selection.export"),

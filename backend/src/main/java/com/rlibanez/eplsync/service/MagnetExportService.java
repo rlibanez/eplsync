@@ -50,6 +50,9 @@ public class MagnetExportService {
         transactions.setReadOnly(true);
         transactions.setTimeout((int) Math.max(1, limits.preparation().toSeconds()));
     }
+    // Both catalog exports use the same single-threaded response executor.
+    Semaphore exportSlot() { return active; }
+
     private record Book(long id, String title, String links) {}
     private String version() {
         return transactions.execute(status -> metadata.findById(1L)
@@ -138,7 +141,7 @@ public class MagnetExportService {
             throw new ResponseStatusException(HttpStatus.REQUEST_TIMEOUT,
                     "La exportación ha superado el tiempo máximo de preparación de 2 minutos.");
     }
-    private static void clean(Path directory) {
+    static void clean(Path directory) {
         if (directory == null) return;
         try {
             try (var files = Files.list(directory)) {
