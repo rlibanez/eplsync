@@ -21,6 +21,7 @@ import java.time.temporal.TemporalAccessor;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -189,9 +190,14 @@ public class CatalogDataExport {
             String column = request.columns().get(index);
             Object value = row.get(index);
             if (column.equals("genres")) {
-                value = value instanceof String genres
-                        ? Arrays.stream(genres.split(",")).map(String::strip).filter(genre -> !genre.isEmpty()).distinct().toList()
-                        : List.of();
+                var genres = new LinkedHashSet<String>();
+                if (value instanceof String text) {
+                    for (String part : text.split(",")) {
+                        String genre = part.strip();
+                        if (!genre.isEmpty()) genres.add(genre);
+                    }
+                }
+                value = List.copyOf(genres);
             } else if (value instanceof TemporalAccessor) {
                 value = value.toString();
             }

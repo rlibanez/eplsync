@@ -200,7 +200,13 @@ public class CalibreHardcover {
         prune();var s=bookId==null?source(token):selected(token,bookId);var mapping=validate(input);
         if(bookId==null && editionId!=null) throw new UserInputException("Selecciona la obra de la edición");
         var book=bookId==null?null:s.cache().get("book:"+bookId,()->hardcover.book(bookId));
-        var edition=editionId==null?null:s.cache().get("edition:"+bookId+":"+editionId,()->hardcover.edition(bookId,editionId));
+        HardcoverClient.Edition edition = null;
+        if (bookId != null && editionId != null) {
+            long selectedBookId = bookId;
+            long selectedEditionId = editionId;
+            edition = s.cache().get("edition:" + selectedBookId + ":" + selectedEditionId,
+                    () -> hardcover.edition(selectedBookId, selectedEditionId));
+        }
         var current=calibre.identifierMetadata(s.connection(),s.calibreId());
         if(!current.equals(s.metadata())) throw new UserInputException("Los metadatos de Calibre cambiaron; vuelve a buscar");
         var replace=replaceFields==null?Set.<Field>of():replaceFields;
