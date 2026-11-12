@@ -48,7 +48,10 @@ for (const kind of ["downloads", "calibre"] as const) {
                 eplId: 1,
                 title: "Libro",
                 name: "Libro.epub",
-                author: "Jane Austen",
+                author:
+                  params.get("author") === "Sander"
+                    ? "Brandon Sanderson"
+                    : "Jane Austen",
                 hash: "A".repeat(40),
                 status: "ACCEPTED",
                 state: "ACCEPTED",
@@ -102,6 +105,24 @@ for (const kind of ["downloads", "calibre"] as const) {
     await expect(
       page.getByRole("cell", { name: "Jane Austen", exact: true }),
     ).toHaveText("Jane Austen");
+    await page.getByRole("button", { name: "Siguiente", exact: true }).click();
+    await expect.poll(() => requests.at(-1)?.get("page")).toBe("1");
+    await author.fill("Sander");
+    await expect
+      .poll(() => requests.at(-1)?.getAll("author"))
+      .toEqual(["Sander"]);
+    expect(requests.at(-1)?.get("page")).toBe("0");
+    await expect(
+      page.getByRole("cell", { name: "Brandon Sanderson", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Limpiar: Autor", exact: true })
+      .click();
+    await expect(author).toHaveValue("");
+    await expect(
+      page.getByRole("cell", { name: "Jane Austen", exact: true }),
+    ).toBeVisible();
+
     for (const text of ["Jane", "George"]) {
       await author.fill(text);
       await author.press("Enter");

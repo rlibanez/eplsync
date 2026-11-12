@@ -929,7 +929,7 @@ export function CleanupJob() {
   const search = useJobItemSearch(
     "book",
     t("downloads.book"),
-    () => setPage(0),
+    setPage,
     undefined,
     can("CATALOG_READ") ? t("catalog.author") : undefined,
   );

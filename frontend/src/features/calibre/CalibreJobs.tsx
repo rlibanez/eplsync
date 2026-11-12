@@ -511,7 +511,7 @@ export function CalibreJobDetail() {
   const itemSearch = useJobItemSearch(
     "file",
     t("calibreSend.file"),
-    () => setPage(0),
+    setPage,
     undefined,
     can("CATALOG_READ") ? t("catalog.author") : undefined,
   );

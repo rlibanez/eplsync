@@ -60,6 +60,12 @@ for (const kind of ["calibre", "downloads-cleanup", "calibre-cleanup"] as const)
       textKey = cleanup ? "book" : "file";
     const text = page.getByRole("textbox", { name: textLabel, exact: true });
     const state = page.getByRole("textbox", { name: "Estado", exact: true });
+    await id.fill("15");
+    await expect.poll(() => requests.at(-1)?.getAll("eplId")).toEqual(["15"]);
+    await page
+      .getByRole("button", { name: "Limpiar: EPL ID", exact: true })
+      .click();
+    await expect(id).toHaveValue("");
     for (const value of ["1", "3"]) {
       await id.fill(value);
       await id.press("Enter");

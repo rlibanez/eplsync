@@ -1,4 +1,5 @@
-import { TagsInput } from "@mantine/core";
+import { useEffect, useState } from "react";
+import { CloseButton, TagsInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { stateOperatorProps } from "../../components/StateOperator";
 import { useBookViewState } from "../catalog/useBookViewState";
@@ -21,10 +22,65 @@ const empty: Search = {
   details: [],
   excludeDetail: false,
 };
+function normalizeEplId(value: string) {
+  const id = value.trim().replace(/^0+/, "");
+  return /^[0-9]{1,19}$/.test(id) && BigInt(id) <= 9223372036854775807n
+    ? id
+    : "";
+}
+
+function useLiveText(
+  setPage: (page: number) => void,
+  normalize = (value: string) => value.trim(),
+) {
+  const [draft, setDraft] = useState("");
+  const [term, setTerm] = useState("");
+  const trimmed = normalize(draft);
+
+  useEffect(() => {
+    if (!trimmed || trimmed === term) return;
+    const timer = window.setTimeout(() => {
+      setTerm(trimmed);
+      setPage(0);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [trimmed, term, setPage]);
+
+  function change(next: string) {
+    setDraft(next);
+    if (!normalize(next) && term) {
+      setTerm("");
+      setPage(0);
+    }
+  }
+
+  return {
+    term,
+    clear: () => change(""),
+    inputProps: (label: string, hasTags: boolean) => ({
+      searchValue: draft,
+      onSearchChange: change,
+      maxLength: 4096,
+      rightSection:
+        draft && !hasTags ? (
+          <CloseButton
+            aria-label={label}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => change("")}
+          />
+        ) : undefined,
+    }),
+  };
+}
+
+function terms(tags: string[], draft: string) {
+  return draft && !tags.includes(draft) ? [...tags, draft] : tags;
+}
+
 export function useJobItemSearch(
   textKey: "book" | "file",
   textLabel: string,
-  resetPage: () => void,
+  setPage: (page: number) => void,
   detailLabel?: string,
   authorLabel?: string,
   separateDetail = false,
@@ -33,28 +89,41 @@ export function useJobItemSearch(
   const [value, setValue] = useBookViewState<Search>("jobItemSearch", empty);
   const change = (next: Search) => {
     setValue(next);
-    resetPage();
+    setPage(0);
   };
+  const liveId = useLiveText(setPage, normalizeEplId);
+  const liveText = useLiveText(setPage);
+  const liveAuthor = useLiveText(setPage);
+  const liveDetail = useLiveText(setPage);
+  const ids = terms(value.ids, liveId.term);
+  const texts = terms(value.texts, liveText.term);
+  const authors = terms(value.authors ?? [], liveAuthor.term);
+  const details = terms(value.details ?? [], liveDetail.term);
+  const clearLabel = (label: string) => `${t("catalog.clear")}: ${label}`;
+
   const params = new URLSearchParams();
-  value.ids.forEach((id) => params.append("eplId", id));
-  value.texts.forEach((text) => params.append(textKey, text));
-  if (value.ids.length && value.excludeIds) params.set("eplIdOperator", "ne");
-  if (value.texts.length && value.excludeText)
-    params.set(`${textKey}Operator`, "ne");
+  ids.forEach((id) => params.append("eplId", id));
+  texts.forEach((text) => params.append(textKey, text));
+  if (ids.length && value.excludeIds) params.set("eplIdOperator", "ne");
+  if (texts.length && value.excludeText) params.set(`${textKey}Operator`, "ne");
   if (authorLabel) {
-    value.authors?.forEach((author) => params.append("author", author));
-    if (value.authors?.length && value.excludeAuthor)
+    authors.forEach((author) => params.append("author", author));
+    if (authors.length && value.excludeAuthor)
       params.set("authorOperator", "ne");
   }
   if (detailLabel) {
-    value.details?.forEach((text) => params.append("detail", text));
-    if (value.details?.length && value.excludeDetail)
+    details.forEach((text) => params.append("detail", text));
+    if (details.length && value.excludeDetail)
       params.set("detailOperator", "ne");
   }
   const detailField = detailLabel && (
     <TagsInput
       label={detailLabel}
       value={value.details ?? []}
+      {...liveDetail.inputProps(
+        clearLabel(detailLabel),
+        !!value.details?.length,
+      )}
       clearable
       splitChars={[]}
       clearButtonProps={{
@@ -77,16 +146,25 @@ export function useJobItemSearch(
   return {
     query: params.toString(),
     detailField,
-    clear: () => change(empty),
+    clear: () => {
+      liveId.clear();
+      liveText.clear();
+      liveAuthor.clear();
+      liveDetail.clear();
+      change(empty);
+    },
     selectAuthor: (author: string) => {
-      if (authorLabel && author.trim())
+      if (authorLabel && author.trim()) {
+        liveAuthor.clear();
         change({ ...value, authors: [author.trim()], excludeAuthor: false });
+      }
     },
     fields: (
       <>
         <TagsInput
           label="EPL ID"
           value={value.ids}
+          {...liveId.inputProps(clearLabel("EPL ID"), !!value.ids.length)}
           clearable
           inputMode="numeric"
           splitChars={[",", ";", " "]}
@@ -109,6 +187,7 @@ export function useJobItemSearch(
         <TagsInput
           label={textLabel}
           value={value.texts}
+          {...liveText.inputProps(clearLabel(textLabel), !!value.texts.length)}
           clearable
           splitChars={[]}
           clearButtonProps={{
@@ -131,6 +210,10 @@ export function useJobItemSearch(
           <TagsInput
             label={authorLabel}
             value={value.authors ?? []}
+            {...liveAuthor.inputProps(
+              clearLabel(authorLabel),
+              !!value.authors?.length,
+            )}
             clearable
             splitChars={[]}
             clearButtonProps={{

@@ -560,7 +560,7 @@ export function JobDetail() {
   const search = useJobItemSearch(
     "book",
     t("downloads.book"),
-    () => setPage(0),
+    setPage,
     t("calibreSend.detail"),
     can("CATALOG_READ") ? t("catalog.author") : undefined,
     true,
