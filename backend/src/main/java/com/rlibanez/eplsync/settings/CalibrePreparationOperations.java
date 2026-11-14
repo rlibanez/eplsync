@@ -13,6 +13,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import com.rlibanez.eplsync.security.*;
 import com.rlibanez.eplsync.events.*;
+import com.rlibanez.eplsync.exception.TorrentBusyException;
 import com.rlibanez.eplsync.exception.UserInputException;
 import com.rlibanez.eplsync.maintenance.MaintenanceGate;
 import com.rlibanez.eplsync.torrent.downloads.DownloadTrackingService;
@@ -123,6 +124,10 @@ public class CalibrePreparationOperations {
                     var existing=catalog.existing(request);
                     if(existing!=null) {complete(id,existing.id());return;}
                     if(request.books().stream().anyMatch(Objects::isNull) || new HashSet<>(request.books().stream().map(book -> Objects.requireNonNull(book).eplId()).toList()).size()!=request.books().size() || request.pending().stream().anyMatch(Objects::isNull) || new HashSet<>(request.pending()).size()!=request.pending().size() || !request.books().stream().map(book -> Objects.requireNonNull(book).eplId()).collect(java.util.stream.Collectors.toSet()).containsAll(request.pending())) throw new UserInputException("Selección de libros pendientes inválida");
+                    // Refresh before staging, outside the batch transaction. A saved cursor means
+                    // subsequent batches can use the local records, including after recovery.
+                    catalog.refreshTorrentState(request.books());
+                    requireActive(id);
                 }
                 if(cursor>=request.books().size()) {activate(id,request);return;}
                 int end=Math.min(cursor+500,request.books().size());var books=request.books().subList(cursor,end);var ids=books.stream().map(book -> Objects.requireNonNull(book).eplId()).collect(java.util.stream.Collectors.toSet());
@@ -139,7 +144,7 @@ public class CalibrePreparationOperations {
                     log.debug("Preparación de Calibre interrumpida al detener la aplicación; se retomará desde el último lote confirmado: operación={}",id);
                     return;
                 }
-                if(ex instanceof CalibreTransfers.OperationBusy || ex instanceof CalibreClient.TransientFailure || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) {
+                if(ex instanceof TorrentBusyException || ex instanceof CalibreTransfers.OperationBusy || ex instanceof CalibreClient.TransientFailure || com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) {
                     jdbc.update("UPDATE calibre_preparation_operations SET state='QUEUED',phase='WAITING',message='Esperando automáticamente a que la operación en curso termine',updated_at=? WHERE id=? AND state IN ('QUEUED','RUNNING')",Instant.now().toEpochMilli(),id);
                     log.debug("Preparación de Calibre aplazada sin repetir lotes: operación={}, tipo={}",id,ex.getClass().getSimpleName());
                 } else {

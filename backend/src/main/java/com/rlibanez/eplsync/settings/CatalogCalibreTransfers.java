@@ -55,7 +55,7 @@ public class CatalogCalibreTransfers {
         var books=books(selection.filters());
         if(books.isEmpty()) throw new UserInputException("Selecciona libros del catálogo");
         CalibrePreparationContext.update("TORRENT_STATE",0,books.size());
-        if(Permission.has(Permission.TORRENT_SYNC)) dependencies.refresh(books.stream().map(book -> Objects.requireNonNull(book).eplId()).toList());
+        if (!CalibrePreparationContext.staged()) refreshTorrentState(books);
         CalibrePreparationContext.update("TORRENT_STATE",books.size(),books.size());
         CalibrePreparationContext.update("CALIBRE_CONNECTION",0,books.size());
         var connection=settings.connection();var check=client.check(connection);
@@ -99,6 +99,11 @@ public class CatalogCalibreTransfers {
         catch(java.security.NoSuchAlgorithmException ex) {throw new IllegalStateException(ex);}
     }
     public CalibreTransfers.Job create(Request request) {return create(request,id->{});}
+    void refreshTorrentState(List<Book> books) {
+        if (Permission.has(Permission.TORRENT_SYNC))
+            dependencies.refresh(books.stream().map(book -> Objects.requireNonNull(book).eplId()).toList());
+    }
+
     CalibreTransfers.Job createStagedBatch(Request request,java.util.function.Consumer<String> stage) {return create(request,stage);}
     private CalibreTransfers.Job create(Request request,java.util.function.Consumer<String> stage) {
         require();

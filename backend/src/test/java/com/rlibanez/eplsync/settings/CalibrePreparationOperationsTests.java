@@ -119,8 +119,50 @@ class CalibrePreparationOperationsTests {
         instance=tracking.instanceId();var rows=new ArrayList<Object[]>();for(long n=1;n<=1501;n++)rows.add(new Object[]{"available-"+n,n,String.format("%040X",n),instance});
         jdbc.batchUpdate("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES(?,?,1,?,'qbittorrent',?,'DOWNLOADED','EPLSYNC',0)",rows);
         var original=request("already-downloaded",1501);var request=new CatalogCalibreTransfers.Request(original.id(),original.library(),original.books(),List.of(),false,original.pending());operations.send(request);
-        for(int n=0;n<6 && !operations.status(request.id()).state().equals("COMPLETED");n++)operations.cycle();
-        assertThat(operations.status(request.id()).state()).isEqualTo("COMPLETED");assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class)).isZero();assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items",Integer.class)).isEqualTo(1501);verify(files,never()).list(anyString());
+        var adapter = mock(com.rlibanez.eplsync.torrent.TorrentClient.class);
+        var remote = java.util.stream.LongStream.rangeClosed(1, 1501)
+                .mapToObj(n -> new com.rlibanez.eplsync.torrent.downloads.RemoteTorrent(
+                        String.format("%040X", n), com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADED,
+                        null, Set.of(), "/downloads/book.epub")).toList();
+        when(adapter.listTorrents()).thenReturn(remote);
+        var attempts = new java.util.concurrent.atomic.AtomicInteger();
+        when(torrentClient.exclusiveClient(any())).thenAnswer(call -> {
+            if (attempts.getAndIncrement() == 0) throw new com.rlibanez.eplsync.exception.TorrentBusyException();
+            java.util.function.Function<com.rlibanez.eplsync.torrent.TorrentClient, ?> refresh = call.getArgument(0);
+            return refresh.apply(adapter);
+        });
+
+        operations.cycle();
+        assertThat(operations.status(request.id()).phase()).isEqualTo("WAITING");
+        assertThat(operations.status(request.id()).processed()).isZero();
+        operations.cycle();
+        assertThat(operations.status(request.id()).processed()).isEqualTo(500);
+        String job = jdbc.queryForObject("SELECT id FROM calibre_jobs", String.class);
+
+        var check = new CalibreClient.Check(true, List.of(new CalibreClient.Library("main", "Main")), "main");
+        when(client.check(any())).thenThrow(new com.rlibanez.eplsync.exception.TorrentBusyException()).thenReturn(check);
+        operations.cycle();
+        assertThat(operations.status(request.id()).phase()).isEqualTo("WAITING");
+        assertThat(operations.status(request.id()).processed()).isEqualTo(500);
+        assertThat(transfers.job(job).state()).isEqualTo("PAUSED");
+
+        operations.recover();
+        for (int n = 0; n < 6 && !operations.status(request.id()).state().equals("COMPLETED"); n++)
+            operations.cycle();
+        operations.send(request);
+        operations.cycle();
+
+        assertThat(operations.status(request.id()).state()).isEqualTo("COMPLETED");
+        assertThat(transfers.job(job).state()).isEqualTo("QUEUED");
+        assertThat(jdbc.queryForList("SELECT id FROM calibre_jobs", String.class)).containsExactly(job);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items", Integer.class)).isEqualTo(1501);
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT epl_id) FROM calibre_job_items", Integer.class)).isEqualTo(1501);
+        verify(adapter, times(1)).listTorrents();
+        verify(torrentClient, times(2)).exclusiveClient(any());
+        verify(torrentClient, never()).addTorrent(any(), any());
+        verify(client, never()).uploadEpub(any(), any(), anyString(), anyString());
+        verify(files, never()).list(anyString());
     }
     @Test void revokedPermissionsPreventActivationOfPartlyPreparedJobs() {
         seed(1001);var request=request("revoked",1001);operations.send(request);operations.cycle();
