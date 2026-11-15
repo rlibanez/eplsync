@@ -1248,11 +1248,76 @@ class CalibreTransfersTests {
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
     }
 
-    @Test void shutdownStopsTheBoundedBatchBeforeAnotherCycleStarts() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"continue", "pause", "cancel"})
+    void scheduledWorkerChecksJobStateBetweenVerifiedUploads(String action) throws Exception {
+        var job = create();
+        String first = transfers.items(job.id(), 0, 20, List.of("position,asc")).items().getFirst().id();
+        String second = UUID.randomUUID().toString();
+        String secondRecord = UUID.randomUUID().toString();
+        byte[] secondBook = epub(2, "1.1");
+        jdbc.update("""
+                INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state)
+                VALUES(?,?,1,?,0,'second.epub',?,2,'1.1','PENDING')
+                """, second, job.id(), secondRecord, secondBook.length);
+        when(files.download(secondRecord, 0)).thenAnswer(call -> new EpubFiles.Opened(
+                "second.epub", secondBook.length, new java.io.ByteArrayInputStream(secondBook)));
+        when(client.uploadEpub(any(), any(), eq("second.epub"), eq(second))).thenAnswer(call -> {
+            assertThat(jdbc.queryForObject("SELECT state FROM calibre_job_items WHERE id=?", String.class, first))
+                    .isEqualTo("ACCEPTED");
+            return 10L;
+        });
+        when(client.book(any(), eq(10L))).thenReturn(new CalibreClient.Book(
+                10, "Second", List.of("Author"), 2L, new BigDecimal("1.1"), true));
+
+        var verifying = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        doAnswer(call -> {
+            verifying.countDown();
+            assertThat(release.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            return true;
+        }).when(client).hasEpub(any(), eq(9L));
+
+        var worker = new CalibreTransfers(jdbc,
+                context.getBean(org.springframework.transaction.PlatformTransactionManager.class),
+                settings, client, catalog, files, downloads, tracking, torrentProperties, accounts,
+                context.getBean(EventJournal.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(worker, "enabled", true);
+        try {
+            worker.schedule();
+            assertThat(verifying.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            verify(client, never()).uploadEpub(any(), any(), eq("second.epub"), eq(second));
+            if ("continue".equals(action)) {
+                // The second item must run in this dispatch even after the old one-second budget.
+                Thread.sleep(1100);
+            } else worker.control(job.id(), action);
+            release.countDown();
+
+            var busy = (java.util.concurrent.atomic.AtomicBoolean)
+                    org.springframework.test.util.ReflectionTestUtils.getField(worker, "busy");
+            long deadline = System.nanoTime() + java.time.Duration.ofSeconds(5).toNanos();
+            while (busy.get() && System.nanoTime() < deadline) Thread.sleep(10);
+            assertThat(busy.get()).isFalse();
+            assertThat(worker.job(job.id()).accepted()).isEqualTo("continue".equals(action) ? 2 : 1);
+            assertThat(worker.job(job.id()).state()).isEqualTo(switch (action) {
+                case "pause" -> "PAUSED";
+                case "cancel" -> "CANCELLED";
+                default -> "COMPLETED";
+            });
+            verify(client).uploadEpub(any(), any(), eq("book.epub"), eq(first));
+            verify(client, times("continue".equals(action) ? 1 : 0))
+                    .uploadEpub(any(), any(), eq("second.epub"), eq(second));
+        } finally {
+            release.countDown();
+            worker.close();
+        }
+    }
+
+    @Test void shutdownStopsTheWorkerBeforeAnotherCycleStarts() throws Exception {
         var isolated=spy(new CalibreTransfers(jdbc,context.getBean(org.springframework.transaction.PlatformTransactionManager.class),settings,client,catalog,files,downloads,tracking,torrentProperties,accounts,context.getBean(EventJournal.class)));
         org.springframework.test.util.ReflectionTestUtils.setField(isolated,"enabled",true);
         var entered=new java.util.concurrent.CountDownLatch(1);var release=new java.util.concurrent.CountDownLatch(1);
-        doAnswer(call->{entered.countDown();if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Test timeout");return null;}).when(isolated).cycle();
+        doAnswer(call->{entered.countDown();if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Test timeout");return true;}).when(isolated).cycle();
         try(var executor=java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
             isolated.schedule();assertThat(entered.await(5,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
             var closing=executor.submit(isolated::close);
