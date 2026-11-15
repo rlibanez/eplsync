@@ -643,19 +643,26 @@ public class CalibreTransfers {
     private void process(String job,Map<String,Object> config,EventContext.Actor actor,CalibreSettings.Connection connection,Item item) {
         String format=BookFormats.extension(item.name());boolean epub=format.equals("epub");
         Path temp=null;boolean sending=false;Long remoteId=item.calibreId()==null?acceptedRemoteIds.get(item.id()):item.calibreId();String metadataNotice="";
+        Long readMs = null, importMs = null;
+        long verificationStarted = 0;
+        Long verificationMs = null;
         try {
             if(item.state().equals("UNCERTAIN")) {
+                verificationStarted = System.nanoTime();
                 var observed=expectedIdentity(item.id());
                 remoteId=remoteId==null && item.identityComplete() && observed.eplId()!=null && observed.revision()!=null ? (epub?client.findRevision(connection,observed.eplId(),observed.revision()):client.findBookRevision(connection,observed.eplId(),observed.revision())) : remoteId;
                 if(remoteId==null) {pause(job,actor,"El envío anterior no está confirmado. Comprueba Calibre; no se repetirá automáticamente");return;}
                 publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"ACCEPTED",remoteId,"Envío anterior verificado"+revisionNotice(item,observed));return;
             }
+            long readStarted = System.nanoTime();
             temp=Files.createTempFile("eplsync-calibre-send-","."+format);
             try(var input=epub?files.download(item.recordId(),item.index()):files.downloadBook(item.recordId(),item.index());var output=Files.newOutputStream(temp)) {
                 if(input.size()!=item.size() || !input.name().equals(item.name())) throw new UserInputException("El archivo de origen cambió; prepara de nuevo el envío");
                 byte[] buffer=new byte[65536];long total=0,deadline=System.nanoTime()+Duration.ofMinutes(1).toNanos();int count;
                 while((count=input.stream().read(buffer))!=-1) { total+=count;if(total>268435456 || total>item.size() || System.nanoTime()>deadline || Thread.currentThread().isInterrupted()) throw new UserInputException("El EPUB supera el tamaño o tiempo permitido");output.write(buffer,0,count); }
                 if(total!=item.size()) throw new UserInputException("El archivo de origen cambió durante la lectura");
+            } finally {
+                readMs = elapsedMillis(readStarted);
             }
             if(!epub) BookFormats.validate(temp,format);
             var identity=epub?CalibreEpubMetadata.read(temp):new CalibreEpubMetadata.Identity(null,null);
@@ -701,17 +708,26 @@ public class CalibreTransfers {
                 return acquired;
             });if(!Boolean.TRUE.equals(claimed)) return;
             sending=true;
-            if(remoteId!=null) {
-                if(!client.addFormat(connection,remoteId,temp,item.name(),targetUuid)) {
-                    jdbc.update("UPDATE calibre_job_items SET file_sha256=NULL WHERE id=?",item.id());
-                    publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"SKIPPED",remoteId,"El formato ya existe en Calibre; no se ha sobrescrito");return;
-                }
-            } else remoteId=epub?client.uploadEpub(connection,temp,item.name(),item.id()):client.uploadBook(connection,temp,item.name(),item.id());
+            boolean imported = true;
+            long importStarted = System.nanoTime();
+            try {
+                if (remoteId != null) imported = client.addFormat(connection, remoteId, temp, item.name(), targetUuid);
+                else remoteId = epub ? client.uploadEpub(connection, temp, item.name(), item.id())
+                        : client.uploadBook(connection, temp, item.name(), item.id());
+            } finally {
+                importMs = elapsedMillis(importStarted);
+            }
+            verificationStarted = System.nanoTime();
+            if (!imported) {
+                jdbc.update("UPDATE calibre_job_items SET file_sha256=NULL WHERE id=?",item.id());
+                publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"SKIPPED",remoteId,"El formato ya existe en Calibre; no se ha sobrescrito");return;
+            }
             acceptedRemoteIds.put(item.id(),remoteId);
             jdbc.update("UPDATE calibre_job_items SET calibre_id=? WHERE id=?",remoteId,item.id());
             publish(connection,client.book(connection,remoteId),item);
             finish(job,actor,item,"ACCEPTED",remoteId,metadataNotice.isEmpty()?"EPUB enviado y verificado":metadataNotice);
         } catch(Exception ex) {
+            if (verificationStarted != 0) verificationMs = elapsedMillis(verificationStarted);
             if(!sending && cancelledItem(item.id())) return;
             if(!sending && item.state().equals("PENDING") && ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) {postponeFileCheck(job,item);return;}
             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) {
@@ -733,7 +749,16 @@ public class CalibreTransfers {
                 pause(job,actor,sending ? "Calibre rechazó el envío; revisa permisos de escritura y conexión" : "No se puede consultar Calibre; revisa la conexión");
                 if(sending) jdbc.update("UPDATE calibre_job_items SET state=CASE WHEN (SELECT state FROM calibre_jobs WHERE id=?)='CANCELLED' OR cancelled_by_download_job_id IS NOT NULL THEN 'CANCELLED' ELSE 'PENDING' END WHERE id=?",job,item.id());
             } else finish(job,actor,item,"FAILED",remoteId,ex instanceof UserInputException || ex instanceof com.rlibanez.eplsync.exception.TorrentOperationException ? ex.getMessage() : OperationDiagnostics.reason(ex,"No se pudo preparar o enviar el EPUB; consulta el diagnóstico del servidor con el ID de este trabajo"));
-        } finally {if(temp!=null) try { Files.deleteIfExists(temp); }catch(java.io.IOException ex) {log.warn("No se pudo eliminar un archivo temporal de envío a Calibre");}}
+        } finally {
+            if (verificationStarted != 0 && verificationMs == null) verificationMs = elapsedMillis(verificationStarted);
+            log.debug("Tiempos de envío a Calibre: trabajo={}, elemento={}, EPL ID={}, lecturaMs={}, importacionMs={}, verificacionMs={}",
+                    job, item.id(), item.eplId(), readMs, importMs, verificationMs);
+            if(temp!=null) try { Files.deleteIfExists(temp); }catch(java.io.IOException ex) {log.warn("No se pudo eliminar un archivo temporal de envío a Calibre");}
+        }
+    }
+
+    private static long elapsedMillis(long started) {
+        return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
     }
     CalibreEpubMetadata.Identity expectedIdentity(String item) {
         var row=jdbc.queryForMap("SELECT epl_id,revision,epub_identity FROM calibre_job_items WHERE id=?",item);

@@ -837,6 +837,36 @@ class CalibreTransfersTests {
         verify(client,times(1)).findRevision(any(),anyLong(),any());
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
     }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void logsSeparateDebugTimingsForAttemptedTransferPhases(boolean uploadConfirmed) {
+        var job = create();
+        if (!uploadConfirmed) {
+            when(client.uploadEpub(any(), any(), anyString(), anyString()))
+                    .thenThrow(new CalibreClient.UnconfirmedUpload());
+        }
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(CalibreTransfers.class);
+        var previousLevel = logger.getLevel();
+        var capture = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        capture.start();
+        logger.addAppender(capture);
+        try {
+            logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+            transfers.cycle();
+            assertThat(capture.list.stream().filter(event -> event.getMessage().startsWith("Tiempos de envío a Calibre")))
+                    .singleElement().satisfies(event -> {
+                        assertThat(event.getLevel()).isEqualTo(ch.qos.logback.classic.Level.DEBUG);
+                        assertThat(event.getFormattedMessage()).contains("trabajo=" + job.id(), "EPL ID=1")
+                                .matches(".*lecturaMs=[0-9]+, importacionMs=[0-9]+, verificacionMs="
+                                        + (uploadConfirmed ? "[0-9]+" : "null"));
+                    });
+        } finally {
+            logger.detachAppender(capture);
+            logger.setLevel(previousLevel);
+            capture.stop();
+        }
+    }
+
     @Test void busyTorrentDefersOnlyItsBookAndResumesAfterRecoveryWithoutDuplicates() throws Exception {
         var job = create();
         String first = transfers.items(job.id(), 0, 20, List.of("position,asc")).items().getFirst().id();
