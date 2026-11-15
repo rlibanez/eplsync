@@ -188,7 +188,6 @@ public class CalibreUpdateFlow {
     void postponeDownloadCheck(String job) {
         long now=Instant.now().toEpochMilli();
         long next=now+internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE).toMillis();
-        jdbc.update("UPDATE calibre_jobs SET next_check=? WHERE id=? AND state IN ('QUEUED','RUNNING')",next,job);
         jdbc.update("UPDATE calibre_job_items SET next_check=? WHERE job_id=? AND state='WAITING_DOWNLOAD' AND next_check<=?",next,job,now);
     }
     boolean waiting(String job,CalibreTransfers.Item item) {

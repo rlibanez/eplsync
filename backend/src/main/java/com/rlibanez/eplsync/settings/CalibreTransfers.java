@@ -345,7 +345,7 @@ public class CalibreTransfers {
             var j=job(id);if(j.state().equals("COMPLETED") || j.state().equals("CANCELLED") && !(command.equals("resume") && j.uncertain()>0)) throw new UserInputException("El trabajo ya ha finalizado");
             String next=command.equals("pause") ? "PAUSED" : command.equals("resume") ? "QUEUED" : "CANCELLED";
             jdbc.update("UPDATE calibre_jobs SET state=?,message=NULL,next_check=0,next_probe=0,updated_at=? WHERE id=?",next,Instant.now().toString(),id);
-            if(command.equals("resume")) jdbc.update("UPDATE calibre_job_items SET transient_attempts=0,next_check=0 WHERE job_id=? AND state IN ('PENDING','UNCERTAIN','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','CLEANUP_PENDING')",id);
+            if(command.equals("resume")) jdbc.update("UPDATE calibre_job_items SET transient_attempts=0,torrent_busy_attempts=0,next_check=0 WHERE job_id=? AND state IN ('PENDING','UNCERTAIN','WAITING_DOWNLOAD','BLOCKED_DOWNLOAD','CLEANUP_PENDING')",id);
             if(command.equals("resume")) jdbc.update("UPDATE calibre_job_items SET state='WAITING_DOWNLOAD',next_check=0,wait_until=? WHERE job_id=? AND state='BLOCKED_DOWNLOAD'",Instant.now().plus(Duration.ofDays(30)).toEpochMilli(),id);
             if(command.equals("resume") && jdbc.queryForObject("SELECT count(*) FROM job_retry_items r JOIN calibre_job_items i ON i.id=r.source_item_id WHERE r.kind='calibre' AND r.parent_id=? AND i.state='UNCERTAIN'",Long.class,id)>0)
                 throw new UserInputException("Hay envíos inciertos transferidos a un reintento; continúa desde ese trabajo");
@@ -469,9 +469,37 @@ public class CalibreTransfers {
         try {return work.get();} finally {lifecycle.writeLock().unlock();}
     }
     private void postponeDownloads(String job) {
-        updates.postponeDownloadCheck(job);
+        tx.executeWithoutResult(status -> {
+            updates.postponeDownloadCheck(job);
+            updateNextCheck(job);
+        });
         log.debug("Comprobación de descargas de Calibre aplazada: trabajo={}, cliente torrent ocupado; se comprobará en el siguiente intervalo",job);
     }
+    private void postponeFileCheck(String job, Item item) {
+        tx.executeWithoutResult(status -> {
+            int updated = jdbc.update("""
+                UPDATE calibre_job_items
+                SET next_check=? + 1000 * (5 << min(torrent_busy_attempts, 4)),
+                    torrent_busy_attempts=min(torrent_busy_attempts+1, 5),
+                    message='Cliente torrent ocupado; se reintentará automáticamente'
+                WHERE id=? AND job_id=? AND state='PENDING'
+                """, Instant.now().toEpochMilli(), item.id(), job);
+            if (updated == 1) updateNextCheck(job);
+        });
+        log.debug("Comprobación de archivo aplazada: trabajo={}, elemento={}, EPL ID={}, cliente torrent ocupado",
+                job, item.id(), item.eplId());
+    }
+
+    private void updateNextCheck(String job) {
+        jdbc.update("""
+            UPDATE calibre_jobs SET next_check=coalesce((
+                SELECT min(next_check) FROM calibre_job_items
+                WHERE job_id=? AND state IN ('PENDING','UNCERTAIN','WAITING_DOWNLOAD','CLEANUP_PENDING')
+            ),0)
+            WHERE id=? AND state IN ('QUEUED','RUNNING')
+            """, job, job);
+    }
+
     private void pause(String id,EventContext.Actor actor,String message) {
         tx.executeWithoutResult(s -> { if(jdbc.update("UPDATE calibre_jobs SET state='PAUSED',message=?,updated_at=? WHERE id=? AND state IN ('QUEUED','RUNNING')",message,Instant.now().toString(),id)>0) event(actor,id,"CALIBRE_SEND",EventJournal.Outcome.PAUSED,Map.of("reason",message)); });
     }
@@ -501,7 +529,7 @@ public class CalibreTransfers {
             jdbc.update("UPDATE calibre_jobs SET state='RUNNING',message=NULL,updated_at=? WHERE id=? AND state='QUEUED'",Instant.now().toString(),id);
             var pending=jdbc.query("SELECT * FROM calibre_job_items WHERE job_id=? AND state IN ('PENDING','UNCERTAIN','WAITING_DOWNLOAD','CLEANUP_PENDING') AND next_check<=? ORDER BY CASE WHEN state='WAITING_DOWNLOAD' THEN 2 WHEN state='UNCERTAIN' THEN 0 ELSE 1 END,position LIMIT 1",CalibreTransfers::mapItem,id,Instant.now().toEpochMilli());
             if(pending.isEmpty()) {
-                jdbc.update("UPDATE calibre_jobs SET next_check=coalesce((SELECT min(next_check) FROM calibre_job_items WHERE job_id=? AND state IN ('PENDING','UNCERTAIN','WAITING_DOWNLOAD','CLEANUP_PENDING')),0) WHERE id=?",id,id);
+                updateNextCheck(id);
                 complete(id,actor);return;
             }
             var item=pending.getFirst();
@@ -608,7 +636,7 @@ public class CalibreTransfers {
                 }
                 jdbc.update("UPDATE calibre_job_items SET next_check=?,message=? WHERE id=? AND state<>'CANCELLED'",Instant.now().plusSeconds(5L<<Math.min(attempts-1,2)).toEpochMilli(),reason+"; reintento automático "+attempts+" de 3",item.id());
             }
-            jdbc.update("UPDATE calibre_jobs SET next_check=coalesce((SELECT min(next_check) FROM calibre_job_items WHERE job_id=? AND state IN ('PENDING','UNCERTAIN','WAITING_DOWNLOAD','CLEANUP_PENDING')),0) WHERE id=?",job,job);
+            updateNextCheck(job);
         });
         log.debug("Operación de Calibre aplazada: trabajo={}, elemento={}, causa={}",job,item.id(),OperationDiagnostics.technical(failure));
     }
@@ -685,7 +713,7 @@ public class CalibreTransfers {
             finish(job,actor,item,"ACCEPTED",remoteId,metadataNotice.isEmpty()?"EPUB enviado y verificado":metadataNotice);
         } catch(Exception ex) {
             if(!sending && cancelledItem(item.id())) return;
-            if(!sending && item.state().equals("PENDING") && ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) {postponeDownloads(job);return;}
+            if(!sending && item.state().equals("PENDING") && ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) {postponeFileCheck(job,item);return;}
             if(com.rlibanez.eplsync.ordering.SqliteContention.isBusy(ex)) {
                 log.debug("Resultado de Calibre pendiente de persistencia: elemento={}",item.id());return;
             }
@@ -778,7 +806,7 @@ public class CalibreTransfers {
                 if(state(job).equals("CANCELLED")) detail+=". Limpieza de revisiones anteriores cancelada";
                 else {next="CLEANUP_PENDING";jdbc.update("UPDATE calibre_job_items SET completion_state=? WHERE id=?",state,item.id());detail+=". Limpieza de revisiones anteriores pendiente";}
             }
-            jdbc.update("UPDATE calibre_job_items SET state=?,calibre_id=?,message=?,transient_attempts=0,next_check=0 WHERE id=?",next,calibreId,detail,item.id());
+            jdbc.update("UPDATE calibre_job_items SET state=?,calibre_id=?,message=?,transient_attempts=0,torrent_busy_attempts=0,next_check=0 WHERE id=?",next,calibreId,detail,item.id());
             jdbc.update("UPDATE calibre_jobs SET updated_at=? WHERE id=?",Instant.now().toString(),job);
             event(actor,item.id(),"CALIBRE_SEND_FILE",state.equals("UNCERTAIN")?EventJournal.Outcome.PAUSED:state.equals("FAILED")?EventJournal.Outcome.FAILED:EventJournal.Outcome.SUCCEEDED,Map.of("eplId",item.eplId(),"revision",item.revision(),"state",state,"reason",detail,"itemId",item.id(),"jobId",job));
         });

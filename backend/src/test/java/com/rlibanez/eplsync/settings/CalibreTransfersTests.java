@@ -837,20 +837,58 @@ class CalibreTransfersTests {
         verify(client,times(1)).findRevision(any(),anyLong(),any());
         verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
     }
-    @Test void busyTorrentWhileOpeningAReadyEpubDefersWithoutFailingOrUploadingTwice() {
-        var job=create();
-        when(files.download(record,0)).thenThrow(new com.rlibanez.eplsync.exception.TorrentBusyException());
+    @Test void busyTorrentDefersOnlyItsBookAndResumesAfterRecoveryWithoutDuplicates() throws Exception {
+        var job = create();
+        String first = transfers.items(job.id(), 0, 20, List.of("position,asc")).items().getFirst().id();
+        String second = UUID.randomUUID().toString();
+        String secondRecord = UUID.randomUUID().toString();
+        byte[] secondBook = epub(2, "1.1");
+        jdbc.update("""
+                INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state)
+                VALUES(?,?,1,?,1,'second.epub',?,2,'1.1','PENDING')
+                """, second, job.id(), secondRecord, secondBook.length);
+        when(files.download(secondRecord, 1)).thenAnswer(call -> new EpubFiles.Opened(
+                "second.epub", secondBook.length, new java.io.ByteArrayInputStream(secondBook)));
+        when(client.uploadEpub(any(), any(), eq("second.epub"), eq(second))).thenReturn(10L);
+        when(client.book(any(), eq(10L))).thenReturn(new CalibreClient.Book(
+                10, "Second", List.of("Author"), 2L, new BigDecimal("1.1"), true));
+        when(files.download(record, 0)).thenThrow(new com.rlibanez.eplsync.exception.TorrentBusyException());
+
         transfers.cycle();
-        assertThat(transfers.job(job.id()).state()).isEqualTo("RUNNING");
-        assertThat(transfers.items(job.id(),0,20,List.of("position,asc")).items().getFirst().state()).isEqualTo("PENDING");
+        long due = jdbc.queryForObject("SELECT next_check FROM calibre_job_items WHERE id=?", Long.class, first);
+        assertThat(due).isGreaterThan(Instant.now().toEpochMilli());
         assertThat(transfers.job(job.id()).failed()).isZero();
-        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
-        doAnswer(call -> new EpubFiles.Opened("book.epub",bytes.length,new java.io.ByteArrayInputStream(bytes))).when(files).download(record,0);
-        jdbc.update("UPDATE calibre_jobs SET next_check=0 WHERE id=?",job.id());
-        transfers.cycle();transfers.cycle();
+        verify(client, never()).uploadEpub(any(), any(), anyString(), anyString());
+
+        // Freeze the due time so execution speed cannot make the first book eligible during this check.
+        jdbc.update("UPDATE calibre_job_items SET next_check=? WHERE id=?", Long.MAX_VALUE, first);
+        transfers.recoverInterrupted();
+        transfers.cycle();
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(1);
+        verify(client).uploadEpub(any(), any(), eq("second.epub"), eq(second));
+        verify(client, never()).uploadEpub(any(), any(), anyString(), eq(first));
+        assertThat(jdbc.queryForObject("SELECT next_check FROM calibre_job_items WHERE id=?", Long.class, first))
+                .isEqualTo(Long.MAX_VALUE);
+
+        jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE id=?", first);
+        transfers.cycle();
+        long secondDue = jdbc.queryForObject("SELECT next_check FROM calibre_job_items WHERE id=?", Long.class, first);
+        assertThat(secondDue).isGreaterThan(Instant.now().plusSeconds(5).toEpochMilli());
+        assertThat(jdbc.queryForObject("SELECT next_check FROM calibre_jobs WHERE id=?", Long.class, job.id()))
+                .isEqualTo(secondDue);
+
+        doAnswer(call -> new EpubFiles.Opened("book.epub", bytes.length, new java.io.ByteArrayInputStream(bytes)))
+                .when(files).download(record, 0);
+        jdbc.update("UPDATE calibre_job_items SET next_check=0 WHERE id=?", first);
+        jdbc.update("UPDATE calibre_jobs SET next_check=0 WHERE id=?", job.id());
+        transfers.cycle();
+        transfers.cycle();
         assertThat(transfers.job(job.id()).state()).isEqualTo("COMPLETED");
-        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        assertThat(transfers.job(job.id()).accepted()).isEqualTo(2);
+        verify(client).uploadEpub(any(), any(), eq("book.epub"), eq(first));
+        verify(client, times(2)).uploadEpub(any(), any(), anyString(), anyString());
     }
+
     @Test void restartContinuesActivePendingWorkWithoutResubmittingCompletedItems() {
         var job=create();
         jdbc.update("UPDATE calibre_jobs SET state='RUNNING',next_check=? WHERE id=?",Long.MAX_VALUE,job.id());
