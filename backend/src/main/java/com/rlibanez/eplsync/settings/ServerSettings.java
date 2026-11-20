@@ -59,6 +59,7 @@ public class ServerSettings {
         add("torrent", "torrent.enabled", "boolean", t.isEnabled());
         add("torrent", "torrent.client", "client", t.getClient());
         add("torrent", "torrent.base-url", "text", t.getBaseUrl());
+        add("torrent", "torrent.browser-url", "text", t.getBrowserUrl());
         add("torrent", "torrent.connect-timeout", "duration", t.getConnectTimeout());
         add("torrent", "torrent.request-timeout", "duration", t.getRequestTimeout());
         add("torrent", "torrent.trackers", "list", t.getTrackers());
@@ -269,6 +270,13 @@ public class ServerSettings {
             String url = (String) merged.get("catalog.zip-url");
             com.rlibanez.eplsync.importer.FileDownloader.validateUrl(url);
             // Validate even while disabled, so enabling later cannot publish invalid options.
+            t.setBrowserUrl(t.getBrowserUrl().trim());
+            if (!t.getBrowserUrl().isEmpty()) {
+                var browser = java.net.URI.create(t.getBrowserUrl());
+                if (!java.util.Set.of("http", "https").contains(browser.getScheme())
+                        || browser.getHost() == null || browser.getRawUserInfo() != null)
+                    throw new com.rlibanez.eplsync.exception.UserInputException("La URL del navegador debe ser HTTP o HTTPS y no incluir credenciales.");
+            }
             boolean enabled = t.isEnabled(); t.setEnabled(true); t.validate(); t.setEnabled(enabled);
             if (!t.getClient().equals(installation.get("torrent.client"))) throw new com.rlibanez.eplsync.exception.UserInputException("El tipo de cliente torrent debe coincidir con el configurado en la instalación.");
             if (enabled && t.getClient().equals("qbittorrent")) {

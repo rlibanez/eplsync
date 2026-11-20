@@ -31,6 +31,19 @@ class ServerSettingsTests {
     @Autowired Environment env;
     @Autowired PlatformTransactionManager manager;
     @AfterEach void restore() { for (String section : new String[]{"torrent","covers","catalog","events"}) settings.restore(section); }
+    @Test void browserUrlIsOptionalPersistedAndValidated() {
+        assertThat(torrent.getBrowserUrl()).isEmpty();
+        settings.save("torrent", Map.of("torrent.browser-url", "https://torrent.example.org/web/"));
+        assertThat(torrent.getBrowserUrl()).isEqualTo("https://torrent.example.org/web/");
+        assertThat(reload(TEST_KEY).snapshot().torrent().getBrowserUrl()).isEqualTo(torrent.getBrowserUrl());
+        for (String invalid : new String[]{"javascript:alert(1)", "/relative", "https://user:password@example.org"}) {
+            assertThatThrownBy(() -> settings.save("torrent", Map.of("torrent.browser-url", invalid)))
+                    .isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
+        }
+        settings.save("torrent", Map.of("torrent.browser-url", ""));
+        assertThat(torrent.getBrowserUrl()).isEmpty();
+    }
+
     @Test void persistsAndRestoresDownloadFolderMappings() {
         settings.save("torrent",Map.of("torrent.files.remote-root","/downloads","torrent.files.local-root","/app/downloads"));
         assertThat(torrent.getFiles().getRemoteRoot()).isEqualTo("/downloads");

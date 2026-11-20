@@ -15,7 +15,7 @@ import { SelectAllRows } from "../../components/SelectAllRows";
 import { CalibreSendProvider, SendToCalibre } from "../calibre/SendToCalibre";
 import { DownloadActions } from "./DownloadActions";
 import { TableAction } from "../../components/TableAction";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { ExternalLink, RefreshCw, Trash2 } from "lucide-react";
 import { EpubBatchDownload } from "./EpubBatchDownload";
 import { EpubDownload } from "./EpubDownload";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
@@ -168,6 +168,12 @@ function DownloadHistory() {
     }
   params.set("page", String(page));
   params.set("size", String(size));
+  const browserLink = useQuery({
+    queryKey: ["downloads", "browser-link"],
+    queryFn: ({ signal }) =>
+      get<{ url: string }>("/torrent/downloads/browser-link", signal),
+    enabled: auth.can("TORRENT_SYNC"),
+  });
   const syncState = useQuery({
     queryKey: ["downloads", "sync-state"],
     queryFn: ({ signal }) =>
@@ -276,6 +282,18 @@ function DownloadHistory() {
           />
           {auth.can("TORRENT_SYNC") && (
             <div className="action-row">
+              {browserLink.data?.url && (
+                <Button
+                  component="a"
+                  href={browserLink.data.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="light"
+                  leftSection={<ExternalLink size={16} />}
+                >
+                  {t("downloads.openClient")}
+                </Button>
+              )}
               <CleanupLauncher source="downloads" selected={selected} />
               {auth.can("CATALOG_READ") && (
                 <Button

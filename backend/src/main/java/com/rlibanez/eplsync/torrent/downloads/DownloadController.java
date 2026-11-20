@@ -17,6 +17,11 @@ public class DownloadController {
     public DownloadController(DownloadTrackingService tracking,TorrentClientService client, DownloadQueryService queries, com.rlibanez.eplsync.torrent.updates.UpdateCleanupService cleanup, com.rlibanez.eplsync.torrent.updates.HistoryActions actions) {
         this.tracking=tracking;this.client = client; this.queries = queries; this.cleanup = cleanup; this.actions=actions;
     }
+    public record BrowserLink(String url) {}
+    @GetMapping("/browser-link")
+    public BrowserLink browserLink() { return new BrowserLink(properties.getBrowserUrl()); }
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.rlibanez.eplsync.config.TorrentProperties properties;
     @GetMapping("/extensions") public java.util.List<String> extensions() {return queries.extensions();}
     @GetMapping("/sync-state")
     public DownloadTrackingService.SyncState syncState() {return tracking.syncState();}

@@ -153,6 +153,7 @@ eplsync:
     enabled: false
     client: qbittorrent
     base-url: "http://qbittorrent:8080"
+    browser-url: ${EPLSYNC_TORRENT_BROWSER_URL:}
     connect-timeout: 5s
     request-timeout: 60s
     max-response-size: ${EPLSYNC_TORRENT_MAX_RESPONSE_SIZE:256MB}

@@ -36,6 +36,8 @@ public class TorrentProperties {
     private int maxRemoteTorrents = 500000;
     private boolean enabled;
     private String client = "qbittorrent";
+    public String getBrowserUrl() { var current = effective(); return current == this ? browserUrl : current.getBrowserUrl(); }
+    private String browserUrl = "";
     private String baseUrl = "http://localhost:8080";
     private Duration connectTimeout = Duration.ofSeconds(5);
     private Duration requestTimeout = Duration.ofSeconds(10);

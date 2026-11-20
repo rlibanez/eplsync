@@ -169,6 +169,9 @@ function SettingsForm({
       ])
         void cache.invalidateQueries({ queryKey });
       if (view.section === "torrent") {
+        void cache.invalidateQueries({
+          queryKey: ["downloads", "browser-link"],
+        });
         void cache.invalidateQueries({ queryKey: ["saved-download-updates"] });
         void cache.invalidateQueries({ queryKey: ["saved-calibre-updates"] });
       }

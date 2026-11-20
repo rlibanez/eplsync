@@ -719,6 +719,7 @@
     "checked": "Last successful check: {{date}}"
   },
   "downloads": {
+    "openClient": "Open qBittorrent",
     "stateTitle": "Download status",
     "sync": "Sync with client",
     "localNote": "Status recorded in EPL Sync. Sync to query the torrent client and update these records.",
@@ -1381,6 +1382,7 @@
       "torrent_qbittorrent_download_auto-management": "The torrent client determines the file location using its category. Disable this to specify a custom download path.",
       "torrent_enabled": "Enables the connection and operations with the torrent client.",
       "torrent_client": "Torrent client that will receive downloads.",
+      "torrent_browser-url": "URL to open the client in the browser. Empty hides the button.",
       "torrent_base-url": "HTTP or HTTPS address of the torrent client, reachable from EPL Sync.",
       "torrent_trackers": "Tracker servers included in magnet links. Add one URL per row.",
       "torrent_qbittorrent_auth_mode": "Authentication method: automatic, API key or username/password session.",
@@ -1418,6 +1420,7 @@
       "events_retention_max-age-days": "Maximum age (days)",
       "torrent_enabled": "Enable torrent integration",
       "torrent_client": "Torrent client",
+      "torrent_browser-url": "Browser URL",
       "torrent_base-url": "Client URL",
       "torrent_connect-timeout": "Connection timeout",
       "torrent_request-timeout": "Request timeout",
