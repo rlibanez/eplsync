@@ -21,7 +21,7 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 
 | Variable | Descripción | Valor en `.env.example` |
 | --- | --- | --- |
-| `EPLSYNC_VERSION` | Versión de la imagen de EPL Sync que descargará Docker Compose. Cambiarla antes de ejecutar `docker compose pull` y `docker compose up -d`. | `1.8.6` |
+| `EPLSYNC_VERSION` | Versión de la imagen de EPL Sync que descargará Docker Compose. Cambiarla antes de ejecutar `docker compose pull` y `docker compose up -d`. | `1.8.7` |
 | `PUID` | UID del usuario de la aplicación y propietario de las carpetas `DATA_DIR`, `db/` y `logs/`, preparado al arrancar el contenedor. | `1000` |
 | `PGID` | GID del usuario de la aplicación y grupo de las carpetas preparadas al arrancar el contenedor. | `1000` |
 | `TZ` | Zona horaria del contenedor. | `Europe/Madrid` |
@@ -47,6 +47,7 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 | `EPLSYNC_TORRENT_ENABLED` | Activa la integración torrent; configurar conexión y autenticación antes de activarla. | `false` |
 | `EPLSYNC_TORRENT_CLIENT` | Adaptador del cliente torrent; actualmente qbittorrent. | `qbittorrent` |
 | `EPLSYNC_TORRENT_BASEURL` | URL HTTP(S) de la WebUI de qBittorrent, accesible desde el contenedor. | `http://qbittorrent:8080` |
+| `EPLSYNC_TORRENT_BROWSER_URL` | URL HTTP(S) accesible desde el navegador para abrir qBittorrent. Vacía oculta el botón. También configurable en Ajustes de Torrent. | Vacío |
 | `EPLSYNC_TORRENT_CONNECTTIMEOUT` | Tiempo máximo para establecer una conexión con el cliente torrent. | `5s` |
 | `EPLSYNC_TORRENT_REQUESTTIMEOUT` | Tiempo máximo por petición HTTP al cliente torrent, incluida la recepción del cuerpo. | `60s` |
 | `EPLSYNC_TORRENT_MAX_RESPONSE_SIZE` | Tamaño máximo real de los listados de qBittorrent (también sin Content-Length). Entre 1 KiB y 1 GiB. Las respuestas auxiliares tienen un máximo fijo de 1 MiB. | `256MB` |
