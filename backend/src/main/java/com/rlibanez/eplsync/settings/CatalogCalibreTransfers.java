@@ -54,12 +54,20 @@ public class CatalogCalibreTransfers {
         CalibrePreparationContext.update("CATALOG",0,0);
         var books=books(selection.filters());
         if(books.isEmpty()) throw new UserInputException("Selecciona libros del catálogo");
-        CalibrePreparationContext.update("TORRENT_STATE",0,books.size());
         if (!CalibrePreparationContext.staged()) refreshTorrentState(books);
-        CalibrePreparationContext.update("TORRENT_STATE",books.size(),books.size());
-        CalibrePreparationContext.update("CALIBRE_CONNECTION",0,books.size());
-        var connection=settings.connection();var check=client.check(connection);
-        CalibrePreparationContext.update("CALIBRE_CONNECTION",books.size(),books.size());
+        return prepareBooks(books, books.size()>1000 || CalibrePreparationContext.staged(), null);
+    }
+    List<Book> selectedBooks(Selection selection) {
+        require();
+        if(selection==null || selection.filters()==null) throw new UserInputException("Selecciona libros del catálogo");
+        var selected=books(selection.filters());
+        if(selected.isEmpty()) throw new UserInputException("Selecciona libros del catálogo");
+        return selected;
+    }
+    Prepared prepareBooks(List<Book> books, boolean defer, Prepared previous) {
+        require();
+        var connection=settings.connection();
+        var libraries=previous==null?client.check(connection).libraries():previous.libraries();
         var candidates=new ArrayList<CalibreTransfers.Candidate>();var missing=new ArrayList<Book>();var deferred=new ArrayList<Book>();var deferredIds=new HashMap<Long,String>();
         var records=new HashMap<Long,List<DownloadRecord>>();
         for(int offset=0;offset<books.size();offset+=500) {
@@ -75,14 +83,14 @@ public class CatalogCalibreTransfers {
             var ready=records.getOrDefault(b.eplId(),List.of()).stream().filter(d->Double.compare(d.getRevision(),b.revision())==0 && instance.equals(d.getClientInstanceId()) && d.getStatus()==DownloadStatus.DOWNLOADED).toList();
             if(ready.isEmpty()) {missing.add(b);continue;}
             // Large selections are prepared locally. File discovery belongs to the worker.
-            if(books.size()>1000 || CalibrePreparationContext.staged()) {deferred.add(b);deferredIds.put(b.eplId(),ready.getFirst().getId());continue;}
+            if(defer) {deferred.add(b);deferredIds.put(b.eplId(),ready.getFirst().getId());continue;}
             for(var d:ready) for(var f:epub.list(d.getId())) {
                 if(f.size()>268435456) throw new UserInputException("El EPUB supera 256 MiB");
                 candidates.add(new CalibreTransfers.Candidate(d.getId(),f.index(),f.name(),f.size(),b.eplId(),b.revision(),f.expectedSize()));
             }
             if(candidates.stream().noneMatch(f->f.eplId()==b.eplId())) missing.add(b);
         }
-        return new Prepared(check.libraries(),connection.library(),List.copyOf(candidates),books,List.copyOf(missing),List.copyOf(deferred),Map.copyOf(deferredIds));
+        return new Prepared(libraries,connection.library(),List.copyOf(candidates),books,List.copyOf(missing),List.copyOf(deferred),Map.copyOf(deferredIds));
     }
     private List<Book> books(CatalogBookFilter filter) {
         var result=new ArrayList<Book>();
@@ -114,7 +122,9 @@ public class CatalogCalibreTransfers {
             var existing=existing(request);if(existing!=null) return existing;
             var connection=settings.connection();String instance=tracking.instanceId();
             var filter=new CatalogBookFilter();filter.setSelectedIds(request.books().stream().map(book -> Objects.requireNonNull(book).eplId()).toArray(Long[]::new));
-            var prepared=prepare(new Selection(filter));
+            var selection=new Selection(filter);
+            var prepared=CalibrePreparationContext.staged() && !request.files().isEmpty()
+                    ? prepareBooks(selectedBooks(selection),false,null) : prepare(selection);
             if(!prepared.books().equals(request.books())) throw new UserInputException("El catálogo cambió; vuelve a preparar el envío");
             if(prepared.libraries().stream().noneMatch(l->l.id().equals(request.library()))) throw new UserInputException("La biblioteca de destino no está disponible");
             var availableFiles=new HashMap<CalibreTransfers.FileChoice,CalibreTransfers.Candidate>();

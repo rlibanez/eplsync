@@ -1,3 +1,4 @@
+import { readyPreparation } from "./preparation";
 import { test, expect } from "./fixtures";
 
 const book = {
@@ -29,18 +30,18 @@ for (const missing of [false, true]) {
   test(`detail sends its single book with missing EPUB=${missing}`, async ({
     page,
   }) => {
-    await page.route("**/api/calibre/transfers/catalog/prepare", (r) => {
-      expect(r.request().postDataJSON()).toEqual({
+    await page.route("**/api/calibre/transfers/catalog/operations/prepare", (r) => {
+      expect(r.request().postDataJSON().selection).toEqual({
         filters: { selectedIds: [2] },
       });
       return r.fulfill({
-        json: {
+        json: readyPreparation({
           library: "main",
           libraries: [{ id: "main", name: "Main" }],
           files: missing ? [] : [file],
           books: [book],
           missing: missing ? [book] : [],
-        },
+        }),
       });
     });
     await page.route("**/api/calibre/transfers/new-job", (r) =>
@@ -67,7 +68,7 @@ for (const missing of [false, true]) {
       }),
     );
     let submitted = false;
-    await page.route("**/api/calibre/transfers/catalog", (r) => {
+    await page.route("**/api/calibre/transfers/catalog/operations/send", (r) => {
       expect(r.request().postDataJSON()).toMatchObject({
         library: "main",
         books: [book],
@@ -76,7 +77,7 @@ for (const missing of [false, true]) {
         pending: missing ? [2] : [],
       });
       submitted = true;
-      return r.fulfill({ json: { id: "new-job" } });
+      return r.fulfill({ json: readyPreparation({ id: "new-job" }) });
     });
     await page.goto("/catalog/2");
     const actions = page.locator(".book-actions > .action-row");

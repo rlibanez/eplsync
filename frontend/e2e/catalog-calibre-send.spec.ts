@@ -1,3 +1,4 @@
+import { readyPreparation } from "./preparation";
 import { test, expect } from "./fixtures";
 const book = {eplId: 2, revision: 1.1, title: "Book 2"};
 const file = {recordId: "download-2", index: 0, name: "Book.epub", size: 200, expectedSize: 200, eplId: 2, revision: 1.1};
@@ -10,14 +11,14 @@ test.beforeEach(async ({page}) => {
   await page.route("**/api/calibre/transfers/catalog-job/items?**",route=>route.fulfill({json:{items:[],meta:{page:0,size:20,totalItems:0,totalPages:0}}}));
 });
 test("explicit catalog selection uses the shared EPUB assistant and creates a Calibre job", async ({page}) => {
-  await page.route("**/api/calibre/transfers/catalog/prepare", route=>{
-    expect(route.request().postDataJSON()).toEqual({filters:{selectedIds:[2]}});
-    return route.fulfill({json:{library:"main",libraries:[{id:"main",name:"Main"}],files:[file],books:[book],missing:[]}});
+  await page.route("**/api/calibre/transfers/catalog/operations/prepare", route=>{
+    expect(route.request().postDataJSON().selection).toEqual({filters:{selectedIds:[2]}});
+    return route.fulfill({json:readyPreparation({library:"main",libraries:[{id:"main",name:"Main"}],files:[file],books:[book],missing:[]})});
   });
-  await page.route("**/api/calibre/transfers/catalog", route=>{
+  await page.route("**/api/calibre/transfers/catalog/operations/send", route=>{
     expect(route.request().postDataJSON()).toMatchObject({library:"main",books:[book],files:[{recordId:"download-2",index:0}],download:false,pending:[]});
     expect(route.request().postDataJSON().id).toBeTruthy();
-    return route.fulfill({json:{id:"catalog-job"}});
+    return route.fulfill({json:readyPreparation({id:"catalog-job"})});
   });
   await page.goto("/catalog");
   await expect(page.getByRole("button",{name:"Enviar a Calibre",exact:true})).toHaveCount(0);
@@ -30,13 +31,13 @@ test("explicit catalog selection uses the shared EPUB assistant and creates a Ca
   await expect(page).toHaveURL(/\/calibre\/jobs\/catalog-job$/);
 });
 test("select all retains library filters and exclusions and requires opt-in for missing EPUBs", async ({page}) => {
-  await page.route("**/api/calibre/transfers/catalog/prepare", route=>{
-    expect(route.request().postDataJSON()).toEqual({filters:{torrentPresence:"PRESENT",torrentRevision:"UPDATED",torrentStatus:["DOWNLOADED","QUEUED"],calibrePresence:"ABSENT",excludedIds:[1]}});
-    return route.fulfill({json:{library:"main",libraries:[{id:"main",name:"Main"}],files:[],books:[book],missing:[book]}});
+  await page.route("**/api/calibre/transfers/catalog/operations/prepare", route=>{
+    expect(route.request().postDataJSON().selection).toEqual({filters:{torrentPresence:"PRESENT",torrentRevision:"UPDATED",torrentStatus:["DOWNLOADED","QUEUED"],calibrePresence:"ABSENT",excludedIds:[1]}});
+    return route.fulfill({json:readyPreparation({library:"main",libraries:[{id:"main",name:"Main"}],files:[],books:[book],missing:[book]})});
   });
-  await page.route("**/api/calibre/transfers/catalog", route=>{
+  await page.route("**/api/calibre/transfers/catalog/operations/send", route=>{
     expect(route.request().postDataJSON()).toMatchObject({library:"main",books:[book],files:[],download:true,pending:[2]});
-    return route.fulfill({json:{id:"catalog-job"}});
+    return route.fulfill({json:readyPreparation({id:"catalog-job"})});
   });
   await page.goto("/catalog?torrentPresence=PRESENT&torrentRevision=UPDATED&torrentStatus=DOWNLOADED&torrentStatus=QUEUED&calibrePresence=ABSENT");
   await page.getByRole("button",{name:"Seleccionar todo (40)",exact:true}).click();
@@ -170,7 +171,7 @@ test("whole catalog reports preparation and creation progress without replaying 
 });
 test("large downloaded selections defer file checks without requesting downloads",async({page})=>{
   const books=Array.from({length:1001},(_,n)=>({eplId:n+1,revision:1,title:`Book ${n+1}`}));
-  await page.route("**/api/calibre/transfers/catalog/prepare",route=>route.fulfill({json:{library:"main",libraries:[{id:"main",name:"Main"}],files:[],books,missing:[],deferred:books}}));
+  await page.route("**/api/calibre/transfers/catalog/operations/prepare",route=>route.fulfill({json:readyPreparation({library:"main",libraries:[{id:"main",name:"Main"}],files:[],books,missing:[],deferred:books})}));
   await page.route("**/api/calibre/transfers/catalog/operations/send",route=>{
     const request=route.request().postDataJSON();expect(request.pending).toHaveLength(1001);expect(request.download).toBe(false);
     return route.fulfill({json:{id:"deferred",state:"COMPLETED",result:{id:"catalog-job"}}});
@@ -185,10 +186,10 @@ test("large downloaded selections defer file checks without requesting downloads
 });
 test("large file previews are paged without losing selected or excluded EPUBs",async({page})=>{
   const files=Array.from({length:1001},(_,n)=>({...file,recordId:`record-${n}`,name:`File ${n}.epub`}));
-  await page.route("**/api/calibre/transfers/catalog/prepare",route=>route.fulfill({json:{library:"main",libraries:[{id:"main",name:"Main"}],files,books:[book],missing:[]}}));
-  await page.route("**/api/calibre/transfers/catalog",route=>{
+  await page.route("**/api/calibre/transfers/catalog/operations/prepare",route=>route.fulfill({json:readyPreparation({library:"main",libraries:[{id:"main",name:"Main"}],files,books:[book],missing:[]})}));
+  await page.route("**/api/calibre/transfers/catalog/operations/send",route=>{
     const request=route.request().postDataJSON();expect(request.files).toHaveLength(1000);expect(request.files.some((entry:{recordId:string})=>entry.recordId==="record-1000")).toBe(false);
-    return route.fulfill({json:{id:"catalog-job"}});
+    return route.fulfill({json:readyPreparation({id:"catalog-job"})});
   });
   await page.goto("/catalog");await page.getByRole("checkbox",{name:"Seleccionar Book 2",exact:true}).check();
   await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();const dialog=page.getByRole("dialog");
@@ -200,7 +201,7 @@ test("large file previews are paged without losing selected or excluded EPUBs",a
 });
 
 test("available EPUBs appear before the missing download option", async ({page}) => {
-  await page.route("**/api/calibre/transfers/catalog/prepare", route=>route.fulfill({json:{library:"main",libraries:[{id:"main",name:"Main"}],files:[file],books:[book],missing:[{eplId:1,revision:1,title:"Pending book"}]}}));
+  await page.route("**/api/calibre/transfers/catalog/operations/prepare", route=>route.fulfill({json:readyPreparation({library:"main",libraries:[{id:"main",name:"Main"}],files:[file],books:[book],missing:[{eplId:1,revision:1,title:"Pending book"}]})}));
   await page.goto("/catalog");
   await page.getByRole("button",{name:"Seleccionar todo (40)",exact:true}).click();
   await page.getByRole("button",{name:"Enviar a Calibre",exact:true}).click();

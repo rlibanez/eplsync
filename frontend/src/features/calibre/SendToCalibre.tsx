@@ -105,22 +105,17 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
       activeOperation.current = id;
       setProgress(null);
       setElapsed(0);
-      return "filters" in selected && (selected.count ?? 0) > 1000
-        ? preparationOperation<Prepared>(
-            "/calibre/transfers/catalog/operations/prepare",
-            { id, selection: { filters: selected.filters } },
-            (value) => {
-              if (activeOperation.current === id) setProgress(value);
-            },
-          )
-        : post<Prepared>(
-            "filters" in selected
-              ? "/calibre/transfers/catalog/prepare"
-              : "/calibre/transfers/prepare",
-            "filters" in selected
-              ? { filters: selected.filters }
-              : { ids: selected.ids },
-          );
+      return preparationOperation<Prepared>(
+        "filters" in selected
+          ? "/calibre/transfers/catalog/operations/prepare"
+          : "/calibre/transfers/operations/prepare",
+        "filters" in selected
+          ? { id, selection: { filters: selected.filters } }
+          : { id, ids: selected.ids },
+        (value) => {
+          if (activeOperation.current === id) setProgress(value);
+        },
+      );
     },
     retry: false,
     onError: (error, selected) => {
@@ -199,67 +194,61 @@ export function CalibreSendProvider({ children }: { children: ReactNode }) {
       activeOperation.current = requestId;
       setProgress(null);
       setElapsed(0);
-      const execute =
-        "filters" in selection && (prepare.data?.books?.length ?? 0) > 1000
-          ? (_path: string, body: unknown) =>
-              preparationOperation<{ id: string }>(
-                "/calibre/transfers/catalog/operations/send",
-                body,
-                (value) => {
-                  if (activeOperation.current === requestId) setProgress(value);
-                },
-              )
-          : (path: string, body: unknown) => post<{ id: string }>(path, body);
-      return execute(
-        "filters" in selection
-          ? "/calibre/transfers/catalog"
-          : "/calibre/transfers",
-        {
-          ...("filters" in selection
-            ? {
-                id: requestId,
-                books: prepare.data?.books,
-                download,
-                pending: [
-                  ...(download
-                    ? (prepare.data?.missing?.map((book) => book.eplId) ?? [])
-                    : []),
-                  ...(prepare.data?.deferred?.map((book) => book.eplId) ?? []),
-                ],
-              }
-            : {}),
-          id: requestId,
-          library,
-          formats: Array.from(
-            new Set([
-              ...(extensions.length
-                ? bookExtensions.filter(
-                    (ext) => extensions.includes(ext) !== excludeExtensions,
-                  )
-                : bookExtensions),
-              ...(prepare.data?.files
-                .filter((f) => chosenSet.has(key(f)))
-                .map((f) => extension(f.name)) ?? []),
-            ]),
-          ),
-          ...("filters" in selection || !prepare.data?.deferredRecords?.length
-            ? {}
-            : {
-                deferredRecords: prepare.data.pending
-                  ? prepare.data.pending
-                      .filter((f) =>
-                        chosenSet.has(
-                          key({ ...f, index: -1, size: 0, waiting: true }),
-                        ),
-                      )
-                      .map((f) => f.recordId)
-                  : prepare.data.deferredRecords,
-              }),
-          files: prepare.data?.files
-            .filter((f) => chosenSet.has(key(f)))
-            .map((f) => ({ recordId: f.recordId, index: f.index })),
-        },
-      );
+      const execute = (body: unknown) =>
+        preparationOperation<{ id: string }>(
+          "filters" in selection
+            ? "/calibre/transfers/catalog/operations/send"
+            : "/calibre/transfers/operations/send",
+          body,
+          (value) => {
+            if (activeOperation.current === requestId) setProgress(value);
+          },
+        );
+      return execute({
+        ...("filters" in selection
+          ? {
+              id: requestId,
+              books: prepare.data?.books,
+              download,
+              pending: [
+                ...(download
+                  ? (prepare.data?.missing?.map((book) => book.eplId) ?? [])
+                  : []),
+                ...(prepare.data?.deferred?.map((book) => book.eplId) ?? []),
+              ],
+            }
+          : {}),
+        id: requestId,
+        library,
+        formats: Array.from(
+          new Set([
+            ...(extensions.length
+              ? bookExtensions.filter(
+                  (ext) => extensions.includes(ext) !== excludeExtensions,
+                )
+              : bookExtensions),
+            ...(prepare.data?.files
+              .filter((f) => chosenSet.has(key(f)))
+              .map((f) => extension(f.name)) ?? []),
+          ]),
+        ),
+        ...("filters" in selection || !prepare.data?.deferredRecords?.length
+          ? {}
+          : {
+              deferredRecords: prepare.data.pending
+                ? prepare.data.pending
+                    .filter((f) =>
+                      chosenSet.has(
+                        key({ ...f, index: -1, size: 0, waiting: true }),
+                      ),
+                    )
+                    .map((f) => f.recordId)
+                : prepare.data.deferredRecords,
+            }),
+        files: prepare.data?.files
+          .filter((f) => chosenSet.has(key(f)))
+          .map((f) => ({ recordId: f.recordId, index: f.index })),
+      });
     },
     retry: false,
     onError: (error) => {

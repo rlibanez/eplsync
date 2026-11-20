@@ -94,7 +94,8 @@ public class CalibreTransfers {
         catch(java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
     }
     private static void requireSend() { Permission.require(Permission.CALIBRE_SEND);Permission.require(Permission.DOWNLOADS_FILES_READ); }
-    public Prepared prepare(List<String> ids) {
+    public Prepared prepare(List<String> ids) { return prepare(ids,false); }
+    Prepared prepare(List<String> ids,boolean retryBusy) {
         requireSend();validateIds(ids);
         var connection=settings.connection();var check=client.check(connection);
         var records=new HashMap<String,DownloadRecord>();
@@ -124,6 +125,7 @@ public class CalibreTransfers {
             try { available=files.list(id); }
             catch(com.rlibanez.eplsync.exception.TorrentOperationException | com.rlibanez.eplsync.exception.TorrentConnectionException | UserInputException ex) {
                 if(Thread.currentThread().isInterrupted() || ex instanceof com.rlibanez.eplsync.exception.TorrentConnectionException connectionFailure && connectionFailure.getReason()==com.rlibanez.eplsync.exception.TorrentConnectionException.Reason.INTERRUPTED) throw ex;
+                if(retryBusy && ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException) throw ex;
                 if(ex instanceof com.rlibanez.eplsync.exception.TorrentBusyException || ex instanceof EpubFiles.PendingEpub) {
                     deferred.add(id);pending.add(unavailable(row,"EPL ID "+row.getEplId(),ex instanceof EpubFiles.PendingEpub
                         ? "Esperando la descarga del EPUB; se comprobará automáticamente"
@@ -157,7 +159,8 @@ public class CalibreTransfers {
         var indexed=new HashMap<String,DownloadRecord>();result.forEach(record->indexed.put(record.getId(),record));
         return ids.stream().map(id->Objects.requireNonNull(indexed.get(id))).toList();
     }
-    public Job create(Request request) {
+    public Job create(Request request) {return create(request,id->{});}
+    Job create(Request request,java.util.function.Consumer<String> stage) {
         requireSend();
         if(request!=null) BookFormats.allowed(request.formats());
         if(request!=null && request.id()!=null && !request.id().matches("[A-Za-z0-9-]{1,59}")) throw new UserInputException("Identificador de solicitud inválido");
@@ -205,8 +208,8 @@ public class CalibreTransfers {
                     insertUpdate(id,position++,f,new CalibreUpdateFlow.Choice(0,d.getRevision(),true,List.of(),"KEEP",List.of(),false),null,true);
                 }
                 jdbc.update("UPDATE calibre_job_items SET allowed_formats=? WHERE job_id=?",EPUB_IDENTITIES.writeValueAsString(BookFormats.allowed(request.formats())),id);
-                event(EventContext.actor(),id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",request.library(),"selected",position,"waiting",pinned.size()+records.size()));
-                rememberDirect(request,id);return job(id);
+                if(!CalibrePreparationContext.staged()) event(EventContext.actor(),id,"CALIBRE_SEND",EventJournal.Outcome.STARTED,Map.of("library",request.library(),"selected",position,"waiting",pinned.size()+records.size()));
+                rememberDirect(request,id);stage.accept(id);return job(id);
             });
         });
     }
@@ -248,6 +251,7 @@ public class CalibreTransfers {
         if(!connection.equals(settings.connection())) throw new UserInputException("La configuración cambió; vuelve a preparar el envío");
         var actor=EventContext.actor();String id=UUID.randomUUID().toString(),now=Instant.now().toString();
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,?,?,?,?,?,?,?,'QUEUED')",id,now,now,actor.id(),actor.username(),destination(connection),library,source());
+        if(CalibrePreparationContext.staged()) jdbc.update("UPDATE calibre_jobs SET state='PAUSED' WHERE id=?",id);
         return id;
     }
     private void insertUpdate(String job,int position,Candidate f,CalibreUpdateFlow.Choice cleanup,String downloadId) {

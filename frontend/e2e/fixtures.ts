@@ -21,6 +21,10 @@ export const test = base.extend<{ eventTransport: void }>({
         },
       );
       await context.route(
+        /\/api\/(torrent\/downloads|calibre\/books)\/browser-link$/,
+        route => route.fulfill({ json: { url: "" } }),
+      );
+      await context.route(
         /\/api\/catalog\/books\/\d+\/activity(?:\?|$)/,
         (route) =>
           route.fulfill({

@@ -23,8 +23,10 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 @org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 public class CalibrePreparationOperations {
+    public record DirectPreviewRequest(String id,List<String> ids) {}
     public record PreviewRequest(String id,CatalogCalibreTransfers.Selection selection) {}
     public record Progress(String id,String kind,String state,String phase,long processed,long total,long startedAt,String message,Object result) {}
+    @org.springframework.beans.factory.annotation.Autowired private CalibreTransfers transfers;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
     private final CatalogCalibreTransfers catalog;
@@ -46,7 +48,27 @@ public class CalibrePreparationOperations {
         this.jdbc=jdbc;this.tx=new TransactionTemplate(manager);this.catalog=catalog;this.settings=settings;this.tracking=tracking;this.accounts=accounts;this.sessions=sessions;this.maintenance=maintenance;this.events=events;
     }
     @jakarta.annotation.PostConstruct void recover() {jdbc.update("UPDATE calibre_preparation_operations SET state='QUEUED',phase='RECOVERING' WHERE state='RUNNING'");}
-    private void require() {Permission.require(Permission.CATALOG_READ);Permission.require(Permission.CALIBRE_SEND);Permission.require(Permission.DOWNLOADS_FILES_READ);}
+    private void require(String kind) {
+        Permission.require(Permission.CALIBRE_SEND);Permission.require(Permission.DOWNLOADS_FILES_READ);
+        if (!kind.startsWith("DIRECT_")) Permission.require(Permission.CATALOG_READ);
+    }
+    public Progress prepareDirect(DirectPreviewRequest input) {
+        if(input==null || input.ids()==null || input.ids().isEmpty()
+                || input.ids().stream().anyMatch(id->id==null || id.isBlank() || id.length()>64)
+                || new HashSet<>(input.ids()).size()!=input.ids().size()) throw new UserInputException("Selecciona registros únicos");
+        return begin(input.id(),"DIRECT_PREPARE",json.writeValueAsString(input.ids()));
+    }
+    public Progress sendDirect(CalibreTransfers.Request input) {
+        if(input==null) throw new UserInputException("Prepara de nuevo la selección");
+        return begin(input.id(),"DIRECT_SEND",json.writeValueAsString(input));
+    }
+    // Variant prefixes preserve the existing PREPARE/SEND schema and signatures of queued operations.
+    private String kind(Map<String,Object> row) {
+        String signature=Objects.toString(row.get("signature"),"");
+        for(String variant:List.of("DIRECT_PREPARE","DIRECT_SEND","CATALOG_SEND"))
+            if(signature.startsWith(variant+":")) return variant;
+        return (String)row.get("kind");
+    }
     private String context() {return settings.updateSearchContext()+":"+tracking.instanceId();}
     private String digest(String input) {
         try {return HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(input.getBytes(java.nio.charset.StandardCharsets.UTF_8)));}
@@ -57,30 +79,30 @@ public class CalibrePreparationOperations {
         return begin(input.id(),"PREPARE",json.writeValueAsString(input.selection()));
     }
     public Progress send(CatalogCalibreTransfers.Request input) {
-        if(input==null || input.books()==null || input.books().isEmpty() || input.files()==null || !input.files().isEmpty() || input.pending()==null) throw new UserInputException("Prepara de nuevo la selección grande del catálogo");
-        return begin(input.id(),"SEND",com.rlibanez.eplsync.torrent.downloads.BookFormats.allowed(input.formats()).equals(Set.of("epub"))?CatalogCalibreTransfers.legacyJson(input,json):json.writeValueAsString(input));
+        if(input==null || input.books()==null || input.books().isEmpty() || input.files()==null || input.pending()==null) throw new UserInputException("Prepara de nuevo la selección grande del catálogo");
+        return begin(input.id(),input.files().isEmpty()?"SEND":"CATALOG_SEND",com.rlibanez.eplsync.torrent.downloads.BookFormats.allowed(input.formats()).equals(Set.of("epub"))?CatalogCalibreTransfers.legacyJson(input,json):json.writeValueAsString(input));
     }
     private Progress begin(String id,String kind,String input) {
-        require();if(id==null || !id.matches("[a-zA-Z0-9-]{1,100}")) throw new UserInputException("Solicitud de preparación inválida");
-        var owner=sessions.current();String signature=digest(kind+":"+input);
+        require(kind);if(id==null || !id.matches("[a-zA-Z0-9-]{1,100}")) throw new UserInputException("Solicitud de preparación inválida");
+        var owner=sessions.current();String signature=(kind.equals("PREPARE") || kind.equals("SEND")?"":kind+":")+digest(kind+":"+input);
         tx.executeWithoutResult(s->{
             var existing=jdbc.queryForList("SELECT owner_id,signature FROM calibre_preparation_operations WHERE id=?",id);
             if(!existing.isEmpty()) {if(!owner.id().equals(existing.getFirst().get("owner_id")) || !signature.equals(existing.getFirst().get("signature"))) throw new UserInputException("La solicitud pertenece a otra selección");return;}
             if(jdbc.queryForObject("SELECT count(*) FROM calibre_preparation_operations WHERE owner_id=? AND state IN ('QUEUED','RUNNING')",Long.class,owner.id())>=5) throw new UserInputException("Hay cinco preparaciones pendientes; espera a que terminen");
             long now=Instant.now().toEpochMilli();
-            jdbc.update("INSERT INTO calibre_preparation_operations(id,owner_id,owner_username,kind,state,phase,context,input,signature,created_at,updated_at) VALUES(?,?,?,?,'QUEUED','QUEUED',?,?,?,?,?)",id,owner.id(),owner.username(),kind,context(),input,signature,now,now);
+            jdbc.update("INSERT INTO calibre_preparation_operations(id,owner_id,owner_username,kind,state,phase,context,input,signature,created_at,updated_at) VALUES(?,?,?,?,'QUEUED','QUEUED',?,?,?,?,?)",id,owner.id(),owner.username(),kind.endsWith("PREPARE")?"PREPARE":"SEND",context(),input,signature,now,now);
         });return status(id);
     }
     private Map<String,Object> row(String id) {return jdbc.queryForList("SELECT * FROM calibre_preparation_operations WHERE id=?",id).stream().findFirst().orElseThrow(()->new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));}
     private long number(Map<String,Object> row,String key) {return ((Number)row.get(key)).longValue();}
     public Progress status(String id) {
-        require();var row=jdbc.queryForList("SELECT id,owner_id,kind,state,phase,processed,total,created_at,message,result FROM calibre_preparation_operations WHERE id=?",id).stream().findFirst().orElseThrow(()->new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));if(!sessions.current().id().equals(row.get("owner_id"))) throw new org.springframework.security.access.AccessDeniedException("La preparación pertenece a otra cuenta");
+        var row=jdbc.queryForList("SELECT id,owner_id,kind,signature,state,phase,processed,total,created_at,message,result FROM calibre_preparation_operations WHERE id=?",id).stream().findFirst().orElseThrow(()->new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));require(kind(row));if(!sessions.current().id().equals(row.get("owner_id"))) throw new org.springframework.security.access.AccessDeniedException("La preparación pertenece a otra cuenta");
         return new Progress(id,(String)row.get("kind"),(String)row.get("state"),(String)row.get("phase"),number(row,"processed"),number(row,"total"),number(row,"created_at"),(String)row.get("message"),"COMPLETED".equals(row.get("state")) && row.get("result")!=null?json.readTree((String)row.get("result")):null);
     }
     private static final class PreparationCancelled extends RuntimeException {private static final long serialVersionUID=1L;}
     private void requireActive(String id) {if("CANCELLED".equals(row(id).get("state"))) throw new PreparationCancelled();}
     public Progress cancel(String id) {
-        require();String owner=sessions.current().id();
+        require(kind(row(id)));String owner=sessions.current().id();
         tx.executeWithoutResult(status->{
             var current=row(id);if(!owner.equals(current.get("owner_id"))) throw new org.springframework.security.access.AccessDeniedException("La preparación pertenece a otra cuenta");
             if(!List.of("QUEUED","RUNNING").contains(current.get("state"))) return;
@@ -104,19 +126,26 @@ public class CalibrePreparationOperations {
         if(closed || !maintenance.enter(false)) return;
         var previous=SecurityContextHolder.getContext();String id=null;long probe=idle.snapshot();
         try {
-            var queue=jdbc.queryForList("SELECT id,owner_id FROM calibre_preparation_operations WHERE state IN ('QUEUED','RUNNING') ORDER BY updated_at,created_at,id LIMIT 1");
+            var queue=jdbc.queryForList("SELECT id,owner_id,kind,signature FROM calibre_preparation_operations WHERE state IN ('QUEUED','RUNNING') ORDER BY updated_at,created_at,id LIMIT 1");
             if(queue.isEmpty()) {idle.empty(probe);return;}
             id=(String)queue.getFirst().get("id");String selected=id;var owner=accounts.find((String)queue.getFirst().get("owner_id"));
             if(owner==null || !owner.status().equals("ACTIVE") || owner.mustChangePassword() || owner.temporaryExpiresAt()!=null && !owner.temporaryExpiresAt().isAfter(Instant.now())) throw new UserInputException("El propietario ya no está autorizado");
-            var security=SecurityContextHolder.createEmptyContext();security.setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new SimpleGrantedAuthority(p.name())).toList()));SecurityContextHolder.setContext(security);require();
+            var security=SecurityContextHolder.createEmptyContext();security.setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,owner.permissions().stream().map(p->new SimpleGrantedAuthority(p.name())).toList()));SecurityContextHolder.setContext(security);require(kind(queue.getFirst()));
             var row=row(id);if(!Objects.equals(context(),row.get("context"))) throw new UserInputException("La conexión cambió; vuelve a preparar el envío");
             if(jdbc.update("UPDATE calibre_preparation_operations SET state='RUNNING' WHERE id=? AND state IN ('QUEUED','RUNNING')",id)==0) throw new PreparationCancelled();
-            if(row.get("kind").equals("PREPARE")) {
-                var input=json.readValue((String)row.get("input"),CatalogCalibreTransfers.Selection.class);
-                var result=CalibrePreparationContext.run((phase,done,total)->progress(selected,phase,done,total),false,()->catalog.prepare(input));
-                if(jdbc.update("UPDATE calibre_preparation_operations SET state='COMPLETED',input='{}',phase='READY',processed=?,total=?,result=?,updated_at=? WHERE id=? AND state='RUNNING'",result.books().size(),result.books().size(),json.writeValueAsString(result),Instant.now().toEpochMilli(),id)==0) throw new PreparationCancelled();
-                log.info("Previsualización de Calibre preparada: operación={}, libros={}, disponibles={}, pendientes={}",id,result.books().size(),result.files().size()+result.deferred().size(),result.missing().size());
-                logged.remove(id);
+            if(kind(row).equals("DIRECT_PREPARE")) {
+                previewDirect(id,row);
+            } else if(kind(row).equals("DIRECT_SEND") || kind(row).equals("CATALOG_SEND")) {
+                if(row.get("calibre_job_id")==null) {
+                    CalibrePreparationContext.run((phase,done,total)->{},true,()->{
+                        if(kind(row).equals("DIRECT_SEND"))
+                            return transfers.create(json.readValue((String)row.get("input"),CalibreTransfers.Request.class),created->merge(selected,created));
+                        return catalog.createStagedBatch(json.readValue((String)row.get("input"),CatalogCalibreTransfers.Request.class),created->merge(selected,created));
+                    });
+                }
+                activatePrepared(id);
+            } else if(kind(row).equals("PREPARE")) {
+                previewCatalog(id,row);
             } else {
                 var request=json.readValue((String)row.get("input"),CatalogCalibreTransfers.Request.class);
                 int cursor=Math.toIntExact(number(row,"cursor"));
@@ -158,6 +187,71 @@ public class CalibrePreparationOperations {
             } else log.warn("No se pudo comprobar la cola de preparación de Calibre: causa={}",com.rlibanez.eplsync.exception.OperationDiagnostics.technical(ex));
         } finally {SecurityContextHolder.setContext(previous);maintenance.leave(false);}
     }
+    private void activatePrepared(String id) {
+        tx.executeWithoutResult(status->{
+            var op=row(id);requireActive(id);require(kind(op));
+            if(!Objects.equals(context(),op.get("context"))) throw new UserInputException("La conexión cambió; vuelve a preparar el envío");
+            String calibre=(String)op.get("calibre_job_id"),download=(String)op.get("download_job_id");
+            if(calibre==null) throw new UserInputException("No hay libros disponibles para enviar");
+            if(download!=null) {
+                Permission.require(Permission.TORRENT_SEND);Permission.require(Permission.TORRENT_SYNC);
+                jdbc.update("UPDATE torrent_bulk_jobs SET state='QUEUED',updated_at=? WHERE id=? AND state='PAUSED'",Instant.now().toEpochMilli(),download);
+            }
+            jdbc.update("UPDATE calibre_jobs SET state='QUEUED',updated_at=? WHERE id=? AND state='PAUSED'",Instant.now().toString(),calibre);
+            complete(id,calibre);
+            var actor=new EventContext.Actor((String)op.get("owner_id"),(String)op.get("owner_username"),"USER");
+            if(download!=null) events.live(actor,EventJournal.Category.JOB,"DOWNLOAD",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,download,Map.of("selected",jdbc.queryForObject("SELECT selected_books FROM torrent_bulk_jobs WHERE id=?",Long.class,download)));
+            events.live(actor,EventJournal.Category.JOB,"CALIBRE_SEND",EventJournal.Outcome.STARTED,EventContext.Origin.MANUAL,calibre,Map.of("library",jdbc.queryForObject("SELECT library FROM calibre_jobs WHERE id=?",String.class,calibre)));
+        });
+    }
+    private void previewCatalog(String id,Map<String,Object> row) {
+        CatalogCalibreTransfers.Prepared prepared;
+        if(row.get("result")==null) {
+            var selection=json.readValue((String)row.get("input"),CatalogCalibreTransfers.Selection.class);
+            var books=catalog.selectedBooks(selection);
+            progress(id,"TORRENT_STATE",0,books.size());
+            catalog.refreshTorrentState(books);
+            var initial=catalog.prepareBooks(List.of(),true,null);
+            prepared=new CatalogCalibreTransfers.Prepared(initial.libraries(),initial.library(),List.of(),books,List.of(),List.of(),Map.of());
+            checkpoint(id,0,books.size(),prepared,false);
+            return;
+        }
+        prepared=json.readValue((String)row.get("result"),CatalogCalibreTransfers.Prepared.class);
+        int cursor=Math.toIntExact(number(row,"cursor"));
+        int end=Math.min(cursor+(prepared.books().size()>1000?500:50),prepared.books().size());
+        var batch=catalog.prepareBooks(prepared.books().subList(cursor,end),prepared.books().size()>1000,prepared);
+        var files=new ArrayList<>(prepared.files());files.addAll(batch.files());
+        var missing=new ArrayList<>(prepared.missing());missing.addAll(batch.missing());
+        var deferred=new ArrayList<>(prepared.deferred());deferred.addAll(batch.deferred());
+        var records=new HashMap<Long,String>();if(prepared.deferredRecords()!=null) records.putAll(prepared.deferredRecords());records.putAll(batch.deferredRecords());
+        var result=new CatalogCalibreTransfers.Prepared(prepared.libraries(),prepared.library(),List.copyOf(files),prepared.books(),List.copyOf(missing),List.copyOf(deferred),Map.copyOf(records));
+        checkpoint(id,end,prepared.books().size(),result,end==prepared.books().size());
+    }
+    private void previewDirect(String id,Map<String,Object> row) {
+        var ids=json.readValue((String)row.get("input"),new tools.jackson.core.type.TypeReference<List<String>>(){});
+        if(ids.size()>1000) {
+            checkpoint(id,ids.size(),ids.size(),transfers.prepare(ids),true);
+            return;
+        }
+        int cursor=Math.toIntExact(number(row,"cursor")),end=Math.min(cursor+50,ids.size());
+        var batch=transfers.prepare(ids.subList(cursor,end),true);
+        var old=row.get("result")==null?new CalibreTransfers.Prepared(batch.libraries(),batch.library(),List.of()):
+                json.readValue((String)row.get("result"),CalibreTransfers.Prepared.class);
+        var files=new ArrayList<>(old.files());files.addAll(batch.files());
+        var deferred=new ArrayList<>(old.deferredRecords());deferred.addAll(batch.deferredRecords());
+        var unavailable=new ArrayList<>(old.unavailable());unavailable.addAll(batch.unavailable());
+        var pending=new ArrayList<>(old.pending());pending.addAll(batch.pending());
+        checkpoint(id,end,ids.size(),new CalibreTransfers.Prepared(batch.libraries(),batch.library(),List.copyOf(files),List.copyOf(deferred),List.copyOf(unavailable),List.copyOf(pending)),end==ids.size());
+    }
+    private void checkpoint(String id,int cursor,int total,Object result,boolean complete) {
+        if(jdbc.update("UPDATE calibre_preparation_operations SET cursor=?,processed=?,total=?,result=?,state=?,phase=?,message=NULL,updated_at=? WHERE id=? AND state='RUNNING'",
+                cursor,cursor,total,json.writeValueAsString(result),complete?"COMPLETED":"RUNNING",complete?"READY":"FILES",Instant.now().toEpochMilli(),id)==0) throw new PreparationCancelled();
+        if(complete) {
+            jdbc.update("UPDATE calibre_preparation_operations SET input='{}' WHERE id=? AND state='COMPLETED'",id);
+            logged.remove(id);
+            log.info("Previsualización de Calibre preparada: operación={}, libros={}",id,total);
+        }
+    }
     private void merge(String operation,String created) {
         requireActive(operation);var op=row(operation);String target=(String)op.get("calibre_job_id"),download=(String)op.get("download_job_id");
         for(String source:CalibrePreparationContext.downloads()) {
@@ -182,7 +276,7 @@ public class CalibrePreparationOperations {
     private void activate(String id,CatalogCalibreTransfers.Request request) {
         tx.executeWithoutResult(s->{
             var op=row(id);requireActive(id);if(op.get("state").equals("COMPLETED"))return;
-            require();if(!Objects.equals(context(),op.get("context"))) throw new UserInputException("La conexión cambió; vuelve a preparar el envío");
+            require(kind(op));if(!Objects.equals(context(),op.get("context"))) throw new UserInputException("La conexión cambió; vuelve a preparar el envío");
             String calibre=(String)op.get("calibre_job_id"),download=(String)op.get("download_job_id");
             if(calibre==null) throw new UserInputException("No hay libros disponibles para enviar");
             if(download!=null) {Permission.require(Permission.TORRENT_SEND);Permission.require(Permission.TORRENT_SYNC);}

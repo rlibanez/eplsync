@@ -13,6 +13,10 @@ public class CalibreTransferController {
     public CalibreTransferController(CalibreTransfers transfers) {this.transfers=transfers;}
     @org.springframework.beans.factory.annotation.Autowired private CatalogCalibreTransfers catalogTransfers;
     @org.springframework.beans.factory.annotation.Autowired private CalibrePreparationOperations preparations;
+    @PostMapping("/operations/prepare")
+    public CalibrePreparationOperations.Progress beginDirectPreparation(@RequestBody CalibrePreparationOperations.DirectPreviewRequest input) {return preparations.prepareDirect(input);}
+    @PostMapping("/operations/send")
+    public CalibrePreparationOperations.Progress beginDirectCreation(@RequestBody CalibreTransfers.Request input) {return preparations.sendDirect(input);}
     @PostMapping("/catalog/operations/prepare")
     public CalibrePreparationOperations.Progress beginPreparation(@RequestBody CalibrePreparationOperations.PreviewRequest input) {return preparations.prepare(input);}
     @PostMapping("/catalog/operations/send")

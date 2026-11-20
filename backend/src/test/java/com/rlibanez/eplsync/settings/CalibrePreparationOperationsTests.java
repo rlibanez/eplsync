@@ -47,6 +47,93 @@ class CalibrePreparationOperationsTests {
         for(int start=1;start<=count;start+=500) {var rows=new ArrayList<Object[]>();for(int id=start;id<Math.min(start+500,count+1);id++)rows.add(new Object[]{id,1.0,"Book "+id,String.format("%040X",id==1001?1:id)});jdbc.batchUpdate("INSERT INTO catalog_books(epl_id,revision,title,links,author) VALUES(?,?,?,?,'Author')",rows);}
     }
     CatalogCalibreTransfers.Request request(String id,int count) {var books=java.util.stream.LongStream.rangeClosed(1,count).mapToObj(n->new CatalogCalibreTransfers.Book(n,1.0,"Book "+n)).toList();return new CatalogCalibreTransfers.Request(id,"main",books,List.of(),true,java.util.stream.LongStream.rangeClosed(1,count).boxed().toList());}
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={true,false})
+    void previewResumesCommittedBatchesAfterBusyClientAndRestart(boolean fromCatalog) {
+        seed(51);
+        var rows=new ArrayList<Object[]>();
+        var ids=new ArrayList<String>();
+        for(long n=1;n<=51;n++) {
+            String id="preview-"+n;ids.add(id);
+            rows.add(new Object[]{id,n,String.format("%040X",n),tracking.instanceId()});
+            when(files.list(id)).thenReturn(List.of(new EpubFiles.Item(0,"book-"+n+".epub",10)));
+        }
+        jdbc.batchUpdate("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES(?,?,1,?,'qbittorrent',?,'DOWNLOADED','EPLSYNC',0)",rows);
+        when(files.list("preview-51")).thenThrow(new com.rlibanez.eplsync.exception.TorrentBusyException());
+        if(fromCatalog) {
+            operations.prepare(new CalibrePreparationOperations.PreviewRequest("resumable-preview",new CatalogCalibreTransfers.Selection(new CatalogBookFilter())));
+            operations.cycle();
+        } else operations.prepareDirect(new CalibrePreparationOperations.DirectPreviewRequest("resumable-preview",ids));
+        operations.cycle();
+        assertThat(operations.status("resumable-preview").processed()).isEqualTo(50);
+        operations.cycle();
+        assertThat(operations.status("resumable-preview").phase()).isEqualTo("WAITING");
+        assertThat(operations.status("resumable-preview").processed()).isEqualTo(50);
+        operations.recover();
+        doReturn(List.of(new EpubFiles.Item(0,"book-51.epub",10))).when(files).list("preview-51");
+        operations.cycle();
+        assertThat(operations.status("resumable-preview").state()).isEqualTo("COMPLETED");
+        assertThat(operations.status("resumable-preview").processed()).isEqualTo(51);
+        verify(files,times(1)).list("preview-1");
+        var result=(tools.jackson.databind.JsonNode)operations.status("resumable-preview").result();
+        assertThat(result.path("files").size()).isEqualTo(51);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Long.class)).isZero();
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+
+    @Test void directSendReconcilesRepeatedReceiptsWithoutDuplicateJobs() {
+        var request=new CalibreTransfers.Request("main",List.of(),List.of("direct-record"),"direct-send");
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('direct-record',1,1,?,'qbittorrent',?,'DOWNLOADED','EPLSYNC',0)",String.format("%040X",1),tracking.instanceId());
+        operations.sendDirect(request);
+        when(client.check(any())).thenThrow(new com.rlibanez.eplsync.exception.TorrentBusyException());
+        operations.cycle();
+        assertThat(operations.status(request.id()).phase()).isEqualTo("WAITING");
+        doReturn(new CalibreClient.Check(true,List.of(new CalibreClient.Library("main","Main")),"main")).when(client).check(any());
+        operations.recover();operations.sendDirect(request);operations.cycle();
+        assertThat(operations.status(request.id()).state()).isEqualTo("COMPLETED");
+        operations.sendDirect(request);operations.cycle();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items",Long.class)).isEqualTo(1);
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+
+    @Test void directPreparationRequiresFilePermissionButDoesNotRequireCatalogPermission() {
+        var owner=(Account)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        var authorities=List.of(new SimpleGrantedAuthority("CALIBRE_SEND"),new SimpleGrantedAuthority("DOWNLOADS_FILES_READ"));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,authorities));
+        var input=new CalibrePreparationOperations.DirectPreviewRequest("direct-permissions",List.of("record"));
+        assertThat(operations.prepareDirect(input).state()).isEqualTo("QUEUED");
+        assertThatThrownBy(()->operations.prepare(new CalibrePreparationOperations.PreviewRequest("catalog-denied",new CatalogCalibreTransfers.Selection(new CatalogBookFilter()))))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(owner,null,List.of(new SimpleGrantedAuthority("CALIBRE_SEND"))));
+        assertThatThrownBy(()->operations.status(input.id())).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
+
+    @Test void cancellationDuringDirectCreationRollsBackTheUnpublishedJob() {
+        var check=new CalibreClient.Check(true,List.of(new CalibreClient.Library("main","Main")),"main");
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('cancel-direct-record',1,1,?,'qbittorrent',?,'DOWNLOADED','EPLSYNC',0)",String.format("%040X",1),tracking.instanceId());
+        var request=new CalibreTransfers.Request("main",List.of(),List.of("cancel-direct-record"),"cancel-direct-send");
+        operations.sendDirect(request);
+        when(client.check(any())).thenAnswer(call->{operations.cancel(request.id());return check;});
+        operations.cycle();
+        assertThat(operations.status(request.id()).state()).isEqualTo("CANCELLED");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Long.class)).isZero();
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+
+    @Test void selectedCatalogFileIsPreservedWhenCreationUsesTheOperationQueue() {
+        seed(1);
+        jdbc.update("INSERT INTO torrent_downloads(id,epl_id,revision,hash,client,client_instance_id,status,origin,created_at) VALUES('catalog-record',1,1,?,'qbittorrent',?,'DOWNLOADED','EPLSYNC',0)",String.format("%040X",1),tracking.instanceId());
+        when(files.list("catalog-record")).thenReturn(List.of(new EpubFiles.Item(2,"chosen.epub",10)));
+        var request=new CatalogCalibreTransfers.Request("selected-file","main",List.of(new CatalogCalibreTransfers.Book(1,1,"Book 1")),List.of(new CalibreTransfers.FileChoice("catalog-record",2)),false,List.of());
+        operations.send(request);operations.cycle();
+        assertThat(operations.status(request.id()).state()).isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT file_index FROM calibre_job_items",Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT state FROM calibre_jobs",String.class)).isEqualTo("QUEUED");
+        operations.send(request);operations.recover();operations.cycle();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items",Long.class)).isEqualTo(1);
+    }
+
     @Test void batchesRemainInactiveAndResumeWithoutDuplicatingJobsOrItems() {
         seed(1501);var request=request("resume-batches",1501);assertThat(operations.send(request).state()).isEqualTo("QUEUED");operations.cycle();
         assertThat(operations.status(request.id()).processed()).isEqualTo(500);
@@ -62,7 +149,8 @@ class CalibrePreparationOperationsTests {
         verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());verify(files,never()).list(anyString());
     }
     @Test void previewRespectsExclusionsAndCreatesNoJobs() {
-        seed(1201);var filter=new CatalogBookFilter();filter.setExcludedIds(new Long[]{1201L});operations.prepare(new CalibrePreparationOperations.PreviewRequest("preview",new CatalogCalibreTransfers.Selection(filter)));operations.cycle();
+        seed(1201);var filter=new CatalogBookFilter();filter.setExcludedIds(new Long[]{1201L});operations.prepare(new CalibrePreparationOperations.PreviewRequest("preview",new CatalogCalibreTransfers.Selection(filter)));
+        for(int n=0;n<30 && !operations.status("preview").state().equals("COMPLETED");n++) operations.cycle();
         assertThat(operations.status("preview").state()).isEqualTo("COMPLETED");assertThat(operations.status("preview").total()).isEqualTo(1200);assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_jobs",Integer.class)).isZero();assertThat(jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_jobs",Integer.class)).isZero();
     }
     @Test void changedConnectionCancelsStagedJobsBeforeAnyDispatch() {
@@ -223,8 +311,9 @@ class CalibrePreparationOperationsTests {
     @Test void fastPhaseLogsContainOnlyTheirFinalCountsAtInfo() {
         var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(CalibrePreparationOperations.class);var level=logger.getLevel();var appender=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();appender.start();logger.addAppender(appender);logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
         try {
-            seed(1201);operations.prepare(new CalibrePreparationOperations.PreviewRequest("concise-logs",new CatalogCalibreTransfers.Selection(new CatalogBookFilter())));operations.cycle();
-            var phases=appender.list.stream().filter(event->event.getLevel()==ch.qos.logback.classic.Level.INFO && event.getFormattedMessage().startsWith("Preparación de envío a Calibre:")).toList();assertThat(phases).hasSize(5);assertThat(phases).allSatisfy(event->assertThat(event.getFormattedMessage()).contains("procesados=1201, total=1201"));
+            seed(1201);operations.prepare(new CalibrePreparationOperations.PreviewRequest("concise-logs",new CatalogCalibreTransfers.Selection(new CatalogBookFilter())));
+            for(int n=0;n<30 && !operations.status("concise-logs").state().equals("COMPLETED");n++) operations.cycle();
+            var summaries=appender.list.stream().filter(event->event.getLevel()==ch.qos.logback.classic.Level.INFO && event.getFormattedMessage().startsWith("Previsualización de Calibre preparada:")).toList();assertThat(summaries).hasSize(1);assertThat(summaries.getFirst().getFormattedMessage()).contains("libros=1201");
             assertThat(appender.list).noneSatisfy(event->assertThat(event.getFormattedMessage()).contains("fase=CATALOG, procesados=0"));
             assertThat(appender.list).noneSatisfy(event->assertThat(event.getFormattedMessage()).contains("fase=DOWNLOAD_RECORDS, procesados=500"));
             assertThat(appender.list).noneSatisfy(event->assertThat(event.getFormattedMessage()).contains("fase=FILES, procesados=500"));

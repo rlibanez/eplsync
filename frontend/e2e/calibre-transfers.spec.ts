@@ -1,3 +1,4 @@
+import { readyPreparation } from "./preparation";
 import { test, expect, type Page } from "./fixtures";
 const meta = {
   page: 0,
@@ -93,10 +94,10 @@ test("sends selected EPUB files to a library and controls its job", async ({
 }) => {
   await records(page);
   await jobRoutes(page);
-  await page.route("**/api/calibre/transfers/prepare", (r) => {
-    expect(r.request().postDataJSON()).toEqual({ ids: ["1", "2"] });
+  await page.route("**/api/calibre/transfers/operations/prepare", (r) => {
+    expect(r.request().postDataJSON()).toMatchObject({ ids: ["1", "2"] });
     return r.fulfill({
-      json: {
+      json: readyPreparation({
         library: "main",
         libraries: [{ id: "main", name: "Biblioteca principal" }],
         files: [
@@ -118,10 +119,10 @@ test("sends selected EPUB files to a library and controls its job", async ({
             revision: 1.1,
           },
         ],
-      },
+      }),
     });
   });
-  await page.route("**/api/calibre/transfers", (r) => {
+  await page.route("**/api/calibre/transfers/operations/send", (r) => {
     expect(r.request().method()).toBe("POST");
     expect(r.request().postDataJSON()).toEqual({
       id: expect.any(String),
@@ -129,7 +130,7 @@ test("sends selected EPUB files to a library and controls its job", async ({
       formats: ["epub"],
       files: [{ recordId: "1", index: 0 }],
     });
-    return r.fulfill({ json: { id: "job" } });
+    return r.fulfill({ json: readyPreparation({ id: "job" }) });
   });
   await page.goto("/downloads");
   await page
@@ -181,8 +182,8 @@ test("row sends only that record and reports preparation errors", async ({
   page,
 }) => {
   await records(page);
-  await page.route("**/api/calibre/transfers/prepare", (r) => {
-    expect(r.request().postDataJSON()).toEqual({ ids: ["2"] });
+  await page.route("**/api/calibre/transfers/operations/prepare", (r) => {
+    expect(r.request().postDataJSON()).toMatchObject({ ids: ["2"] });
     return r.fulfill({
       status: 409,
       json: { details: "El EPUB no está accesible" },
@@ -466,9 +467,9 @@ test("repeating a direct send after a lost response keeps its request identifier
 }) => {
   await records(page);
   await jobRoutes(page);
-  await page.route("**/api/calibre/transfers/prepare", (route) =>
+  await page.route("**/api/calibre/transfers/operations/prepare", (route) =>
     route.fulfill({
-      json: {
+      json: readyPreparation({
         library: "main",
         libraries: [{ id: "main", name: "Main" }],
         files: [
@@ -482,15 +483,15 @@ test("repeating a direct send after a lost response keeps its request identifier
             revision: 1.1,
           },
         ],
-      },
+      }),
     }),
   );
   const ids: string[] = [];
-  await page.route("**/api/calibre/transfers", (route) => {
+  await page.route("**/api/calibre/transfers/operations/send", (route) => {
     ids.push(route.request().postDataJSON().id);
     return ids.length === 1
       ? route.fulfill({ status: 503, json: { details: "Respuesta perdida" } })
-      : route.fulfill({ json: { id: "job" } });
+      : route.fulfill({ json: readyPreparation({ id: "job" }) });
   });
   await page.goto("/downloads");
   await page
@@ -566,24 +567,24 @@ for (const allUnavailable of [false, true])
       revision: row.revision,
       message: "Los archivos aún no están descargados",
     }));
-    await page.route("**/api/calibre/transfers/prepare", (route) => {
+    await page.route("**/api/calibre/transfers/operations/prepare", (route) => {
       expect(route.request().postDataJSON().ids).toHaveLength(22);
       return route.fulfill({
-        json: {
+        json: readyPreparation({
           libraries: [{ id: "main", name: "Main" }],
           library: "main",
           files: available,
           unavailable,
-        },
+        }),
       });
     });
     let submitted = 0;
-    await page.route("**/api/calibre/transfers", (route) => {
+    await page.route("**/api/calibre/transfers/operations/send", (route) => {
       submitted++;
       expect(route.request().postDataJSON().files).toEqual(
         available.map((file) => ({ recordId: file.recordId, index: 0 })),
       );
-      return route.fulfill({ json: { id: "job" } });
+      return route.fulfill({ json: readyPreparation({ id: "job" }) });
     });
     await page.goto("/downloads");
     await page
@@ -829,27 +830,27 @@ for (const mixed of [false, true]) {
           },
         ]
       : [];
-    await page.route("**/api/calibre/transfers/prepare", (r) =>
+    await page.route("**/api/calibre/transfers/operations/prepare", (r) =>
       r.fulfill({
-        json: {
+        json: readyPreparation({
           libraries: [{ id: "main", name: "Main" }],
           library: "main",
           files: available,
           unavailable: [],
           deferredRecords: pending.map((p) => p.recordId),
           pending,
-        },
+        }),
       }),
     );
     let submitted = 0;
-    await page.route("**/api/calibre/transfers", (r) => {
+    await page.route("**/api/calibre/transfers/operations/send", (r) => {
       submitted++;
       const body = r.request().postDataJSON();
       expect(body.files).toEqual(
         available.map((f) => ({ recordId: f.recordId, index: f.index })),
       );
       expect(body.deferredRecords).toEqual(pending.map((p) => p.recordId));
-      return r.fulfill({ json: { id: "job" } });
+      return r.fulfill({ json: readyPreparation({ id: "job" }) });
     });
     await page.goto("/downloads");
     await page
@@ -904,20 +905,20 @@ test("format filter preserves hidden selections and sends only explicitly select
     eplId: 1,
     revision: 1.1,
   }));
-  await page.route("**/api/calibre/transfers/prepare", (r) =>
+  await page.route("**/api/calibre/transfers/operations/prepare", (r) =>
     r.fulfill({
-      json: {
+      json: readyPreparation({
         libraries: [{ id: "main", name: "Main" }],
         library: "main",
         files,
         unavailable: [],
         pending: [],
         deferredRecords: [],
-      },
+      }),
     }),
   );
   let sent = 0;
-  await page.route("**/api/calibre/transfers", (r) => {
+  await page.route("**/api/calibre/transfers/operations/send", (r) => {
     const body = r.request().postDataJSON();
     expect(body.files).toEqual([
       { recordId: "1", index: 0 },
@@ -925,7 +926,7 @@ test("format filter preserves hidden selections and sends only explicitly select
     ]);
     expect(body.formats).toContain("pdf");
     sent++;
-    return r.fulfill({ json: { id: "job" } });
+    return r.fulfill({ json: readyPreparation({ id: "job" }) });
   });
   await page.goto("/downloads");
   await page
@@ -955,4 +956,31 @@ test("format filter preserves hidden selections and sends only explicitly select
     .click();
   await expect(page).toHaveURL(/\/calibre\/jobs\/job$/);
   expect(sent).toBe(1);
+});
+
+test("preparation waits automatically and polls without repeating the request", async ({ page }) => {
+  await records(page);
+  let posts = 0;
+  let polls = 0;
+  await page.route("**/api/calibre/transfers/operations/prepare", route => {
+    posts++;
+    return route.fulfill({ json: {
+      id: "waiting-preview", kind: "PREPARE", state: "QUEUED", phase: "WAITING",
+      processed: 1, total: 2, startedAt: Date.now(),
+      message: "Esperando automáticamente a que la operación en curso termine", result: null,
+    } });
+  });
+  await page.route("**/api/calibre/transfers/catalog/operations/waiting-preview", route => {
+    polls++;
+    return route.fulfill({ json: readyPreparation({
+      library: "main", libraries: [{ id: "main", name: "Main" }],
+      files: [{ recordId: "1", index: 0, name: "Libro.epub", size: 200, eplId: 1, revision: 1.1 }],
+    }) });
+  });
+  await page.goto("/downloads");
+  await page.getByRole("checkbox", { name: "Seleccionar registros de esta página" }).check();
+  await page.getByRole("button", { name: "Enviar a Calibre", exact: true }).first().click();
+  await expect(page.getByRole("dialog").getByRole("checkbox", { name: /Libro.epub/ })).toBeChecked();
+  expect(posts).toBe(1);
+  expect(polls).toBe(1);
 });
