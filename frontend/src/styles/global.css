@@ -729,6 +729,8 @@ dd {
 }
 .page-heading > .action-row {
   margin-top: 0;
+  margin-left: auto;
+  justify-content: flex-end;
   align-items: center;
 }
 .import-note {
