@@ -126,6 +126,7 @@ function Form({
     retry: false,
     onSuccess: (data) => {
       cache.setQueryData(["calibre-settings"], data);
+      void cache.invalidateQueries({ queryKey: ["calibre-browser-link"] });
       void cache.invalidateQueries({ queryKey: ["calibre-snapshot"] });
       void cache.invalidateQueries({ queryKey: ["calibre-library"] });
       void cache.invalidateQueries({ queryKey: ["saved-calibre-updates"] });

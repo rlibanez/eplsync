@@ -349,6 +349,7 @@ class CalibreCatalogTests {
         jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author) VALUES(1,2,'Book','Author')");
         mvc.perform(get("/api/calibre/books")).andExpect(status().isForbidden());
         mvc.perform(get("/api/calibre/books/1/open")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/calibre/books/browser-link")).andExpect(status().isForbidden());
         mvc.perform(get("/api/catalog/books/1")).andExpect(status().isOk()).andExpect(jsonPath("$.calibre").isEmpty());
         mvc.perform(get("/api/catalog/books")).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].calibre").isEmpty());
     }
@@ -362,10 +363,14 @@ class CalibreCatalogTests {
     @Test @WithMockUser(authorities={"CALIBRE_READ"}) void opensTheExactCopyWithoutCredentialsAndPreservesSnapshotWhenBrowserUrlChanges() throws Exception {
         when(client.books(any(),eq(0),eq(100))).thenReturn(new CalibreClient.Books(List.of(book(3,1L,1d)),1,0,100));
         snapshots.sync();
+        mvc.perform(get("/api/calibre/books/browser-link")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.url").value(""));
         mvc.perform(get("/api/calibre/books/3/open")).andExpect(status().isFound())
             .andExpect(header().string("Location","http://localhost:8080/#book_id=3&library_id=main&panel=book_details"));
         settings.save(new CalibreSettings.Input("http://localhost:8080","","",true,"main","https://books.example/calibre/"));
         assertThat(snapshots.snapshot()).isNotNull();
+        mvc.perform(get("/api/calibre/books/browser-link")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.url").value("https://books.example/calibre"));
         mvc.perform(get("/api/calibre/books/3/open")).andExpect(status().isFound())
             .andExpect(header().string("Cache-Control","no-store"))
             .andExpect(header().string("Location","https://books.example/calibre/#book_id=3&library_id=main&panel=book_details"));

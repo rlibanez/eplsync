@@ -1,3 +1,4 @@
+import { ExternalLink } from "lucide-react";
 import { CompleteHardcover } from "./CompleteHardcover";
 import { CompleteCalibreIdentifiers } from "./CompleteCalibreIdentifiers";
 import { useBookViewState } from "../catalog/useBookViewState";
@@ -174,6 +175,12 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
         ...(!canCheckFiles ? ["downloadAvailability"] : []),
       ]
     : ["downloadAvailability"];
+  const browserLink = useQuery({
+    queryKey: ["calibre-browser-link"],
+    queryFn: ({ signal }) =>
+      get<{ url: string }>("/calibre/books/browser-link", signal),
+    enabled: !updates && auth.can("CALIBRE_READ"),
+  });
   const formatOptions = useQuery({
     queryKey: ["calibre-formats", auth.user?.id],
     queryFn: ({ signal }) => get<string[]>("/calibre/books/formats", signal),
@@ -319,9 +326,22 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               : "calibre.libraryDescription",
           )}
         />
-        {(auth.can("CALIBRE_SYNC") ||
+        {((!updates && !!browserLink.data?.url) ||
+          auth.can("CALIBRE_SYNC") ||
           (!updates && auth.can("CALIBRE_DELETE"))) && (
           <div className="action-row">
+            {!updates && browserLink.data?.url && (
+              <Button
+                component="a"
+                href={browserLink.data.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="light"
+                leftSection={<ExternalLink size={16} />}
+              >
+                {t("calibre.openClient")}
+              </Button>
+            )}
             {!updates && (
               <CleanupLauncher source="calibre" selected={selected} />
             )}

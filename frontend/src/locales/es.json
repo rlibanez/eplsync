@@ -1725,6 +1725,7 @@
     }
   },
   "calibre": {
+    "openClient": "Abrir Calibre",
     "identifierSettings": "Identificadores",
     "autoCompleteIdentifiers": "Completar automáticamente los identificadores ausentes",
     "autoCompleteIdentifiersHelp": "Al enviar EPUB a Calibre, completa el EPL ID y la revisión que falten con los datos de la descarga. Los archivos EPUB no se modifican. Puedes seguir usando «Completar identificadores» manualmente aunque desactives esta opción.",

@@ -15,6 +15,9 @@ public class CalibreLibraryController {
     private final JdbcTemplate jdbc;
     private final CalibreSettings settings;
     public CalibreLibraryController(JdbcTemplate jdbc,CalibreSettings settings) { this.jdbc=jdbc; this.settings=settings; }
+    public record BrowserLink(String url) {}
+    @GetMapping("/browser-link")
+    public BrowserLink browserLink() { return new BrowserLink(settings.view().browserUrl()); }
     @GetMapping("/{calibreId}/open")
     @Transactional(readOnly=true)
     public org.springframework.http.ResponseEntity<Void> open(@PathVariable long calibreId) {

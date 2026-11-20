@@ -1725,6 +1725,7 @@
     }
   },
   "calibre": {
+    "openClient": "Open Calibre",
     "identifierSettings": "Identifiers",
     "autoCompleteIdentifiers": "Automatically fill missing identifiers",
     "autoCompleteIdentifiersHelp": "When sending EPUBs to Calibre, fill missing EPL ID and revision from the download. EPUB files are not modified. You can still use “Complete identifiers” manually when this option is disabled.",
