@@ -146,7 +146,7 @@ class BulkSummaryTests {
         assertThat(store.list(10,20,null).items()).isEmpty();
     }
 
-    @Test void inventoryCounterUsesMatchingClientHashAndRevisionWithoutBlockingCompletion() {
+    @Test void inventoryCounterUsesStableIdentityWithoutBlockingCompletion() {
         seed("inventory-report",false);
         var job=jobs.findById("inventory-report").orElseThrow();job.setTrackDownloads(true);job.setTargetFingerprint("inventory-client");jobs.save(job);
         jdbc.update("UPDATE torrent_bulk_items SET revision=1 WHERE job_id='inventory-report'");
@@ -156,8 +156,12 @@ class BulkSummaryTests {
             jdbc.update("UPDATE torrent_downloads SET client_instance_id='another-client' WHERE id='report-file'");
             assertThat(store.view(job.getId()).download().filesChecked()).isZero();
             jdbc.update("UPDATE torrent_downloads SET client_instance_id='inventory-client',revision=2 WHERE id='report-file'");
+            assertThat(store.view(job.getId()).download().filesChecked()).isEqualTo(1);
+            jdbc.update("UPDATE torrent_downloads SET hash='another-hash' WHERE id='report-file'");
             assertThat(store.view(job.getId()).download().filesChecked()).isZero();
-            jdbc.update("UPDATE torrent_downloads SET revision=1,inventory_state='ERROR' WHERE id='report-file'");
+            jdbc.update("UPDATE torrent_downloads SET hash='hash-0',epl_id=11 WHERE id='report-file'");
+            assertThat(store.view(job.getId()).download().filesChecked()).isZero();
+            jdbc.update("UPDATE torrent_downloads SET epl_id=10,revision=1,inventory_state='ERROR' WHERE id='report-file'");
             var view=store.view(job.getId());assertThat(view.download().filesChecked()).isZero();
             assertThat(view.status()).isEqualTo(BulkJob.State.COMPLETED);
         } finally {jdbc.update("DELETE FROM torrent_downloads WHERE id='report-file'");}

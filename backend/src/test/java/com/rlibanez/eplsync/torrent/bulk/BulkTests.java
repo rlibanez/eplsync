@@ -114,6 +114,39 @@ class BulkTests {
         } finally {monitor.close();jdbc.update("DELETE FROM torrent_downloads");}
     }
 
+    @Test void trackingRecoversMissingRecordMessageWithDifferentRevisionWithoutResending() {
+        var adapter = mock(com.rlibanez.eplsync.torrent.TorrentClient.class);
+        var monitor = monitor(adapter);
+        try {
+            var job = create(null);
+            jdbc.update("UPDATE torrent_bulk_items SET state='ACCEPTED',revision=1.2,download_state='NOT_FOUND',download_message='No se conserva el registro de la descarga; restaura la descarga u omite su seguimiento' WHERE job_id=?", job.jobId());
+            store.completeIfEmpty(job.jobId());
+            var rows = items.findByJobIdOrderByPosition(job.jobId(), PageRequest.of(0,20)).getContent();
+            rows.forEach(this::downloadRecord);
+            for (var row : rows) jdbc.update("UPDATE torrent_downloads SET revision=1.1 WHERE id=?", row.getId());
+            when(adapter.listTorrents(anySet())).thenReturn(rows.stream()
+                    .map(row -> remote(row, com.rlibanez.eplsync.torrent.downloads.DownloadStatus.DOWNLOADED)).toList());
+            monitor.tick();
+            assertThat(store.view(job.jobId()).status()).isEqualTo(BulkJob.State.COMPLETED);
+            assertThat(store.view(job.jobId()).download().downloaded()).isEqualTo(5);
+            assertThat(store.view(job.jobId()).download().attention()).isZero();
+            assertThat(store.details(job.jobId(),0,20).items()).allSatisfy(row -> {
+                assertThat(row.revision()).isEqualTo(1.2);
+                assertThat(row.downloadState()).isEqualTo("DOWNLOADED");
+                assertThat(row.downloadMessage()).isNull();
+            });
+            assertThat(jdbc.queryForList("SELECT revision FROM torrent_downloads", Double.class))
+                    .containsOnly(1.1);
+            store.recover();
+            monitor.tick();
+            verify(client, never()).addTorrent(any(), any());
+            verify(adapter, never()).deleteTorrent(anyString(), anyBoolean());
+        } finally {
+            monitor.close();
+            jdbc.update("DELETE FROM torrent_downloads");
+        }
+    }
+
     @Test void lifecycleWaitsForRealCompletionAndRecoversErrorsWithoutResending() throws Exception {
         var adapter=mock(com.rlibanez.eplsync.torrent.TorrentClient.class);
         var monitor=monitor(adapter);
