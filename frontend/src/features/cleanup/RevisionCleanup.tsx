@@ -1,3 +1,4 @@
+import { sortOptions } from "../../locales/textOrdering";
 import { LibraryCleanupWizard } from "./LibraryCleanupWizard";
 import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
@@ -1267,22 +1268,24 @@ export function CleanupJob() {
             setExcludeState(!excludeState);
             setPage(0);
           })}
-          data={[
-            "PENDING",
-            "RUNNING",
-            "VERIFYING",
-            "SUCCEEDED",
-            "BLOCKED",
-            "FAILED",
-            "UNCERTAIN",
-            "SKIPPED",
-            "CANCELLED",
-            "EXCLUDED",
-            "READY",
-          ].map((value) => ({
-            value,
-            label: t(`revisionCleanup.states.${value}`),
-          }))}
+          data={sortOptions(
+            [
+              "PENDING",
+              "RUNNING",
+              "VERIFYING",
+              "SUCCEEDED",
+              "BLOCKED",
+              "FAILED",
+              "UNCERTAIN",
+              "SKIPPED",
+              "CANCELLED",
+              "EXCLUDED",
+              "READY",
+            ].map((value) => ({
+              value,
+              label: t(`revisionCleanup.states.${value}`),
+            })),
+          )}
           onChange={(values) => {
             setStates(values);
             if (!values.length) setExcludeState(false);

@@ -1,3 +1,4 @@
+import { sortOptions } from "../../locales/textOrdering";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import {
   pageSelection,
@@ -439,10 +440,12 @@ function DownloadHistory() {
             )}
             clearable
             value={filters.status ? filters.status.split(",") : []}
-            data={downloadStates.map((value) => ({
-              value,
-              label: status(value),
-            }))}
+            data={sortOptions(
+              downloadStates.map((value) => ({
+                value,
+                label: status(value),
+              })),
+            )}
             onChange={(values) => {
               setFilters((current) => ({
                 ...current,
@@ -461,7 +464,7 @@ function DownloadHistory() {
               "aria-label": `${t("catalog.clear")}: ${t("downloads.extensions")}`,
             }}
             searchable
-            data={[
+            data={sortOptions([
               ...Array.from(
                 new Set([
                   "epub",
@@ -484,7 +487,7 @@ function DownloadHistory() {
               { value: "UNKNOWN", label: t("downloads.inventoryUnknown") },
               { value: "ERROR", label: t("downloads.inventoryError") },
               { value: "OTHER", label: t("downloads.otherExtensions") },
-            ]}
+            ])}
             value={filters.extensions?.split(",").filter(Boolean) ?? []}
             onChange={(values) => filter("extensions", values.join(","))}
             {...stateOperatorProps(filters.extensionsOperator === "ne", () =>
@@ -498,10 +501,10 @@ function DownloadHistory() {
             label={t("downloads.origin")}
             value={filters.origin || null}
             clearable
-            data={[
+            data={sortOptions([
               { value: "EPLSYNC", label: "EPL Sync" },
               { value: "DISCOVERED", label: t("downloads.discovered") },
-            ]}
+            ])}
             onChange={(v) => {
               setFilters((current) => ({
                 ...current,
@@ -514,10 +517,10 @@ function DownloadHistory() {
             label={t("downloads.completed")}
             value={filters.completed || null}
             clearable
-            data={[
+            data={sortOptions([
               { value: "true", label: t("downloads.yes") },
               { value: "false", label: t("downloads.no") },
-            ]}
+            ])}
             onChange={(v) => filter("completed", v ?? "")}
           />
           <Button

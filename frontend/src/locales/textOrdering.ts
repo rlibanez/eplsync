@@ -9,3 +9,9 @@ export function textSortKey(value: string) {
 export function compareText(left: string, right: string) {
   return collator.compare(textSortKey(left), textSortKey(right));
 }
+
+export function sortOptions<T extends { label: string }>(options: T[]): T[] {
+  return [...options].sort((left, right) =>
+    compareText(left.label, right.label),
+  );
+}

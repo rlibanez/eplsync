@@ -1,3 +1,4 @@
+import { sortOptions } from "../../locales/textOrdering";
 import { BookLink } from "../catalog/BookLink";
 import { usePageSizeChoice } from "../../components/PageSizeSelect";
 import { compareText } from "../../locales/textOrdering";
@@ -115,7 +116,8 @@ export function SyncReport({
     ],
     view.bookSort,
     (value) => setView({ bookSort: value, page: 0 }),
-    { defaults: "eplId,asc" }, (page + 1) * size,
+    { defaults: "eplId,asc" },
+    (page + 1) * size,
   );
   const ignoredColumns = useDownloadColumns(
     "eplsync.sync.ignored.columns",
@@ -132,7 +134,8 @@ export function SyncReport({
     ],
     view.ignoredSort,
     (value) => setView({ ignoredSort: value, page: 0 }),
-    { defaults: "name,asc" }, (page + 1) * size,
+    { defaults: "name,asc" },
+    (page + 1) * size,
   );
   const columns = tab === "books" ? bookColumns : ignoredColumns;
   function sorted<T>(
@@ -363,16 +366,14 @@ export function SyncReport({
                         setAction(v!);
                         setPage(0);
                       }}
-                      data={[
-                        "CHANGED",
-                        "ALL",
-                        "CREATE",
-                        "UPDATE",
-                        "UNCHANGED",
-                      ].map((value) => ({
-                        value,
-                        label: t(`syncReport.actions.${value}`),
-                      }))}
+                      data={sortOptions(
+                        ["CHANGED", "ALL", "CREATE", "UPDATE", "UNCHANGED"].map(
+                          (value) => ({
+                            value,
+                            label: t(`syncReport.actions.${value}`),
+                          }),
+                        ),
+                      )}
                     />
                     <Select
                       label={t("syncReport.outcome")}
@@ -383,18 +384,20 @@ export function SyncReport({
                         if (v !== "ALL") setAction("ALL");
                         setPage(0);
                       }}
-                      data={[
-                        "ALL",
-                        "newlyCompleted",
-                        "notFound",
-                        "newlyNotFound",
-                      ].map((value) => ({
-                        value,
-                        label:
-                          value === "ALL"
-                            ? t("syncReport.actions.ALL")
-                            : t(`syncReport.counts.${value}`),
-                      }))}
+                      data={sortOptions(
+                        [
+                          "ALL",
+                          "newlyCompleted",
+                          "notFound",
+                          "newlyNotFound",
+                        ].map((value) => ({
+                          value,
+                          label:
+                            value === "ALL"
+                              ? t("syncReport.actions.ALL")
+                              : t(`syncReport.counts.${value}`),
+                        })),
+                      )}
                     />
                   </>
                 )}
@@ -423,52 +426,57 @@ export function SyncReport({
                     {tab === "books"
                       ? visibleItems.map((item, rowIndex) => (
                           <tr key={`${item.eplId}:${item.hash}`}>
-                            {bookColumns.cells([
-                              <td>
-                                <BookLink to={`/catalog/${item.eplId}`}>
-                                  {item.eplId}
-                                </BookLink>
-                              </td>,
-                              <td>
-                                <DownloadBook book={item} />
-                              </td>,
-                              <td className="hash-text">{item.hash}</td>,
-                              <td>{t(`syncReport.actions.${item.action}`)}</td>,
-                              <td>
-                                {item.previousStatus
-                                  ? status(item.previousStatus)
-                                  : "—"}
-                              </td>,
-                              <td>{status(item.resultingStatus)}</td>,
-                              <td>
-                                {item.changedFields
-                                  .map((field) =>
-                                    t(`syncReport.fields.${field}`),
-                                  )
-                                  .join(", ")}
-                                {!item.changedFields.length &&
-                                  !item.newlyCompleted &&
-                                  !item.newlyNotFound &&
-                                  "—"}
-                                {item.newlyCompleted && (
-                                  <div>
-                                    {t("syncReport.completionDetected")}:{" "}
-                                    {date(item.resultingCompletedAt)}
-                                  </div>
-                                )}
-                                {item.newlyNotFound && (
-                                  <div>
-                                    {t("syncReport.counts.newlyNotFound")}
-                                  </div>
-                                )}
-                                {item.changedFields.includes("lastError") && (
-                                  <div>
-                                    {item.previousError || "—"} →{" "}
-                                    {item.resultingError || "—"}
-                                  </div>
-                                )}
-                              </td>,
-                            ], page * size + rowIndex + 1)}
+                            {bookColumns.cells(
+                              [
+                                <td>
+                                  <BookLink to={`/catalog/${item.eplId}`}>
+                                    {item.eplId}
+                                  </BookLink>
+                                </td>,
+                                <td>
+                                  <DownloadBook book={item} />
+                                </td>,
+                                <td className="hash-text">{item.hash}</td>,
+                                <td>
+                                  {t(`syncReport.actions.${item.action}`)}
+                                </td>,
+                                <td>
+                                  {item.previousStatus
+                                    ? status(item.previousStatus)
+                                    : "—"}
+                                </td>,
+                                <td>{status(item.resultingStatus)}</td>,
+                                <td>
+                                  {item.changedFields
+                                    .map((field) =>
+                                      t(`syncReport.fields.${field}`),
+                                    )
+                                    .join(", ")}
+                                  {!item.changedFields.length &&
+                                    !item.newlyCompleted &&
+                                    !item.newlyNotFound &&
+                                    "—"}
+                                  {item.newlyCompleted && (
+                                    <div>
+                                      {t("syncReport.completionDetected")}:{" "}
+                                      {date(item.resultingCompletedAt)}
+                                    </div>
+                                  )}
+                                  {item.newlyNotFound && (
+                                    <div>
+                                      {t("syncReport.counts.newlyNotFound")}
+                                    </div>
+                                  )}
+                                  {item.changedFields.includes("lastError") && (
+                                    <div>
+                                      {item.previousError || "—"} →{" "}
+                                      {item.resultingError || "—"}
+                                    </div>
+                                  )}
+                                </td>,
+                              ],
+                              page * size + rowIndex + 1,
+                            )}
                           </tr>
                         ))
                       : visibleIgnored.map((original, rowIndex) => {
@@ -480,30 +488,33 @@ export function SyncReport({
                           };
                           return (
                             <tr key={item.hash}>
-                              {ignoredColumns.cells([
-                                <td>{item.name || "—"}</td>,
-                                <td className="sync-hash">{item.hash}</td>,
-                                <td>
-                                  {item.linked
-                                    ? t("torrentLink.linked")
-                                    : t(`syncReport.reasons.${item.reason}`, {
-                                        defaultValue: item.reason,
-                                      })}
-                                </td>,
-                                <td>
-                                  <Button
-                                    variant="light"
-                                    disabled={item.linked}
-                                    onClick={() => setLinking(item)}
-                                  >
-                                    {t(
-                                      item.linked
-                                        ? "torrentLink.linked"
-                                        : "torrentLink.link",
-                                    )}
-                                  </Button>
-                                </td>,
-                              ], page * size + rowIndex + 1)}
+                              {ignoredColumns.cells(
+                                [
+                                  <td>{item.name || "—"}</td>,
+                                  <td className="sync-hash">{item.hash}</td>,
+                                  <td>
+                                    {item.linked
+                                      ? t("torrentLink.linked")
+                                      : t(`syncReport.reasons.${item.reason}`, {
+                                          defaultValue: item.reason,
+                                        })}
+                                  </td>,
+                                  <td>
+                                    <Button
+                                      variant="light"
+                                      disabled={item.linked}
+                                      onClick={() => setLinking(item)}
+                                    >
+                                      {t(
+                                        item.linked
+                                          ? "torrentLink.linked"
+                                          : "torrentLink.link",
+                                      )}
+                                    </Button>
+                                  </td>,
+                                ],
+                                page * size + rowIndex + 1,
+                              )}
                             </tr>
                           );
                         })}

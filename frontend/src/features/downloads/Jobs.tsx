@@ -1,3 +1,4 @@
+import { sortOptions } from "../../locales/textOrdering";
 import { DownloadJobControls } from "../jobs/DownloadJobControls";
 import {
   completedWorkItems,
@@ -280,10 +281,12 @@ export function Jobs() {
           })}
           clearable
           value={type ? type.split(",") : []}
-          data={["DOWNLOAD", "UPDATE", "CLEANUP"].map((value) => ({
-            value,
-            label: t(`historyActions.jobTypes.${value}`),
-          }))}
+          data={sortOptions(
+            ["DOWNLOAD", "UPDATE", "CLEANUP"].map((value) => ({
+              value,
+              label: t(`historyActions.jobTypes.${value}`),
+            })),
+          )}
           onChange={(value) => {
             setType(value.join(","));
             if (!value.length) setExcludeType(false);
@@ -300,7 +303,9 @@ export function Jobs() {
           })}
           clearable
           value={filter ? filter.split(",") : []}
-          data={jobStates.map((value) => ({ value, label: status(value) }))}
+          data={sortOptions(
+            jobStates.map((value) => ({ value, label: status(value) })),
+          )}
           onChange={(v) => {
             setFilter(v.join(","));
             if (!v.length) setExcluded(false);
@@ -1064,7 +1069,9 @@ export function JobDetail() {
           })}
           value={filter ? filter.split(",") : []}
           clearable
-          data={itemStates.map((value) => ({ value, label: status(value) }))}
+          data={sortOptions(
+            itemStates.map((value) => ({ value, label: status(value) })),
+          )}
           onChange={(v) => {
             setFilter(v.join(","));
             if (!v.length) setExcluded(false);
@@ -1085,15 +1092,17 @@ export function JobDetail() {
             setDownloadExcluded(!downloadExcluded);
             setPage(0);
           })}
-          data={[...downloadStates, "IGNORED", "WAITING"].map((value) => ({
-            value,
-            label:
-              value === "IGNORED"
-                ? t("downloadLifecycle.ignored")
-                : value === "WAITING"
-                  ? t("downloadLifecycle.checking")
-                  : status(value),
-          }))}
+          data={sortOptions(
+            [...downloadStates, "IGNORED", "WAITING"].map((value) => ({
+              value,
+              label:
+                value === "IGNORED"
+                  ? t("downloadLifecycle.ignored")
+                  : value === "WAITING"
+                    ? t("downloadLifecycle.checking")
+                    : status(value),
+            })),
+          )}
           onChange={(values) => {
             setDownloadFilter(values);
             if (!values.length) setDownloadExcluded(false);

@@ -1,3 +1,4 @@
+import { sortOptions } from "../../locales/textOrdering";
 import { ExternalLink } from "lucide-react";
 import { CompleteHardcover } from "./CompleteHardcover";
 import { CompleteCalibreIdentifiers } from "./CompleteCalibreIdentifiers";
@@ -533,26 +534,28 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               "aria-hidden": false,
               tabIndex: 0,
             }}
-            data={Array.from(
-              new Set([
-                "epub",
-                "pdf",
-                "azw3",
-                "mobi",
-                "cbr",
-                ...(formatOptions.data ?? []),
-                ...formats.split(",").filter(Boolean),
-                "UNKNOWN",
-              ]),
-            )
-              .sort()
-              .map((value) => ({
-                value,
-                label:
-                  value === "UNKNOWN"
-                    ? t("downloads.inventoryUnknown")
-                    : value.toUpperCase(),
-              }))}
+            data={sortOptions(
+              Array.from(
+                new Set([
+                  "epub",
+                  "pdf",
+                  "azw3",
+                  "mobi",
+                  "cbr",
+                  ...(formatOptions.data ?? []),
+                  ...formats.split(",").filter(Boolean),
+                  "UNKNOWN",
+                ]),
+              )
+                .sort()
+                .map((value) => ({
+                  value,
+                  label:
+                    value === "UNKNOWN"
+                      ? t("downloads.inventoryUnknown")
+                      : value.toUpperCase(),
+                })),
+            )}
             value={formats.split(",").filter(Boolean)}
             onChange={(values) => {
               setFormats(values.join(","));
@@ -569,11 +572,11 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             label={t("hardcover.column")}
             searchable
             clearable
-            data={[
+            data={sortOptions([
               { value: "SLUG", label: "Hardcover" },
               { value: "BOOK_ID", label: "Hardcover ID" },
               { value: "EDITION_ID", label: "Hardcover edition" },
-            ]}
+            ])}
             value={hardcover.split(",").filter(Boolean)}
             onChange={(values) => {
               setHardcover(values.join(","));
@@ -590,10 +593,10 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
           <Select
             label={t("hardcover.reviewFilter")}
             clearable
-            data={[
+            data={sortOptions([
               { value: "NO_MATCH", label: t("hardcover.noMatch") },
               { value: "UNREVIEWED", label: t("hardcover.unreviewed") },
-            ]}
+            ])}
             value={hardcoverReview}
             onChange={(value) => {
               setHardcoverReview(value);
@@ -611,11 +614,11 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
             label={t("calibreUpdateSend.availability")}
             clearable
             value={availability}
-            data={["READY", "MISSING", "INACCESSIBLE", "UNKNOWN"].map(
-              (value) => ({
+            data={sortOptions(
+              ["READY", "MISSING", "INACCESSIBLE", "UNKNOWN"].map((value) => ({
                 value,
                 label: t(`calibreUpdateSend.availabilityValues.${value}`),
-              }),
+              })),
             )}
             onChange={(value) => {
               setAvailability(value);
@@ -644,11 +647,11 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               }}
               clearable
               value={comparison ? comparison.split(",") : []}
-              data={["CURRENT", "OUTDATED", "NEWER", "UNKNOWN"].map(
-                (value) => ({
+              data={sortOptions(
+                ["CURRENT", "OUTDATED", "NEWER", "UNKNOWN"].map((value) => ({
                   value,
                   label: t(`calibre.filter.${value}`),
-                }),
+                })),
               )}
               onChange={(v) => {
                 setComparison(v.join(","));
@@ -675,10 +678,12 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
               }}
               clearable
               value={presence ? presence.split(",") : []}
-              data={["PRESENT", "MISSING", "UNIDENTIFIED"].map((value) => ({
-                value,
-                label: t(`calibre.presenceValues.${value}`),
-              }))}
+              data={sortOptions(
+                ["PRESENT", "MISSING", "UNIDENTIFIED"].map((value) => ({
+                  value,
+                  label: t(`calibre.presenceValues.${value}`),
+                })),
+              )}
               onChange={(v) => {
                 setPresence(v.join(","));
                 if (!v.length)

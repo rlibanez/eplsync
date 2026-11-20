@@ -1,3 +1,4 @@
+import { sortOptions } from "../../locales/textOrdering";
 import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import {
@@ -280,10 +281,12 @@ export function CalibreJobs() {
           })}
           value={type ? type.split(",") : []}
           clearable
-          data={["SEND", "CLEANUP"].map((value) => ({
-            value,
-            label: t(`historyActions.jobTypes.${value}`),
-          }))}
+          data={sortOptions(
+            ["SEND", "CLEANUP"].map((value) => ({
+              value,
+              label: t(`historyActions.jobTypes.${value}`),
+            })),
+          )}
           onChange={(value) => {
             setType(value.join(","));
             if (!value.length) setExcludeType(false);
@@ -305,8 +308,10 @@ export function CalibreJobs() {
             setPage(0);
           }}
           clearable
-          data={["QUEUED", "RUNNING", "PAUSED", "COMPLETED", "CANCELLED"].map(
-            (value) => ({ value, label: t(`calibreSend.states.${value}`) }),
+          data={sortOptions(
+            ["QUEUED", "RUNNING", "PAUSED", "COMPLETED", "CANCELLED"].map(
+              (value) => ({ value, label: t(`calibreSend.states.${value}`) }),
+            ),
           )}
         />
         <TextInput
@@ -723,22 +728,24 @@ export function CalibreJobDetail() {
           })}
           clearable
           value={itemState ? itemState.split(",") : []}
-          data={[
-            "PENDING",
-            "WAITING_DOWNLOAD",
-            "BLOCKED_DOWNLOAD",
-            "SENDING",
-            "ACCEPTED",
-            "SKIPPED",
-            "OMITTED",
-            "FAILED",
-            "UNCERTAIN",
-            "CLEANUP_PENDING",
-            "CANCELLED",
-          ].map((value) => ({
-            value,
-            label: t(`calibreSend.states.${value}`),
-          }))}
+          data={sortOptions(
+            [
+              "PENDING",
+              "WAITING_DOWNLOAD",
+              "BLOCKED_DOWNLOAD",
+              "SENDING",
+              "ACCEPTED",
+              "SKIPPED",
+              "OMITTED",
+              "FAILED",
+              "UNCERTAIN",
+              "CLEANUP_PENDING",
+              "CANCELLED",
+            ].map((value) => ({
+              value,
+              label: t(`calibreSend.states.${value}`),
+            })),
+          )}
           onChange={(value) => {
             setItemState(value.join(","));
             if (!value.length) setExcluded(false);

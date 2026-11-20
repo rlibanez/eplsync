@@ -1,3 +1,4 @@
+import { sortOptions } from "../../locales/textOrdering";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { togglePageSelection } from "../../components/pageSelection";
 import { BookLink } from "../catalog/BookLink";
@@ -275,10 +276,12 @@ export function RevisionUpdates() {
           clearable
           value={registeredStatus ? registeredStatus.split(",") : []}
           disabled={!search || find.isPending}
-          data={downloadStates.map((value) => ({
-            value,
-            label: status(value),
-          }))}
+          data={sortOptions(
+            downloadStates.map((value) => ({
+              value,
+              label: status(value),
+            })),
+          )}
           onChange={(value) => {
             setRegisteredStatus(value.join(",") || null);
             if (!value.length) session.setView({ excluded: false });

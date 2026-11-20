@@ -1,3 +1,4 @@
+import { sortOptions } from "../../locales/textOrdering";
 import { SavedCatalogSearches, type SavedSearch } from "./SavedCatalogSearches";
 import {
   stateOperatorProps,
@@ -405,7 +406,9 @@ export function CatalogFilters({
             clearButtonProps={clearButtonProps(t("catalog.language"))}
             onChange={(v) => setMultiValue("language", v)}
             clearable
-            data={languages.map((value) => ({ value, label: language(value) }))}
+            data={sortOptions(
+              languages.map((value) => ({ value, label: language(value) })),
+            )}
           />
           <MultiSelect
             searchable
@@ -417,10 +420,12 @@ export function CatalogFilters({
             )}
             onChange={(v) => setMultiValue("status", v)}
             clearable
-            data={["DISPONIBLE", "VERIFICADO", "DESCONOCIDO"].map((value) => ({
-              value,
-              label: status(value),
-            }))}
+            data={sortOptions(
+              ["DISPONIBLE", "VERIFICADO", "DESCONOCIDO"].map((value) => ({
+                value,
+                label: status(value),
+              })),
+            )}
           />
           <MultiSelect
             searchable
@@ -437,10 +442,12 @@ export function CatalogFilters({
             )}
             onChange={(v) => setMultiValue("publicationStatus", v)}
             clearable
-            data={["PUBLISHED", "UPDATED", "UNKNOWN"].map((value) => ({
-              value,
-              label: status(value),
-            }))}
+            data={sortOptions(
+              ["PUBLISHED", "UPDATED", "UNKNOWN"].map((value) => ({
+                value,
+                label: status(value),
+              })),
+            )}
           />
           {tokenField("eplId")}
           {tokenField("revision")}
@@ -569,10 +576,10 @@ export function CatalogFilters({
                       library: t(`filters.libraries.${library}`),
                     }),
                   }}
-                  data={[
+                  data={sortOptions([
                     { value: "PRESENT", label: t("filters.libraryPresent") },
                     { value: "ABSENT", label: t("filters.libraryAbsent") },
-                  ]}
+                  ])}
                   onChange={(value) => {
                     if (library === "torrent" && (!value || value === "ABSENT"))
                       setMultiValue("torrentStatus", []);
@@ -598,10 +605,10 @@ export function CatalogFilters({
                       library: t(`filters.libraries.${library}`),
                     }),
                   }}
-                  data={[
+                  data={sortOptions([
                     { value: "UPDATED", label: t("filters.libraryUpdated") },
                     { value: "OUTDATED", label: t("filters.libraryOutdated") },
-                  ]}
+                  ])}
                   onChange={(value) =>
                     setValues((previous) => ({
                       ...previous,
@@ -629,17 +636,19 @@ export function CatalogFilters({
                     )}
                     clearable
                     disabled={values.torrentPresence === "ABSENT"}
-                    data={[
-                      "SUBMITTED",
-                      "ALREADY_EXISTS",
-                      "UNKNOWN",
-                      "QUEUED",
-                      "DOWNLOADING",
-                      "PAUSED",
-                      "CHECKING",
-                      "DOWNLOADED",
-                      "ERROR",
-                    ].map((value) => ({ value, label: status(value) }))}
+                    data={sortOptions(
+                      [
+                        "SUBMITTED",
+                        "ALREADY_EXISTS",
+                        "UNKNOWN",
+                        "QUEUED",
+                        "DOWNLOADING",
+                        "PAUSED",
+                        "CHECKING",
+                        "DOWNLOADED",
+                        "ERROR",
+                      ].map((value) => ({ value, label: status(value) })),
+                    )}
                     onChange={(selected) => {
                       setMultiValue("torrentStatus", selected);
                       if (selected.length) set("torrentPresence", "PRESENT");
