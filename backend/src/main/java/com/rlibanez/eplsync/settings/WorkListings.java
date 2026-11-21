@@ -23,7 +23,8 @@ public class WorkListings {
     private record Listing(String base,String order,List<Object> args,boolean downloads) {}
     public record Neighbor(String id,boolean cleanup,long index) {}
     public record Neighbors(Neighbor previous,Neighbor next) {}
-    private Listing query(String source,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator,String typeOperator) {
+    private Listing query(String source,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator,String typeOperator,String name) {
+        if(name!=null && name.length()>150) throw new UserInputException("Nombre demasiado largo");
         boolean exclude=com.rlibanez.eplsync.ordering.StateOperator.excluded(statusOperator);
         boolean excludeType=com.rlibanez.eplsync.ordering.StateOperator.excluded(typeOperator);
         boolean downloads=source.equals("downloads");
@@ -36,14 +37,14 @@ public class WorkListings {
             if(states.stream().anyMatch(Objects::isNull)) throw new UserInputException("Estado de trabajo inválido");
             states=states.stream().map(value -> Objects.requireNonNull(value).trim()).distinct().toList();
         }
-        var allowed=downloads?Set.of("jobId","createdAt","type","status","progress","selectedBooks","accepted","failed","username"):Set.of("id","createdAt","type","library","state","total","accepted","failed","username");
+        var allowed=downloads?Set.of("name","jobId","createdAt","type","status","progress","selectedBooks","accepted","failed","username"):Set.of("name","id","createdAt","type","library","state","total","accepted","failed","username");
         var orders=TableOrdering.parse(sort,allowed);
         boolean normal=downloads?Permission.has(Permission.TORRENT_JOBS_MANAGE):Permission.has(Permission.CALIBRE_SEND)||Permission.has(Permission.CALIBRE_JOBS_MANAGE);
         var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         String owner=auth!=null && auth.getPrincipal() instanceof Account account && Permission.has(downloads?Permission.TORRENT_SYNC:Permission.CALIBRE_READ)?account.id():"";
         if(downloads && !owner.isEmpty()) cleanup.adoptCurrentRemovals();
         String normalSql=downloads?"""
-            SELECT j.id,'normal' kind,CASE WHEN typeof(j.created_at) IN ('integer','real') THEN j.created_at ELSE cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) END createdAt,
+            SELECT j.id,j.name,'normal' kind,CASE WHEN typeof(j.created_at) IN ('integer','real') THEN j.created_at ELSE cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) END createdAt,
             coalesce(j.type,'DOWNLOAD') type,j.state state,j.event_actor_username username,NULL library,j.selected_books selectedBooks,
             coalesce(c.total,0) total,CASE WHEN j.track_downloads=1 THEN coalesce(c.download_processed,0) ELSE coalesce(c.send_processed,0) END processed,
             coalesce(c.accepted,0) accepted,coalesce(c.failed,0) failed
@@ -56,7 +57,7 @@ public class WorkListings {
             ) c ON c.job_id=j.id
             WHERE j.preparing=0 AND NOT EXISTS(SELECT 1 FROM calibre_preparation_operations p WHERE p.download_job_id=j.id AND p.state IN ('QUEUED','RUNNING'))
             """:"""
-            SELECT j.id,'normal' kind,cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) createdAt,
+            SELECT j.id,j.name,'normal' kind,cast(round((julianday(j.created_at)-2440587.5)*86400000) AS INTEGER) createdAt,
             'SEND' type,j.state state,j.owner_username username,j.library,coalesce(c.total,0) selectedBooks,coalesce(c.total,0) total,
             coalesce(c.accepted,0)+coalesce(c.skipped,0)+coalesce(c.failed,0)+coalesce(c.cancelled,0)+coalesce(c.omitted,0) processed,
             coalesce(c.accepted,0) accepted,coalesce(c.failed,0) failed
@@ -67,7 +68,7 @@ public class WorkListings {
             """;
         String selected="CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.total,0) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected,0) ELSE coalesce(json_array_length(j.confirmation),0) END";
         String projection="""
-            SELECT j.id,'cleanup' kind,j.created_at createdAt,'CLEANUP' type,j.state state,j.owner_username username,j.library,
+            SELECT j.id,NULL name,'cleanup' kind,j.created_at createdAt,'CLEANUP' type,j.state state,j.owner_username username,j.library,
             """+selected+" selectedBooks,"+selected+" total,"+"""
             coalesce(c.processed,0)+CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.skipped,0)
               WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected_skipped,0)
@@ -88,9 +89,10 @@ public class WorkListings {
         }
         if(!types.isEmpty()) {base+=" AND type "+(excludeType?"NOT IN (":"IN (")+String.join(",",Collections.nCopies(types.size(),"?"))+")";args.addAll(types);}
         if(username!=null && !username.isBlank()) {base+=" AND instr(lower(username),lower(?))>0";args.add(username.trim());}
+        if(name!=null && !name.isBlank()) {base+=" AND instr(lower(name),lower(?))>0";args.add(name.strip());}
         if(from!=null) {base+=" AND createdAt>=?";args.add(from.toEpochMilli());}
         if(before!=null) {base+=" AND createdAt<?";args.add(before.toEpochMilli());}
-        String order=orders.stream().map(o->{String field=switch(o.getProperty()) {case "jobId"->"id";case "status"->"state";case "progress"->"CASE WHEN total=0 THEN 0 ELSE 1.0*processed/total END";case "username","library"->o.getProperty()+" COLLATE EPL_TEXT";default->o.getProperty();};return field+" "+o.getDirection().name();}).collect(java.util.stream.Collectors.joining(","));
+        String order=orders.stream().map(o->{String field=switch(o.getProperty()) {case "name"->"coalesce(name,id) COLLATE EPL_TEXT";case "jobId"->"id";case "status"->"state";case "progress"->"CASE WHEN total=0 THEN 0 ELSE 1.0*processed/total END";case "username","library"->o.getProperty()+" COLLATE EPL_TEXT";default->o.getProperty();};return field+" "+o.getDirection().name();}).collect(java.util.stream.Collectors.joining(","));
         return new Listing(base,order+",createdAt DESC,id DESC",args,downloads);
     }
     public Neighbors neighbors(String source,String id,List<String> states,String type,String username,Instant from,Instant before,String sort) {
@@ -100,8 +102,11 @@ public class WorkListings {
         return neighbors(source,id,states,type,username,from,before,sort,statusOperator,"eq");
     }
     public Neighbors neighbors(String source,String id,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator,String typeOperator) {
+        return neighbors(source,id,states,type,username,from,before,sort,statusOperator,typeOperator,"");
+    }
+    public Neighbors neighbors(String source,String id,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator,String typeOperator,String name) {
         if(id==null || id.length()>64) throw new UserInputException("Identificador de trabajo inválido");
-        var query=query(source,states,type,username,from,before,sort,statusOperator,typeOperator);var args=new ArrayList<>(query.args());args.add(id);
+        var query=query(source,states,type,username,from,before,sort,statusOperator,typeOperator,name);var args=new ArrayList<>(query.args());args.add(id);
         String window=" OVER (ORDER BY "+query.order()+")";
         var rows=jdbc.queryForList("WITH scoped AS ("+query.base()+"), adjacent AS (SELECT id,row_number()"+window+" position,lag(id)"+window+" previousId,lag(kind)"+window+" previousKind,lead(id)"+window+" nextId,lead(kind)"+window+" nextKind FROM scoped) SELECT * FROM adjacent WHERE id=?",args.toArray());
         if(rows.isEmpty()) return new Neighbors(null,null);
@@ -115,8 +120,11 @@ public class WorkListings {
         return list(source,page,size,states,type,username,from,before,sort,statusOperator,"eq");
     }
     public PageResponse<Map<String,Object>> list(String source,int page,int size,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator,String typeOperator) {
+        return list(source,page,size,states,type,username,from,before,sort,statusOperator,typeOperator,"");
+    }
+    public PageResponse<Map<String,Object>> list(String source,int page,int size,List<String> states,String type,String username,Instant from,Instant before,String sort,String statusOperator,String typeOperator,String name) {
         QueryLimits.page(page,size);
-        var query=query(source,states,type,username,from,before,sort,statusOperator,typeOperator);var args=new ArrayList<>(query.args());boolean downloads=query.downloads();
+        var query=query(source,states,type,username,from,before,sort,statusOperator,typeOperator,name);var args=new ArrayList<>(query.args());boolean downloads=query.downloads();
         long total=jdbc.queryForObject("SELECT count(*) FROM ("+query.base()+")",Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
         var rows=jdbc.queryForList(query.base()+" ORDER BY "+query.order()+" LIMIT ? OFFSET ?",args.toArray());
@@ -139,6 +147,7 @@ public class WorkListings {
                 view.put("total",job.selected());view.put("selectedBooks",job.selected());view.put("selectedItems",job.selected());view.put("processedItems",row.get("processed"));
                 view.put("accepted",job.succeeded());view.put("failed",job.blocked()+job.failed()+job.uncertain());view.put("pending",job.pending());view.put("uncertain",job.uncertain());view.put("skipped",0);
             }
+            view.put("name",row.get("name"));
             result.add(view);
         }
         int pages=(int)((total+size-1)/size);

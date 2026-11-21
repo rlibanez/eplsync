@@ -22,7 +22,7 @@ export const test = base.extend<{ eventTransport: void }>({
       );
       await context.route(
         /\/api\/(torrent\/downloads|calibre\/books)\/browser-link$/,
-        route => route.fulfill({ json: { url: "" } }),
+        (route) => route.fulfill({ json: { url: "" } }),
       );
       await context.route(
         /\/api\/catalog\/books\/\d+\/activity(?:\?|$)/,
@@ -60,6 +60,11 @@ export const test = base.extend<{ eventTransport: void }>({
             },
           });
         },
+      );
+      await context.route("**/api/settings/work/*/*/name", (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({ json: { name: null } })
+          : route.fallback(),
       );
       await context.route("**/api/settings/work/*/*/neighbors?**", (route) =>
         route.fulfill({ json: { previous: null, next: null } }),

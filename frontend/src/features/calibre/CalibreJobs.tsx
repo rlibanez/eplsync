@@ -1,3 +1,4 @@
+import { JobTitle } from "../jobs/JobTitle";
 import { sortOptions } from "../../locales/textOrdering";
 import { WorkWaiting } from "../../components/WorkWaiting";
 import { useRangeSelection } from "../../components/useRangeSelection";
@@ -44,6 +45,7 @@ import { sortQuery } from "../downloads/TableControls";
 import { Paging, post, type Page } from "../downloads/shared";
 
 type Job = {
+  name?: string | null;
   type?: "SEND" | "CLEANUP";
   id: string;
   createdAt: string;
@@ -183,6 +185,7 @@ export function CalibreJobs() {
     [size, setSize] = useBookViewState("size", saved?.size ?? 20),
     [state, setState] = useState<string | null>(saved?.filter ?? null),
     [type, setType] = useState<string | null>(saved?.type ?? null),
+    [name, setName] = useState(saved?.name ?? ""),
     [username, setUsername] = useState(saved?.username ?? ""),
     [from, setFrom] = useState(saved?.from ?? ""),
     [to, setTo] = useState(saved?.to ?? ""),
@@ -201,6 +204,7 @@ export function CalibreJobs() {
       excluded,
       excludeType,
       type,
+      name,
       username,
       from,
       to,
@@ -208,7 +212,7 @@ export function CalibreJobs() {
     ],
     queryFn: ({ signal }) =>
       get<Page<Job>>(
-        `/calibre/transfers?page=${page}&size=${size}&state=${state ?? ""}${state && excluded ? "&statusOperator=ne" : ""}&type=${type ?? ""}${type && excludeType ? "&typeOperator=ne" : ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
+        `/calibre/transfers?page=${page}&size=${size}&state=${state ?? ""}${state && excluded ? "&statusOperator=ne" : ""}&type=${type ?? ""}${type && excludeType ? "&typeOperator=ne" : ""}&name=${encodeURIComponent(name.trim())}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
         signal,
       ),
     retry: false,
@@ -220,13 +224,13 @@ export function CalibreJobs() {
       id: job.id,
       cleanup: job.type === "CLEANUP",
     })),
-    `${state}&${excluded}&${type}&${excludeType}&${username}&${from}&${to}&${sort}`,
+    `${state}&${excluded}&${type}&${excludeType}&${name}&${username}&${from}&${to}&${sort}`,
     `${page}:${size}`,
   );
   const columns = useDownloadColumns(
     "eplsync.calibre.jobs.columns",
     [
-      { field: "id", label: "downloads.job", width: 320 },
+      { field: "name", label: "jobNames.name", width: 320 },
       { field: "createdAt", label: "downloads.createdAt", width: 200 },
       { field: "type", label: "downloads.type", width: 140 },
       { field: "library", label: "calibre.library", width: 180 },
@@ -245,7 +249,12 @@ export function CalibreJobs() {
       setSort(value);
       setPage(0);
     },
-    { defaults: "createdAt,desc", selection: deletion.visible },
+    {
+      defaults: "createdAt,desc",
+      selection: deletion.visible,
+      newColumnsAfter: { name: "rowNumber" },
+      extraSort: [{ field: "id", label: "downloads.job", width: 320 }],
+    },
     (page + 1) * size,
   );
   useEffect(() => {
@@ -271,6 +280,15 @@ export function CalibreJobs() {
       </div>
 
       <div className="filters jobs-filters">
+        <TextInput
+          label={t("jobNames.name")}
+          value={name}
+          maxLength={150}
+          onChange={(event) => {
+            setName(event.currentTarget.value);
+            setPage(0);
+          }}
+        />
         <MultiSelect
           searchable
           styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
@@ -351,6 +369,7 @@ export function CalibreJobs() {
             setExcluded(false);
             setType(null);
             setExcludeType(false);
+            setName("");
             setUsername("");
             setFrom("");
             setTo("");
@@ -397,7 +416,7 @@ export function CalibreJobs() {
                               state={{
                                 workList: {
                                   source: "calibre",
-                                  query: `state=${state ?? ""}${state && excluded ? "&statusOperator=ne" : ""}&type=${type ?? ""}${type && excludeType ? "&typeOperator=ne" : ""}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
+                                  query: `state=${state ?? ""}${state && excluded ? "&statusOperator=ne" : ""}&type=${type ?? ""}${type && excludeType ? "&typeOperator=ne" : ""}&name=${encodeURIComponent(name.trim())}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`,
                                   view: {
                                     page,
                                     size,
@@ -405,6 +424,7 @@ export function CalibreJobs() {
                                     excluded,
                                     excludeType,
                                     type: type ?? "",
+                                    name,
                                     username,
                                     from,
                                     to,
@@ -418,7 +438,7 @@ export function CalibreJobs() {
                                   : `/calibre/jobs/${job.id}`
                               }
                             >
-                              {job.id}
+                              {job.name || job.id}
                             </Link>
                           </td>,
                           <td>{date(job.createdAt)}</td>,
@@ -611,7 +631,10 @@ export function CalibreJobDetail() {
   return (
     <section>
       <WorkNavigation source="calibre" id={id} />
-      <PageTitle
+      <JobTitle
+        source="calibre"
+        id={id!}
+        editable={can("CALIBRE_JOBS_MANAGE")}
         title={t("calibreSend.job")}
         description={t("calibreSend.jobsHelp")}
       />

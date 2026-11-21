@@ -1,4 +1,9 @@
 {
+  "jobNames": {
+    "name": "Name",
+    "edit": "Edit job name",
+    "help": "Optional, up to 150 characters. Leave empty to restore the original title."
+  },
   "torrentPreparation": {
     "incidentReference": "The reference identifies the incident in the log; it is not a job identifier.",
     "viewJob": "View download job",
@@ -1698,6 +1703,7 @@
     }
   },
   "common": {
+    "save": "Save",
     "confirmDeletion": "I confirm irreversible deletion of the selected items.",
     "cancel": "Cancel",
     "close": "Close"

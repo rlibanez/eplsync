@@ -13,6 +13,7 @@ export interface WorkListView {
   excludeType?: boolean;
   type?: string;
   username?: string;
+  name?: string;
   from?: string;
   to?: string;
   sort?: string;

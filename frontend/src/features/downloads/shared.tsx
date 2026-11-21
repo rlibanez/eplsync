@@ -160,6 +160,7 @@ export interface CalibreCounts {
   omitted?: number;
 }
 export interface Job {
+  name?: string | null;
   calibre?: {
     counts: CalibreCounts;
     jobs: {

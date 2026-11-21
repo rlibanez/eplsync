@@ -1,3 +1,4 @@
+import { JobTitle } from "../jobs/JobTitle";
 import { sortOptions } from "../../locales/textOrdering";
 import { DownloadJobControls } from "../jobs/DownloadJobControls";
 import {
@@ -103,6 +104,7 @@ export function Jobs() {
   );
   const [excludeType, setExcludeType] = useState(saved?.excludeType ?? false);
   const [type, setType] = useState(saved?.type ?? "");
+  const [name, setName] = useState(saved?.name ?? "");
   const [username, setUsername] = useState(saved?.username ?? "");
   const [from, setFrom] = useState(saved?.from ?? "");
   const [to, setTo] = useState(saved?.to ?? "");
@@ -128,6 +130,7 @@ export function Jobs() {
     excludeType,
     sort,
     type,
+    name,
     username,
     from,
     to,
@@ -144,6 +147,7 @@ export function Jobs() {
     params.set("type", type);
     if (excludeType) params.set("typeOperator", "ne");
   }
+  if (name.trim()) params.set("name", name.trim());
   if (username.trim()) params.set("username", username.trim());
   const bounds = dateBounds(from, to);
   if (bounds.from) params.set("from", bounds.from);
@@ -205,7 +209,7 @@ export function Jobs() {
   const columns = useDownloadColumns(
     "eplsync.jobs.columns",
     [
-      { field: "jobId", label: "downloads.job", width: 310 },
+      { field: "name", label: "jobNames.name", width: 310 },
       { field: "createdAt", label: "downloads.createdAt", width: 200 },
       { field: "type", label: "downloads.type", width: 140 },
       { field: "status", label: "downloads.status", width: 160 },
@@ -246,7 +250,8 @@ export function Jobs() {
     {
       defaults: "createdAt,desc",
       selection: deletion.visible,
-      newColumnsAfter: { calibre: "failed" },
+      newColumnsAfter: { name: "rowNumber", calibre: "failed" },
+      extraSort: [{ field: "jobId", label: "downloads.job", width: 310 }],
     },
     (page + 1) * size,
   );
@@ -271,6 +276,15 @@ export function Jobs() {
       </div>
 
       <div className="filters jobs-filters">
+        <TextInput
+          label={t("jobNames.name")}
+          value={name}
+          maxLength={150}
+          onChange={(event) => {
+            setName(event.currentTarget.value);
+            setPage(0);
+          }}
+        />
         <MultiSelect
           searchable
           styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
@@ -348,6 +362,7 @@ export function Jobs() {
             setExcluded(false);
             setType("");
             setExcludeType(false);
+            setName("");
             setUsername("");
             setFrom("");
             setTo("");
@@ -414,6 +429,7 @@ export function Jobs() {
                                     excluded,
                                     excludeType,
                                     type,
+                                    name,
                                     username,
                                     from,
                                     to,
@@ -427,7 +443,7 @@ export function Jobs() {
                                   : `/downloads/jobs/${job.jobId}`
                               }
                             >
-                              {job.jobId}
+                              {job.name || job.jobId}
                             </Link>
                           </td>,
                           <td>{date(job.createdAt)}</td>,
@@ -701,7 +717,10 @@ export function JobDetail() {
   return (
     <>
       <WorkNavigation source="downloads" id={id} />
-      <PageTitle
+      <JobTitle
+        source="downloads"
+        id={id!}
+        editable={can("TORRENT_JOBS_MANAGE")}
         title={t("downloads.jobHeading")}
         description={t("downloads.jobNote")}
       />

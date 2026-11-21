@@ -1,4 +1,9 @@
 {
+  "jobNames": {
+    "name": "Nombre",
+    "edit": "Editar nombre del trabajo",
+    "help": "Opcional, hasta 150 caracteres. Déjalo vacío para recuperar el título original."
+  },
   "torrentPreparation": {
     "incidentReference": "La referencia identifica la incidencia en el log; no es un identificador de trabajo.",
     "viewJob": "Ver trabajo de descarga",
@@ -1698,6 +1703,7 @@
     }
   },
   "common": {
+    "save": "Guardar",
     "confirmDeletion": "Confirmo el borrado irreversible de los elementos seleccionados.",
     "cancel": "Cancelar",
     "close": "Cerrar"
