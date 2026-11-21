@@ -134,6 +134,23 @@ class CalibrePreparationOperationsTests {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM calibre_job_items",Long.class)).isEqualTo(1);
     }
 
+    @Test void previewMakesBackgroundInventoryYieldDuringItsCycleAndReleasesPriorityAfterwards() {
+        seed(75);
+        var check=new CalibreClient.Check(true,List.of(new CalibreClient.Library("main","Main")),"main");
+        when(client.check(any())).thenAnswer(call->{
+            assertThat(tracking.inventoryAllowed()).isFalse();
+            return check;
+        });
+        operations.prepare(new CalibrePreparationOperations.PreviewRequest("priority-preview",new CatalogCalibreTransfers.Selection(new CatalogBookFilter())));
+        operations.cycle();
+        assertThat(tracking.inventoryAllowed()).isTrue();
+        for(int n=0;n<5 && !operations.status("priority-preview").state().equals("COMPLETED");n++) operations.cycle();
+        assertThat(operations.status("priority-preview").state()).isEqualTo("COMPLETED");
+        assertThat(operations.status("priority-preview").processed()).isEqualTo(75);
+        assertThat(tracking.inventoryAllowed()).isTrue();
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+    }
+
     @Test void batchesRemainInactiveAndResumeWithoutDuplicatingJobsOrItems() {
         seed(1501);var request=request("resume-batches",1501);assertThat(operations.send(request).state()).isEqualTo("QUEUED");operations.cycle();
         assertThat(operations.status(request.id()).processed()).isEqualTo(500);

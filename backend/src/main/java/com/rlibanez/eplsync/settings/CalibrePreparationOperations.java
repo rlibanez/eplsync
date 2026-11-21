@@ -123,6 +123,9 @@ public class CalibrePreparationOperations {
         if(enabled && !closed && idle.ready() && busy.compareAndSet(false,true)) executor.execute(()->{try {cycle();}finally {busy.set(false);}});
     }
     public void cycle() {
+        tracking.preparationTurn(()->{prepareCycle();return null;});
+    }
+    private void prepareCycle() {
         if(closed || !maintenance.enter(false)) return;
         var previous=SecurityContextHolder.getContext();String id=null;long probe=idle.snapshot();
         try {

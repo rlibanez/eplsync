@@ -17,6 +17,48 @@ class TorrentCoordinationTests {
     final TorrentProperties properties=new TorrentProperties();
     final DownloadTrackingService tracking=new DownloadTrackingService(mock(DownloadRepository.class),mock(CatalogBookRepository.class),properties,new MagnetLinkBuilder(properties),transactions,database);
 
+    @Test void preparationGetsATurnAfterInventoryAndKeepsInventoryOutBetweenItsQueries() throws Exception {
+        var inventoryEntered=new CountDownLatch(1);var releaseInventory=new CountDownLatch(1);
+        var preparationStarted=new CountDownLatch(1);var betweenQueries=new CountDownLatch(1);var finishPreparation=new CountDownLatch(1);
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            var inventory=executor.submit(()->tracking.inventory(()->{inventoryEntered.countDown();await(releaseInventory);}));
+            assertThat(inventoryEntered.await(2,TimeUnit.SECONDS)).isTrue();
+            var preparation=executor.submit(()->tracking.preparationTurn(()->{
+                preparationStarted.countDown();
+                tracking.exclusive(()->"first query");
+                betweenQueries.countDown();await(finishPreparation);
+                return tracking.exclusive(()->"second query");
+            }));
+            try {
+                assertThat(preparationStarted.await(2,TimeUnit.SECONDS)).isTrue();
+                assertThatThrownBy(()->preparation.get(100,TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+                assertThat(tracking.inventoryAllowed()).isFalse();
+                assertThat(tracking.inventory(()->fail("Inventory must yield"))).isFalse();
+                releaseInventory.countDown();
+                assertThat(betweenQueries.await(2,TimeUnit.SECONDS)).isTrue();
+                assertThat(tracking.inventory(()->fail("Inventory must yield between queries"))).isFalse();
+            } finally {releaseInventory.countDown();finishPreparation.countDown();}
+            assertThat(inventory.get(2,TimeUnit.SECONDS)).isTrue();
+            assertThat(preparation.get(2,TimeUnit.SECONDS)).isEqualTo("second query");
+        }
+        assertThat(tracking.inventory(()->{})).isTrue();
+        verifyNoInteractions(transactions,database);
+    }
+
+    @Test void failedPreparationReleasesPriorityAndRestoresNonBlockingAccess() throws Exception {
+        assertThatThrownBy(()->tracking.preparationTurn(()->{throw new IllegalStateException("preparation failed");}))
+                .hasMessage("preparation failed");
+        assertThat(tracking.inventoryAllowed()).isTrue();
+        try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {
+            tracking.observation(()->{
+                assertThatThrownBy(()->executor.submit(()->tracking.exclusive(()->"must not wait")).get(1,TimeUnit.SECONDS))
+                        .hasCauseInstanceOf(TorrentBusyException.class);
+                return null;
+            });
+        }
+        verifyNoInteractions(transactions,database);
+    }
+
     @Test void queuedSyncAllowsNestedCleanupCallsAndKeepsTheClientGuardUntilItFinishes() throws Exception {
         var entered=new CountDownLatch(1);var release=new CountDownLatch(1);
         try(var executor=Executors.newVirtualThreadPerTaskExecutor()) {

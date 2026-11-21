@@ -188,6 +188,15 @@ public class DownloadTrackingService {
     }
 
     private final ThreadLocal<Boolean> cleanupTurn = new ThreadLocal<>();
+    private final ThreadLocal<Boolean> preparationTurn = new ThreadLocal<>();
+
+    /** Reserve a fair turn for user-requested preparations while background inventory yields. */
+    public <T> T preparationTurn(Supplier<T> action) {
+        var previous=preparationTurn.get();
+        preparationTurn.set(true);
+        try(var priority=prioritizeSubmissions()) {return action.get();}
+        finally {if(previous==null) preparationTurn.remove();else preparationTurn.set(previous);}
+    }
     /** Queue cleanup behind current readers at its existing lock order, without holding SQL resources. */
     public <T> T cleanupTurn(Supplier<T> action) {
         var previous=cleanupTurn.get();cleanupTurn.set(true);
@@ -196,7 +205,7 @@ public class DownloadTrackingService {
     }
 
     public <T> T exclusive(Supplier<T> action) {
-        if (Boolean.TRUE.equals(cleanupTurn.get())) return awaitExclusive(action);
+        if (Boolean.TRUE.equals(cleanupTurn.get()) || Boolean.TRUE.equals(preparationTurn.get())) return awaitExclusive(action);
         // Non-waiting workers must not barge ahead of a queued synchronization.
         // Reentrant calls inside the current operation still have to work.
         if (!coordination.isWriteLockedByCurrentThread() && coordination.hasQueuedThreads()
