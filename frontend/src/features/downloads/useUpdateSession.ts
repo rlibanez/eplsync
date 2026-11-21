@@ -7,6 +7,11 @@ interface Session {
   sort: string;
   registeredStatus: string | null;
   excluded: boolean;
+  eplId: string;
+  title: string;
+  author: string;
+  excludeTitle: boolean;
+  excludeAuthor: boolean;
 }
 const empty = (): Session => ({
   search: null,
@@ -15,6 +20,11 @@ const empty = (): Session => ({
   sort: "title,asc",
   registeredStatus: null,
   excluded: false,
+  eplId: "",
+  title: "",
+  author: "",
+  excludeTitle: false,
+  excludeAuthor: false,
 });
 // Session-only memory: shared across routes and cleared with the authentication cache.
 export function useUpdateSession() {

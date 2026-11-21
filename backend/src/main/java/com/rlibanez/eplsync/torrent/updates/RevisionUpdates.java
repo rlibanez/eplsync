@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RevisionUpdates {
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager em;
-    public record Row(Long eplId,String title,Double registeredRevision,Double availableRevision,DownloadStatus status,String coverUrl,Boolean coverAvailable) {}
+    public record Row(Long eplId,String title,Double registeredRevision,Double availableRevision,DownloadStatus status,String coverUrl,Boolean coverAvailable,String author) {}
     // A failed request alone is not proof that the torrent reached the client.
     private static String evidence(String alias) {
         return "("+alias+".submittedAt is not null or "+alias+".discoveredAt is not null or "+alias+".completedAt is not null or "+alias+".lastSeenAt is not null)";
@@ -21,7 +21,7 @@ public class RevisionUpdates {
         if(input==null || input.states()==null || input.states().isEmpty() || input.states().size()>DownloadStatus.values().length
             || input.states().stream().anyMatch(Objects::isNull) || new HashSet<>(input.states()).size()!=input.states().size())
             throw new UserInputException("Selecciona al menos un estado válido, sin duplicados");
-        var fields=Map.of("eplId","b.eplId","title","b.title","registeredRevision","d.revision","availableRevision","b.revision","status","d.status");
+        var fields=Map.of("eplId","b.eplId","title","b.title","author","b.author","registeredRevision","d.revision","availableRevision","b.revision","status","d.status");
         com.rlibanez.eplsync.config.TableOrdering.parse(sort, fields.keySet());
     }
     @Transactional(readOnly=true,timeout=120)
@@ -39,9 +39,9 @@ public class RevisionUpdates {
     @Transactional(readOnly=true,timeout=120)
     public PageResponse<Row> searchStatuses(UpdatePreferences.Preferences input,int page,int size,String sort,Long onlyId,List<DownloadStatus> statuses) {
         validate(input,page,size,sort);
-        var fields=Map.of("eplId","b.eplId","title","b.title","registeredRevision","d.revision","availableRevision","b.revision","status","d.status");
+        var fields=Map.of("eplId","b.eplId","title","b.title","author","b.author","registeredRevision","d.revision","availableRevision","b.revision","status","d.status");
         var criteria = com.rlibanez.eplsync.config.TableOrdering.parse(sort, fields.keySet());
-        var orderBy = criteria.stream().map(order -> (order.getProperty().equals("title")?"collate(b.title as EPL_TEXT)":fields.get(order.getProperty()))+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","));
+        var orderBy = criteria.stream().map(order -> (Set.of("title","author").contains(order.getProperty())?"collate("+fields.get(order.getProperty())+" as EPL_TEXT)":fields.get(order.getProperty()))+" "+order.getDirection().name()).collect(java.util.stream.Collectors.joining(","));
         if (criteria.stream().noneMatch(order -> order.getProperty().equals("eplId"))) orderBy += ", b.eplId asc";
         String from=" from CatalogBook b, DownloadRecord d where b.eplId=d.eplId and d.status in :states and d.revision<b.revision and "+evidence("d")
             +" and not exists (select x.id from DownloadRecord x where x.eplId=b.eplId and x.revision>=b.revision and "+evidence("x")+")"
@@ -54,13 +54,13 @@ public class RevisionUpdates {
         if(!statuses.isEmpty()) from += " and d.status in :selectedStatuses";
         if(onlyId!=null) from += " and b.eplId="+onlyId.longValue();
         var countQuery=em.createQuery("select count(d.id)"+from,Long.class).setParameter("states",input.states());
-        var rowQuery=em.createQuery("select b.eplId,b.title,d.revision,b.revision,d.status,b.coverUrl,b.coverAvailable"+from+" order by "+orderBy,Object[].class)
+        var rowQuery=em.createQuery("select b.eplId,b.title,d.revision,b.revision,d.status,b.coverUrl,b.coverAvailable,b.author"+from+" order by "+orderBy,Object[].class)
             .setParameter("states",input.states());
         if(!statuses.isEmpty()) { countQuery.setParameter("selectedStatuses",statuses); rowQuery.setParameter("selectedStatuses",statuses); }
         long total=countQuery.setHint("jakarta.persistence.query.timeout",120000).getSingleResult();
         var rows=rowQuery.setHint("jakarta.persistence.query.timeout",120000)
             .setFirstResult(Math.toIntExact((long)page*size)).setMaxResults(size).getResultList().stream()
-            .map(r -> new Row((Long)r[0],(String)r[1],(Double)r[2],(Double)r[3],(DownloadStatus)r[4],(String)r[5],(Boolean)r[6])).toList();
+            .map(r -> new Row((Long)r[0],(String)r[1],(Double)r[2],(Double)r[3],(DownloadStatus)r[4],(String)r[5],(Boolean)r[6],(String)r[7])).toList();
         int pages=Math.toIntExact((total+size-1)/size);
         return new PageResponse<>(rows,new PageResponse.PageMeta(page,size,total,pages,page==0,page>=pages-1,page<pages-1,page>0));
     }

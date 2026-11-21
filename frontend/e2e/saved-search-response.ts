@@ -22,7 +22,7 @@ export async function fulfillSavedSearch(
       (row) =>
         (!status || (p.get("statusOperator") === "ne" ? !status.includes(row.status) : status.includes(row.status))) &&
         (!p.get("title") || (String(row.title ?? "").toLowerCase().includes(p.get("title")!.toLowerCase()) !== (p.get("titleOperator") === "ne"))) &&
-        (!p.get("author") || (String(row.authors ?? "").toLowerCase().includes(p.get("author")!.toLowerCase()) !== (p.get("authorOperator") === "ne"))) &&
+        (!p.get("author") || (String(row.authors ?? row.author ?? "").toLowerCase().includes(p.get("author")!.toLowerCase()) !== (p.get("authorOperator") === "ne"))) &&
         (!p.get("eplId") || String(row.eplId) === p.get("eplId")) &&
         (!p.get("availability") ||
           (row.downloadAvailability ?? "UNKNOWN") === p.get("availability")),

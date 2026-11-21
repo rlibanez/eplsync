@@ -45,7 +45,7 @@ class AutomaticUpdatesTests {
         owner=accounts.initialize("Owner","owner@example.org","password123","password123");when(sessions.current()).thenReturn(owner);
         calibre.save(new CalibreSettings.Input("http://calibre.test","","",true,"main"));
         when(client.check(any())).thenReturn(new CalibreClient.Check(true,List.of(new CalibreClient.Library("main","Main")),"main"));
-        when(searches.searchDownloads(anyString(),any())).thenReturn(new UpdateSearches.Search(List.of(new RevisionUpdates.Row(1L,"Book",1.0,1.1,DownloadStatus.DOWNLOADED,null,false)),1,List.of(),EventContext.Origin.SCHEDULED,Map.of()));
+        when(searches.searchDownloads(anyString(),any())).thenReturn(new UpdateSearches.Search(List.of(new RevisionUpdates.Row(1L,"Book",1.0,1.1,DownloadStatus.DOWNLOADED,null,false,"Autor")),1,List.of(),EventContext.Origin.SCHEDULED,Map.of()));
         var rows=List.of(Map.of("calibreId",1L,"eplId",1L));
         when(searches.searchCalibre(anyString())).thenReturn(new UpdateSearches.CalibreSearch(new CalibreCatalogService.Snapshot("main",Instant.now(),1,1),new UpdateSearches.Search(rows,1,List.of(),EventContext.Origin.SCHEDULED,Map.of())));
         jdbc.update("INSERT INTO catalog_books(epl_id,revision,title,author,links) VALUES(1,1.1,'Book','Author',?)","A".repeat(40));

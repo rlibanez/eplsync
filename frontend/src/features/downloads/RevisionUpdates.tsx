@@ -2,7 +2,10 @@ import { sortOptions } from "../../locales/textOrdering";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { togglePageSelection } from "../../components/pageSelection";
 import { BookLink } from "../catalog/BookLink";
-import { stateOperatorProps } from "../../components/StateOperator";
+import {
+  stateOperatorProps,
+  textOperatorProps,
+} from "../../components/StateOperator";
 import { PageTitle } from "../../components/PageTitle";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import {
@@ -17,7 +20,13 @@ import { useUpdateSession } from "./useUpdateSession";
 import { BookCover } from "../catalog/BookCover";
 import { useDownloadColumns } from "./DownloadTable";
 import { useEffect, useState } from "react";
-import { Button, Checkbox, MultiSelect } from "@mantine/core";
+import {
+  Button,
+  Checkbox,
+  CloseButton,
+  MultiSelect,
+  TextInput,
+} from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -35,6 +44,7 @@ interface Preferences {
 interface Update {
   eplId: number;
   title: string;
+  author: string | null;
   coverUrl: string | null;
   coverAvailable: boolean | null;
   registeredRevision: number;
@@ -50,7 +60,19 @@ export function RevisionUpdates() {
   const [opened, setOpened] = useState(searchParams.get("search") === "1");
   const [options, setOptions] = useState<string[]>([]);
   const session = useUpdateSession();
-  const { search, page, size, sort, registeredStatus, excluded } = session;
+  const {
+    search,
+    page,
+    size,
+    sort,
+    registeredStatus,
+    excluded,
+    eplId,
+    title,
+    author,
+    excludeTitle,
+    excludeAuthor,
+  } = session;
   const setPage = (page: number) => session.setView({ page });
   const setSize = (size: number) => session.setView({ size });
   const pageSizeChoice = usePageSizeChoice(size);
@@ -102,6 +124,11 @@ export function RevisionUpdates() {
     }
   }, [previousSearch.data, search, searching]);
   const savedUrl = savedSearchUrl("downloads", search?.generation ?? 0, sort, {
+    eplId,
+    title,
+    author,
+    titleOperator: title.trim() && excludeTitle ? "ne" : "",
+    authorOperator: author.trim() && excludeAuthor ? "ne" : "",
     status: registeredStatus ?? "",
     statusOperator: registeredStatus && excluded ? "ne" : "",
   });
@@ -115,6 +142,11 @@ export function RevisionUpdates() {
       sort,
       registeredStatus,
       excluded,
+      eplId,
+      title,
+      author,
+      excludeTitle,
+      excludeAuthor,
     ],
     queryFn: ({ signal }) =>
       savedSearchPage<Update>(savedUrl, page, size, signal),
@@ -170,7 +202,14 @@ export function RevisionUpdates() {
       });
       setPage(0);
       setRegisteredStatus(null);
-      session.setView({ excluded: false });
+      session.setView({
+        excluded: false,
+        eplId: "",
+        title: "",
+        author: "",
+        excludeTitle: false,
+        excludeAuthor: false,
+      });
       setSelected([]);
       session.setView({ search: { states: [...options], generation } });
       setOpened(false);
@@ -193,6 +232,7 @@ export function RevisionUpdates() {
     [
       { field: "eplId", label: "revisionUpdates.eplId", width: 100 },
       { field: "title", label: "revisionUpdates.title", width: 360 },
+      { field: "author", label: "filters.author", width: 240 },
       { field: "status", label: "revisionUpdates.status", width: 200 },
       {
         field: "registeredRevision",
@@ -211,7 +251,11 @@ export function RevisionUpdates() {
       setPage(0);
       setSelected([]);
     },
-    { defaults: "title,asc", selection: auth.can("TORRENT_SEND") },
+    {
+      defaults: "title,asc",
+      selection: auth.can("TORRENT_SEND"),
+      newColumnsAfter: { author: "title" },
+    },
     (page + 1) * size,
   );
   const rows = result.data?.items ?? [];
@@ -219,7 +263,7 @@ export function RevisionUpdates() {
     rows.map((row) => row.eplId),
     (ids, checked) =>
       setSelected((current) => togglePageSelection(current, ids, checked)),
-    `${page}:${size}:${sort}:${registeredStatus}:${excluded}:${search?.generation}`,
+    `${page}:${size}:${sort}:${registeredStatus}:${excluded}:${eplId}:${title}:${author}:${excludeTitle}:${excludeAuthor}:${search?.generation}`,
   );
   const allChecked =
     rows.length > 0 && rows.every((row) => selected.includes(row.eplId));
@@ -261,6 +305,83 @@ export function RevisionUpdates() {
         </p>
       )}
       <div className="filters jobs-filters">
+        <TextInput
+          label={t("filters.eplId")}
+          value={eplId}
+          inputMode="numeric"
+          maxLength={18}
+          disabled={!search || find.isPending}
+          onChange={(event) => {
+            session.setView({
+              eplId: event.currentTarget.value.replace(/\D/g, ""),
+              page: 0,
+            });
+            setSelected([]);
+          }}
+          rightSectionPointerEvents="auto"
+          rightSection={
+            eplId ? (
+              <CloseButton
+                size="sm"
+                aria-label={`${t("catalog.clear")}: ${t("filters.eplId")}`}
+                onClick={() => {
+                  session.setView({ eplId: "", page: 0 });
+                  setSelected([]);
+                }}
+              />
+            ) : undefined
+          }
+        />
+        {(["title", "author"] as const).map((field) => {
+          const label = t(
+            field === "title" ? "downloads.book" : "filters.author",
+          );
+          const value = field === "title" ? title : author;
+          const operator = field === "title" ? "excludeTitle" : "excludeAuthor";
+          return (
+            <TextInput
+              key={field}
+              label={label}
+              value={value}
+              maxLength={256}
+              disabled={!search || find.isPending}
+              {...textOperatorProps(
+                session[operator],
+                () => {
+                  session.setView({ [operator]: !session[operator], page: 0 });
+                  setSelected([]);
+                },
+                !search || find.isPending,
+              )}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                session.setView({
+                  [field]: value,
+                  ...(!value.trim() ? { [operator]: false } : {}),
+                  page: 0,
+                });
+                setSelected([]);
+              }}
+              rightSectionPointerEvents="auto"
+              rightSection={
+                value ? (
+                  <CloseButton
+                    size="sm"
+                    aria-label={`${t("catalog.clear")}: ${label}`}
+                    onClick={() => {
+                      session.setView({
+                        [field]: "",
+                        [operator]: false,
+                        page: 0,
+                      });
+                      setSelected([]);
+                    }}
+                  />
+                ) : undefined
+              }
+            />
+          );
+        })}
         <MultiSelect
           searchable
           styles={{ inputField: { flex: "1 1 40px", minWidth: 40 } }}
@@ -289,6 +410,24 @@ export function RevisionUpdates() {
             setSelected([]);
           }}
         />
+        <Button
+          variant="subtle"
+          onClick={() => {
+            session.setView({
+              eplId: "",
+              title: "",
+              author: "",
+              excludeTitle: false,
+              excludeAuthor: false,
+              registeredStatus: null,
+              excluded: false,
+              page: 0,
+            });
+            setSelected([]);
+          }}
+        >
+          {t("catalog.clear")}
+        </Button>
       </div>
       {previousSearch.isError && (
         <Failure
@@ -393,6 +532,26 @@ export function RevisionUpdates() {
                               <BookCover book={row} />
                               <span>{row.title}</span>
                             </BookLink>
+                          </td>,
+                          <td>
+                            {row.author ? (
+                              <button
+                                type="button"
+                                className="catalog-value-filter"
+                                onClick={() => {
+                                  session.setView({
+                                    author: row.author!,
+                                    excludeAuthor: false,
+                                    page: 0,
+                                  });
+                                  setSelected([]);
+                                }}
+                              >
+                                {row.author}
+                              </button>
+                            ) : (
+                              "—"
+                            )}
                           </td>,
                           <td>
                             <button

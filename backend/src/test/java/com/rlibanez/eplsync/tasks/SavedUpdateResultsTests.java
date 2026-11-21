@@ -18,6 +18,7 @@ class SavedUpdateResultsTests {
         jdbc.execute("CREATE TABLE app_settings(setting_key TEXT PRIMARY KEY,setting_value TEXT)");
         jdbc.execute("CREATE TABLE update_search_results(user_id TEXT,search_type TEXT,searched_at INTEGER,origin TEXT,criteria_json TEXT,results_json TEXT,PRIMARY KEY(user_id,search_type))");
         jdbc.update("INSERT INTO app_settings VALUES('updates.search-context.downloads','d'),('updates.search-context.calibre','c')");
+        jdbc.execute("CREATE TABLE catalog_books(epl_id INTEGER PRIMARY KEY,author TEXT)");
         results=new SavedUpdateResults(jdbc);
     }
     @AfterEach void close() {source.destroy();}
@@ -53,6 +54,23 @@ class SavedUpdateResultsTests {
         assertThat(results.page("calibre","owner",123,0,20,"title,asc",Map.of("title","' OR 1=1 --")).items()).isEmpty();
         var negative=results.page("calibre","owner",123,0,1,"title,asc",Map.of("title","árbol 100%_","titleOperator","ne","author","ÍÑIGO","authorOperator","ne"));
         assertThat(negative.meta().totalItems()).isEqualTo(1);assertThat(negative.items().getFirst().get("eplId")).isEqualTo(6);
+    }
+    @Test void downloadsFilterAndSortAuthorsIncludingLegacySnapshotsBeforePaging() {
+        jdbc.update("INSERT INTO catalog_books VALUES(1,'Íñigo'),(2,'Brandon Sanderson'),(3,'Autor actual')");
+        save("downloads",List.of(
+            Map.of("eplId",1,"title","ÁRBOL 100%_","status","DOWNLOADED"),
+            Map.of("eplId",2,"title","Barco","status","NOT_FOUND"),
+            Map.of("eplId",3,"title","Cuento","author","Autor guardado","status","DOWNLOADED")));
+        var found=results.page("downloads","owner",123,0,20,"author,asc",Map.of("title","árbol 100%_","author","ÍÑIGO","eplId","1"));
+        assertThat(found.items()).singleElement().satisfies(row->assertThat(row).containsEntry("eplId",1).containsEntry("author","Íñigo"));
+        var sorted=results.page("downloads","owner",123,0,1,"author,asc",Map.of());
+        assertThat(sorted.meta().totalItems()).isEqualTo(3);assertThat(sorted.items().getFirst()).containsEntry("author","Autor guardado");
+        var next=results.page("downloads","owner",123,1,1,"author,asc",Map.of());
+        assertThat(next.items().getFirst()).containsEntry("eplId",2);
+        var negative=results.page("downloads","owner",123,0,20,"eplId,asc",Map.of("title","árbol","titleOperator","ne","author","sanderson","authorOperator","ne"));
+        assertThat(negative.items()).singleElement().satisfies(row->assertThat(row).containsEntry("eplId",3));
+        assertThat(results.page("downloads","owner",123,0,20,"eplId,asc",Map.of("author","' OR 1=1 --")).items()).isEmpty();
+        assertThat(results.page("downloads","other",0,0,20,"author,asc",Map.of()).items()).isEmpty();
     }
     @Test void rejectsInvalidPagingOrderingFiltersAndChangedGenerations() {
         save("downloads",List.of());

@@ -52,7 +52,7 @@ class UpdateSearchesTests {
                         jdbc.update("INSERT INTO calibre_books(id,generation,active,calibre_id,epl_id,revision,title,authors) VALUES('one','g',true,1,1,1,'Libro','Autor')");
                         when(files.availability(List.of(1L))).thenReturn(List.of(new CalibreUpdateFlow.Availability(1,"READY")));
                     }
-                    var rows=count==0?List.<RevisionUpdates.Row>of():List.of(new RevisionUpdates.Row(1L,"Libro",1.0,2.0,DownloadStatus.DOWNLOADED,null,false));
+                    var rows=count==0?List.<RevisionUpdates.Row>of():List.of(new RevisionUpdates.Row(1L,"Libro",1.0,2.0,DownloadStatus.DOWNLOADED,null,false,"Autor"));
                     when(updates.search(any(),eq(0),eq(1000),eq("eplId,asc"))).thenReturn(new PageResponse<>(rows,new PageResponse.PageMeta(0,1000,count,1,true,true,false,false)));
                     for(String type:List.of("downloads","calibre")) {
                         capture.list.clear();
@@ -80,7 +80,7 @@ class UpdateSearchesTests {
     }
     @Test void torrentSearchUsesSavedStatesAndPersistsOnlyACompletePerUserResult() {
         var input=preferences.get();
-        var row=new RevisionUpdates.Row(1L,"Libro",1.0,2.0,DownloadStatus.DOWNLOADED,null,false);
+        var row=new RevisionUpdates.Row(1L,"Libro",1.0,2.0,DownloadStatus.DOWNLOADED,null,false,"Autor");
         when(updates.search(input,0,1000,"eplId,asc")).thenReturn(new PageResponse<>(List.of(row),new PageResponse.PageMeta(0,1000,2,2,true,false,true,false)));
         when(updates.search(input,1,1000,"eplId,asc")).thenReturn(new PageResponse<>(List.of(row),new PageResponse.PageMeta(1,1000,2,2,false,true,false,true)));
         assertThat(searches.downloads("owner")).containsEntry("updates",2);
@@ -139,7 +139,7 @@ class UpdateSearchesTests {
         var previous=searches.latest("downloads","owner");
         var title="é".repeat(1024*1024);
         var rows=new ArrayList<RevisionUpdates.Row>();
-        for(long id=1;id<=9;id++) rows.add(new RevisionUpdates.Row(id,title,1.0,2.0,DownloadStatus.DOWNLOADED,null,false));
+        for(long id=1;id<=9;id++) rows.add(new RevisionUpdates.Row(id,title,1.0,2.0,DownloadStatus.DOWNLOADED,null,false,"Autor"));
         when(updates.search(any(),eq(0),eq(1000),eq("eplId,asc"))).thenReturn(new PageResponse<>(rows,new PageResponse.PageMeta(0,1000,9,1,true,true,false,false)));
         assertThatThrownBy(()->searches.downloads("owner")).hasMessageContaining("16 MiB");
         assertThat(searches.latest("downloads","owner")).isEqualTo(previous);

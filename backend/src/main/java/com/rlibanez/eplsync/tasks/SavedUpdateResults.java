@@ -69,13 +69,13 @@ final class SavedUpdateResults {
         com.rlibanez.eplsync.ordering.StateOperator.excluded(filters.get("titleOperator"));
         com.rlibanez.eplsync.ordering.StateOperator.excluded(filters.get("authorOperator"));
         if(generation<0) throw new UserInputException("Fecha de búsqueda inválida");
-        Set<String> fields=type.equals("downloads")?Set.of("eplId","title","status","registeredRevision","availableRevision")
+        Set<String> fields=type.equals("downloads")?Set.of("eplId","title","author","status","registeredRevision","availableRevision")
             :Set.of("calibreId","eplId","title","authors","revision","catalogRevision","comparison","presence","downloadAvailability");
         var orders=TableOrdering.parse(sort,fields);
         var order=new ArrayList<String>();
         for(var entry:orders) {
             String field=entry.getProperty();
-            order.add("json_extract(value,'$."+field+"')"+(Set.of("title","authors","status","comparison","presence","downloadAvailability").contains(field)?" COLLATE EPL_TEXT":"")+" "+entry.getDirection().name());
+            order.add("json_extract(value,'$."+field+"')"+(Set.of("title","author","authors","status","comparison","presence","downloadAvailability").contains(field)?" COLLATE EPL_TEXT":"")+" "+entry.getDirection().name());
         }
         order.add("CAST(key AS INTEGER) ASC");
         var arguments=new ArrayList<Object>(List.of(user,type,MAX_BYTES,UpdateSearchContext.key(type),generation));
@@ -87,11 +87,10 @@ final class SavedUpdateResults {
             switch(field) {
                 case "statusOperator","titleOperator","authorOperator" -> { }
                 case "title","author" -> {
-                    if(!type.equals("calibre")) throw new UserInputException("Filtro desconocido");
-                    where.append(" AND epl_saved_contains(json_extract(value,'$.").append(field.equals("author")?"authors":"title").append("'),?)").append(com.rlibanez.eplsync.ordering.StateOperator.excluded(filters.get(field+"Operator"))?"=0":"=1");arguments.add(value);
+                    where.append(" AND epl_saved_contains(json_extract(value,'$.").append(field.equals("author")?(type.equals("calibre")?"authors":"author"):"title").append("'),?)").append(com.rlibanez.eplsync.ordering.StateOperator.excluded(filters.get(field+"Operator"))?"=0":"=1");arguments.add(value);
                 }
                 case "eplId" -> {
-                    if(!type.equals("calibre") || !value.matches("[0-9]{1,18}")) throw new UserInputException("EPL ID inválido");
+                    if(!value.matches("[0-9]{1,18}")) throw new UserInputException("EPL ID inválido");
                     where.append(" AND json_extract(value,'$.eplId')=?");arguments.add(Long.parseLong(value));
                 }
                 case "status" -> {
@@ -108,7 +107,10 @@ final class SavedUpdateResults {
                 default -> throw new UserInputException("Filtro desconocido");
             }
         }
-        String sql="WITH snapshot AS MATERIALIZED (SELECT results_json"+source()+" AND searched_at=?), filtered AS MATERIALIZED (SELECT j.key,j.value FROM snapshot,json_each(snapshot.results_json) j"+where+")"
+        String entries=type.equals("downloads")
+            ?"SELECT j.key,json_set(j.value,'$.author',coalesce(json_extract(j.value,'$.author'),b.author)) value FROM snapshot,json_each(snapshot.results_json) j LEFT JOIN catalog_books b ON b.epl_id=json_extract(j.value,'$.eplId')"
+            :"SELECT j.key,j.value FROM snapshot,json_each(snapshot.results_json) j";
+        String sql="WITH snapshot AS MATERIALIZED (SELECT results_json"+source()+" AND searched_at=?), entries AS MATERIALIZED ("+entries+"), filtered AS MATERIALIZED (SELECT j.key,j.value FROM entries j"+where+")"
             +" SELECT (SELECT count(*) FROM snapshot),(SELECT count(*) FROM filtered),(SELECT json_group_array(json(value)) FROM (SELECT value FROM filtered ORDER BY "+String.join(",",order)+" LIMIT ? OFFSET ?))";
         arguments.add(size);arguments.add((long)page*size);
         return jdbc.execute((ConnectionCallback<PageResponse<Map<String,Object>>>)connection -> {

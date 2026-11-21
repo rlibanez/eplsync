@@ -184,7 +184,7 @@ test("revision search synchronizes, uses temporary options, sorts and sends sele
           ).length,
       ),
     )
-    .toBe(6);
+    .toBe(7);
   await checkTableControls(page, "title", "Libro");
   expect(queries).toHaveLength(1);
   expect(queries[0].params.toString()).toBe("");
@@ -447,4 +447,62 @@ test("opens the last scheduled catalog update search without synchronizing again
   await expect(
     page.getByRole("link", { name: "Actualización programada", exact: true }),
   ).toBeVisible();
+});
+
+test("catalog updates filter by EPL ID, book and author with negation and author sorting", async ({
+  page,
+}) => {
+  const saved = {
+    searchedAt: 123,
+    states: ["DOWNLOADED"],
+    origin: "MANUAL",
+    criteria: {},
+    rows: [
+      {
+        eplId: 1,
+        title: "El talento oscuro",
+        author: "Brandon Sanderson",
+        registeredRevision: 1,
+        availableRevision: 2,
+        status: "DOWNLOADED",
+      },
+      {
+        eplId: 2,
+        title: "Otro libro",
+        author: "Íñigo",
+        registeredRevision: 1,
+        availableRevision: 2,
+        status: "DOWNLOADED",
+      },
+    ],
+  };
+  await page.route("**/api/settings/downloads/updates", (route) =>
+    route.fulfill({ json: { states: ["DOWNLOADED"] } }),
+  );
+  await page.route("**/api/settings/tasks/searches/downloads**", (route) =>
+    fulfillSavedSearch(route, { json: { search: saved } }),
+  );
+  await page.goto("/downloads/updates");
+  await expect(page.locator("tbody")).toContainText("Brandon Sanderson");
+  await page.getByRole("button", { name: "Autor", exact: true }).click();
+  await expect(page.locator('th[data-table-column="author"]')).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
+  await page.getByLabel("EPL ID", { exact: true }).fill("1");
+  await page.getByLabel("Libro", { exact: true }).fill("talento");
+  await page.getByLabel("Autor", { exact: true }).fill("sander");
+  await expect(page.locator("tbody")).toContainText("El talento oscuro");
+  await expect(page.locator("tbody")).not.toContainText("Otro libro");
+  await page.getByRole("button", { name: "Limpiar", exact: true }).click();
+  await page.getByLabel("Autor", { exact: true }).fill("sander");
+  await page
+    .getByRole("button", {
+      name: "Contiene alguno de los textos indicados",
+      exact: true,
+    })
+    .nth(1)
+    .click();
+  await expect(page.locator("tbody")).toContainText("Otro libro");
+  await expect(page.locator("tbody")).not.toContainText("El talento oscuro");
 });

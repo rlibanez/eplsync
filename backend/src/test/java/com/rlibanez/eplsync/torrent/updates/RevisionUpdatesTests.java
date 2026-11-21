@@ -57,6 +57,7 @@ class RevisionUpdatesTests {
         assertThat(result.items().getFirst().registeredRevision()).isEqualTo(1.1);
         assertThat(result.items().getFirst().coverUrl()).isEqualTo("https://covers.example/1.jpg");
         assertThat(result.items().getFirst().coverAvailable()).isTrue();
+        assertThat(result.items().getFirst().author()).isEqualTo("Author");
         var completed=updates.search(new UpdatePreferences.Preferences(List.of(DownloadStatus.DOWNLOADED)),0,20,"eplId,asc");
         assertThat(completed.items()).extracting((RevisionUpdates.Row entryValue) -> java.util.Objects.requireNonNull(entryValue).eplId()).containsExactly(4L);
     }
