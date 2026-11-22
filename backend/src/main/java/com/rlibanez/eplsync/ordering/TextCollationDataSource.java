@@ -13,7 +13,7 @@ public final class TextCollationDataSource extends DelegatingDataSource implemen
         try {
             var physical=connection.unwrap(org.sqlite.SQLiteConnection.class);
             synchronized(initialized) {
-                if(!initialized.containsKey(physical)) {TextOrdering.register(physical);UnicodeText.register(physical);initialized.put(physical,true);}
+                if(!initialized.containsKey(physical)) {TextOrdering.register(physical);UnicodeText.register(physical);com.rlibanez.eplsync.discovery.DiscoveryTerms.register(physical);initialized.put(physical,true);}
             }
             return connection;
         } catch(SQLException|RuntimeException ex) {connection.close();throw ex;}

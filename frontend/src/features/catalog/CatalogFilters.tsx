@@ -1,10 +1,17 @@
+import {
+  DiscoveryPanel,
+  discoveryPreferences,
+  defaultDiscoveryPreferences,
+  applyDiscoveryConfiguration,
+  type DiscoveryPreferences,
+} from "./Discovery";
 import { sortOptions } from "../../locales/textOrdering";
 import { SavedCatalogSearches, type SavedSearch } from "./SavedCatalogSearches";
 import {
   stateOperatorProps,
   textOperatorProps,
 } from "../../components/StateOperator";
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import {
   Button,
   TextInput,
@@ -23,6 +30,8 @@ import { useAuth } from "../auth/Auth";
 import { useLocale } from "../../locales/useLocale";
 
 export const multiKeys = [
+  "discoveryCriteria",
+  "discoveryValues",
   "title",
   "author",
   "collection",
@@ -35,6 +44,14 @@ export const multiKeys = [
   "torrentStatus",
 ];
 export const filterKeys = [
+  "discoverySource",
+  "discoveryCriterion",
+  "discoveryCriteria",
+  "discoveryMatch",
+  "discoveryValues",
+  "discoveryExcludeDownloads",
+  "discoveryExcludeCalibre",
+  "discoveryExcludePending",
   "eplIdOperator",
   "collectionOperator",
   "genresOperator",
@@ -133,9 +150,11 @@ export function CatalogFilters({
   savedSearch,
   onSavedSearch,
   onApplySaved,
+  discovery = false,
   initiallyOpen = false,
   onToggle,
 }: {
+  discovery?: boolean;
   savedSearch: string | null;
   onSavedSearch: (id: string | null) => void;
   onApplySaved: (filters: SavedSearch["filters"]) => void;
@@ -144,6 +163,8 @@ export function CatalogFilters({
   params: URLSearchParams;
   onChange: (params: URLSearchParams) => void;
 }) {
+  const discoveryConfig = useRef<DiscoveryPreferences | null>(null);
+  const [discoveryReset, setDiscoveryReset] = useState(0);
   const [open, setOpen] = useState(initiallyOpen);
   const { t } = useTranslation();
   const { language, status } = useLocale();
@@ -161,7 +182,25 @@ export function CatalogFilters({
           "",
       ]),
     );
+    const savedDiscovery = discoveryPreferences(auth.user?.id);
     for (const library of ["torrent", "calibre"]) {
+      if (
+        discovery &&
+        !params.has("discoverySource") &&
+        !initial[`${library}Presence`] &&
+        !initial[`${library}Revision`] &&
+        !(library === "torrent" && params.getAll("torrentStatus").some(Boolean))
+      ) {
+        const allowed = auth.can(
+          library === "torrent" ? "TORRENT_SYNC" : "CALIBRE_READ",
+        );
+        const excluded =
+          library === "torrent"
+            ? savedDiscovery.downloads
+            : savedDiscovery.calibre;
+        if (allowed && excluded !== false)
+          initial[`${library}Presence`] = "ABSENT";
+      }
       if (initial[`${library}Presence`] === "ABSENT")
         initial[`${library}Revision`] = "";
       else if (
@@ -300,6 +339,16 @@ export function CatalogFilters({
       ) : undefined,
     };
   }
+  function changePresence(library: "torrent" | "calibre", value: string) {
+    if (library === "torrent" && (!value || value === "ABSENT"))
+      setMultiValue("torrentStatus", []);
+    setValues((previous) => ({
+      ...previous,
+      [`${library}Presence`]: value,
+      [`${library}Revision`]:
+        !value || value === "ABSENT" ? "" : previous[`${library}Revision`],
+    }));
+  }
   function captureFilters(): URLSearchParams | null {
     const merged = { ...multi };
     const invalid: Record<string, string> = {};
@@ -325,13 +374,53 @@ export function CatalogFilters({
     multiKeys.forEach((key) =>
       merged[key].forEach((value) => next.append(key, value)),
     );
+    if (discovery && discoveryConfig.current) {
+      if (!applyDiscoveryConfiguration(next, discoveryConfig.current))
+        return null;
+    }
     // Exact filters from directory links become equivalent editable ranges.
     next.delete("publicationYear");
     next.delete("publicationDate");
     next.set("page", "0");
     return next;
   }
-  return (
+  function clearFilters() {
+    const cleared = Object.fromEntries(filterKeys.map((key) => [key, ""]));
+    if (discovery) {
+      const downloads = auth.can("TORRENT_SYNC"),
+        calibre = auth.can("CALIBRE_READ");
+      const defaults = defaultDiscoveryPreferences(downloads, calibre);
+      discoveryConfig.current = defaults;
+      try {
+        localStorage.setItem(
+          `eplsync.discovery.${auth.user?.id ?? ""}.v1`,
+          JSON.stringify(defaults),
+        );
+      } catch {
+        /* Optional persistence. */
+      }
+      cleared.torrentPresence = downloads ? "ABSENT" : "";
+      cleared.calibrePresence = calibre ? "ABSENT" : "";
+      setDiscoveryReset((version) => version + 1);
+    }
+    setValues(cleared);
+    setMulti(Object.fromEntries(multiKeys.map((key) => [key, []])));
+    setDrafts({});
+    setErrors({});
+    setEqual({});
+    onSavedSearch(null);
+    onChange(new URLSearchParams());
+  }
+  const savedSearches = (
+    <SavedCatalogSearches
+      scope={discovery ? "DISCOVERY" : "CATALOG"}
+      selected={savedSearch}
+      onSelect={onSavedSearch}
+      capture={captureFilters}
+      apply={onApplySaved}
+    />
+  );
+  const filters = (
     <details
       className="catalog-search panel"
       open={open}
@@ -580,18 +669,7 @@ export function CatalogFilters({
                     { value: "PRESENT", label: t("filters.libraryPresent") },
                     { value: "ABSENT", label: t("filters.libraryAbsent") },
                   ])}
-                  onChange={(value) => {
-                    if (library === "torrent" && (!value || value === "ABSENT"))
-                      setMultiValue("torrentStatus", []);
-                    setValues((previous) => ({
-                      ...previous,
-                      [`${library}Presence`]: value || "",
-                      [`${library}Revision`]:
-                        !value || value === "ABSENT"
-                          ? ""
-                          : previous[`${library}Revision`],
-                    }));
-                  }}
+                  onChange={(value) => changePresence(library, value || "")}
                 />
                 <Select
                   label={t("catalog.revision")}
@@ -661,31 +739,35 @@ export function CatalogFilters({
         <div className="catalog-search-footer">
           <div className="action-row">
             <Button type="submit">{t("catalog.search")}</Button>
-            <Button
-              variant="subtle"
-              onClick={() => {
-                setValues(
-                  Object.fromEntries(filterKeys.map((key) => [key, ""])),
-                );
-                setMulti(Object.fromEntries(multiKeys.map((key) => [key, []])));
-                setDrafts({});
-                setErrors({});
-                setEqual({});
-                onSavedSearch(null);
-                onChange(new URLSearchParams());
-              }}
-            >
+            <Button variant="subtle" onClick={clearFilters}>
               {t("catalog.clear")}
             </Button>
           </div>
-          <SavedCatalogSearches
-            selected={savedSearch}
-            onSelect={onSavedSearch}
-            capture={captureFilters}
-            apply={onApplySaved}
-          />
+          {!discovery && savedSearches}
         </div>
       </form>
     </details>
+  );
+  return (
+    <>
+      {discovery && (
+        <DiscoveryPanel
+          key={discoveryReset}
+          resetDefaults={discoveryReset > 0}
+          onClear={clearFilters}
+          savedSearches={savedSearches}
+          configuration={discoveryConfig}
+          params={params}
+          presence={{
+            torrent: values.torrentPresence,
+            calibre: values.calibrePresence,
+          }}
+          onPresenceChange={changePresence}
+          captureFilters={captureFilters}
+          onSearch={onChange}
+        />
+      )}
+      {filters}
+    </>
   );
 }

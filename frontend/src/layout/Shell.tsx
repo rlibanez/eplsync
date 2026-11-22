@@ -27,6 +27,7 @@ import { Link, NavLink, Outlet, ScrollRestoration } from "react-router-dom";
 import {
   Library,
   BookOpen,
+  Compass,
   FolderOpen,
   Download,
   RefreshCw,
@@ -156,6 +157,18 @@ function ShellContent() {
               <span className="nav-text">{t("nav.directory")}</span>
             </NavLink>
           )}
+          {auth.can("CATALOG_READ") &&
+            (auth.can("TORRENT_SYNC") || auth.can("CALIBRE_READ")) && (
+              <NavLink
+                to="/discover"
+                aria-label={t("discovery.title")}
+                title={t("discovery.title")}
+                onClick={() => setOpen(false)}
+              >
+                <Compass size={19} />
+                <span className="nav-text">{t("discovery.title")}</span>
+              </NavLink>
+            )}
           {downloadLinks.length > 0 && (
             <div className="nav-group-label">
               <span>{t("nav.downloads")}</span>

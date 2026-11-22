@@ -21,7 +21,14 @@ export function catalogReturnUrl(state: unknown) {
       search = "";
     }
   }
-  return search ? `/catalog?${new URLSearchParams(search)}` : "/catalog";
+  const path =
+    typeof state === "object" &&
+    state !== null &&
+    "catalogOrigin" in state &&
+    state.catalogOrigin === "/discover"
+      ? "/discover"
+      : "/catalog";
+  return search ? `${path}?${new URLSearchParams(search)}` : path;
 }
 
 const bookOrigins = [

@@ -1,3 +1,4 @@
+import { DiscoveryMatches } from "./Discovery";
 import { Fragment } from "react";
 import { Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
@@ -60,6 +61,7 @@ export function CatalogValue({
 }) {
   const { t } = useTranslation();
   const { number, language, date, status } = useLocale();
+  if (column === "discoveryMatches") return <DiscoveryMatches book={book} />;
   const value = book[column];
   if (value === null || value === undefined || String(value).trim() === "")
     return <>—</>;

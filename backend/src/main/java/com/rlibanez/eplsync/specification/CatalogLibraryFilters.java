@@ -15,6 +15,7 @@ import java.util.ArrayList;
 /** Correlated local queries: no remote calls and no materialized list of catalog IDs. */
 @Component
 public class CatalogLibraryFilters {
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.settings.CatalogDiscovery discovery;
     private final DownloadTrackingService tracking;
     public CatalogLibraryFilters(DownloadTrackingService tracking) {this.tracking=tracking;}
     public Specification<CatalogBook> fromFilter(CatalogBookFilter filter) {
@@ -24,7 +25,7 @@ public class CatalogLibraryFilters {
         if(torrent && !Permission.has(Permission.BOOK_HISTORY_READ)) Permission.require(Permission.TORRENT_SYNC);
         if(calibre) Permission.require(Permission.CALIBRE_READ);
         String instance=torrent?tracking.instanceId():null;
-        return (root,query,cb)-> {
+        Specification<CatalogBook> result=(root,query,cb)-> {
             var criteria=java.util.Objects.requireNonNull(query);
             var predicates=new ArrayList<Predicate>();
             if(torrent) {
@@ -57,5 +58,6 @@ public class CatalogLibraryFilters {
             }
             return cb.and(predicates.toArray(Predicate[]::new));
         };
+        return filter.getDiscoverySource()==null?result:result.and(discovery.fromFilter(filter));
     }
 }

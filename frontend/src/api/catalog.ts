@@ -1,5 +1,7 @@
+import { normalizeDiscoveryPresence } from "./discoveryFilters";
 import { secureFetch } from "../features/auth/transport";
 export interface Book {
+  discoveryMatches?: { value: string; source: string; criterion?: string }[];
   eplId: number;
   title: string;
   author: string;
@@ -162,6 +164,14 @@ export function catalogParams(
     ["publicationYear", 11],
     ["eplId", 19],
     ["revision", 24],
+    ["discoverySource", 16],
+    ["discoveryCriterion", 16],
+    ["discoveryCriteria", 16],
+    ["discoveryMatch", 3],
+    ["discoveryValues", 540],
+    ["discoveryExcludeDownloads", 5],
+    ["discoveryExcludeCalibre", 5],
+    ["discoveryExcludePending", 5],
     ["torrentPresence", 16],
     ["torrentStatus", 24],
     ["statusOperator", 2],
@@ -180,6 +190,8 @@ export function catalogParams(
     ["calibreRevision", 16],
   ] as const) {
     const multiple = [
+      "discoveryCriteria",
+      "discoveryValues",
       "torrentStatus",
       "title",
       "author",
@@ -221,5 +233,5 @@ export function catalogParams(
     !ordering.some((value) => value.startsWith("eplId,"))
   )
     params.append("sort", "eplId,asc");
-  return params;
+  return normalizeDiscoveryPresence(params);
 }

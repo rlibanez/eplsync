@@ -103,7 +103,7 @@ export const test = base.extend<{ eventTransport: void }>({
             })
           : route.fallback(),
       );
-      await context.route("**/api/catalog/saved-searches", (route) =>
+      await context.route(/\/api\/catalog\/saved-searches(?:\?|$)/, (route) =>
         route.fulfill({ json: [] }),
       );
       await context.route("**/api/settings/setup", (route) =>
@@ -129,6 +129,9 @@ export const test = base.extend<{ eventTransport: void }>({
               },
             })
           : route.fallback(),
+      );
+      await context.route("**/api/settings/calibre/snapshot", (route) =>
+        route.fulfill({ json: { snapshot: null } }),
       );
       await context.route("**/api/calibre/books/formats", (route) =>
         route.fulfill({ json: [] }),

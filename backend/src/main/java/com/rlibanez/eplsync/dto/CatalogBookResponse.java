@@ -30,11 +30,14 @@ public record CatalogBookResponse(
         String links,
         String coverUrl,
         Boolean coverAvailable,
-        Download download, Calibre calibre) {
+        Download download, Calibre calibre,List<com.rlibanez.eplsync.settings.CatalogDiscovery.Match> discoveryMatches) {
     public record CalibreItem(long calibreId, Double revision) {}
     public record Calibre(String library, Instant syncedAt, long totalItems, Double revision, List<CalibreItem> items) {}
     public CatalogBookResponse withCalibre(Calibre value) {
-        return new CatalogBookResponse(eplId,revision,author,title,genres,collection,volume,publicationYear,synopsis,pages,language,publicationStatus,publicationDate,insertDate,lastModifiedDate,status,rating,votesCount,links,coverUrl,coverAvailable,download,value);
+        return new CatalogBookResponse(eplId,revision,author,title,genres,collection,volume,publicationYear,synopsis,pages,language,publicationStatus,publicationDate,insertDate,lastModifiedDate,status,rating,votesCount,links,coverUrl,coverAvailable,download,value,discoveryMatches);
+    }
+    public CatalogBookResponse withDiscoveryMatches(List<com.rlibanez.eplsync.settings.CatalogDiscovery.Match> matches) {
+        return new CatalogBookResponse(eplId,revision,author,title,genres,collection,volume,publicationYear,synopsis,pages,language,publicationStatus,publicationDate,insertDate,lastModifiedDate,status,rating,votesCount,links,coverUrl,coverAvailable,download,calibre,matches);
     }
     public record Download(List<DownloadItem> items,long totalItems,List<DownloadStatus> statuses, DownloadItem latest) {
         public Download(List<DownloadItem> items,long totalItems,List<DownloadStatus> statuses) {this(items,totalItems,statuses,null);}
@@ -63,6 +66,6 @@ public record CatalogBookResponse(
                 book.getStatus(),
                 book.getRating(),
                 book.getVotesCount(),
-                book.getLinks(), book.getCoverUrl(), book.getCoverAvailable(), download, null);
+                book.getLinks(), book.getCoverUrl(), book.getCoverAvailable(), download, null,List.of());
     }
 }

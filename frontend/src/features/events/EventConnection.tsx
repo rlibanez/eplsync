@@ -78,6 +78,7 @@ export function EventConnection() {
         for (const key of [
           "downloads",
           "download-summary",
+          "discovery-values",
           "calibre-library",
           "calibre-snapshot",
           "jobs",
@@ -151,7 +152,7 @@ export function EventConnection() {
         const keys =
           event.category === "CATALOG" ||
           event.details.taskOperation === "CATALOG_IMPORT"
-            ? ["catalog", "book", "catalog-metadata", "directory"]
+            ? ["catalog", "book", "catalog-metadata", "directory", "discovery-values"]
             : event.category === "COVERS"
               ? ["cover-task", "catalog", "book"]
               : [
@@ -160,6 +161,7 @@ export function EventConnection() {
                   "job-items",
                   "downloads",
                   "download-summary",
+                  "discovery-values",
                   "catalog",
                   "book",
                   "calibre-jobs",

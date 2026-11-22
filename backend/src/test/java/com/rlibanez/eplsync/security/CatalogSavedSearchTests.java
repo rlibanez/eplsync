@@ -1,6 +1,7 @@
 package com.rlibanez.eplsync.security;
 
 import java.util.*;
+import com.rlibanez.eplsync.service.CatalogSavedSearches.Scope;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -50,6 +51,37 @@ class CatalogSavedSearchTests {
         var response=mvc.perform(get("/api/catalog/saved-searches").session(reader)).andExpect(status().isOk()).andReturn();
         var saved=mapper.readTree(response.getResponse().getContentAsString()).get(0).get("filters");
         for(String key:List.of("eplId","collection","genres","revision")) assertThat(saved.get(key+"Operator").get(0).asString()).isEqualTo("ne");
+    }
+    @Test void savesAndRestoresDiscoveryCriteriaWithoutExposingOtherUsersSearches() throws Exception {
+        var reader=login("reader");
+        var filters=Map.of("discoverySource",List.of("BOTH"),"discoveryCriteria",List.of("AUTHOR","LANGUAGE"),"discoveryMatch",List.of("ANY"),"discoveryValues",List.of("AUTHOR:Brandon Sanderson","LANGUAGE:es"),"torrentPresence",List.of("ABSENT"),"calibrePresence",List.of("ABSENT"),"discoveryExcludePending",List.of("true"));
+        mvc.perform(post("/api/catalog/saved-searches").param("scope","DISCOVERY").session(reader).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("name","Descubrir autores","filters",filters))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.filters.discoveryMatch[0]").value("ANY"));
+        var saved=searches.list(userId,Scope.DISCOVERY).getFirst();
+        assertThat(saved.filters()).isEqualTo(filters);
+        assertThat(searches.list(adminId,Scope.DISCOVERY)).isEmpty();
+    }
+    @Test void scopesHaveIndependentNamesAndCrudAndRejectCrossScopePayloads() throws Exception {
+        var reader=login("reader");
+        String catalogBody=mapper.writeValueAsString(Map.of("name","Mis libros","filters",Map.of("author",List.of("Orwell"))));
+        String discoveryBody=mapper.writeValueAsString(Map.of("name","Mis libros","filters",Map.of("discoverySource",List.of("DOWNLOADS"),"discoveryCriteria",List.of("AUTHOR","LANGUAGE"),"discoveryMatch",List.of("ANY"),"torrentPresence",List.of("ABSENT"))));
+        mvc.perform(post("/api/catalog/saved-searches").session(reader).with(csrf()).contentType("application/json").content(catalogBody)).andExpect(status().isOk());
+        var result=mvc.perform(post("/api/catalog/saved-searches").param("scope","DISCOVERY").session(reader).with(csrf()).contentType("application/json").content(discoveryBody)).andExpect(status().isOk()).andReturn();
+        String id=mapper.readTree(result.getResponse().getContentAsString()).get("id").asString();
+        mvc.perform(get("/api/catalog/saved-searches").session(reader)).andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].filters.author[0]").value("Orwell"));
+        mvc.perform(get("/api/catalog/saved-searches").param("scope","DISCOVERY").session(reader)).andExpect(jsonPath("$.length()").value(1)).andExpect(jsonPath("$[0].filters.discoveryMatch[0]").value("ANY"));
+        mvc.perform(put("/api/catalog/saved-searches/"+id).session(reader).with(csrf()).contentType("application/json").content(catalogBody)).andExpect(status().isNotFound());
+        mvc.perform(delete("/api/catalog/saved-searches/"+id).session(reader).with(csrf())).andExpect(status().isNotFound());
+        mvc.perform(post("/api/catalog/saved-searches").session(reader).with(csrf()).contentType("application/json").content(discoveryBody)).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/catalog/saved-searches").param("scope","DISCOVERY").session(reader).with(csrf()).contentType("application/json").content(catalogBody)).andExpect(status().isBadRequest());
+        mvc.perform(post("/api/catalog/saved-searches").param("scope","DISCOVERY").session(reader).with(csrf()).contentType("application/json").content(discoveryBody)).andExpect(status().isBadRequest());
+        var admin=login("administrator");
+        mvc.perform(put("/api/catalog/saved-searches/"+id).param("scope","DISCOVERY").session(admin).with(csrf()).contentType("application/json").content(discoveryBody)).andExpect(status().isNotFound());
+        mvc.perform(delete("/api/catalog/saved-searches/"+id).param("scope","DISCOVERY").session(admin).with(csrf())).andExpect(status().isNotFound());
+        String renamed=discoveryBody.replace("Mis libros","Mis descubrimientos");
+        mvc.perform(put("/api/catalog/saved-searches/"+id).param("scope","DISCOVERY").session(reader).with(csrf()).contentType("application/json").content(renamed)).andExpect(status().isOk());
+        mvc.perform(delete("/api/catalog/saved-searches/"+id).param("scope","DISCOVERY").session(reader).with(csrf())).andExpect(status().isOk());
+        assertThat(searches.list(userId)).hasSize(1);assertThat(searches.list(userId,Scope.DISCOVERY)).isEmpty();
     }
     @Test void personalCrudAndIsolationPersistOnlyFilters() throws Exception {
         var reader=login("reader");

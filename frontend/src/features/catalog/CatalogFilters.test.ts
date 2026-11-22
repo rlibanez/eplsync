@@ -225,3 +225,15 @@ it("clicking a catalog value replaces newly negated fields with inclusion", asyn
     expect(result.get("page")).toBe("0");
   }
 });
+
+it("migrates old discovery exclusions to Catalog presence and gives explicit presence priority", async () => {
+  const { catalogParams } = await import("../../api/catalog");
+  const old = catalogParams(new URLSearchParams("discoverySource=BOTH&discoveryExcludeDownloads=true&discoveryExcludeCalibre=true"));
+  expect(old.get("torrentPresence")).toBe("ABSENT");
+  expect(old.get("calibrePresence")).toBe("ABSENT");
+  expect(old.has("discoveryExcludeDownloads")).toBe(false);
+  expect(old.has("discoveryExcludeCalibre")).toBe(false);
+  const explicit = catalogParams(new URLSearchParams("discoverySource=BOTH&discoveryExcludeDownloads=true&torrentPresence=PRESENT"));
+  expect(explicit.get("torrentPresence")).toBe("PRESENT");
+  expect(filterRequest(explicit).has("discoveryExcludeDownloads")).toBe(false);
+});

@@ -30,11 +30,13 @@ export function applySavedFilters(
   return next;
 }
 export function SavedCatalogSearches({
+  scope = "CATALOG",
   selected,
   onSelect,
   capture,
   apply,
 }: {
+  scope?: "CATALOG" | "DISCOVERY";
   selected: string | null;
   onSelect: (id: string | null) => void;
   capture: () => URLSearchParams | null;
@@ -42,9 +44,12 @@ export function SavedCatalogSearches({
 }) {
   const { t } = useTranslation();
   const client = useQueryClient();
+  const scopeQuery = scope === "DISCOVERY" ? "?scope=DISCOVERY" : "";
+  const queryKey = ["catalog-saved-searches", scope];
   const query = useQuery({
-    queryKey: ["catalog-saved-searches"],
-    queryFn: () => authRequest<SavedSearch[]>("/catalog/saved-searches"),
+    queryKey,
+    queryFn: () =>
+      authRequest<SavedSearch[]>(`/catalog/saved-searches${scopeQuery}`),
   });
   const current = query.data?.find((item) => item.id === selected);
   const [mode, setMode] = useState<"create" | "rename" | "delete" | null>(null);
@@ -65,7 +70,7 @@ export function SavedCatalogSearches({
     setError("");
     try {
       const result = await authRequest<SavedSearch>(
-        `/catalog/saved-searches${action === "create" ? "" : `/${current!.id}`}`,
+        `/catalog/saved-searches${action === "create" ? "" : `/${current!.id}`}${scopeQuery}`,
         action === "delete" ? "DELETE" : action === "create" ? "POST" : "PUT",
         action === "delete"
           ? undefined
@@ -75,7 +80,7 @@ export function SavedCatalogSearches({
             },
       );
       onSelect(action === "delete" ? null : result.id);
-      await client.invalidateQueries({ queryKey: ["catalog-saved-searches"] });
+      await client.invalidateQueries({ queryKey });
       setMode(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));

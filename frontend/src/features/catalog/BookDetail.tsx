@@ -37,7 +37,13 @@ export function BookDetail() {
           state={origin?.state}
         >
           <ArrowLeft size={16} />
-          {t(origin ? `detail.return.${origin.label}` : "detail.back")}{" "}
+          {t(
+            origin
+              ? `detail.return.${origin.label}`
+              : location.state?.catalogOrigin === "/discover"
+                ? "discovery.back"
+                : "detail.back",
+          )}{" "}
         </Link>
         {book && <BookNavigation id={book.eplId} />}
       </div>

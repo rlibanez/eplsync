@@ -11,8 +11,8 @@ public class CatalogSavedSearchController {
     private final CatalogSavedSearches searches;
     private final SessionAccess sessions;
     public CatalogSavedSearchController(CatalogSavedSearches searches,SessionAccess sessions) {this.searches=searches;this.sessions=sessions;}
-    @GetMapping public java.util.List<CatalogSavedSearches.Search> list() {return searches.list(sessions.current().id());}
-    @PostMapping public CatalogSavedSearches.Search create(@RequestBody CatalogSavedSearches.Input input) {return searches.save(sessions.current().id(),null,input);}
-    @PutMapping("/{id}") public CatalogSavedSearches.Search update(@PathVariable String id,@RequestBody CatalogSavedSearches.Input input) {return searches.save(sessions.current().id(),id,input);}
-    @DeleteMapping("/{id}") public void delete(@PathVariable String id) {searches.delete(sessions.current().id(),id);}
+    @GetMapping public java.util.List<CatalogSavedSearches.Search> list(@RequestParam(defaultValue="CATALOG") CatalogSavedSearches.Scope scope) {return searches.list(sessions.current().id(),scope);}
+    @PostMapping public CatalogSavedSearches.Search create(@RequestBody CatalogSavedSearches.Input input,@RequestParam(defaultValue="CATALOG") CatalogSavedSearches.Scope scope) {return searches.save(sessions.current().id(),null,input,scope);}
+    @PutMapping("/{id}") public CatalogSavedSearches.Search update(@PathVariable String id,@RequestBody CatalogSavedSearches.Input input,@RequestParam(defaultValue="CATALOG") CatalogSavedSearches.Scope scope) {return searches.save(sessions.current().id(),id,input,scope);}
+    @DeleteMapping("/{id}") public void delete(@PathVariable String id,@RequestParam(defaultValue="CATALOG") CatalogSavedSearches.Scope scope) {searches.delete(sessions.current().id(),id,scope);}
 }

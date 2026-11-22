@@ -16,6 +16,7 @@
 ## Uso
 
 - [Catálogo](catalogo.md): importación, búsqueda, Directorio y portadas.
+- [Descubrir](descubrir.md): encontrar libros de autores o colecciones presentes en Descargas y Calibre.
 - [Trabajos](jobs.md): seguimiento, pausa y cancelación de envíos.
 - [Estado e historial de descargas](descargas.md): sincronización y gestión de registros.
 - [Actualizaciones de libros](actualizaciones.md): revisiones nuevas y limpieza de versiones anteriores.

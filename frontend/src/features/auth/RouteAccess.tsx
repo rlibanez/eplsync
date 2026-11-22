@@ -8,7 +8,11 @@ export function RouteAccess({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const { t } = useTranslation();
   let permission: Permission | undefined;
-  if (pathname.startsWith("/catalog") || pathname.startsWith("/directory"))
+  if (
+    pathname.startsWith("/discover") ||
+    pathname.startsWith("/catalog") ||
+    pathname.startsWith("/directory")
+  )
     permission = "CATALOG_READ";
   else if (pathname.startsWith("/calibre/jobs") && !auth.can("CALIBRE_SEND"))
     permission = "CALIBRE_JOBS_MANAGE";

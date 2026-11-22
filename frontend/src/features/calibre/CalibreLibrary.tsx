@@ -249,6 +249,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     }
   }, [updates, result.error, searching]);
   const sync = useMutation({
+    mutationKey: ["calibre-sync"],
     onMutate: async () => {
       if (!updates) return;
       setSearching(true);

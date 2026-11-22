@@ -1,3 +1,4 @@
+import { DiscoveryMatches } from "./Discovery";
 import { useRangeSelection } from "../../components/useRangeSelection";
 import { Checkbox, Tooltip } from "@mantine/core";
 import { useState } from "react";
@@ -78,7 +79,12 @@ export function CatalogCards({
           <Link
             className="catalog-card-cover"
             to={`/catalog/${book.eplId}`}
-            state={{ catalogSearch: search }}
+            state={{
+              catalogSearch: search,
+              catalogOrigin: new URLSearchParams(search).has("discoverySource")
+                ? "/discover"
+                : "/catalog",
+            }}
             onClick={rememberScroll}
             aria-label={book.title}
           >
@@ -88,12 +94,24 @@ export function CatalogCards({
             <CardTitle
               title={book.title}
               to={`/catalog/${book.eplId}`}
-              state={{ catalogSearch: search }}
+              state={{
+                catalogSearch: search,
+                catalogOrigin: new URLSearchParams(search).has(
+                  "discoverySource",
+                )
+                  ? "/discover"
+                  : "/catalog",
+              }}
               onClick={rememberScroll}
             />
             <div className="catalog-card-author">
               <CatalogValue book={book} column="author" onFilter={onFilter} />
             </div>
+            {!!book.discoveryMatches?.length && (
+              <div>
+                <DiscoveryMatches book={book} />
+              </div>
+            )}
             {view === "mosaic" && (
               <>
                 {book.collection && (

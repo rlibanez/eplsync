@@ -1,3 +1,5 @@
+import { DiscoverySync } from "./DiscoverySync";
+import { LibraryBadges } from "./LibraryBadges";
 import { CatalogDataExportButton } from "./CatalogDataExport";
 import { formatDate } from "../../locales/formatDate";
 import { applySavedFilters } from "./SavedCatalogSearches";
@@ -52,11 +54,12 @@ import {
 } from "lucide-react";
 import { get, catalogParams, type BookPage } from "../../api/catalog";
 import { Loading, Failure, canRetry } from "../../components/Feedback";
-export function Catalog() {
+export function Catalog({ discovery = false }: { discovery?: boolean }) {
   const auth = useAuth();
   const { t, i18n } = useTranslation();
   const metadata = useQuery({
     queryKey: ["catalog-metadata"],
+    enabled: !discovery,
     queryFn: ({ signal }) =>
       get<{ metadata: Metadata | null }>("/catalog/import/metadata", signal),
   });
@@ -70,13 +73,15 @@ export function Catalog() {
           "UTC",
         )
       : null;
-  const columns = useCatalogColumns();
+  const columns = useCatalogColumns(discovery);
   const navigate = useNavigate();
   const importer = useImport();
   const [wizard, setWizard] = useState(false);
   const [view, setView] = useState<"table" | "grid" | "mosaic">(() => {
     try {
-      const stored = localStorage.getItem("eplsync.catalog.view");
+      const stored = localStorage.getItem(
+        discovery ? "eplsync.discovery.view" : "eplsync.catalog.view",
+      );
       return stored === "grid" || stored === "mosaic" ? stored : "table";
     } catch {
       return "table";
@@ -86,7 +91,10 @@ export function Catalog() {
     if (value !== "table" && value !== "grid" && value !== "mosaic") return;
     setView(value);
     try {
-      localStorage.setItem("eplsync.catalog.view", value);
+      localStorage.setItem(
+        discovery ? "eplsync.discovery.view" : "eplsync.catalog.view",
+        value,
+      );
     } catch {
       /* Storage may be unavailable. */
     }
@@ -109,7 +117,7 @@ export function Catalog() {
   const resized = Object.keys(columns.settings.widths).length > 0;
   const [search, setSearch] = useSearchParams();
   useEffect(() => {
-    rememberCatalog(search.toString());
+    if (!discovery) rememberCatalog(search.toString());
   }, [search]);
   const params = catalogParams(search, false);
   const pageSizeChoice = usePageSizeChoice(Number(params.get("size")));
@@ -117,6 +125,7 @@ export function Catalog() {
   const query = params.toString();
   const result = useQuery({
     queryKey: ["catalog", query],
+    enabled: !discovery || params.has("discoverySource"),
     retry: (count, error) => count < 1 && canRetry(error),
     queryFn: ({ signal }) =>
       get<BookPage>(
@@ -162,32 +171,36 @@ export function Catalog() {
   }
   return (
     <CalibreSendProvider>
-      <div className="page-heading">
-        <div>
-          <h1>{t("nav.catalog")} </h1>
+      {discovery ? (
+        <DiscoverySync />
+      ) : (
+        <div className="page-heading">
+          <div>
+            <h1>{t(discovery ? "discovery.title" : "nav.catalog")} </h1>
+          </div>
+          {!discovery && auth.can("CATALOG_IMPORT") && (
+            <Button
+              leftSection={<Download size={16} />}
+              onClick={() => setWizard(true)}
+              disabled={importer.restoring || !!importer.operation?.pending}
+            >
+              {t("import.wizardTitle")}
+            </Button>
+          )}
         </div>
-        {auth.can("CATALOG_IMPORT") && (
-          <Button
-            leftSection={<Download size={16} />}
-            onClick={() => setWizard(true)}
-            disabled={importer.restoring || !!importer.operation?.pending}
-          >
-            {t("import.wizardTitle")}
-          </Button>
-        )}
-      </div>
-      {formattedCatalogDate && (
+      )}
+      {!discovery && formattedCatalogDate && (
         <p className="muted">
           {t("pageTitle.catalogDate")}: {formattedCatalogDate}
         </p>
       )}
       <CatalogFilters
+        discovery={discovery}
         savedSearch={savedSearch}
         onSavedSearch={setSavedSearch}
         onApplySaved={(filters) => {
           selection.clear();
           setSavedApplication((value) => value + 1);
-          filtersOpen.current = true;
           setSearch(applySavedFilters(params, filters));
         }}
         initiallyOpen={filtersOpen.current}
@@ -324,7 +337,9 @@ export function Catalog() {
             </>
           }
         />
-        {result.isPending ? (
+        {discovery && !params.has("discoverySource") ? (
+          <p className="empty-list">{t("discovery.start")}</p>
+        ) : result.isPending ? (
           <Loading />
         ) : result.isError ? (
           <div className="panel-feedback">
@@ -426,6 +441,8 @@ export function Catalog() {
                         />
                       ) : key === "rowNumber" ? (
                         t("columns.rowNumber")
+                      ) : key === "discoveryMatches" ? (
+                        t("discovery.matches")
                       ) : (
                         <button
                           type="button"
@@ -568,10 +585,18 @@ export function Catalog() {
                             className="book-title"
                             onClick={rememberScroll}
                             to={`/catalog/${book.eplId}`}
-                            state={{ catalogSearch: search.toString() }}
+                            state={{
+                              catalogSearch: search.toString(),
+                              catalogOrigin: discovery
+                                ? "/discover"
+                                : "/catalog",
+                            }}
                           >
                             <BookCover book={book} />
-                            <span>{book.title}</span>
+                            <span>
+                              {book.title}
+                              {discovery && <LibraryBadges book={book} />}
+                            </span>
                           </Link>
                         ) : (
                           <CatalogValue

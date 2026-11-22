@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/catalog/books")
 public class CatalogBookController {
 
+    @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.settings.CatalogDiscovery discovery;
     private final CatalogBookService catalogBookService;
 
     private final CatalogDownloadViewService downloads;
@@ -127,6 +128,6 @@ public class CatalogBookController {
 
         var enriched=downloads.enrich(resultPage.getContent());
         if(com.rlibanez.eplsync.security.Permission.has(com.rlibanez.eplsync.security.Permission.CALIBRE_READ)) enriched=calibre.enrich(enriched);
-        return new PageResponse<>(enriched, meta);
+        return new PageResponse<>(filter.getDiscoverySource()==null?enriched:discovery.explain(filter,enriched), meta);
     }
 }

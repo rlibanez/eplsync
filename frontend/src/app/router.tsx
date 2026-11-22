@@ -166,6 +166,13 @@ export const router = createBrowserRouter([
         ],
       },
       {
+        path: "/discover",
+        lazy: async () => ({
+          Component: (await import("../features/catalog/DiscoverPage"))
+            .Discover,
+        }),
+      },
+      {
         path: "/directory",
         lazy: async () => ({
           Component: (await import("../features/directory/Directory"))

@@ -1,4 +1,48 @@
 {
+  "discovery": {
+    "syncAll": "Sync all",
+    "syncDownloads": "Sync downloads",
+    "syncCalibre": "Sync Calibre",
+    "downloadsSync": "Last Downloads sync",
+    "calibreSync": "Last Calibre sync",
+    "neverSynced": "Never synced",
+    "syncing": "Syncing…",
+    "back": "Back to Discover",
+    "title": "Discover",
+    "help": "Find books matching authors, series, genres, languages or publication years from your completed downloads and active Calibre books identified by EPL ID. Catalog metadata is used. Synchronize your sources before searching.",
+    "origin": "Based on",
+    "chooseCriteria": "Choose criteria",
+    "available": "{{count}} available",
+    "criteriaTable": "Matches",
+    "criterionColumn": "Criterion",
+    "useAll": "Use all values",
+    "availableHeader": "Available",
+    "criterion": "Match by",
+    "combine": "Combine criteria",
+    "combineHelp": "All requires a match in every criterion; Any requires at least one.",
+    "modes": {"ALL": "All", "ANY": "Any"},
+    "all": "All detected values",
+    "valuesHelp": "Select up to 1000 values. Type to search all detected values.",
+    "detected": "Values found: {{count}}",
+    "exclusions": "Exclude present in",
+    "noExclusions": "No exclusions",
+    "exclude": "Exclude books present in",
+    "pending": "In pending jobs",
+    "matches": "Match",
+    "start": "Configure the criteria and press Search to discover books. You can add restrictions in advanced search.",
+    "sources": {
+      "DOWNLOADS": "Downloads",
+      "CALIBRE": "Calibre",
+      "BOTH": "Both"
+    },
+    "criteria": {
+      "AUTHOR": "Authors",
+      "COLLECTION": "Series",
+      "GENRE": "Genres",
+      "LANGUAGE": "Languages",
+      "YEAR": "Publication year"
+    }
+  },
   "jobNames": {
     "name": "Name",
     "edit": "Edit job name",

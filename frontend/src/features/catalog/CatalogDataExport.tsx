@@ -21,9 +21,12 @@ import { secureFetch } from "../auth/transport";
 import { columnLabels, type Column } from "./CatalogColumns";
 import { saveCatalogExport } from "./exportTransfer";
 
-type Field = Exclude<Column, "selection" | "rowNumber">;
+type Field = Exclude<Column, "selection" | "rowNumber" | "discoveryMatches">;
 const fields = (Object.keys(columnLabels) as Column[]).filter(
-  (column): column is Field => column !== "selection" && column !== "rowNumber",
+  (column): column is Field =>
+    column !== "selection" &&
+    column !== "rowNumber" &&
+    column !== "discoveryMatches",
 );
 const formats = ["CSV", "JSON"] as const;
 const separators = ["COMMA", "SEMICOLON", "TAB", "PIPE"] as const;

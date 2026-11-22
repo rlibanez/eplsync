@@ -116,8 +116,29 @@ public class CatalogBookFilter {
     private String calibrePresence;
     private String calibreRevision;
 
+    private String discoverySource;
+    private String discoveryCriterion;
+    private String[] discoveryCriteria;
+    private String discoveryMatch;
+    private String[] discoveryValues;
+    private Boolean discoveryExcludeDownloads;
+    private Boolean discoveryExcludeCalibre;
+    private Boolean discoveryExcludePending;
+
+    /** Null means use every detected value for this criterion. Legacy unqualified values remain valid for single-criterion links. */
+    public java.util.List<String> discoverySelection(String criterion) {
+        if(discoveryValues==null) return null;
+        var selected=new java.util.ArrayList<String>();
+        for(String value:discoveryValues) {
+            if(value==null) continue;
+            if(value.startsWith(criterion+":")) selected.add(value.substring(criterion.length()+1));
+            else if(discoveryCriteria!=null && discoveryCriteria.length==1 && !value.matches("^(AUTHOR|COLLECTION|GENRE|LANGUAGE|YEAR):.*")) selected.add(value);
+        }
+        return selected.isEmpty()?null:selected;
+    }
+
     public boolean hasLibraryFilters() {
-        return torrentStatus!=null || torrentPresence!=null || torrentRevision!=null || calibrePresence!=null || calibreRevision!=null;
+        return discoverySource!=null || torrentStatus!=null || torrentPresence!=null || torrentRevision!=null || calibrePresence!=null || calibreRevision!=null;
     }
 
     private static String choice(String value,Set<String> allowed,String field) {
@@ -146,6 +167,29 @@ public class CatalogBookFilter {
 
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
+        discoverySource=choice(discoverySource,Set.of("DOWNLOADS","CALIBRE","BOTH"),"discoverySource");
+        var discoveryAllowed=Set.of("AUTHOR","COLLECTION","GENRE","LANGUAGE","YEAR");
+        discoveryCriterion=choice(discoveryCriterion,discoveryAllowed,"discoveryCriterion");
+        discoveryMatch=choice(discoveryMatch,Set.of("ALL","ANY"),"discoveryMatch");
+        if(discoveryCriteria!=null) {
+            if(discoveryCriteria.length==0 || discoveryCriteria.length>5 || java.util.Arrays.stream(discoveryCriteria).anyMatch(v->v==null || !discoveryAllowed.contains(v))) throw new com.rlibanez.eplsync.exception.UserInputException("Criterios de descubrimiento inválidos");
+            discoveryCriteria=java.util.Arrays.stream(discoveryCriteria).distinct().toArray(String[]::new);
+        }
+        if(discoverySource==null && (discoveryCriteria!=null || discoveryMatch!=null || discoveryCriterion!=null || discoveryValues!=null || discoveryExcludeDownloads!=null || discoveryExcludeCalibre!=null || discoveryExcludePending!=null)) throw new com.rlibanez.eplsync.exception.UserInputException("Indica el origen de descubrimiento");
+        if(discoverySource!=null) {
+            if(discoveryCriteria==null) discoveryCriteria=new String[]{discoveryCriterion==null?"AUTHOR":discoveryCriterion};
+            discoveryCriterion=discoveryCriteria[0];
+            if(discoveryMatch==null) discoveryMatch="ALL";
+        }
+        if(discoveryValues!=null && (discoveryValues.length==0 || discoveryValues.length>5000 || java.util.Arrays.stream(discoveryValues).anyMatch(v->v==null || v.isBlank() || v.length()>540))) throw new com.rlibanez.eplsync.exception.UserInputException("Selecciona entre 1 y 1000 valores por criterio de descubrimiento");
+        if(discoveryValues!=null && discoverySource!=null) {
+            for(String criterion:discoveryCriteria) if(discoverySelection(criterion)!=null && discoverySelection(criterion).size()>1000) throw new com.rlibanez.eplsync.exception.UserInputException("Máximo de 1000 valores por criterio");
+            for(String value:discoveryValues) {
+                int separator=value.indexOf(':');
+                boolean qualified=separator>0 && discoveryAllowed.contains(value.substring(0,separator));
+                if((qualified && (!java.util.Arrays.asList(discoveryCriteria).contains(value.substring(0,separator)) || value.substring(separator+1).isBlank())) || (!qualified && discoveryCriteria.length>1)) throw new com.rlibanez.eplsync.exception.UserInputException("Valor sin criterio de descubrimiento válido");
+            }
+        }
         com.rlibanez.eplsync.ordering.StateOperator.excluded(eplIdOperator);
         com.rlibanez.eplsync.ordering.StateOperator.excluded(collectionOperator);
         com.rlibanez.eplsync.ordering.StateOperator.excluded(genresOperator);
@@ -158,6 +202,12 @@ public class CatalogBookFilter {
         com.rlibanez.eplsync.ordering.StateOperator.excluded(torrentStatusOperator);
         torrentPresence=choice(torrentPresence,Set.of("PRESENT","ABSENT"),"torrentPresence");
         calibrePresence=choice(calibrePresence,Set.of("PRESENT","ABSENT"),"calibrePresence");
+        // Compatibility for discovery links saved before presence filters were unified.
+        // An explicit Catalog presence filter always takes precedence.
+        if(torrentPresence==null && Boolean.TRUE.equals(discoveryExcludeDownloads)) torrentPresence="ABSENT";
+        if(calibrePresence==null && Boolean.TRUE.equals(discoveryExcludeCalibre)) calibrePresence="ABSENT";
+        discoveryExcludeDownloads=null;
+        discoveryExcludeCalibre=null;
         torrentRevision=choice(torrentRevision,Set.of("UPDATED","OUTDATED"),"torrentRevision");
         calibreRevision=choice(calibreRevision,Set.of("UPDATED","OUTDATED"),"calibreRevision");
         torrentStatus=compact(torrentStatus);
