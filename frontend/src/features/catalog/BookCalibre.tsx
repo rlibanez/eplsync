@@ -1,3 +1,4 @@
+import { SelectAllRows } from "../../components/SelectAllRows";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { EpubBatchDownload } from "../downloads/EpubBatchDownload";
 import { useAuth } from "../auth/Auth";
@@ -63,6 +64,16 @@ export function BookCalibre({ book }: { book: Book }) {
       </div>
       {result.data && result.data.meta.totalItems > 0 && (
         <SelectionToolbar
+          selectAll={
+            selectable && (
+              <SelectAllRows<CalibreBook, number>
+                url={`/calibre/books?eplId=${book.eplId}&${sortQuery(sort)}`}
+                total={result.data.meta.totalItems}
+                identify={(row) => row.calibreId}
+                onSelect={setSelected}
+              />
+            )
+          }
           count={selected.length}
           onClear={() => setSelected([])}
           controls={columns.controls}

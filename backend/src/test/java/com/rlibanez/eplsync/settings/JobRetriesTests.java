@@ -75,6 +75,26 @@ class JobRetriesTests {
     JobRetries.Preview selected(String kind,String parent,String... ids) {return retries.preview(kind,parent,new JobRetryController.Selection(List.of(ids),false));}
     JobRetries.Link create(String kind,String parent,JobRetries.Preview p) {return retries.create(kind,parent,new JobRetryController.Confirmation(p.token(),false));}
 
+    @Test void recoverabilityExcludesSuccessfulItemsAndIncludesOnlyPendingRecoveryWithoutPreparingWork() throws Exception {
+        String download=torrentJob("COMPLETED","ACCEPTED","ALREADY_EXISTS","FAILED","ACCEPTED");
+        jdbc.update("UPDATE torrent_bulk_items SET download_state='NOT_FOUND' WHERE id=?",download+"-3");
+        assertThat(retries.recoverability("downloads",download,new JobRetryController.Selection(List.of(download+"-0",download+"-1"),false)).recoverable()).isZero();
+        assertThat(retries.recoverability("downloads",download,new JobRetryController.Selection(List.of(download+"-0",download+"-2",download+"-3"),false)).recoverable()).isEqualTo(2);
+        assertThat(retries.recoverability("downloads",download,new JobRetryController.Selection(List.of(download+"-0",download+"-2",download+"-3"),false)).items()).containsExactly(download+"-2",download+"-3");
+        String calibre=calibreJob("COMPLETED","ACCEPTED","SKIPPED","FAILED","UNCERTAIN","ACCEPTED");
+        jdbc.update("UPDATE calibre_job_items SET cleanup_cancelled=1 WHERE id=?",calibre+"-4");
+        assertThat(retries.recoverability("calibre",calibre,new JobRetryController.Selection(List.of(calibre+"-0",calibre+"-1"),false)).recoverable()).isZero();
+        assertThat(retries.recoverability("calibre",calibre,new JobRetryController.Selection(List.of(calibre+"-0",calibre+"-2",calibre+"-3",calibre+"-4"),false)).recoverable()).isEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM job_retry_previews",Long.class)).isZero();
+        verifyNoInteractions(files,client);
+        jdbc.update("UPDATE calibre_jobs SET state='RUNNING' WHERE id=?",calibre);
+        assertThat(retries.recoverability("calibre",calibre,new JobRetryController.Selection(List.of(calibre+"-2"),false)).recoverable()).isZero();
+    }
+    @Test @WithMockUser(authorities="CATALOG_READ")
+    void recoverabilityRequiresJobManagementPermission() {
+        assertThatThrownBy(()->retries.recoverability("downloads","private",new JobRetryController.Selection(List.of("item"),false))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(()->retries.recoverability("calibre","private",new JobRetryController.Selection(List.of("item"),false))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
     @Test void missingTorrentsAreRestoredInPlaceWithDurableIdempotentHistory() throws Exception {
         var parent=torrentJob("DOWNLOAD_WAIT","ACCEPTED","ACCEPTED","ALREADY_EXISTS","ACCEPTED");
         jdbc.update("UPDATE torrent_bulk_items SET download_state='DOWNLOADED' WHERE job_id=?",parent);

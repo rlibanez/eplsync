@@ -75,6 +75,8 @@ for (const kind of ["downloads", "calibre"] as const) {
     });
     await page.route(`**/api/job-retries/${kind}/**`, (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/recoverability"))
+        return route.fulfill({ json: { recoverable: 1 } });
       if (route.request().method() === "GET" && path.endsWith("/attempts"))
         return route.fulfill({
           json: {

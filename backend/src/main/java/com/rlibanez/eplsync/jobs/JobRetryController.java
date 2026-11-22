@@ -19,6 +19,7 @@ public class JobRetryController {
         if(!kind.equals("downloads")) throw new com.rlibanez.eplsync.exception.UserInputException("La reposición solo se aplica a trabajos de descargas");
         return retries.previewMissing(id);
     }
+    @PostMapping("/recoverability") public JobRetries.Recoverability recoverability(@PathVariable String kind,@PathVariable String id,@RequestBody Selection selection) {return retries.recoverability(kind,id,selection);}
     @PostMapping("/preview") public JobRetries.Preview preview(@PathVariable String kind,@PathVariable String id,@RequestBody Selection selection) {return retries.preview(kind,id,selection);}
     @PostMapping public JobRetries.Link create(@PathVariable String kind,@PathVariable String id,@RequestBody Confirmation confirmation) {return retries.create(kind,id,confirmation);}
 }

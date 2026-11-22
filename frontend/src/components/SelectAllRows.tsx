@@ -12,12 +12,16 @@ export function SelectAllRows<T, I extends string | number>({
   identify,
   onSelect,
   loadPage,
+  onSelectRows,
+  disabled = false,
 }: {
   url: string;
   total: number;
   identify: (row: T) => I;
   onSelect: (ids: I[]) => void;
   loadPage?: (url: string, signal: AbortSignal) => Promise<Page<T>>;
+  onSelectRows?: (rows: T[]) => void;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
@@ -39,6 +43,7 @@ export function SelectAllRows<T, I extends string | number>({
     setError(null);
     try {
       const ids = new Set<I>();
+      const rows: T[] = [];
       for (let page = 0; ; page++) {
         const [path, query] = url.split("?");
         const params = new URLSearchParams(query);
@@ -50,9 +55,13 @@ export function SelectAllRows<T, I extends string | number>({
         );
         if (controller.signal.aborted) return;
         result.items.forEach((row) => ids.add(identify(row)));
+        if (onSelectRows) rows.push(...result.items);
         if (!result.meta.hasNext || result.items.length === 0) break;
       }
-      if (!controller.signal.aborted) onSelect([...ids]);
+      if (!controller.signal.aborted) {
+        onSelectRows?.(rows);
+        onSelect([...ids]);
+      }
     } catch (failure) {
       if (!controller.signal.aborted)
         setError(
@@ -71,7 +80,7 @@ export function SelectAllRows<T, I extends string | number>({
         variant="subtle"
         size="compact-sm"
         fw={400}
-        disabled={!total}
+        disabled={disabled || !total}
         loading={busy}
         onClick={() => void select()}
       >

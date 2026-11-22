@@ -73,6 +73,29 @@ public class JobRetries {
             || kind.equals("downloads") && jdbc.queryForObject("SELECT count(*) FROM torrent_update_cleanup WHERE job_id=? AND state='REQUESTED' AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs j WHERE j.update_job_id=torrent_update_cleanup.job_id) AND NOT EXISTS(SELECT 1 FROM deleted_work_receipts d WHERE d.source='downloads' AND d.kind='cleanup' AND d.request_id='update:'||torrent_update_cleanup.job_id)",Long.class,id)>0;
         return new History(source.isEmpty()?null:source.getFirst(),children,terminal,failed,terminal?null:"Para reintentar, termina o cancela el trabajo y espera a que finalicen las operaciones en curso. Los trabajos pausados se reanudan.",jdbc.queryForObject("SELECT count(*) FROM job_retry_attempts WHERE kind=? AND job_id=?",Long.class,kind,id),settling,kind.equals("downloads")?jdbc.queryForObject("SELECT count(*) FROM torrent_bulk_items WHERE job_id=? AND state IN ('ACCEPTED','ALREADY_EXISTS') AND download_state='NOT_FOUND'",Long.class,id):0);
     }
+    public record Recoverability(long recoverable,List<String> items) {}
+    /** Local state only: never prepares retries or contacts either external client. */
+    public Recoverability recoverability(String kind,String id,JobRetryController.Selection selection) {
+        permission(kind);
+        if(selection==null || selection.items()==null || selection.items().isEmpty() || selection.items().size()>100000
+            || selection.items().stream().anyMatch(value->value==null || value.isBlank() || value.length()>64)
+            || new HashSet<>(selection.items()).size()!=selection.items().size()) throw new UserInputException("Selección inválida");
+        var job=job(kind,id);
+        if(!terminal(kind,id,job)) return new Recoverability(0,List.of());
+        String ids=json.writeValueAsString(selection.items());
+        String scope=" FROM "+items(kind)+" i WHERE i.job_id=? AND i.id IN (SELECT value FROM json_each(?)) AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind=? AND r.parent_id=i.job_id AND r.source_item_id=i.id)";
+        String condition;
+        if(kind.equals("downloads")) {
+            String send=Permission.has(Permission.TORRENT_SEND)?"((i.state IN ('FAILED','CANCELLED') OR i.state IN ('ACCEPTED','ALREADY_EXISTS') AND i.download_state='NOT_FOUND') AND i.command_json IS NOT NULL AND i.hash IS NOT NULL)":"0";
+            String cleanup=Permission.has(Permission.TORRENT_CLEANUP)?"(i.state IN ('ACCEPTED','ALREADY_EXISTS') AND coalesce(i.download_state,'')<>'NOT_FOUND' AND EXISTS(SELECT 1 FROM torrent_update_cleanup c WHERE c.job_id=i.job_id AND c.epl_id=i.epl_id AND c.state IN ('CANCELLED','WAITING','BLOCKED') AND NOT EXISTS(SELECT 1 FROM revision_cleanup_jobs j WHERE j.update_job_id=c.job_id) AND NOT EXISTS(SELECT 1 FROM deleted_work_receipts d WHERE d.source='downloads' AND d.kind='cleanup' AND d.request_id='update:'||c.job_id) AND NOT EXISTS(SELECT 1 FROM job_retry_items r WHERE r.kind='downloads' AND r.parent_id=i.job_id AND r.source_item_id=c.id)))":"0";
+            condition="("+send+" OR "+cleanup+")";
+        } else {
+            if(!Permission.has(Permission.CALIBRE_SEND) || !Permission.has(Permission.DOWNLOADS_FILES_READ)) return new Recoverability(0,List.of());
+            condition="(i.state IN ('FAILED','CANCELLED','BLOCKED_DOWNLOAD','UNCERTAIN') OR i.state IN ('ACCEPTED','SKIPPED') AND i.cleanup_cancelled=1)";
+        }
+        var recoverable=jdbc.queryForList("SELECT i.id"+scope+" AND "+condition+" ORDER BY i.position",String.class,id,ids,kind);
+        return new Recoverability(recoverable.size(),recoverable);
+    }
     /** Uses the same durable preview, single-use token and attempt history as other same-job retries. */
     public Preview previewMissing(String id) {
         permission("downloads");Permission.require(Permission.TORRENT_SEND);

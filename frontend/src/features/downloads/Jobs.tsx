@@ -1,3 +1,4 @@
+import { SelectAllRows } from "../../components/SelectAllRows";
 import { JobTitle } from "../jobs/JobTitle";
 import { sortOptions } from "../../locales/textOrdering";
 import { DownloadJobControls } from "../jobs/DownloadJobControls";
@@ -168,6 +169,8 @@ export function Jobs() {
   selectionScope.delete("page");
   selectionScope.delete("size");
   const [controlsBusy, setControlsBusy] = useState(false);
+  const [allSelectedJobs, setAllSelectedJobs] = useState<Job[]>([]);
+  useEffect(() => setAllSelectedJobs([]), [selectionScope.toString(), sort]);
   const deletion = useWorkDeletion(
     "downloads",
     (result.data?.items ?? []).map((job) => ({
@@ -374,13 +377,32 @@ export function Jobs() {
       </div>
       <section className="panel">
         <SelectionToolbar
+          selectAll={
+            deletion.visible && (
+              <SelectAllRows<Job, string>
+                url={`/torrent/jobs?${selectionScope}&${sortQuery(sort)}`}
+                total={result.data?.meta.totalItems ?? 0}
+                disabled={deletion.busy}
+                identify={(job) =>
+                  JSON.stringify({
+                    id: job.jobId,
+                    cleanup: job.type === "CLEANUP",
+                  })
+                }
+                onSelectRows={setAllSelectedJobs}
+                onSelect={(ids) =>
+                  deletion.select(ids.map((value) => JSON.parse(value)))
+                }
+              />
+            )
+          }
           count={deletion.count}
           onClear={deletion.clear}
           controls={columns.controls}
           actions={
             <DownloadJobControls
               selected={deletion.selected}
-              rows={result.data?.items}
+              rows={[...(result.data?.items ?? []), ...allSelectedJobs]}
               busy={deletion.busy}
               onBusy={setControlsBusy}
               deletion={deletion.action}
@@ -1145,6 +1167,16 @@ export function JobDetail() {
       </div>
       <section className="panel">
         <SelectionToolbar
+          selectAll={
+            retry.selectable && (
+              <SelectAllRows<Item, string>
+                url={`/torrent/jobs/${encodeURIComponent(id!)}/items?${sortQuery(sort)}&${search.query}${downloadFilter.length ? `&downloadState=${downloadFilter.join(",")}${downloadExcluded ? "&downloadStateOperator=ne" : ""}` : ""}${filter ? `&status=${filter}${excluded ? "&statusOperator=ne" : ""}` : ""}`}
+                total={items.data?.meta.totalItems ?? 0}
+                identify={(item) => item.id}
+                onSelect={setSelected}
+              />
+            )
+          }
           count={selected.length}
           onClear={() => setSelected([])}
           controls={columns.controls}

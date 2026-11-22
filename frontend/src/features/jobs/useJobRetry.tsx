@@ -117,6 +117,17 @@ export function useJobRetry(
     permitted &&
     !!history.data?.terminal &&
     ["COMPLETED", "CANCELLED", "PAUSED", "DOWNLOAD_WAIT"].includes(state ?? "");
+  const recoverability = useQuery({
+    queryKey: ["job-recoverability", kind, id, state, updatedAt, selected],
+    queryFn: () =>
+      post<{ recoverable: number; items?: string[] }>(`${url}/recoverability`, {
+        items: selected,
+        failedOnly: false,
+      }),
+    enabled: selectable && selected.length > 0,
+    retry: false,
+    staleTime: 0,
+  });
   const count = prepare.data
     ? prepare.data.send +
       prepare.data.verify +
@@ -126,11 +137,16 @@ export function useJobRetry(
   const href = (link: LinkInfo, id: string) => `/${link.kind}/jobs/${id}`;
   return {
     selectable,
-    action: (
-      <Button onClick={() => start(selected)}>
-        {t("jobRetry.selected", { count: selected.length })}
-      </Button>
-    ),
+    action:
+      selectable &&
+      selected.length > 0 &&
+      (recoverability.data?.recoverable ?? 0) > 0 ? (
+        <Button onClick={() => start(recoverability.data?.items ?? selected)}>
+          {t("jobRetry.selected", {
+            count: recoverability.data?.recoverable ?? 0,
+          })}
+        </Button>
+      ) : null,
     missingAction:
       kind === "downloads" &&
       can("TORRENT_SEND") &&

@@ -1,3 +1,4 @@
+import { SelectAllRows } from "../../components/SelectAllRows";
 import { JobTitle } from "../jobs/JobTitle";
 import { sortOptions } from "../../locales/textOrdering";
 import { WorkWaiting } from "../../components/WorkWaiting";
@@ -381,6 +382,24 @@ export function CalibreJobs() {
       </div>
       <section className="panel">
         <SelectionToolbar
+          selectAll={
+            deletion.visible && (
+              <SelectAllRows<Job, string>
+                url={`/calibre/transfers?state=${state ?? ""}${state && excluded ? "&statusOperator=ne" : ""}&type=${type ?? ""}${type && excludeType ? "&typeOperator=ne" : ""}&name=${encodeURIComponent(name.trim())}&username=${encodeURIComponent(username.trim())}&${dates}&${sortQuery(sort)}`}
+                total={result.data?.meta.totalItems ?? 0}
+                disabled={deletion.busy}
+                identify={(job) =>
+                  JSON.stringify({
+                    id: job.id,
+                    cleanup: job.type === "CLEANUP",
+                  })
+                }
+                onSelect={(ids) =>
+                  deletion.select(ids.map((value) => JSON.parse(value)))
+                }
+              />
+            )
+          }
           count={deletion.count}
           onClear={deletion.clear}
           controls={columns.controls}
@@ -552,8 +571,13 @@ export function CalibreJobDetail() {
     retry: false,
     refetchInterval: (query) => (query.state.status === "error" ? false : 3000),
   });
-  const retry = useJobRetry("calibre", id, job.data?.state, selected, () =>
-    setSelected([]),
+  const retry = useJobRetry(
+    "calibre",
+    id,
+    job.data?.state,
+    selected,
+    () => setSelected([]),
+    job.data?.updatedAt,
   );
   const result = useQuery({
     queryKey: [
@@ -811,6 +835,16 @@ export function CalibreJobDetail() {
       </div>
       <section className="panel">
         <SelectionToolbar
+          selectAll={
+            retry.selectable && (
+              <SelectAllRows<Item, string>
+                url={`/calibre/transfers/${id}/items?state=${itemState ?? ""}${itemState && excluded ? "&statusOperator=ne" : ""}&detail=${encodeURIComponent(itemDetail.trim())}&${itemSearch.query}&${sortQuery(sort)}`}
+                total={result.data?.meta.totalItems ?? 0}
+                identify={(item) => item.id}
+                onSelect={setSelected}
+              />
+            )
+          }
           count={selected.length}
           onClear={() => setSelected([])}
           controls={columns.controls}

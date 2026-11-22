@@ -108,6 +108,10 @@ export function useWorkDeletion(
   return {
     visible,
     selected,
+    select: (refs: Ref[]) => {
+      if (!busy)
+        setSelected(refs.filter((row) => (row.cleanup ? clean : manage)));
+    },
     count: selected.length,
     busy,
     clear: () => setSelected([]),
