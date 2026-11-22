@@ -301,7 +301,7 @@ public class CalibreTransfers {
         if(from!=null && before!=null && !from.isBefore(before)) throw new UserInputException("Rango de fechas inválido");
         paging(page,size);if(!state.isEmpty() && !Set.of("QUEUED","RUNNING","PAUSED","COMPLETED","CANCELLED").contains(state)) throw new UserInputException("Estado de trabajo inválido");
         String where=state.isEmpty() ? "" : " WHERE j.state=?";var args=new ArrayList<Object>();if(!state.isEmpty()) args.add(state);
-        if(!username.isBlank()) { where+=(where.isEmpty() ? " WHERE " : " AND ")+"instr(lower(j.owner_username),lower(?))>0";args.add(username.trim()); }
+        if(!username.isBlank()) { where+=(where.isEmpty() ? " WHERE " : " AND ")+"instr(epl_lower(j.owner_username),epl_lower(?))>0";args.add(username.trim()); }
         if(from!=null) {where+=(where.isEmpty() ? " WHERE " : " AND ")+"julianday(j.created_at)>=julianday(?)";args.add(from.toString());}
         if(before!=null) {where+=(where.isEmpty() ? " WHERE " : " AND ")+"julianday(j.created_at)<julianday(?)";args.add(before.toString());}
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_jobs j"+where,Long.class,args.toArray());args.add(size);args.add((long)page*size);
@@ -327,7 +327,7 @@ public class CalibreTransfers {
         if(filters.containsKey("author") || sort.stream().anyMatch(value->value.split(",")[0].equals("author"))) Permission.require(Permission.CATALOG_READ);
         JobItemFilters.text(where,args,filters,"author",author);
 
-        if(!detail.isBlank()) {where.append(" AND instr(lower(coalesce(message,'')),lower(?))>0");args.add(detail.trim());}
+        if(!detail.isBlank()) {where.append(" AND instr(epl_lower(coalesce(message,'')),epl_lower(?))>0");args.add(detail.trim());}
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_job_items"+where,Long.class,args.toArray());
         args.add(size);args.add((long)page*size);
         var rows=jdbc.query("SELECT * FROM calibre_job_items"+where+" ORDER BY "+order(sort,Map.of("position","position","eplId","epl_id","revision","CAST(revision AS REAL)","name","name COLLATE EPL_TEXT","author",author+" COLLATE EPL_TEXT","state","state","calibreId","calibre_id","message","message COLLATE EPL_TEXT"))+",position LIMIT ? OFFSET ?",CalibreTransfers::mapItem,args.toArray());

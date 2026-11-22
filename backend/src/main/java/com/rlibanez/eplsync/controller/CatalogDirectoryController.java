@@ -42,12 +42,12 @@ public class CatalogDirectoryController {
         if (!initial.isEmpty()) throw new com.rlibanez.eplsync.exception.UserInputException("Este directorio no admite iniciales");
         String expr = "b." + field;
         String where = " from CatalogBook b where " + expr + " is not null and trim(cast(" + expr + " as String)) <> ''";
-        if (!q.isBlank()) where += " and locate(:q, lower(cast(" + expr + " as String))) > 0";
+        if (!q.isBlank()) where += " and locate(:q, cast(function('epl_lower',cast(" + expr + " as String)) as String)) > 0";
         if (century != null) where += century == 0 ? " and b.publicationYear <= 0"
             : " and b.publicationYear between :yearFrom and :yearTo";
         var count = em.createQuery("select count(distinct " + expr + ")" + where, Long.class);
         var rows = em.createQuery("select distinct " + expr + where + " order by " + expr + " asc", Object.class);
-        if (!q.isBlank()) { count.setParameter("q", q.strip().toLowerCase(Locale.ROOT)); rows.setParameter("q", q.strip().toLowerCase(Locale.ROOT)); }
+        if (!q.isBlank()) { count.setParameter("q", com.rlibanez.eplsync.ordering.UnicodeText.lower(q.strip())); rows.setParameter("q", com.rlibanez.eplsync.ordering.UnicodeText.lower(q.strip())); }
         if (century != null && century > 0) {
             int from = (century - 1) * 100 + 1, to = century * 100;
             count.setParameter("yearFrom", from).setParameter("yearTo", to);

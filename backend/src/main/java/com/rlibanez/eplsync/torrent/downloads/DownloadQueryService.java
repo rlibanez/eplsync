@@ -136,7 +136,7 @@ public class DownloadQueryService {
                 else if(key.equals("inventoryState")) predicates.add(value.equals("UNKNOWN")?cb.isNull(root.get("inventoryCheckedAt")):cb.equal(root.get("inventoryState"),value));
                 else if(key.equals("title") || key.equals("author")) {
                     var title=cb.coalesce(root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).<String>get(key),"");
-                    var position=cb.locate(cb.lower(title),((String)value).toLowerCase(Locale.ROOT));
+                    var position=cb.locate(com.rlibanez.eplsync.ordering.UnicodeText.lower(cb,title),com.rlibanez.eplsync.ordering.UnicodeText.lower((String)value));
                     predicates.add("ne".equals(params.getFirst(key+"Operator"))?cb.equal(position,0):cb.greaterThan(position,0));
                 }
                 else if(key.equals("eplId")) {

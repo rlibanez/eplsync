@@ -20,8 +20,8 @@ class TextCollationConnectionTests {
     }
     @Autowired DataSource source;
     private void verify(java.sql.Connection connection) throws Exception {
-        try(var statement=connection.createStatement();var result=statement.executeQuery("SELECT 'Árbol' COLLATE EPL_TEXT = 'arbol', 'Nube' COLLATE EPL_TEXT < 'Ñandú'")) {
-            assertThat(result.next()).isTrue();assertThat(result.getInt(1)).isEqualTo(1);assertThat(result.getInt(2)).isEqualTo(1);
+        try(var statement=connection.createStatement();var result=statement.executeQuery("SELECT 'Árbol' COLLATE EPL_TEXT = 'arbol', 'Nube' COLLATE EPL_TEXT < 'Ñandú', epl_lower('Fríida Ísberg') = 'fríida ísberg'")) {
+            assertThat(result.next()).isTrue();assertThat(result.getInt(1)).isEqualTo(1);assertThat(result.getInt(2)).isEqualTo(1);assertThat(result.getInt(3)).isEqualTo(1);
         }
     }
     @Test void registersOnBothPoolConnectionsAndOnReplacementConnections() throws Exception {

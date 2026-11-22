@@ -295,7 +295,7 @@ public class EventJournal {
     }
     private String where(Filter filter, List<Object> args) {
         String sql = " WHERE 1=1" + visibilitySql();
-        if (filter.username() != null && !filter.username().isBlank()) { sql += " AND instr(lower(actor_username),lower(?))>0"; args.add(filter.username().strip()); }
+        if (filter.username() != null && !filter.username().isBlank()) { sql += " AND instr(epl_lower(actor_username),epl_lower(?))>0"; args.add(filter.username().strip()); }
         if (filter.action() != null) { sql += " AND action"+(filter.excluded("action")?"<>?":"=?"); args.add(filter.action()); }
         if (filter.category() != null) { sql += " AND category"+(filter.excluded("category")?"<>?":"=?"); args.add(filter.category().name()); }
         if (filter.origin() != null) { sql += " AND origin"+(filter.excluded("origin")?"<>?":"=?"); args.add(filter.origin().name()); }

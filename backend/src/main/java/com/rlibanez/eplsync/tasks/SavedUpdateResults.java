@@ -117,7 +117,7 @@ final class SavedUpdateResults {
             org.sqlite.Function.create(connection.unwrap(org.sqlite.SQLiteConnection.class),"epl_saved_contains",new org.sqlite.Function() {
                 @Override protected void xFunc() throws java.sql.SQLException {
                     String value=value_text(0),needle=value_text(1);
-                    result(value!=null && value.toLowerCase(Locale.ROOT).contains(needle.toLowerCase(Locale.ROOT))?1:0);
+                    result(value!=null && com.rlibanez.eplsync.ordering.UnicodeText.lower(value).contains(com.rlibanez.eplsync.ordering.UnicodeText.lower(needle))?1:0);
                 }
             });
             try(var statement=connection.prepareStatement(sql)) {

@@ -22,6 +22,7 @@ class CatalogDirectoryTests {
   em.flush();
   assertThat(controller.list("authors","uth",0,20).items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("Author");
   assertThat(controller.list("languages","",0,20).items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("es");
+  assertThat(controller.list("languages","ES",0,20).items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("es");
   assertThat(controller.list("years","",0,20).items()).extracting(value -> Objects.requireNonNull(value).value()).containsExactly("2000","2020");
   assertThat(controller.list("genres","%",0,20).items()).isEmpty();
   assertThat(controller.list("authors","",1,20).items()).isEmpty();

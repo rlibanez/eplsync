@@ -93,8 +93,8 @@ public class CalibreLibraryController {
             for(String value:choices) {if(value.equals("UNKNOWN")) conditions.add("formats IS NULL");else {conditions.add("EXISTS(SELECT 1 FROM json_each(formats) f WHERE f.value=?)");args.add(value);}}
             base+=" AND "+(excludeFormats?"NOT ":"")+"("+String.join(" OR ",conditions)+")";
         }
-        if(!title.isBlank()) { base+=" AND instr(lower(coalesce(title,'')),lower(?))"+(excludeTitle?"=0":">0"); args.add(title.trim()); }
-        if(!author.isBlank()) { base+=" AND instr(lower(coalesce(authors,'')),lower(?))"+(excludeAuthor?"=0":">0"); args.add(author.trim()); }
+        if(!title.isBlank()) { base+=" AND instr(epl_lower(coalesce(title,'')),epl_lower(?))"+(excludeTitle?"=0":">0"); args.add(title.trim()); }
+        if(!author.isBlank()) { base+=" AND instr(epl_lower(coalesce(authors,'')),epl_lower(?))"+(excludeAuthor?"=0":">0"); args.add(author.trim()); }
         if(!ids.isEmpty()) {base+=excludeId?" AND (epl_id IS NULL OR epl_id NOT IN (SELECT value FROM json_each(?)))":" AND epl_id IN (SELECT value FROM json_each(?))";args.add(ids.toString());}
         for (var filter : Map.of("comparison", comparison, "presence", presence).entrySet()) {
             if (filter.getValue().isEmpty()) continue;

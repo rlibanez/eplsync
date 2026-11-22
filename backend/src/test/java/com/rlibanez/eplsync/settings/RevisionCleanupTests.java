@@ -246,6 +246,8 @@ class RevisionCleanupTests {
         var ready=prepared(preparations.begin(libraryInput()));String id=ready.job().id();
         assertThat(ready.reviewRequired()).isEqualTo(1);
         assertThat(preparations.groups(id,0,5,ready.version()).items()).hasSize(1);
+        jdbc.update("UPDATE calibre_cleanup_copies SET title='ÁRBOL 100%_' WHERE job_id=? AND calibre_id='21'",id);
+        assertThat(preparations.copies(id,"1:2",0,20,"árbol 100%_",ready.version()).items()).singleElement().satisfies(copy->assertThat(copy.id()).isEqualTo("21"));
         assertThat(preparations.copies(id,"1:2",0,20,"",ready.version()).items()).hasSize(20);
         assertThat(preparations.copies(id,"1:2",1,20,"",ready.version()).items()).hasSize(6);
         assertThatThrownBy(()->preparations.confirm(id,new CalibreCleanupPreparation.Confirmation(ready.version(),true,true))).hasMessageContaining("formatos");

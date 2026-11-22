@@ -57,7 +57,7 @@ public final class CatalogBookSpecifications {
     private static Specification<CatalogBook> containsAny(String field, String[] values) {
         if (values == null) return null;
         return (root, q, cb) -> cb.or(java.util.Arrays.stream(values)
-            .map(value -> cb.like(cb.lower(cb.coalesce(root.<String>get(field),"")), "%" + value.toLowerCase(java.util.Locale.ROOT)
+            .map(value -> cb.like(com.rlibanez.eplsync.ordering.UnicodeText.lower(cb,cb.coalesce(root.<String>get(field),"")), "%" + com.rlibanez.eplsync.ordering.UnicodeText.lower(value)
                 .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%", '\\'))
             .toArray(jakarta.persistence.criteria.Predicate[]::new));
     }

@@ -52,7 +52,7 @@ public class EventOperations {
             var args = new ArrayList<Object>(); args.add(cursor);
             String where = " WHERE 1=1" + EventJournal.visibilitySql();
             if (operationId != null) { where += " AND operation_id=?"; args.add(operationId); }
-            if (filter.username() != null && !filter.username().isBlank()) { where += " AND instr(lower(actor_username),lower(?))>0"; args.add(filter.username().strip()); }
+            if (filter.username() != null && !filter.username().isBlank()) { where += " AND instr(epl_lower(actor_username),epl_lower(?))>0"; args.add(filter.username().strip()); }
             if (filter.action() != null) { where += " AND action"+(filter.excluded("action")?"<>?":"=?"); args.add(filter.action()); }
             if (filter.category() != null) { where += " AND category"+(filter.excluded("category")?"<>?":"=?"); args.add(filter.category().name()); }
             if (filter.origin() != null) { where += " AND origin"+(filter.excluded("origin")?"<>?":"=?"); args.add(filter.origin().name()); }

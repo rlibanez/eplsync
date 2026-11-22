@@ -36,7 +36,7 @@ final class JobItemFilters {
         }
         if(!terms.isEmpty()) {
             where.append(excludeText?" AND NOT EXISTS (":" AND EXISTS (")
-                .append("SELECT 1 FROM json_each(?) term WHERE instr(lower(coalesce(").append(textColumn).append(",'')),lower(term.value))>0)");
+                .append("SELECT 1 FROM json_each(?) term WHERE instr(epl_lower(coalesce(").append(textColumn).append(",'')),epl_lower(term.value))>0)");
             args.add(JSON.writeValueAsString(terms));
         }
     }

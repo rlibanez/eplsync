@@ -124,4 +124,22 @@ class CatalogMultiFilterTests {
  }
 
 
+ @Test void unicodeAuthorMatchesCaseVariantsAndDirectoryValuesWithIdAndNegation() throws Exception {
+  books.saveAndFlush(CatalogBook.builder().eplId(76536L).revision(1.0).title("La marca").author("Fríida Ísberg").genres("ÓPERA 100%_").collection("ÉPOCA").build());
+  for(String author:java.util.List.of("Fríida Ísberg","fríida ísberg","FRÍIDA ÍSBERG",java.text.Normalizer.normalize("Fríida Ísberg",java.text.Normalizer.Form.NFD))) {
+   mvc.perform(get("/api/catalog/books").param("author",author).param("eplId","76536"))
+    .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].eplId").value(76536));
+  }
+  var directory=context.getBean(CatalogDirectoryController.class).list("authors","Fríida Ísberg",0,20,"F");
+  assertThat(directory.items()).hasSize(1);
+  mvc.perform(get("/api/catalog/books").param("author",directory.items().getFirst().value()))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1)).andExpect(jsonPath("$.items[0].eplId").value(76536));
+  mvc.perform(get("/api/catalog/books").param("author","fríida ísberg").param("authorOperator","ne").param("sort","eplId,asc").param("size","2").param("page","1"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(5)).andExpect(jsonPath("$.items[*].eplId",org.hamcrest.Matchers.contains(3,4)));
+  mvc.perform(get("/api/catalog/books").param("author","íSBERG","Nobody").param("genres","ópera 100%_").param("collection","época"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1));
+  var book=books.findById(76536L).orElseThrow();book.setTitle("ÁRBOL 100%_");books.saveAndFlush(book);
+  mvc.perform(get("/api/catalog/books").param("title","árbol 100%_")).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1));
+ }
+
 }

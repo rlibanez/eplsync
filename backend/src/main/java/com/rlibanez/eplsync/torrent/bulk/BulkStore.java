@@ -342,12 +342,12 @@ public class BulkStore {
             BulkJob.Type type,String username,Instant from,Instant before) {
         if (username != null && username.length()>64) throw new com.rlibanez.eplsync.exception.UserInputException("Usuario demasiado largo");
         if (from != null && before != null && !from.isBefore(before)) throw new com.rlibanez.eplsync.exception.UserInputException("El intervalo de fechas no es válido");
-        String user=username==null ? null : username.trim().toLowerCase(java.util.Locale.ROOT);
+        String user=username==null ? null : com.rlibanez.eplsync.ordering.UnicodeText.lower(username.trim());
         org.springframework.data.jpa.domain.Specification<BulkJob> specification=(root,q,cb) -> {
             var predicates=new ArrayList<jakarta.persistence.criteria.Predicate>();
             if(states!=null) predicates.add(root.get("state").in(states));
             if(type!=null) predicates.add(cb.equal(root.get("type"),type));
-            if(user!=null && !user.isEmpty()) predicates.add(cb.gt(cb.locate(cb.lower(root.get("eventActorUsername")),user),0));
+            if(user!=null && !user.isEmpty()) predicates.add(cb.gt(cb.locate(com.rlibanez.eplsync.ordering.UnicodeText.lower(cb,root.get("eventActorUsername")),user),0));
             if(from!=null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"),from));
             if(before!=null) predicates.add(cb.lessThan(root.get("createdAt"),before));
             return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
@@ -376,7 +376,7 @@ public class BulkStore {
             var conditions=new ArrayList<String>();var parameters=new ArrayList<Object>();
             if(states!=null) { conditions.add("j.state IN ("+String.join(",",Collections.nCopies(states.size(),"?"))+")");states.forEach(state -> parameters.add(state.name())); }
             if(type!=null) {conditions.add("j.type=?");parameters.add(type.name());}
-            if(user!=null && !user.isEmpty()) {conditions.add("instr(lower(j.event_actor_username),?)>0");parameters.add(user);}
+            if(user!=null && !user.isEmpty()) {conditions.add("instr(epl_lower(j.event_actor_username),?)>0");parameters.add(user);}
             if(from!=null) {conditions.add("j.created_at>=?");parameters.add(from);}
             if(before!=null) {conditions.add("j.created_at<?");parameters.add(before);}
             String where=conditions.isEmpty() ? "" : " WHERE "+String.join(" AND ",conditions);
@@ -463,7 +463,7 @@ public class BulkStore {
             for(var entry:textTerms.entrySet()) {
                 if(entry.getValue().isEmpty()) continue;
                 jakarta.persistence.criteria.Expression<String> column=!entry.getKey().equals("detail")?root.join("catalogBook",jakarta.persistence.criteria.JoinType.LEFT).get(entry.getKey().equals("author")?"author":"title"):cb.concat(cb.concat(cb.coalesce(root.get("message"),"")," "),cb.coalesce(root.get("downloadMessage"),""));
-                var matches=entry.getValue().stream().map(term->cb.gt(cb.locate(cb.lower(cb.coalesce(column,"")),term.toLowerCase(java.util.Locale.ROOT)),0)).toArray(jakarta.persistence.criteria.Predicate[]::new);
+                var matches=entry.getValue().stream().map(term->cb.gt(cb.locate(com.rlibanez.eplsync.ordering.UnicodeText.lower(cb,cb.coalesce(column,"")),com.rlibanez.eplsync.ordering.UnicodeText.lower(term)),0)).toArray(jakarta.persistence.criteria.Predicate[]::new);
                 var match=cb.or(matches);
                 predicates.add(textExcluded.get(entry.getKey())?cb.not(match):match);
             }

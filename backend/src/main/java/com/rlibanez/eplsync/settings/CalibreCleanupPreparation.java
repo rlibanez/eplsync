@@ -114,7 +114,7 @@ public class CalibreCleanupPreparation {
     public PageResponse<CalibreLibraryCleanup.Copy> copies(String id,String group,int page,int size,String search,long version) {
         editable(id,version);com.rlibanez.eplsync.config.QueryLimits.page(page,size);
         if(search==null || search.length()>4096) throw new UserInputException("Filtro de copia inválido");
-        String where=" WHERE job_id=? AND group_key=? AND (instr(lower(title),lower(?))>0 OR instr(calibre_id,?)>0)";
+        String where=" WHERE job_id=? AND group_key=? AND (instr(epl_lower(title),epl_lower(?))>0 OR instr(calibre_id,?)>0)";
         long total=jdbc.queryForObject("SELECT count(*) FROM calibre_cleanup_copies"+where,Long.class,id,group,search,search);
         var copies=jdbc.query("SELECT * FROM calibre_cleanup_copies"+where+" ORDER BY CAST(calibre_id AS INTEGER) LIMIT ? OFFSET ?",(r,n)->new CalibreLibraryCleanup.Copy(r.getString("calibre_id"),r.getString("title"),formats(r.getString("formats"))),id,group,search,search,size,(long)page*size);
         return new PageResponse<>(copies,meta(page,size,total));

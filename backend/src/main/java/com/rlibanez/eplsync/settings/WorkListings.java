@@ -88,8 +88,8 @@ public class WorkListings {
             base+=" AND state "+(exclude?"NOT IN (":"IN (")+String.join(",",Collections.nCopies(states.size(),"?"))+")";args.addAll(states);
         }
         if(!types.isEmpty()) {base+=" AND type "+(excludeType?"NOT IN (":"IN (")+String.join(",",Collections.nCopies(types.size(),"?"))+")";args.addAll(types);}
-        if(username!=null && !username.isBlank()) {base+=" AND instr(lower(username),lower(?))>0";args.add(username.trim());}
-        if(name!=null && !name.isBlank()) {base+=" AND instr(lower(name),lower(?))>0";args.add(name.strip());}
+        if(username!=null && !username.isBlank()) {base+=" AND instr(epl_lower(username),epl_lower(?))>0";args.add(username.trim());}
+        if(name!=null && !name.isBlank()) {base+=" AND instr(epl_lower(name),epl_lower(?))>0";args.add(name.strip());}
         if(from!=null) {base+=" AND createdAt>=?";args.add(from.toEpochMilli());}
         if(before!=null) {base+=" AND createdAt<?";args.add(before.toEpochMilli());}
         String order=orders.stream().map(o->{String field=switch(o.getProperty()) {case "name"->"coalesce(name,id) COLLATE EPL_TEXT";case "jobId"->"id";case "status"->"state";case "progress"->"CASE WHEN total=0 THEN 0 ELSE 1.0*processed/total END";case "username","library"->o.getProperty()+" COLLATE EPL_TEXT";default->o.getProperty();};return field+" "+o.getDirection().name();}).collect(java.util.stream.Collectors.joining(","));
