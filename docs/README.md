@@ -2,7 +2,7 @@
 
 [Volver al inicio](../README.md)
 
-[Notas de la versión 1.8.7](releases/1.8.7.md)
+[Notas de la versión 1.8.8](releases/1.8.8.md)
 
 ## Instalación y configuración
 

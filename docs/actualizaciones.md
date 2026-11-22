@@ -14,9 +14,12 @@ revisiones registradas con las del catálogo. No exige que la revisión anterior
 esté descargada: depende de los estados seleccionados. Las revisiones iguales,
 inferiores o que ya tienen un envío pendiente no se presentan como otra actualización.
 
-La tabla permite filtrar por estado registrado y seleccionar las actualizaciones
-que quieras enviar. Para consultarla necesitas los permisos de catálogo y
-sincronización; para enviarlas necesitas además permiso de envío.
+La tabla incluye la columna **Autor**, ordenable, y permite filtrar por **EPL ID**,
+**Libro**, **Autor** y estado registrado. Los filtros de texto se aplican mientras
+escribes y admiten negación. Puedes seleccionar las actualizaciones que quieras
+enviar, incluidos todos los resultados filtrados de otras páginas. Para consultarla
+necesitas los permisos de catálogo y sincronización; para enviarlas necesitas
+además permiso de envío.
 
 ## Versiones anteriores
 

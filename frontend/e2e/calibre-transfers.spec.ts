@@ -288,8 +288,8 @@ test("Calibre jobs filter by clicking state and user", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Trabajos de Calibre", exact: true }),
   ).toBeVisible();
-  await expect(page.locator('th[data-table-column="id"]')).toHaveText(
-    /Trabajo/,
+  await expect(page.locator('th[data-table-column="name"]')).toHaveText(
+    /Nombre/,
   );
   await expect(
     page.locator("tbody").getByRole("link", { name: "job", exact: true }),
@@ -297,11 +297,11 @@ test("Calibre jobs filter by clicking state and user", async ({ page }) => {
   const sorted = page.waitForRequest(
     (r) =>
       r.url().includes("/api/calibre/transfers?") &&
-      new URL(r.url()).searchParams.getAll("sort").includes("id,asc"),
+      new URL(r.url()).searchParams.getAll("sort").includes("name,asc"),
   );
   await page
     .locator("thead")
-    .getByRole("button", { name: "Trabajo", exact: true })
+    .getByRole("button", { name: "Nombre", exact: true })
     .click();
   await sorted;
   let request = page.waitForRequest(

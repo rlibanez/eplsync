@@ -10,7 +10,7 @@ Pausar o cancelar detiene las operaciones pendientes de EPL Sync, sin pausar ni 
 
 ## Consultar trabajos
 
-En **Descargas → Trabajos** puedes filtrar por tipo, estado, usuario y fechas.
+En **Descargas → Trabajos** puedes filtrar por nombre, tipo, estado, usuario y fechas.
 La tabla muestra quién inició cada trabajo. Utiliza **Ordenar** y **Columnas**
 para adaptar su presentación. El botón **= / ≠** de Tipo y Estado permite incluir
 o excluir valores; vaciar un campo o pulsar **Limpiar** restablece la inclusión.
@@ -22,6 +22,20 @@ trabajo de Calibre, **Detalle contiene** busca cualquier fragmento del mensaje
 en todo el trabajo y se combina con Estado. Pulsar un Estado o Detalle de una fila
 aplica su filtro. La columna opcional **Orden de envío** conserva la posición
 original, mientras **#** numera las filas según el orden y filtro actuales.
+
+## Nombre y selección de trabajos
+
+Los trabajos de descargas, Calibre y limpieza admiten un nombre opcional de hasta
+150 caracteres. Abre su ficha y pulsa el lápiz del título para editarlo; vaciar
+el campo recupera el título original y el UUID en la tabla. El identificador
+interno y el historial se conservan. La columna **Nombre** permite ordenar los
+trabajos y su filtro rápido busca mientras escribes. Las limpiezas conservan
+sus restricciones de propietario y permisos.
+
+**Seleccionar todo (xxx)** selecciona todos los resultados de los filtros activos,
+incluidas las demás páginas. Está disponible en las tablas de trabajos y en sus
+tablas de elementos cuando la selección está habilitada. La casilla de cabecera
+sigue seleccionando únicamente la página visible.
 
 ## Fases de una actualización
 
@@ -78,6 +92,11 @@ En las fichas de **Trabajos de descargas** y **Trabajos de Calibre** puedes usar
 **Reintentar fallidos** o marcar filas y pulsar **Reintentar seleccionados**.
 El trabajo debe estar terminado o cancelado y sin operaciones en curso; también se pueden reintentar fallos de envío mientras espera otras descargas. Para
 continuar un trabajo pausado, utiliza **Reanudar**.
+
+El botón **Reintentar seleccionados** aparece solo si hay alguna operación
+recuperable en la selección y muestra su número. La previsualización incluye
+únicamente esos elementos; los envíos correctos sin operaciones pendientes no
+se reenvían.
 
 El diálogo resume los envíos, verificaciones, esperas y limpiezas recuperables.
 Los elementos sin nada pendiente o con problemas se excluyen y se indica el
