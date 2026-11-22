@@ -15,7 +15,7 @@ export function JobTitle({
   description,
   editable,
 }: {
-  source: "downloads" | "calibre";
+  source: "downloads" | "calibre" | "cleanup";
   id: string;
   title: string;
   description: string;

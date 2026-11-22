@@ -110,3 +110,94 @@ for (const kind of ["downloads", "calibre"] as const) {
     expect(name).toBeNull();
   });
 }
+
+for (const source of ["downloads", "calibre"] as const) {
+  test(`${source} cleanup jobs can be renamed`, async ({ page }) => {
+    const meta = {
+      page: 0,
+      size: 20,
+      totalItems: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    };
+    let name: string | null = null;
+    const job = () => ({
+      id: "cleanup-test",
+      jobId: "cleanup-test",
+      name,
+      source,
+      type: "CLEANUP",
+      action: source === "downloads" ? "FILES" : "BOOK",
+      state: "COMPLETED",
+      status: "COMPLETED",
+      result: "PARTIAL",
+      selected: 1,
+      total: 1,
+      selectedBooks: 1,
+      selectedItems: 1,
+      processedItems: 1,
+      succeeded: 0,
+      accepted: 0,
+      blocked: 1,
+      failed: 0,
+      pending: 0,
+      skipped: 0,
+      uncertain: 0,
+      library: "main",
+      createdAt: "2026-11-22T09:00:00Z",
+      updatedAt: "2026-11-22T09:00:00Z",
+    });
+    await page.route("**/api/revision-cleanups/cleanup-test", (route) =>
+      route.fulfill({ json: job() }),
+    );
+    await page.route(
+      "**/api/revision-cleanups/cleanup-test/items?**",
+      (route) => route.fulfill({ json: { items: [], meta } }),
+    );
+    await page.route(
+      "**/api/settings/work/cleanup/cleanup-test/name",
+      (route) => {
+        if (route.request().method() === "POST")
+          name = route.request().postDataJSON().name.trim() || null;
+        return route.fulfill({ json: { name } });
+      },
+    );
+    const endpoint =
+      source === "downloads" ? "torrent/jobs" : "calibre/transfers";
+    await page.route(`**/api/${endpoint}?**`, (route) =>
+      route.fulfill({
+        json: {
+          items: [job()],
+          meta: { ...meta, totalItems: 1, totalPages: 1 },
+        },
+      }),
+    );
+    await page.goto(`/${source}/jobs/cleanup/cleanup-test`);
+    await page
+      .getByRole("button", { name: "Editar nombre del trabajo", exact: true })
+      .click();
+    const input = page
+      .getByRole("dialog")
+      .getByRole("textbox", { name: "Nombre", exact: true });
+    await expect(input).toBeFocused();
+    await input.fill("Limpieza de revisiones antiguas");
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Guardar", exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", {
+        name: "Limpieza de revisiones antiguas",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.goto(`/${source}/jobs`);
+    await expect(
+      page.getByRole("link", {
+        name: "Limpieza de revisiones antiguas",
+        exact: true,
+      }),
+    ).toBeVisible();
+  });
+}

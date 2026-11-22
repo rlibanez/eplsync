@@ -38,7 +38,7 @@ import {
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AppModal, ModalActions } from "../../components/AppModal";
-import { PageTitle } from "../../components/PageTitle";
+import { JobTitle } from "../jobs/JobTitle";
 import { Failure, Loading } from "../../components/Feedback";
 import { get } from "../../api/catalog";
 import { post, type Page } from "../downloads/shared";
@@ -1027,7 +1027,12 @@ export function CleanupJob() {
   return (
     <>
       <WorkNavigation source={data.source} id={id} />
-      <PageTitle
+      <JobTitle
+        source="cleanup"
+        id={id!}
+        editable={can(
+          data.source === "downloads" ? "DOWNLOADS_DELETE" : "CALIBRE_DELETE",
+        )}
         title={t(
           data.updateJobId
             ? "revisionCleanup.jobTitle"

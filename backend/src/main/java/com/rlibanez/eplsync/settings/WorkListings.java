@@ -68,7 +68,7 @@ public class WorkListings {
             """;
         String selected="CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.total,0) WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected,0) ELSE coalesce(json_array_length(j.confirmation),0) END";
         String projection="""
-            SELECT j.id,NULL name,'cleanup' kind,j.created_at createdAt,'CLEANUP' type,j.state state,j.owner_username username,j.library,
+            SELECT j.id,j.name,'cleanup' kind,j.created_at createdAt,'CLEANUP' type,j.state state,j.owner_username username,j.library,
             """+selected+" selectedBooks,"+selected+" total,"+"""
             coalesce(c.processed,0)+CASE WHEN j.direct_removal=1 AND j.source='downloads' THEN coalesce(c.skipped,0)
               WHEN EXISTS(SELECT 1 FROM calibre_cleanup_preparations p WHERE p.job_id=j.id) THEN coalesce(c.selected_skipped,0)

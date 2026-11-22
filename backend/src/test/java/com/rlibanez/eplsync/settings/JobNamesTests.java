@@ -15,6 +15,7 @@ class JobNamesTests {
     @Autowired WorkListings listings;
     @Autowired JdbcTemplate jdbc;
     @BeforeEach void seed() {
+        jdbc.update("DELETE FROM revision_cleanup_jobs");
         jdbc.update("DELETE FROM calibre_jobs");jdbc.update("DELETE FROM torrent_bulk_jobs");
         for(String id:java.util.List.of("a","b","c")) {
             jdbc.update("INSERT INTO torrent_bulk_jobs(id,batch_size,concurrency,interval_millis,selected_books,type,state) VALUES(?,100,5,0,1,'DOWNLOAD','COMPLETED')",id);
@@ -57,4 +58,40 @@ class JobNamesTests {
         assertThatThrownBy(()->names.save("calibre","a",new JobNames.Name("forbidden"))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
         assertThatThrownBy(()->names.get("downloads","a")).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
+    private void cleanupLogin(String id,java.util.Set<com.rlibanez.eplsync.security.Permission> permissions) {
+        var account=new com.rlibanez.eplsync.security.Account(id,id,"owner@example.org","USER","ACTIVE",false,null,0,permissions,java.time.Instant.now());
+        var authorities=permissions.stream().map(p->new org.springframework.security.core.authority.SimpleGrantedAuthority(p.name())).toList();
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(account,null,authorities));
+    }
+    @AfterEach void logout() {org.springframework.security.core.context.SecurityContextHolder.clearContext();}
+    private void cleanupSeed(String source) {
+        jdbc.update("INSERT OR IGNORE INTO users(id,username,username_normalized,email,password_hash,role,status,created_at,updated_at) VALUES('name-owner','name-owner','name-owner','name-owner@example.org','hash','USER','ACTIVE','now','now')");
+        jdbc.update("INSERT INTO revision_cleanup_jobs(id,source,action,owner_id,owner_username,context,state,result,created_at,updated_at,expires_at) VALUES(?,?,?,'name-owner','name-owner','context','COMPLETED','PARTIAL',1,2,3)",source,source,source.equals("downloads")?"FILES":"BOOK");
+    }
+    @Test void cleanupNamesPreserveExecutionDataAndParticipateInBothWorkLists() {
+        var permissions=java.util.Set.of(com.rlibanez.eplsync.security.Permission.TORRENT_SYNC,com.rlibanez.eplsync.security.Permission.DOWNLOADS_DELETE,com.rlibanez.eplsync.security.Permission.CALIBRE_READ,com.rlibanez.eplsync.security.Permission.CALIBRE_DELETE);
+        cleanupLogin("name-owner",permissions);
+        for(String source:java.util.List.of("downloads","calibre")) {
+            cleanupSeed(source);
+            var before=jdbc.queryForMap("SELECT * FROM revision_cleanup_jobs WHERE id=?",source);
+            assertThat(names.save("cleanup",source,new JobNames.Name("  Limpieza revisiones  ")).name()).isEqualTo("Limpieza revisiones");
+            assertThat(names.get("cleanup",source).name()).isEqualTo("Limpieza revisiones");
+            var after=jdbc.queryForMap("SELECT * FROM revision_cleanup_jobs WHERE id=?",source);after.put("name",null);assertThat(after).isEqualTo(before);
+            var page=listings.list(source,0,20,null,"CLEANUP",null,null,null,"name,asc","eq","eq","revisiones");
+            assertThat(page.items()).singleElement().satisfies(row->assertThat(row).containsEntry("name","Limpieza revisiones"));
+            assertThat(names.save("cleanup",source,new JobNames.Name("")).name()).isNull();
+        }
+        cleanupLogin("another-owner",permissions);
+        assertThatThrownBy(()->names.get("cleanup","downloads")).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(()->names.save("cleanup","calibre",new JobNames.Name("forbidden"))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+    }
+    @Test void cleanupReadPermissionDoesNotGrantRenamePermission() {
+        for(String source:java.util.List.of("downloads","calibre")) cleanupSeed(source);
+        cleanupLogin("name-owner",java.util.Set.of(com.rlibanez.eplsync.security.Permission.TORRENT_SYNC,com.rlibanez.eplsync.security.Permission.CALIBRE_READ));
+        for(String source:java.util.List.of("downloads","calibre")) {
+            assertThat(names.get("cleanup",source).name()).isNull();
+            assertThatThrownBy(()->names.save("cleanup",source,new JobNames.Name("forbidden"))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        }
+    }
+
 }
