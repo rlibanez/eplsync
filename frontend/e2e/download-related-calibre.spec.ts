@@ -250,7 +250,7 @@ test("an update links to its separate cleanup without embedding cleanup executio
   await page.goto("/downloads/jobs/download");
   await expect(
     page.getByRole("link", {
-      name: "Trabajo de limpieza relacionado: related-cleanup",
+      name: "Ver trabajo de limpieza relacionado",
       exact: true,
     }),
   ).toHaveAttribute("href", "/downloads/jobs/cleanup/related-cleanup");

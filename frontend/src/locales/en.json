@@ -276,7 +276,7 @@
     "phaseStatus": "Status",
     "notRequired": "Not required",
     "cleanupBlocked": "Blocked",
-    "relatedCleanup": "Related cleanup job",
+    "relatedCleanup": "View related cleanup job",
     "cleanupJob": "Job"
   },
   "suggestions": {

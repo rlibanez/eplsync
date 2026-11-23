@@ -278,7 +278,7 @@
     "phaseStatus": "Estado",
     "notRequired": "No necesaria",
     "cleanupBlocked": "Bloqueada",
-    "relatedCleanup": "Trabajo de limpieza relacionado",
+    "relatedCleanup": "Ver trabajo de limpieza relacionado",
     "cleanupJob": "Trabajo"
   },
   "suggestions": {
@@ -2093,7 +2093,7 @@
     "retryFailed": "Reintentar fallidos ({{count}})",
     "failureHistory": "Historial de reintentos",
     "previousFailure": "Detalle anterior",
-    "relatedUpdate": "Ver trabajo de Actualización relacionado",
+    "relatedUpdate": "Ver trabajo de actualización relacionado",
     "historyActions": {
       "RETRY_FAILED": "Reintentar fallidos",
       "RETRY_UNCONFIRMED": "Reintentar sin confirmar",

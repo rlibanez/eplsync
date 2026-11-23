@@ -752,7 +752,7 @@ export function JobDetail() {
           <Link
             to={`/downloads/jobs/cleanup/${encodeURIComponent(data.cleanup.jobId)}`}
           >
-            {t("jobReport.relatedCleanup")}: {data.cleanup.jobId}
+            {t("jobReport.relatedCleanup")}
           </Link>
         </p>
       )}

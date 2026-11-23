@@ -688,7 +688,7 @@ test("a related cleanup links back to its update and keeps cleanup controls", as
   ).toBeVisible();
   await expect(
     page.getByRole("link", {
-      name: "Ver trabajo de Actualización relacionado",
+      name: "Ver trabajo de actualización relacionado",
       exact: true,
     }),
   ).toHaveAttribute("href", "/downloads/jobs/original-update");
