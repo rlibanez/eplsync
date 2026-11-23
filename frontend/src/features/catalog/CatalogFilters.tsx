@@ -36,6 +36,7 @@ import { useLocale } from "../../locales/useLocale";
 export const multiKeys = [
   "discoveryCriteria",
   "discoveryValues",
+  "discoveryExcludedValues",
   "title",
   "author",
   "collection",
@@ -57,6 +58,7 @@ export const filterKeys = [
   "discoveryCriteria",
   "discoveryMatch",
   "discoveryValues",
+  "discoveryExcludedValues",
   "discoveryExcludeDownloads",
   "discoveryExcludeCalibre",
   "discoveryExcludePending",
@@ -236,6 +238,18 @@ export function CatalogFilters({
     ),
   );
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const advancedSignature = JSON.stringify({
+    values: Object.entries(values).filter(
+      ([key]) => !key.startsWith("discovery") && !multiKeys.includes(key),
+    ),
+    multi: Object.entries(multi)
+      .filter(([key]) => !key.startsWith("discovery"))
+      .map(([key, entries]) => [key, [...entries].sort()]),
+    drafts: Object.entries(drafts)
+      .filter(([, value]) => value.trim())
+      .sort(),
+  });
+  const initialAdvanced = useRef(advancedSignature);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const setMultiValue = (key: string, selected: string[]) => {
     setMulti((previous) => ({ ...previous, [key]: selected }));
@@ -800,6 +814,7 @@ export function CatalogFilters({
     <>
       {discovery && (
         <DiscoveryPanel
+          advancedDirty={advancedSignature !== initialAdvanced.current}
           key={discoveryReset}
           resetDefaults={discoveryReset > 0}
           onClear={clearFilters}

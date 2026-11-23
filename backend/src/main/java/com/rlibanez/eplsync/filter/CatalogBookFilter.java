@@ -121,6 +121,7 @@ public class CatalogBookFilter {
     private String[] discoveryCriteria;
     private String discoveryMatch;
     private String[] discoveryValues;
+    private String[] discoveryExcludedValues;
     private Boolean discoveryExcludeDownloads;
     private Boolean discoveryExcludeCalibre;
     private Boolean discoveryExcludePending;
@@ -129,7 +130,7 @@ public class CatalogBookFilter {
     private Boolean discoveryIgnoreAnthologies;
     private Integer discoveryMaxAuthors;
 
-    /** Null means use every detected value for this criterion. Legacy unqualified values remain valid for single-criterion links. */
+    /** Null means all detected values (minus exclusions). A scoped empty value represents no selection. Legacy unqualified values remain valid for single-criterion links. */
     public java.util.List<String> discoverySelection(String criterion) {
         if(discoveryValues==null) return null;
         var selected=new java.util.ArrayList<String>();
@@ -169,6 +170,11 @@ public class CatalogBookFilter {
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private java.time.Instant insertDateBefore;
 
+    public java.util.List<String> discoveryExclusions(String criterion) {
+        if(discoveryExcludedValues==null) return java.util.List.of();
+        return java.util.Arrays.stream(discoveryExcludedValues).filter(value->value!=null && value.startsWith(criterion+":")).map(value->value.substring(criterion.length()+1)).toList();
+    }
+
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
         discoverySource=choice(discoverySource,Set.of("DOWNLOADS","CALIBRE","BOTH"),"discoverySource");
@@ -181,20 +187,29 @@ public class CatalogBookFilter {
             if(discoveryCriteria.length==0 || discoveryCriteria.length>5 || java.util.Arrays.stream(discoveryCriteria).anyMatch(v->v==null || !discoveryAllowed.contains(v))) throw new com.rlibanez.eplsync.exception.UserInputException("Criterios de descubrimiento inválidos");
             discoveryCriteria=java.util.Arrays.stream(discoveryCriteria).distinct().toArray(String[]::new);
         }
-        if(discoverySource==null && (discoveryCriteria!=null || discoveryMatch!=null || discoveryCriterion!=null || discoveryValues!=null || discoveryExcludeDownloads!=null || discoveryExcludeCalibre!=null || discoveryExcludePending!=null || discoveryIgnoreAnthologies!=null || discoveryMaxAuthors!=null)) throw new com.rlibanez.eplsync.exception.UserInputException("Indica el origen de descubrimiento");
+        if(discoverySource==null && (discoveryCriteria!=null || discoveryMatch!=null || discoveryCriterion!=null || discoveryValues!=null || discoveryExcludedValues!=null || discoveryExcludeDownloads!=null || discoveryExcludeCalibre!=null || discoveryExcludePending!=null || discoveryIgnoreAnthologies!=null || discoveryMaxAuthors!=null)) throw new com.rlibanez.eplsync.exception.UserInputException("Indica el origen de descubrimiento");
         if(discoverySource!=null) {
             if(discoveryCriteria==null) discoveryCriteria=new String[]{discoveryCriterion==null?"AUTHOR":discoveryCriterion};
             discoveryCriterion=discoveryCriteria[0];
             if(discoveryMatch==null) discoveryMatch="ALL";
         }
-        if(discoveryValues!=null && (discoveryValues.length==0 || discoveryValues.length>5000 || java.util.Arrays.stream(discoveryValues).anyMatch(v->v==null || v.isBlank() || v.length()>540))) throw new com.rlibanez.eplsync.exception.UserInputException("Selecciona entre 1 y 1000 valores por criterio de descubrimiento");
+        if(discoveryValues!=null && (discoveryValues.length==0 || discoveryValues.length>50000 || java.util.Arrays.stream(discoveryValues).anyMatch(v->v==null || v.isBlank() || v.length()>540))) throw new com.rlibanez.eplsync.exception.UserInputException("Selecciona entre 1 y 10000 valores por criterio de descubrimiento");
         if(discoveryValues!=null && discoverySource!=null) {
-            for(String criterion:discoveryCriteria) if(discoverySelection(criterion)!=null && discoverySelection(criterion).size()>1000) throw new com.rlibanez.eplsync.exception.UserInputException("Máximo de 1000 valores por criterio");
+            for(String criterion:discoveryCriteria) if(discoverySelection(criterion)!=null && discoverySelection(criterion).size()>10000) throw new com.rlibanez.eplsync.exception.UserInputException("Máximo de 10000 valores por criterio");
             for(String value:discoveryValues) {
                 int separator=value.indexOf(':');
                 boolean qualified=separator>0 && discoveryAllowed.contains(value.substring(0,separator));
-                if((qualified && (!java.util.Arrays.asList(discoveryCriteria).contains(value.substring(0,separator)) || value.substring(separator+1).isBlank())) || (!qualified && discoveryCriteria.length>1)) throw new com.rlibanez.eplsync.exception.UserInputException("Valor sin criterio de descubrimiento válido");
+                if((qualified && (!java.util.Arrays.asList(discoveryCriteria).contains(value.substring(0,separator)) || (value.length()>separator+1 && value.substring(separator+1).isBlank()))) || (!qualified && discoveryCriteria.length>1)) throw new com.rlibanez.eplsync.exception.UserInputException("Valor sin criterio de descubrimiento válido");
             }
+        }
+        if(discoveryExcludedValues!=null) {
+            if(discoveryExcludedValues.length==0 || discoveryExcludedValues.length>50000) throw new com.rlibanez.eplsync.exception.UserInputException("Exclusiones de descubrimiento inválidas");
+            for(String value:discoveryExcludedValues) {
+                if(value==null || value.length()>540) throw new com.rlibanez.eplsync.exception.UserInputException("Exclusiones de descubrimiento inválidas");
+                int separator=value.indexOf(':');
+                if(separator<1 || !java.util.Arrays.asList(discoveryCriteria).contains(value.substring(0,separator)) || value.substring(separator+1).isBlank()) throw new com.rlibanez.eplsync.exception.UserInputException("Exclusión sin criterio de descubrimiento válido");
+            }
+            for(String criterion:discoveryCriteria) if(discoveryExclusions(criterion).size()>10000) throw new com.rlibanez.eplsync.exception.UserInputException("Máximo de 10000 exclusiones por criterio");
         }
         com.rlibanez.eplsync.ordering.StateOperator.excluded(eplIdOperator);
         com.rlibanez.eplsync.ordering.StateOperator.excluded(collectionOperator);

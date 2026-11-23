@@ -15,8 +15,8 @@ publicaciones recientes.
 3. Elige **Combinar criterios → Todos** para exigir una coincidencia en cada
    criterio, o **Cualquiera** para aceptar al menos uno. Dentro de cada criterio,
    basta con coincidir en uno de sus valores.
-4. Para cada criterio, mantén **Todos los valores detectados** o desmárcalo para
-   seleccionar valores concretos. Cada criterio tiene su propia selección.
+4. Todo está seleccionado por defecto. Pulsa el contador de **Disponibles** de
+   cada criterio para marcar o desmarcar valores y confirma con **Aplicar selección**.
 5. En **Excluir presentes en**, marca Descargas, Calibre o Trabajos pendientes.
    El desplegable tiene casillas, resumen de altura fija, tooltip con la selección
    completa y una X para desmarcar las exclusiones disponibles. Sus opciones
@@ -86,11 +86,21 @@ se puede manejar con el teclado.
 La tabla se alinea con las dos primeras columnas del formulario, incluido el
 espacio entre ellas; en móvil ocupa el ancho disponible.
 
-La tabla de criterios tiene las columnas **Criterio**, **Usar todos los valores**
-y **Disponibles**, con casillas y contadores alineados. Al desmarcar una casilla,
-el selector de valores concretos aparece debajo de esa fila, a todo el ancho.
-En móvil, la cabecera central se acorta a **Todos** y los nombres largos pueden
-ocupar varias líneas, manteniendo accesibles las casillas y los contadores.
+La tabla de criterios tiene las columnas **Criterio**, **Disponibles** y
+**Seleccionados**. Se muestra siempre el número de valores seleccionados que
+siguen disponibles, independientemente de si la selección se guardó como una
+lista concreta o como «todos salvo estos». Al abrir el contador de disponibles,
+una tabla muestra casillas y el número de libros que aportan cada valor desde
+Descargas y Calibre. **Quitar selección (n)** indica cuántos valores seleccionados
+se desmarcarán en todo el criterio.
+
+La casilla de la cabecera selecciona o deselecciona la página visible. Los botones
+**Seleccionar todos** y **Quitar selección** actúan sobre todo el criterio,
+aunque haya una búsqueda de texto activa. La selección se conserva al buscar o
+cambiar de página; **Cancelar** o cerrar la ventana descarta los cambios locales.
+Una selección vacía no produce coincidencias para ese criterio. Se admiten hasta
+10.000 valores o exclusiones por criterio, y «todos salvo estos» no enumera los
+miles de valores que siguen seleccionados.
 
 La combinación Todos/Cualquiera muestra su explicación al pasar el ratón o enfocar
 el título. La X de **Buscar coincidencias por** quita todos los criterios; debes
@@ -134,3 +144,34 @@ como en Descubrir: **Excluir libros de «AA. VV.»** y **Excluir libros con más
 X autores**. Estas opciones sí excluyen libros de los resultados, se combinan con
 el resto de filtros y se conservan en las búsquedas guardadas de cada buscador.
 Las exportaciones y la selección de todos los resultados respetan las exclusiones.
+
+El contador de **Disponibles** de cada criterio permite abrir la lista de autores,
+colecciones, géneros, idiomas o años detectados, buscar y recorrer las páginas.
+**Aplicar selección** modifica la configuración; pulsa **Buscar** para actualizar
+los resultados de libros. Para cada
+valor se indica cuántos libros lo aportan desde Descargas y Calibre. Los idiomas
+se muestran traducidos y se pueden buscar por su nombre o código.
+
+Las opciones de ignorar libros y su resumen se agrupan en un bloque independiente
+**Detección de autores**, debajo de la tabla de criterios. Tiene el mismo ancho que la tabla de criterios. El resumen se muestra debajo
+de las opciones en una línea compacta, adaptable a varias líneas en móvil. Al activar exclusiones de detección una línea de resumen muestra cuántos libros se ignoran por
+cada motivo y el total. En **Ambos**, un libro presente en las dos fuentes se
+cuenta una sola vez. Los libros afectados por ambas exclusiones también se
+cuentan una sola vez en el total, con el solapamiento indicado por separado.
+
+Después de buscar, **Hay cambios sin aplicar** avisa si se modifica la
+configuración de Descubrir o sus filtros avanzados. El aviso desaparece al
+restaurar las opciones anteriores, ejecutar la búsqueda o cargar una guardada.
+
+En las ventanas de selección, el contador y **Quitar selección (n)** se actualizan
+al instante al marcar o desmarcar casillas. Se parte del recuento validado al abrir
+la ventana y se contabilizan los cambios visibles sin consultar al servidor en
+cada clic. La selección aplicada se vuelve a validar con los valores actuales.
+
+El resumen de libros ignorados permanece visible aunque ambas opciones estén
+desactivadas: muestra cero ignorados, el total de libros analizados y cero por
+cada motivo no activado.
+
+Las ventanas de valores detectados utilizan la cabecera y el pie comunes de la
+aplicación. La paginación sigue el formato **Anterior · página / total · Siguiente**,
+alineado a la derecha, y el recuento seleccionado aparece junto a las acciones.

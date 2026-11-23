@@ -143,4 +143,13 @@ class CatalogSavedSearchTests {
             .andExpect(jsonPath("$[0].filters.maxAuthors[0]").value("2"));
     }
 
+    @Test void savesDiscoveryCheckboxExclusionsWithScopeAndOwnership() throws Exception {
+        var session=login("reader");
+        var filters=Map.of("discoverySource",List.of("CALIBRE"),"discoveryCriteria",List.of("AUTHOR"),"discoveryExcludedValues",List.of("AUTHOR:Uno"));
+        mvc.perform(post("/api/catalog/saved-searches").param("scope","DISCOVERY").session(session).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("name","Selección","filters",filters))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.filters.discoveryExcludedValues[0]").value("AUTHOR:Uno"));
+        mvc.perform(get("/api/catalog/saved-searches").param("scope","DISCOVERY").session(session)).andExpect(status().isOk()).andExpect(jsonPath("$[0].filters.discoveryExcludedValues[0]").value("AUTHOR:Uno"));
+        mvc.perform(get("/api/catalog/saved-searches").param("scope","DISCOVERY").session(login("administrator"))).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+    }
+
 }

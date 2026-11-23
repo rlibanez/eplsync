@@ -19,6 +19,27 @@ async function expectExclusion(page: Page, name: string, selected: boolean) {
   await page.getByRole("heading", { name: "Descubrir", exact: true }).click();
 }
 
+async function openDetected(page: Page, criterion: string) {
+  await page
+    .getByRole("rowgroup", { name: criterion, exact: true })
+    .getByRole("button")
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+async function chooseDetected(page: Page, criterion: string, value: string) {
+  const dialog = await openDetected(page, criterion);
+  await dialog.getByRole("button", { name: /^Quitar selección \(/ }).click();
+  await dialog
+    .getByRole("checkbox", { name: `Seleccionar ${value}`, exact: true })
+    .check();
+  await dialog
+    .getByRole("button", { name: "Aplicar selección", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+}
+
 test("discovery refreshes suggestions when the author selector is reopened", async ({
   page,
 }) => {
@@ -38,30 +59,25 @@ test("discovery refreshes suggestions when the author selector is reopened", asy
     }),
   );
   await page.goto("/discover");
-  await page
-    .getByRole("checkbox", {
-      name: "Todos los valores detectados",
-      exact: true,
-    })
-    .uncheck();
-  await page.getByRole("textbox", { name: "Autores", exact: true }).click();
+  let dialog = await openDetected(page, "Autores");
   await expect(
-    page.getByRole("option", { name: /Brandon Sanderson/ }),
+    dialog.getByText("Brandon Sanderson", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("heading", { name: "Descubrir", exact: true }).click();
+  await page.keyboard.press("Escape");
   items.push({
     value: "terry pratchett",
     label: "Terry Pratchett",
     counts: { DOWNLOADS: 1 },
   });
-  await page.getByRole("textbox", { name: "Autores", exact: true }).click();
+  dialog = await openDetected(page, "Autores");
   await expect(
-    page.getByRole("option", { name: /Terry Pratchett/ }),
+    dialog.getByText("Terry Pratchett", { exact: true }),
   ).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(
     page
       .getByRole("rowgroup", { name: "Autores", exact: true })
-      .getByRole("cell", { name: "2", exact: true }),
+      .locator(".criterion-count"),
   ).toBeVisible();
 });
 const book = {
@@ -163,15 +179,7 @@ test("discovery preserves filters, selection, navigation and separate preference
   await expect(
     page.getByRole("textbox", { name: "Basarse en", exact: true }),
   ).toHaveValue("Ambos");
-  await page
-    .getByRole("checkbox", {
-      name: "Todos los valores detectados",
-      exact: true,
-    })
-    .uncheck();
-  await page.getByRole("textbox", { name: "Autores", exact: true }).click();
-  await page.getByRole("option", { name: /Fríida Ísberg/ }).click();
-  await page.getByRole("heading", { name: "Descubrir", exact: true }).click();
+  await chooseDetected(page, "Autores", "Fríida Ísberg");
   await page
     .getByRole("button", { name: "Buscar", exact: true })
     .first()
@@ -332,27 +340,9 @@ test("combined discovery criteria retain independent selections and All/Any acro
     await page.getByRole("option", { name: criterion, exact: true }).click();
   await page.getByRole("heading", { name: "Descubrir", exact: true }).click();
   const genre = page.getByRole("rowgroup", { name: "Géneros", exact: true });
-  await genre
-    .getByRole("checkbox", {
-      name: "Todos los valores detectados",
-      exact: true,
-    })
-    .uncheck();
-  await genre.getByRole("textbox", { name: "Géneros", exact: true }).click();
-  await page.getByRole("option", { name: /Fantasía/ }).click();
-  await page.getByRole("heading", { name: "Descubrir", exact: true }).click();
+  await chooseDetected(page, "Géneros", "Fantasía");
   const language = page.getByRole("rowgroup", { name: "Idiomas", exact: true });
-  await language
-    .getByRole("checkbox", {
-      name: "Todos los valores detectados",
-      exact: true,
-    })
-    .uncheck();
-  await language
-    .getByRole("textbox", { name: "Idiomas", exact: true })
-    .fill("Español");
-  await page.getByRole("option", { name: /Español/ }).click();
-  await page.getByRole("heading", { name: "Descubrir", exact: true }).click();
+  await chooseDetected(page, "Idiomas", "Español");
   const search = page
     .getByRole("button", { name: "Buscar", exact: true })
     .first();
@@ -378,9 +368,8 @@ test("combined discovery criteria retain independent selections and All/Any acro
   await expect(
     page.getByRole("textbox", { name: "Combinar criterios", exact: true }),
   ).toHaveValue("Cualquiera");
-  await expect(genre.getByRole("checkbox")).not.toBeChecked();
-  await expect(genre).toContainText("Fantasía");
-  await expect(language).toContainText("Español");
+  await expect(genre.locator(".criterion-selected")).toHaveText("1");
+  await expect(language.locator(".criterion-selected")).toHaveText("1");
   // Removed criteria must not leave hidden constraints in the request.
   await criteriaSelect.click();
   await page.getByRole("option", { name: "Géneros", exact: true }).click();
@@ -759,11 +748,8 @@ test("Discover Clear restores defaults for applied searches and unapplied drafts
     await expect(
       page
         .getByRole("rowgroup", { name: "Autores", exact: true })
-        .getByRole("checkbox", {
-          name: "Todos los valores detectados",
-          exact: true,
-        }),
-    ).toBeChecked();
+        .locator(".criterion-selected"),
+    ).toHaveText("1");
     await expect(
       page.getByRole("rowgroup", { name: "Idiomas", exact: true }),
     ).toHaveCount(0);
@@ -860,13 +846,9 @@ test("criteria picker stays fixed-height with checkbox options, summary, tooltip
   await page.getByRole("heading", { name: "Descubrir", exact: true }).hover();
   const author = page.getByRole("rowgroup", { name: "Autores", exact: true });
   const header = author.locator(".discovery-criterion-row");
-  await expect(header.locator(".criterion-count")).toHaveText("1");
+  await expect(header.locator(".criterion-count button")).toHaveText("1");
   const title = (await header.getByRole("rowheader").boundingBox())!;
-  const checkbox = (await header.getByRole("checkbox").boundingBox())!;
   const count = (await header.locator(".criterion-count").boundingBox())!;
-  expect(
-    Math.abs(title.y + title.height / 2 - checkbox.y - checkbox.height / 2),
-  ).toBeLessThan(2);
   expect(
     Math.abs(title.y + title.height / 2 - count.y - count.height / 2),
   ).toBeLessThan(2);
@@ -1054,96 +1036,24 @@ test("criteria table aligns its columns and expands manual selections across the
 
   await expect(table.getByRole("columnheader")).toHaveCount(3);
   await expect(
-    table.getByRole("columnheader", { name: "Criterio", exact: true }),
-  ).toBeVisible();
-  await expect(
     table.getByRole("columnheader", {
       name: "Usar todos los valores",
       exact: true,
     }),
-  ).toBeVisible();
-  await expect(
-    table.getByRole("columnheader", { name: "Disponibles", exact: true }),
-  ).toBeVisible();
-  await expect(
-    table.getByRole("checkbox", {
-      name: "Todos los valores detectados",
-      exact: true,
-    }),
-  ).toHaveCount(5);
-  const author = table.getByRole("rowgroup", { name: "Autores", exact: true });
-  await expect(author.locator(".criterion-count")).toHaveText("2");
-  await author
-    .getByRole("checkbox", {
-      name: "Todos los valores detectados",
-      exact: true,
-    })
-    .uncheck();
-  const detail = author.locator(".discovery-criterion-details td").last();
-  await expect(detail).toHaveAttribute("colspan", "3");
-  await expect(author.getByText("Autores", { exact: true })).toHaveCount(1);
-  expect(
-    await author
-      .getByRole("rowheader")
-      .evaluate((element) => getComputedStyle(element).borderBottomWidth),
-  ).toBe("0px");
-
-  expect((await detail.boundingBox())!.width).toBeGreaterThan(
-    (await table.boundingBox())!.width * 0.95,
-  );
-  await author
-    .getByRole("textbox", { name: "Autores", exact: true })
-    .fill("Brandon");
-  await page.getByRole("option", { name: /Brandon Sanderson/ }).click();
-  await page.getByRole("heading", { name: "Descubrir", exact: true }).click();
-  await author
-    .getByRole("checkbox", {
-      name: "Todos los valores detectados",
-      exact: true,
-    })
-    .check();
-  await expect(
-    author.getByRole("textbox", { name: "Autores", exact: true }),
   ).toHaveCount(0);
-  await author
-    .getByRole("checkbox", {
-      name: "Todos los valores detectados",
-      exact: true,
-    })
-    .uncheck();
-  await expect(author).toContainText("Brandon Sanderson");
-  await page.screenshot({
-    path: "/tmp/eplsync-criteria-table-desktop.png",
-    fullPage: true,
-  });
-  await page
-    .getByRole("button", { name: "Plegar menú lateral", exact: true })
-    .click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".sidebar")).toHaveAttribute("inert", "");
-  await expect(
-    table.getByRole("columnheader", { name: "Todos", exact: true }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(() => document.body.scrollWidth <= window.innerWidth),
-  ).toBe(true);
-  expect((await table.boundingBox())!.width).toBeLessThan(390);
-  const year = table.getByRole("rowgroup", {
-    name: "Año de publicación",
-    exact: true,
-  });
-  expect(
-    await year
-      .getByRole("rowheader")
-      .evaluate((element) => element.scrollWidth <= element.clientWidth),
-  ).toBe(true);
-  await year.getByRole("checkbox").focus();
-  await year.getByRole("checkbox").press("Space");
-  await year
-    .getByRole("textbox", { name: "Año de publicación", exact: true })
-    .click();
-  await page.getByRole("option", { name: /2010/ }).click();
-  await page.getByRole("heading", { name: "Descubrir", exact: true }).click();
+  await chooseDetected(page, "Autores", "Brandon Sanderson");
+  await chooseDetected(page, "Año de publicación", "2010");
+  const author = table.getByRole("rowgroup", { name: "Autores", exact: true });
+  await expect(author.locator(".criterion-selected")).toHaveText("1");
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(
+      await page.evaluate(() => document.body.scrollWidth <= innerWidth),
+    ).toBe(true);
+    await expect(
+      table.getByRole("columnheader", { name: "Disponibles", exact: true }),
+    ).toBeVisible();
+  }
   await page
     .getByRole("button", { name: "Buscar", exact: true })
     .first()
@@ -1151,35 +1061,8 @@ test("criteria table aligns its columns and expands manual selections across the
   await expect
     .poll(() => requests.at(-1)?.getAll("discoveryValues"))
     .toEqual(["AUTHOR:brandon sanderson", "YEAR:2010"]);
-  await expect(author).toContainText("Brandon Sanderson");
-  await expect(year).toContainText("2010");
-  expect(
-    await page.evaluate(() => document.body.scrollWidth <= window.innerWidth),
-  ).toBe(true);
-  await page.screenshot({
-    path: "/tmp/eplsync-criteria-table-mobile.png",
-    animations: "disabled",
-    fullPage: true,
-  });
-  await page.setViewportSize({ width: 320, height: 844 });
-  expect(
-    await page.evaluate(() => document.body.scrollWidth <= window.innerWidth),
-  ).toBe(true);
-  for (const header of await table.getByRole("columnheader").all())
-    expect(
-      await header.evaluate(
-        (element) => element.scrollWidth <= element.clientWidth,
-      ),
-    ).toBe(true);
-  expect((await table.boundingBox())!.width).toBeLessThan(320);
-  expect(
-    (await year
-      .getByRole("textbox", { name: "Año de publicación", exact: true })
-      .boundingBox())!.width,
-  ).toBeLessThan(320);
   await page.screenshot({
     path: "/tmp/eplsync-criteria-table-mobile-small.png",
-    animations: "disabled",
     fullPage: true,
   });
 });
@@ -1561,16 +1444,16 @@ test("author detection exclusions update counts and survive saved searches, relo
   });
   await expect(aa).not.toBeChecked();
   await expect(limit).not.toBeChecked();
-  await expect(row.getByRole("cell", { name: "4", exact: true })).toBeVisible();
+  await expect(row.locator(".criterion-count")).toHaveText("4");
   await aa.check();
-  await expect(row.getByRole("cell", { name: "2", exact: true })).toBeVisible();
+  await expect(row.locator(".criterion-count")).toHaveText("2");
   await limit.check();
   const max = page.getByRole("textbox", {
     name: "Máximo de autores por libro",
     exact: true,
   });
   await max.fill("2");
-  await expect(row.getByRole("cell", { name: "1", exact: true })).toBeVisible();
+  await expect(row.locator(".criterion-count")).toHaveText("1");
   await page
     .getByRole("button", { name: "Guardar búsqueda", exact: true })
     .click();
@@ -1598,6 +1481,9 @@ test("author detection exclusions update counts and survive saved searches, relo
     .poll(() => requests.at(-1)?.get("discoveryMaxAuthors"))
     .toBe("2");
   expect(requests.at(-1)?.get("discoveryIgnoreAnthologies")).toBe("true");
+  await expect(
+    page.getByText("Hay cambios sin aplicar", { exact: true }),
+  ).toHaveCount(0);
   await page.reload();
   await expect(aa).toBeChecked();
   await expect(max).toHaveValue("2");
@@ -1618,4 +1504,685 @@ test("author detection exclusions update counts and survive saved searches, relo
     .click();
   await expect(aa).not.toBeChecked();
   await expect(limit).not.toBeChecked();
+});
+
+test("detected authors can be inspected, searched and paged without changing the search", async ({
+  page,
+}) => {
+  const requests: URLSearchParams[] = [];
+  let bookCalls = 0;
+  await page.route("**/api/catalog/books?**", (route) => {
+    bookCalls++;
+    return route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+      },
+    });
+  });
+  await page.route("**/api/catalog/discovery/values?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    requests.push(params);
+    const filtered = params.get("q") === "King";
+    return route.fulfill({
+      json: {
+        items: [
+          {
+            value: "author",
+            label: filtered
+              ? "Stephen King"
+              : params.get("page") === "1"
+                ? "Autor página 2"
+                : "Autor inicial",
+            counts: { DOWNLOADS: 2, CALIBRE: 1 },
+          },
+        ],
+        meta: {
+          page: Number(params.get("page") ?? 0),
+          size: 100,
+          totalItems: filtered ? 1 : 201,
+          totalPages: filtered ? 1 : 3,
+        },
+      },
+    });
+  });
+  await page.goto(
+    "/discover?discoverySource=BOTH&discoveryCriteria=AUTHOR&discoveryIgnoreAnthologies=true&discoveryMaxAuthors=3",
+  );
+  await page
+    .getByRole("button", { name: "Ver autores detectados (201)", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByText("Autor inicial", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("columnheader", { name: "Descargas", exact: true }),
+  ).toBeVisible();
+  const navigation = dialog.getByRole("navigation", {
+    name: "Páginas de valores detectados",
+    exact: true,
+  });
+  await expect(navigation.getByText("1 / 3", { exact: true })).toBeVisible();
+  await expect(
+    navigation.getByRole("button", { name: "Anterior", exact: true }),
+  ).toBeDisabled();
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await expect(navigation.getByText("2 / 3", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText("Autor página 2", { exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByRole("textbox", { name: "Buscar autor", exact: true })
+    .fill("King");
+  await expect(dialog.getByText("Stephen King", { exact: true })).toBeVisible();
+  expect(requests.at(-1)?.get("source")).toBe("BOTH");
+  expect(requests.at(-1)?.get("ignoreAnthologies")).toBe("true");
+  expect(requests.at(-1)?.get("maxAuthors")).toBe("3");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(dialog.getByText("Stephen King", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "/tmp/eplsync-detected-authors-mobile.png",
+    fullPage: true,
+  });
+  const searches = bookCalls;
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  expect(bookCalls).toBe(searches);
+});
+
+test("author exclusions explain overlaps and unapplied changes include advanced filters", async ({
+  page,
+}) => {
+  await page.route("**/api/catalog/books?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+      },
+    }),
+  );
+  await page.route("**/api/catalog/discovery/values?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 100, totalItems: 4, totalPages: 1 },
+      },
+    }),
+  );
+  await page.route("**/api/catalog/discovery/authors/summary?**", (route) =>
+    route.fulfill({
+      json: {
+        totalBooks: 10,
+        ignoredBooks: 4,
+        ignoredAnthologies: 3,
+        ignoredTooMany: 2,
+        ignoredByBoth: 1,
+      },
+    }),
+  );
+  await page.goto("/discover");
+  const warning = page.getByText("Hay cambios sin aplicar", { exact: true });
+  await expect(warning).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Buscar", exact: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/discoverySource=/);
+  await expect(warning).toHaveCount(0);
+  const aa = page.getByRole("checkbox", {
+    name: "Ignorar libros de «AA. VV.» al detectar autores",
+    exact: true,
+  });
+  await aa.check();
+  await expect(warning).toBeVisible();
+  await aa.uncheck();
+  await expect(warning).toHaveCount(0);
+  await aa.check();
+  await page
+    .getByRole("checkbox", { name: "Ignorar libros con más de", exact: true })
+    .check();
+  await expect(
+    page
+      .locator(".discovery-ignore-summary")
+      .getByText("4 / 10", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".discovery-ignore-summary")
+      .getByText("AA. VV.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator(".discovery-ignore-summary")
+      .getByText("Más de 5 autores", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/Coinciden ambas exclusiones/)).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Buscar", exact: true })
+    .first()
+    .click();
+  await expect(warning).toHaveCount(0);
+  await page.locator(".catalog-search summary").click();
+  const title = page.getByRole("textbox", { name: "Título", exact: true });
+  await title.fill("Prueba");
+  await expect(warning).toBeVisible();
+  await title.fill("");
+  await expect(warning).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+for (const [criterion, title, field, first, second, found, search] of [
+  [
+    "COLLECTION",
+    "Colecciones detectadas",
+    "Buscar colección",
+    "Colección inicial",
+    "Colección siguiente",
+    "Colección buscada",
+    "buscada",
+  ],
+  [
+    "GENRE",
+    "Géneros detectados",
+    "Buscar género",
+    "Género inicial",
+    "Género siguiente",
+    "Aventura",
+    "aventura",
+  ],
+  [
+    "YEAR",
+    "Años de publicación detectados",
+    "Buscar año de publicación",
+    "1990",
+    "2000",
+    "2010",
+    "2010",
+  ],
+  [
+    "LANGUAGE",
+    "Idiomas detectados",
+    "Buscar idioma",
+    "Español",
+    "Inglés",
+    "Español",
+    "español",
+  ],
+]) {
+  test(`detected ${criterion} supports browsing, search and origins without author exclusions`, async ({
+    page,
+  }) => {
+    const requests: URLSearchParams[] = [];
+    let bookCalls = 0;
+    await page.route("**/api/catalog/books?**", (route) => {
+      bookCalls++;
+      return route.fulfill({
+        json: {
+          items: [],
+          meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+        },
+      });
+    });
+    await page.route("**/api/catalog/discovery/values?**", (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      requests.push(params);
+      const filtered = Boolean(params.get("q"));
+      return route.fulfill({
+        json: {
+          items:
+            criterion === "LANGUAGE"
+              ? [
+                  {
+                    value: "es",
+                    label: "es",
+                    counts: { DOWNLOADS: 3, CALIBRE: 1 },
+                  },
+                  { value: "en", label: "en", counts: { CALIBRE: 1 } },
+                ]
+              : [
+                  {
+                    value: "value",
+                    label: filtered
+                      ? found
+                      : params.get("page") === "1"
+                        ? second
+                        : first,
+                    counts: { DOWNLOADS: 3, CALIBRE: 1 },
+                  },
+                ],
+          meta: {
+            page: Number(params.get("page") ?? 0),
+            size: 100,
+            totalItems: criterion === "LANGUAGE" ? 2 : filtered ? 1 : 201,
+            totalPages: criterion === "LANGUAGE" || filtered ? 1 : 3,
+          },
+        },
+      });
+    });
+    await page.goto(
+      `/discover?discoverySource=BOTH&discoveryCriteria=${criterion}&discoveryIgnoreAnthologies=true&discoveryMaxAuthors=3`,
+    );
+    const row = page
+      .getByRole("rowgroup")
+      .filter({ has: page.locator(".criterion-count") });
+    await row.getByRole("button").click();
+    const dialog = page.getByRole("dialog");
+    await expect(
+      dialog.getByRole("heading", { name: title, exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByText(first, { exact: true })).toBeVisible();
+    await expect(
+      dialog.getByRole("columnheader", { name: "Descargas", exact: true }),
+    ).toBeVisible();
+    if (criterion !== "LANGUAGE") {
+      await dialog
+        .getByRole("button", { name: "Siguiente", exact: true })
+        .click();
+      await expect(dialog.getByText(second, { exact: true })).toBeVisible();
+    }
+    await dialog
+      .getByRole("textbox", { name: field, exact: true })
+      .fill(search);
+    await expect(dialog.getByText(found, { exact: true })).toBeVisible();
+    await expect(
+      dialog.getByText("Valores encontrados: 1", { exact: true }),
+    ).toBeVisible();
+    if (criterion === "LANGUAGE") {
+      await expect(dialog.getByText("Inglés", { exact: true })).toHaveCount(0);
+      await dialog
+        .getByRole("textbox", { name: field, exact: true })
+        .fill("en");
+      await expect(dialog.getByText("Inglés", { exact: true })).toBeVisible();
+      await dialog
+        .getByRole("textbox", { name: field, exact: true })
+        .fill("zzzz");
+      await expect(
+        dialog.getByText("No hay valores para mostrar.", { exact: true }),
+      ).toBeVisible();
+    }
+    expect(requests.at(-1)?.get("criterion")).toBe(criterion);
+    expect(requests.at(-1)?.get("source")).toBe("BOTH");
+    expect(requests.at(-1)?.has("ignoreAnthologies")).toBe(false);
+    expect(requests.at(-1)?.has("maxAuthors")).toBe(false);
+    const before = bookCalls;
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    expect(bookCalls).toBe(before);
+    await expect(
+      page.getByText("Hay cambios sin aplicar", { exact: true }),
+    ).toHaveCount(0);
+  });
+}
+
+test("checkbox selections preserve all-except across pages, filtering, saved searches and empty selection", async ({
+  page,
+}) => {
+  type Entry = { id: string; name: string; filters: Record<string, string[]> };
+  let saved: Entry[] = [];
+  const searches: URLSearchParams[] = [];
+  await page.route("**/api/catalog/saved-searches**", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: saved });
+    saved = [{ ...route.request().postDataJSON(), id: "except-authors" }];
+    return route.fulfill({ json: saved[0] });
+  });
+  await page.route("**/api/catalog/books?**", (route) => {
+    searches.push(new URL(route.request().url()).searchParams);
+    return route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+      },
+    });
+  });
+  await page.route("**/api/catalog/discovery/values?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const filtered = params.get("q") === "Autor 100";
+    const start = filtered ? 100 : Number(params.get("page") ?? 0) * 100;
+    const ids = filtered ? [start] : [start, start + 1];
+    return route.fulfill({
+      json: {
+        items: ids.map((id) => ({
+          value: `autor ${id}`,
+          label: `Autor ${id}`,
+          counts: { DOWNLOADS: 1 },
+        })),
+        meta: {
+          page: Number(params.get("page") ?? 0),
+          size: 100,
+          totalItems: filtered ? 1 : 1432,
+          totalPages: filtered ? 1 : 15,
+        },
+      },
+    });
+  });
+  await page.goto(
+    "/discover?discoverySource=DOWNLOADS&discoveryCriteria=AUTHOR",
+  );
+  const main = page.getByRole("table", { name: "Coincidencias", exact: true });
+  await expect(main.getByRole("columnheader")).toHaveCount(3);
+  const warning = page.getByText("Hay cambios sin aplicar", { exact: true });
+  let dialog = await openDetected(page, "Autores");
+  await expect(
+    dialog.getByRole("checkbox", { name: "Seleccionar Autor 0", exact: true }),
+  ).toBeChecked();
+  await dialog
+    .getByRole("checkbox", { name: "Seleccionar Autor 0", exact: true })
+    .uncheck();
+  await expect(
+    dialog.getByRole("checkbox", {
+      name: "Seleccionar esta página",
+      exact: true,
+    }),
+  ).toHaveAttribute("data-indeterminate", "true");
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await expect(warning).toHaveCount(0);
+  dialog = await openDetected(page, "Autores");
+  await expect(
+    dialog.getByRole("checkbox", { name: "Seleccionar Autor 0", exact: true }),
+  ).toBeChecked();
+  await dialog
+    .getByRole("checkbox", { name: "Seleccionar Autor 0", exact: true })
+    .uncheck();
+  await dialog.getByRole("button", { name: "Siguiente", exact: true }).click();
+  await dialog
+    .getByRole("checkbox", { name: "Seleccionar Autor 100", exact: true })
+    .uncheck();
+  await dialog
+    .getByRole("textbox", { name: "Buscar autor", exact: true })
+    .fill("Autor 100");
+  await expect(
+    dialog.getByText("Valores encontrados: 1", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("checkbox", {
+      name: "Seleccionar Autor 100",
+      exact: true,
+    }),
+  ).not.toBeChecked();
+  await dialog
+    .getByRole("button", { name: "Aplicar selección", exact: true })
+    .click();
+  await expect(main.locator(".criterion-selected")).toHaveText("1430");
+  await expect(warning).toBeVisible();
+  await page
+    .getByRole("button", { name: "Guardar búsqueda", exact: true })
+    .click();
+  dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("textbox", { name: "Nombre", exact: true })
+    .fill("Excepto dos");
+  await dialog
+    .getByRole("button", { name: "Guardar búsqueda", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  expect(saved[0].filters.discoveryExcludedValues).toEqual([
+    "AUTHOR:autor 0",
+    "AUTHOR:autor 100",
+  ]);
+  expect(saved[0].filters.discoveryValues).toBeUndefined();
+  await page
+    .getByRole("button", { name: "Buscar", exact: true })
+    .first()
+    .click();
+  await expect
+    .poll(() => searches.at(-1)?.getAll("discoveryExcludedValues"))
+    .toEqual(["AUTHOR:autor 0", "AUTHOR:autor 100"]);
+  await page.reload();
+  dialog = await openDetected(page, "Autores");
+  await expect(
+    dialog.getByRole("checkbox", { name: "Seleccionar Autor 0", exact: true }),
+  ).not.toBeChecked();
+  await dialog
+    .getByRole("button", { name: "Seleccionar todos (1432)", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Aplicar selección", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Búsquedas guardadas", exact: true })
+    .click();
+  await page.getByRole("option", { name: "Excepto dos", exact: true }).click();
+  dialog = await openDetected(page, "Autores");
+  await expect(
+    dialog.getByRole("checkbox", { name: "Seleccionar Autor 0", exact: true }),
+  ).not.toBeChecked();
+  await dialog.getByRole("button", { name: /^Quitar selección \(/ }).click();
+  await dialog
+    .getByRole("button", { name: "Aplicar selección", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Buscar", exact: true })
+    .first()
+    .click();
+  await expect
+    .poll(() => searches.at(-1)?.getAll("discoveryValues"))
+    .toEqual(["AUTHOR:"]);
+  expect(searches.at(-1)?.getAll("discoveryExcludedValues")).toEqual([]);
+});
+
+test("selected totals use detected values and ignoring options share a compact group", async ({
+  page,
+}) => {
+  await page.route("**/api/catalog/books?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+      },
+    }),
+  );
+  await page.route("**/api/catalog/discovery/values?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const items = [0, 1].map((id) => ({
+      value: `autor ${id}`,
+      label: `Autor ${id}`,
+      counts: { DOWNLOADS: 1 },
+    }));
+    const all = params.get("allSelected") !== "false";
+    const selected = items.filter((item) =>
+      all
+        ? !params.getAll("excluded").includes(item.value)
+        : params.getAll("selected").includes(item.value),
+    ).length;
+    return route.fulfill({
+      json: {
+        items,
+        selectedTotal: selected,
+        meta: { page: 0, size: 100, totalItems: 2, totalPages: 1 },
+      },
+    });
+  });
+  await page.setViewportSize({ width: 2560, height: 1100 });
+  await page.goto(
+    "/discover?discoverySource=DOWNLOADS&discoveryCriteria=AUTHOR&discoveryIgnoreAnthologies=true&discoveryMaxAuthors=5&discoveryExcludedValues=AUTHOR:ausente",
+  );
+  const row = page.getByRole("rowgroup", { name: "Autores", exact: true });
+  await expect(row.locator(".criterion-selected")).toHaveText("2");
+  await expect(
+    page.getByRole("columnheader", { name: "Seleccionados", exact: true }),
+  ).toBeVisible();
+  let dialog = await openDetected(page, "Autores");
+  await expect(
+    dialog.getByRole("button", { name: "Quitar selección (2)", exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByRole("checkbox", { name: "Seleccionar Autor 0", exact: true })
+    .uncheck();
+  await expect(
+    dialog.getByRole("button", { name: "Quitar selección (1)", exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByRole("button", { name: "Aplicar selección", exact: true })
+    .click();
+  await expect(row.locator(".criterion-selected")).toHaveText("1");
+  await chooseDetected(page, "Autores", "Autor 1");
+  await expect(row.locator(".criterion-selected")).toHaveText("1");
+  const group = page.getByRole("region", {
+    name: "Detección de autores",
+    exact: true,
+  });
+  await expect(
+    group.getByText("Detección de autores", { exact: true }),
+  ).toBeVisible();
+  await expect(row.getByRole("checkbox")).toHaveCount(0);
+  await expect(group.getByRole("checkbox")).toHaveCount(2);
+  await expect(group.locator(".discovery-ignore-summary")).toBeVisible();
+  const criteriaBox = (await page
+    .locator(".discovery-criteria-frame")
+    .boundingBox())!;
+  const detectionBox = (await group.boundingBox())!;
+  expect(Math.abs(detectionBox.width - criteriaBox.width)).toBeLessThan(2);
+  expect(Math.abs(detectionBox.x - criteriaBox.x)).toBeLessThan(2);
+  await expect(group.getByRole("progressbar")).toHaveCount(0);
+  const summaryBox = (await group
+    .locator(".discovery-ignore-summary")
+    .boundingBox())!;
+  const optionsBox = (await group.getByRole("checkbox").last().boundingBox())!;
+  expect(summaryBox.y).toBeGreaterThan(optionsBox.y + optionsBox.height);
+  await page.screenshot({
+    path: "/tmp/eplsync-ignore-group-wide.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Plegar menú lateral", exact: true })
+    .click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".sidebar")).toHaveAttribute("inert", "");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "/tmp/eplsync-ignore-group-mobile.png",
+    fullPage: true,
+  });
+});
+
+test("selection counters update immediately without a request per checkbox", async ({
+  page,
+}) => {
+  let requests = 0;
+  await page.route("**/api/catalog/books?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+      },
+    }),
+  );
+  await page.route("**/api/catalog/discovery/values?**", (route) => {
+    requests++;
+    return route.fulfill({
+      json: {
+        items: [0, 1].map((id) => ({
+          value: `autor ${id}`,
+          label: `Autor ${id}`,
+          counts: { DOWNLOADS: 1 },
+        })),
+        selectedTotal: 2,
+        meta: { page: 0, size: 100, totalItems: 2, totalPages: 1 },
+      },
+    });
+  });
+  await page.goto(
+    "/discover?discoverySource=DOWNLOADS&discoveryCriteria=AUTHOR",
+  );
+  const dialog = await openDetected(page, "Autores");
+  await expect(
+    dialog.getByRole("checkbox", { name: "Seleccionar Autor 0", exact: true }),
+  ).toBeChecked();
+  const baseline = requests;
+  await dialog
+    .getByRole("checkbox", { name: "Seleccionar Autor 0", exact: true })
+    .uncheck();
+  await expect(
+    dialog.getByRole("button", { name: "Quitar selección (1)", exact: true }),
+  ).toBeVisible({ timeout: 0 });
+  await expect(
+    dialog.getByText("Seleccionados: 1", { exact: true }),
+  ).toBeVisible({ timeout: 0 });
+  await dialog
+    .getByRole("checkbox", { name: "Seleccionar Autor 1", exact: true })
+    .uncheck();
+  await expect(
+    dialog.getByRole("button", { name: "Quitar selección (0)", exact: true }),
+  ).toBeVisible({ timeout: 0 });
+  await dialog
+    .getByRole("button", { name: "Seleccionar todos (2)", exact: true })
+    .click();
+  await expect(
+    dialog.getByText("Seleccionados: 2", { exact: true }),
+  ).toBeVisible({ timeout: 0 });
+  await dialog
+    .getByRole("checkbox", { name: "Seleccionar esta página", exact: true })
+    .uncheck();
+  await expect(
+    dialog.getByText("Seleccionados: 0", { exact: true }),
+  ).toBeVisible({ timeout: 0 });
+  expect(requests).toBe(baseline);
+  await expect(
+    dialog.getByText("Seleccionados: …", { exact: true }),
+  ).toHaveCount(0);
+});
+
+test("ignored summary stays visible with both detection exclusions off", async ({
+  page,
+}) => {
+  await page.route("**/api/catalog/discovery/values?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        selectedTotal: 2,
+        meta: { page: 0, size: 100, totalItems: 2, totalPages: 1 },
+      },
+    }),
+  );
+  await page.route("**/api/catalog/discovery/authors/summary?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const active = params.get("ignoreAnthologies") === "true";
+    return route.fulfill({
+      json: {
+        totalBooks: 4,
+        ignoredBooks: active ? 1 : 0,
+        ignoredAnthologies: active ? 1 : 0,
+        ignoredTooMany: 0,
+        ignoredByBoth: 0,
+      },
+    });
+  });
+  await page.goto("/discover");
+  const group = page.getByRole("region", {
+    name: "Detección de autores",
+    exact: true,
+  });
+  const summary = group.locator(".discovery-ignore-summary");
+  await expect(summary.getByText("0 / 4", { exact: true })).toBeVisible();
+  await expect(summary.getByText("AA. VV.", { exact: true })).toBeVisible();
+  await expect(
+    summary.getByText("Más de 5 autores", { exact: true }),
+  ).toBeVisible();
+  const checkbox = group.getByRole("checkbox", {
+    name: "Ignorar libros de «AA. VV.» al detectar autores",
+    exact: true,
+  });
+  await checkbox.check();
+  await expect(summary.getByText("1 / 4", { exact: true })).toBeVisible();
+  await checkbox.uncheck();
+  await expect(summary.getByText("0 / 4", { exact: true })).toBeVisible();
+  await expect(
+    summary.getByText("Más de 5 autores", { exact: true }),
+  ).toBeVisible();
 });

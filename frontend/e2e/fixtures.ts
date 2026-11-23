@@ -133,6 +133,19 @@ export const test = base.extend<{ eventTransport: void }>({
       await context.route("**/api/settings/calibre/snapshot", (route) =>
         route.fulfill({ json: { snapshot: null } }),
       );
+      await context.route(
+        "**/api/catalog/discovery/authors/summary?**",
+        (route) =>
+          route.fulfill({
+            json: {
+              totalBooks: 0,
+              ignoredBooks: 0,
+              ignoredAnthologies: 0,
+              ignoredTooMany: 0,
+              ignoredByBoth: 0,
+            },
+          }),
+      );
       await context.route("**/api/calibre/books/formats", (route) =>
         route.fulfill({ json: [] }),
       );

@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import {
   applyDiscoveryConfiguration,
+  discoveryConfigurationSignature,
   type DiscoveryPreferences,
 } from "./Discovery";
 import { catalogParams } from "../../api/catalog";
@@ -42,7 +43,7 @@ it("preserves combined discovery criteria, mode and scoped values through select
   expect(filters.discoveryMatch).toBe("ANY");
   expect(filters.torrentPresence).toBe("ABSENT");
 });
-it("omits values for inactive criteria and rejects empty criteria or empty manual selections", () => {
+it("omits inactive values, rejects empty criteria and preserves an explicitly empty selection", () => {
   const params = new URLSearchParams();
   expect(
     applyDiscoveryConfiguration(params, { ...config, criteria: ["AUTHOR"] }),
@@ -56,7 +57,8 @@ it("omits values for inactive criteria and rejects empty criteria or empty manua
       ...config,
       choices: { GENRE: { all: false, values: [] } },
     }),
-  ).toBe(false);
+  ).toBe(true);
+  expect(params.getAll("discoveryValues")).toEqual(["GENRE:"]);
 });
 
 it("serializes restored criteria and their values in dropdown order", () => {
@@ -99,4 +101,48 @@ it("preserves author detection exclusions through search and export", () => {
   expect(
     applyDiscoveryConfiguration(params, { ...config, maxAuthors: 0 }),
   ).toBe(false);
+});
+
+it("compares discovery drafts without treating inactive values or selection order as changes", () => {
+  expect(
+    discoveryConfigurationSignature({
+      ...config,
+      criteria: [...config.criteria].reverse(),
+    }),
+  ).toBe(discoveryConfigurationSignature(config));
+  expect(
+    discoveryConfigurationSignature({
+      ...config,
+      choices: { ...config.choices, AUTHOR: { all: true, values: ["unused"] } },
+    }),
+  ).toBe(discoveryConfigurationSignature(config));
+  expect(
+    discoveryConfigurationSignature({ ...config, maxAuthors: 2 }),
+  ).not.toBe(discoveryConfigurationSignature(config));
+  expect(discoveryConfigurationSignature({ ...config, criteria: [] })).not.toBe(
+    discoveryConfigurationSignature(config),
+  );
+});
+
+it("preserves all-except selections through saved search and export without enumerating the vocabulary", () => {
+  const params = new URLSearchParams();
+  expect(
+    applyDiscoveryConfiguration(params, {
+      ...config,
+      criteria: ["AUTHOR"],
+      choices: {
+        AUTHOR: { all: true, values: [], excluded: ["autor a", "autor b"] },
+      },
+    }),
+  ).toBe(true);
+  expect(params.getAll("discoveryValues")).toEqual([]);
+  expect(params.getAll("discoveryExcludedValues")).toEqual([
+    "AUTHOR:autor a",
+    "AUTHOR:autor b",
+  ]);
+  const filters = selectionFilters(selectionQuery(catalogParams(params)));
+  expect(filters.discoveryExcludedValues).toEqual([
+    "AUTHOR:autor a",
+    "AUTHOR:autor b",
+  ]);
 });

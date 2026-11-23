@@ -54,17 +54,45 @@ public class CatalogDiscovery {
         return options(source,criterion,q,page,size,false,null);
     }
     public PageResponse<Value> options(String source,String criterion,String q,int page,int size,boolean ignoreAnthologies,Integer maxAuthors) {
+        var result=optionsWithSelection(source,criterion,q,page,size,ignoreAnthologies,maxAuthors,true,null,null);
+        return new PageResponse<>(result.items(),result.meta());
+    }
+    public record ValueOptions(List<Value> items,PageResponse.PageMeta meta,long selectedTotal) {}
+    public ValueOptions optionsWithSelection(String source,String criterion,String q,int page,int size,boolean ignoreAnthologies,Integer maxAuthors,boolean allSelected,List<String> selected,List<String> excluded) {
         com.rlibanez.eplsync.config.QueryLimits.page(page,size);
         if(q==null || q.length()>256) throw new com.rlibanez.eplsync.exception.UserInputException("Búsqueda de valores inválida");
+        for(var input:List.of(selected==null?List.<String>of():selected,excluded==null?List.<String>of():excluded))
+            if(input.size()>10000 || input.stream().anyMatch(value->value==null || value.isBlank() || value.length()>512)) throw new com.rlibanez.eplsync.exception.UserInputException("Selección de valores inválida");
         var filter=new CatalogBookFilter();filter.setDiscoverySource(source);filter.setDiscoveryCriterion(criterion);filter.setDiscoveryIgnoreAnthologies(ignoreAnthologies);filter.setDiscoveryMaxAuthors(maxAuthors);
+        var vocabulary=vocabulary(filter,criterion);
+        var included=new HashSet<>(selected==null?Set.<String>of():selected.stream().map(DiscoveryTerms::key).toList());
+        var exceptions=new HashSet<>(excluded==null?Set.<String>of():excluded.stream().map(DiscoveryTerms::key).toList());
+        long selectedTotal=vocabulary.keySet().stream().filter(value->allSelected?!exceptions.contains(value):included.contains(value)).count();
         String needle=DiscoveryTerms.key(q);
-        var values=vocabulary(filter,criterion).values().stream().filter(v->DiscoveryTerms.key(v.label()).contains(needle)).sorted((a,b)->com.rlibanez.eplsync.ordering.TextOrdering.compare(a.label(),b.label())).toList();
+        var values=vocabulary.values().stream().filter(v->DiscoveryTerms.key(v.label()).contains(needle)).sorted((x,y)->com.rlibanez.eplsync.ordering.TextOrdering.compare(x.label(),y.label())).toList();
         int pages=(values.size()+size-1)/size;long start=(long)page*size;
-        return new PageResponse<>(values.subList((int)Math.min(start,values.size()),(int)Math.min(start+size,values.size())),new PageResponse.PageMeta(page,size,values.size(),pages,page==0,page>=pages-1,page+1<pages,page>0));
+        return new ValueOptions(values.subList((int)Math.min(start,values.size()),(int)Math.min(start+size,values.size())),new PageResponse.PageMeta(page,size,values.size(),pages,page==0,page>=pages-1,page+1<pages,page>0),selectedTotal);
+    }
+    public record AuthorSummary(long totalBooks,long ignoredBooks,long ignoredAnthologies,long ignoredTooMany,long ignoredByBoth) {}
+    public AuthorSummary authorSummary(String source,boolean ignoreAnthologies,Integer maxAuthors) {
+        var filter=new CatalogBookFilter();filter.setDiscoverySource(source);filter.setDiscoveryIgnoreAnthologies(ignoreAnthologies);filter.setDiscoveryMaxAuthors(maxAuthors);authorize(filter);
+        String downloads="EXISTS(SELECT 1 FROM torrent_downloads d WHERE d.epl_id=b.epl_id AND d.client_instance_id=? AND d.status='DOWNLOADED')";
+        String calibre="EXISTS(SELECT 1 FROM calibre_books c WHERE c.epl_id=b.epl_id AND c.active=1)";
+        String where=source.equals("DOWNLOADS")?downloads:source.equals("CALIBRE")?calibre:"("+downloads+" OR "+calibre+")";
+        var rows=jdbc.queryForList("SELECT b.author value,count(*) books FROM catalog_books b WHERE "+where+" GROUP BY b.author",source.equals("CALIBRE")?new Object[]{}:new Object[]{tracking.instanceId()});
+        long total=0,ignored=0,anthologies=0,tooMany=0,both=0;
+        for(var row:rows) {
+            String author=Objects.toString(row.get("value"),null);long books=((Number)row.get("books")).longValue();total+=books;
+            boolean aa=!DiscoveryTerms.authorsAllowed(author,ignoreAnthologies,null);
+            boolean limit=!DiscoveryTerms.authorsAllowed(author,false,maxAuthors);
+            if(aa) anthologies+=books;if(limit) tooMany+=books;if(aa&&limit) both+=books;if(aa||limit) ignored+=books;
+        }
+        return new AuthorSummary(total,ignored,anthologies,tooMany,both);
     }
     private LinkedHashMap<String,Value> selectedVocabulary(CatalogBookFilter f,String criterion) {
         var values=vocabulary(f,criterion);
         if(f.discoverySelection(criterion)!=null) {var selected=new HashSet<>(f.discoverySelection(criterion).stream().map(DiscoveryTerms::key).toList());values.keySet().retainAll(selected);}
+        values.keySet().removeAll(f.discoveryExclusions(criterion).stream().map(DiscoveryTerms::key).toList());
         return values;
     }
     public Specification<CatalogBook> fromFilter(CatalogBookFilter f) {

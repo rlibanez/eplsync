@@ -1,3 +1,5 @@
+import { detectedSelectionParams } from "./detectedSelection";
+import { DetectedValues } from "./DetectedValues";
 import { Download, Library } from "lucide-react";
 import {
   useEffect,
@@ -17,13 +19,11 @@ import {
   Button,
   Checkbox,
   Group,
-  MultiSelect,
   NumberInput,
   Select,
   Stack,
   Text,
 } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/Auth";
@@ -39,8 +39,8 @@ export const criteria = [
   "LANGUAGE",
   "YEAR",
 ] as const;
-type Criterion = (typeof criteria)[number];
-type Choice = { all: boolean; values: string[] };
+export type Criterion = (typeof criteria)[number];
+export type Choice = { all: boolean; values: string[]; excluded?: string[] };
 export const discoveryKeys = [
   "discoveryIgnoreAnthologies",
   "discoveryMaxAuthors",
@@ -49,6 +49,7 @@ export const discoveryKeys = [
   "discoveryCriteria",
   "discoveryMatch",
   "discoveryValues",
+  "discoveryExcludedValues",
   "discoveryExcludeDownloads",
   "discoveryExcludeCalibre",
   "discoveryExcludePending",
@@ -109,7 +110,7 @@ const validValues = (items: unknown) =>
               value.length <= 512,
           ),
         ),
-      ].slice(0, 1000)
+      ].slice(0, 10000)
     : [];
 const choiceFor = (
   config: DiscoveryPreferences,
@@ -126,8 +127,8 @@ export function applyDiscoveryConfiguration(
       (!Number.isInteger(config.maxAuthors) || config.maxAuthors < 1)) ||
     selectedCriteria.some(
       (criterion) =>
-        !choiceFor(config, criterion).all &&
-        !choiceFor(config, criterion).values.length,
+        choiceFor(config, criterion).values.length > 10000 ||
+        (choiceFor(config, criterion).excluded?.length ?? 0) > 10000,
     )
   )
     return false;
@@ -143,12 +144,26 @@ export function applyDiscoveryConfiguration(
   next.set("discoveryExcludePending", String(config.pending));
   for (const criterion of selectedCriteria) {
     const choice = choiceFor(config, criterion);
-    if (!choice.all)
-      choice.values.forEach((value) =>
+    if (!choice.all) {
+      (choice.values.length ? choice.values : [""]).forEach((value) =>
         next.append("discoveryValues", `${criterion}:${value}`),
       );
+    } else {
+      (choice.excluded ?? []).forEach((value) =>
+        next.append("discoveryExcludedValues", `${criterion}:${value}`),
+      );
+    }
   }
   return true;
+}
+export function discoveryConfigurationSignature(config: DiscoveryPreferences) {
+  const params = new URLSearchParams();
+  if (!applyDiscoveryConfiguration(params, config)) return "invalid";
+  return JSON.stringify(
+    [...params.entries()].sort(
+      ([a, av], [b, bv]) => a.localeCompare(b) || av.localeCompare(bv),
+    ),
+  );
 }
 export function DiscoveryPanel({
   params,
@@ -160,6 +175,7 @@ export function DiscoveryPanel({
   captureFilters,
   configuration,
   savedSearches,
+  advancedDirty = false,
 }: {
   params: URLSearchParams;
   onSearch: (params: URLSearchParams) => void;
@@ -170,6 +186,7 @@ export function DiscoveryPanel({
   captureFilters: () => URLSearchParams | null;
   configuration: { current: DiscoveryPreferences | null };
   savedSearches: ReactNode;
+  advancedDirty?: boolean;
 }) {
   const { can, user } = useAuth();
   const { t } = useTranslation();
@@ -215,6 +232,12 @@ export function DiscoveryPanel({
         choices[criterion] = {
           all: !values.length,
           values: validValues(values),
+          excluded: validValues(
+            params
+              .getAll("discoveryExcludedValues")
+              .filter((value) => value.startsWith(`${criterion}:`))
+              .map((value) => value.slice(criterion.length + 1)),
+          ),
         };
       } else {
         const old =
@@ -225,6 +248,9 @@ export function DiscoveryPanel({
         choices[criterion] = {
           all: old?.all !== false,
           values: validValues(old?.values),
+          excluded: validValues(
+            old && "excluded" in old ? old.excluded : undefined,
+          ),
         };
       }
     }
@@ -254,6 +280,14 @@ export function DiscoveryPanel({
         : saved.pending !== false,
     };
   });
+  const initialConfiguration = useRef(
+    discoveryConfigurationSignature(preferences),
+  );
+  const hasUnappliedChanges =
+    params.has("discoverySource") &&
+    (advancedDirty ||
+      discoveryConfigurationSignature(preferences) !==
+        initialConfiguration.current);
   useEffect(() => {
     setPreferences((previous) => ({
       ...previous,
@@ -273,13 +307,7 @@ export function DiscoveryPanel({
   }, [preferences, storage]);
   const change = (patch: Partial<DiscoveryPreferences>) =>
     setPreferences((previous) => ({ ...previous, ...patch }));
-  const invalid =
-    !preferences.criteria.length ||
-    preferences.criteria.some(
-      (criterion) =>
-        !choiceFor(preferences, criterion).all &&
-        !choiceFor(preferences, criterion).values.length,
-    );
+  const invalid = !preferences.criteria.length;
   return (
     <section className="panel">
       <Stack px={22} py="lg">
@@ -378,21 +406,14 @@ export function DiscoveryPanel({
               >
                 <colgroup>
                   <col className="criterion-column" />
-                  <col className="all-column" />
                   <col className="count-column" />
+                  <col className="selected-column" />
                 </colgroup>
                 <thead>
                   <tr>
                     <th scope="col">{t("discovery.criterionColumn")}</th>
-                    <th scope="col">
-                      <span className="criteria-all-wide">
-                        {t("discovery.useAll")}
-                      </span>
-                      <span className="criteria-all-narrow">
-                        {t("discovery.modes.ALL")}
-                      </span>
-                    </th>
                     <th scope="col">{t("discovery.availableHeader")}</th>
+                    <th scope="col">{t("discovery.selectedHeader")}</th>
                   </tr>
                 </thead>
                 {preferences.criteria.map((criterion) => (
@@ -403,12 +424,6 @@ export function DiscoveryPanel({
                     choice={choiceFor(preferences, criterion)}
                     ignoreAnthologies={preferences.ignoreAnthologies === true}
                     maxAuthors={preferences.maxAuthors}
-                    onAuthorOptions={(options) =>
-                      setPreferences((previous) => ({
-                        ...previous,
-                        ...options,
-                      }))
-                    }
                     onChange={(choice) =>
                       setPreferences((previous) => ({
                         ...previous,
@@ -419,6 +434,16 @@ export function DiscoveryPanel({
                 ))}
               </table>
             </div>
+            {preferences.criteria.includes("AUTHOR") && (
+              <AuthorDetectionOptions
+                source={preferences.source}
+                ignoreAnthologies={preferences.ignoreAnthologies === true}
+                maxAuthors={preferences.maxAuthors}
+                onAuthorOptions={(options) =>
+                  setPreferences((previous) => ({ ...previous, ...options }))
+                }
+              />
+            )}
           </div>
         )}
         <div className="catalog-search-footer" style={{ marginTop: 0 }}>
@@ -432,6 +457,11 @@ export function DiscoveryPanel({
             >
               {t("catalog.search")}
             </Button>
+            {hasUnappliedChanges && (
+              <Text role="status" size="sm" c="dimmed">
+                {t("discovery.unappliedChanges")}
+              </Text>
+            )}
             <Button variant="subtle" onClick={onClear}>
               {t("catalog.clear")}
             </Button>
@@ -639,32 +669,26 @@ function CriterionValues({
   onChange,
   ignoreAnthologies,
   maxAuthors,
-  onAuthorOptions,
 }: {
   ignoreAnthologies: boolean;
   maxAuthors?: number;
-  onAuthorOptions: (options: {
-    ignoreAnthologies?: boolean;
-    maxAuthors?: number;
-  }) => void;
   source: string;
   criterion: Criterion;
   choice: Choice;
   onChange: (choice: Choice) => void;
 }) {
   const { t } = useTranslation();
-  const { language, number } = useLocale();
+  const { number } = useLocale();
   const rowId = useId();
-  const [query, setQuery] = useState("");
-  const [debounced] = useDebouncedValue(query, 300);
-  const [labels, setLabels] = useState<Record<string, string>>({});
-  const serverQuery = criterion === "LANGUAGE" ? "" : debounced;
+  const [showValues, setShowValues] = useState(false);
+  const serverQuery = "";
   const authorParams = new URLSearchParams();
   if (criterion === "AUTHOR") {
     if (ignoreAnthologies) authorParams.set("ignoreAnthologies", "true");
     if (maxAuthors !== undefined)
       authorParams.set("maxAuthors", String(maxAuthors));
   }
+  const selectionParams = detectedSelectionParams(choice).toString();
   const values = useQuery({
     queryKey: [
       "discovery-values",
@@ -672,138 +696,251 @@ function CriterionValues({
       criterion,
       serverQuery,
       authorParams.toString(),
+      selectionParams,
     ],
     queryFn: ({ signal }) =>
-      get<Page<Value>>(
-        `/catalog/discovery/values?source=${source}&criterion=${criterion}&q=${encodeURIComponent(serverQuery)}&size=100&${authorParams}`,
+      get<Page<Value> & { selectedTotal?: number }>(
+        `/catalog/discovery/values?source=${source}&criterion=${criterion}&q=${encodeURIComponent(serverQuery)}&size=100&${authorParams}&${selectionParams}`,
         signal,
       ),
     retry: false,
   });
-  const label = (value: string) =>
-    criterion === "LANGUAGE" ? language(value) : value;
-  useEffect(() => {
-    if (values.data)
-      setLabels((previous) => ({
-        ...previous,
-        ...Object.fromEntries(
-          values.data.items.map((item) => [item.value, item.label]),
-        ),
-      }));
-  }, [values.data]);
-  const data = [
-    ...(values.data?.items ?? []).map((item) => ({
-      value: item.value,
-      label: `${label(item.label)} · ${Object.entries(item.counts)
-        .map(
-          ([origin, count]) => `${t(`discovery.sources.${origin}`)}: ${count}`,
-        )
-        .join(" · ")}`,
-    })),
-    ...choice.values
-      .filter(
-        (value) => !values.data?.items.some((item) => item.value === value),
-      )
-      .map((value) => ({ value, label: label(labels[value] ?? value) })),
-  ];
   return (
     <tbody aria-label={t(`discovery.criteria.${criterion}`)}>
       <tr className="discovery-criterion-row">
         <th scope="row" id={rowId}>
           {t(`discovery.criteria.${criterion}`)}
         </th>
-        <td className="criterion-all">
-          <Checkbox
-            aria-label={t("discovery.all")}
-            aria-describedby={rowId}
-            checked={choice.all}
-            onChange={(event) =>
-              onChange({ ...choice, all: event.currentTarget.checked })
-            }
-          />
+        <td
+          className="criterion-count"
+          aria-label={
+            values.data ? number(values.data.meta.totalItems) : undefined
+          }
+        >
+          {values.isError ? (
+            "—"
+          ) : values.isPending ? (
+            "…"
+          ) : (
+            <Tooltip label={t(`discovery.detectedTitles.${criterion}`)}>
+              <button
+                type="button"
+                className="discovery-count-link"
+                aria-describedby={`${rowId}-selection`}
+                aria-label={t(
+                  criterion === "AUTHOR"
+                    ? "discovery.viewAuthors"
+                    : "discovery.viewDetectedValues",
+                  {
+                    criterion: t(`discovery.criteria.${criterion}`),
+                    count: values.data?.meta.totalItems ?? 0,
+                  },
+                )}
+                onClick={() => setShowValues(true)}
+              >
+                {number(values.data?.meta.totalItems ?? 0)}
+              </button>
+            </Tooltip>
+          )}
         </td>
-        <td className="criterion-count">
+        <td className="criterion-selected" id={`${rowId}-selection`}>
           {values.isError
             ? "—"
             : values.isPending
               ? "…"
-              : number(values.data?.meta.totalItems ?? 0)}
+              : number(
+                  values.data?.selectedTotal ??
+                    (choice.all
+                      ? Math.max(
+                          0,
+                          (values.data?.meta.totalItems ?? 0) -
+                            (choice.excluded?.length ?? 0),
+                        )
+                      : choice.values.length),
+                )}
         </td>
       </tr>
-      {criterion === "AUTHOR" && (
+      {showValues && (
         <tr className="discovery-criterion-details">
           <td colSpan={3}>
-            <Stack gap="xs">
-              <Checkbox
-                label={t("discovery.ignoreAnthologies")}
-                checked={ignoreAnthologies}
-                onChange={(event) =>
-                  onAuthorOptions({
-                    ignoreAnthologies: event.currentTarget.checked,
-                  })
-                }
-              />
-              <Group gap="xs" wrap="wrap">
-                <Checkbox
-                  label={t("discovery.limitAuthors")}
-                  checked={maxAuthors !== undefined}
-                  onChange={(event) =>
-                    onAuthorOptions({
-                      maxAuthors: event.currentTarget.checked ? 5 : undefined,
-                    })
-                  }
-                />
-                <NumberInput
-                  aria-label={t("discovery.maxAuthors")}
-                  value={maxAuthors ?? 5}
-                  disabled={maxAuthors === undefined}
-                  min={1}
-                  max={2147483647}
-                  allowDecimal={false}
-                  allowNegative={false}
-                  clampBehavior="strict"
-                  w={90}
-                  onChange={(value) => {
-                    if (typeof value === "number" && value > 0)
-                      onAuthorOptions({ maxAuthors: value });
-                  }}
-                />
-                <Text size="sm">{t("discovery.authorsUnit")}</Text>
-              </Group>
-            </Stack>
+            <DetectedValues
+              criterion={criterion}
+              choice={choice}
+              available={values.data?.meta.totalItems ?? 0}
+              initialSelected={
+                values.data?.selectedTotal ??
+                (choice.all
+                  ? Math.max(
+                      0,
+                      (values.data?.meta.totalItems ?? 0) -
+                        (choice.excluded?.length ?? 0),
+                    )
+                  : choice.values.length)
+              }
+              apply={(next) => {
+                onChange(next);
+                setShowValues(false);
+              }}
+              source={source}
+              options={authorParams.toString()}
+              close={() => {
+                setShowValues(false);
+                void values.refetch();
+              }}
+            />
           </td>
         </tr>
       )}
-      {(!choice.all || values.isError) && (
+      {values.isError && (
         <tr className="discovery-criterion-details">
           <td colSpan={3}>
-            <Stack gap="xs">
-              {!choice.all && (
-                <MultiSelect
-                  aria-label={t(`discovery.criteria.${criterion}`)}
-                  aria-describedby={rowId}
-                  description={t("discovery.valuesHelp")}
-                  searchable
-                  clearable
-                  maxValues={1000}
-                  value={choice.values}
-                  data={data}
-                  searchValue={query}
-                  onSearchChange={setQuery}
-                  onFocus={() => void values.refetch()}
-                  onChange={(selected) =>
-                    onChange({ ...choice, values: selected })
-                  }
-                />
-              )}
-              {values.isError && (
-                <Failure error={values.error} retry={() => values.refetch()} />
-              )}
-            </Stack>
+            <Failure error={values.error} retry={() => void values.refetch()} />
           </td>
         </tr>
       )}
     </tbody>
+  );
+}
+function AuthorDetectionOptions({
+  source,
+  ignoreAnthologies,
+  maxAuthors,
+  onAuthorOptions,
+}: {
+  source: string;
+  ignoreAnthologies: boolean;
+  maxAuthors?: number;
+  onAuthorOptions: (options: {
+    ignoreAnthologies?: boolean;
+    maxAuthors?: number;
+  }) => void;
+}) {
+  const { t } = useTranslation();
+  const { number } = useLocale();
+  const authorParams = new URLSearchParams();
+  if (ignoreAnthologies) authorParams.set("ignoreAnthologies", "true");
+  if (maxAuthors !== undefined)
+    authorParams.set("maxAuthors", String(maxAuthors));
+  const summary = useQuery({
+    queryKey: [
+      "discovery-values",
+      source,
+      "author-summary",
+      authorParams.toString(),
+    ],
+    queryFn: ({ signal }) =>
+      get<{
+        totalBooks: number;
+        ignoredBooks: number;
+        ignoredAnthologies: number;
+        ignoredTooMany: number;
+        ignoredByBoth: number;
+      }>(
+        `/catalog/discovery/authors/summary?source=${source}&${authorParams}`,
+        signal,
+      ),
+    retry: false,
+  });
+
+  return (
+    <section
+      className="discovery-author-detection"
+      aria-label={t("discovery.authorDetectionTitle")}
+    >
+      <Text size="sm" fw={600}>
+        {t("discovery.authorDetectionTitle")}
+      </Text>
+      <div className="discovery-author-detection-body">
+        <Stack gap="sm">
+          <Checkbox
+            label={t("discovery.ignoreAnthologies")}
+            checked={ignoreAnthologies}
+            onChange={(event) =>
+              onAuthorOptions({
+                ignoreAnthologies: event.currentTarget.checked,
+              })
+            }
+          />
+          <Group gap="xs" wrap="wrap">
+            <Checkbox
+              label={t("discovery.limitAuthors")}
+              checked={maxAuthors !== undefined}
+              onChange={(event) =>
+                onAuthorOptions({
+                  maxAuthors: event.currentTarget.checked ? 5 : undefined,
+                })
+              }
+            />
+            <NumberInput
+              aria-label={t("discovery.maxAuthors")}
+              value={maxAuthors ?? 5}
+              disabled={maxAuthors === undefined}
+              min={1}
+              max={2147483647}
+              allowDecimal={false}
+              allowNegative={false}
+              clampBehavior="strict"
+              w={90}
+              onChange={(value) => {
+                if (typeof value === "number" && value > 0)
+                  onAuthorOptions({ maxAuthors: value });
+              }}
+            />
+            <Text size="sm">{t("discovery.authorsUnit")}</Text>
+          </Group>
+        </Stack>
+        <>
+          {summary.isPending ? (
+            <Text size="sm" c="dimmed">
+              {t("feedback.loading")}
+            </Text>
+          ) : summary.isError ? (
+            <Failure
+              error={summary.error}
+              retry={() => void summary.refetch()}
+            />
+          ) : (
+            summary.data && (
+              <div className="discovery-ignore-summary">
+                <Group gap="md" className="discovery-ignore-summary-line">
+                  <Text size="sm" fw={600}>
+                    {t("discovery.ignoredBooksTitle")}:{" "}
+                    <span>
+                      {number(summary.data.ignoredBooks)} /{" "}
+                      {number(summary.data.totalBooks)}
+                    </span>
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    <span>{t("discovery.anthologyReason")}</span>:{" "}
+                    <Text component="span" inherit fw={600}>
+                      {number(
+                        ignoreAnthologies ? summary.data.ignoredAnthologies : 0,
+                      )}
+                    </Text>
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    <span>
+                      {t("discovery.authorLimitReason", {
+                        max: maxAuthors ?? 5,
+                      })}
+                    </span>
+                    :{" "}
+                    <Text component="span" inherit fw={600}>
+                      {number(
+                        maxAuthors !== undefined
+                          ? summary.data.ignoredTooMany
+                          : 0,
+                      )}
+                    </Text>
+                  </Text>
+                </Group>
+
+              </div>
+            )
+          )}
+        </>
+      </div>
+    </section>
   );
 }
 export function DiscoveryMatches({ book }: { book: Book }) {

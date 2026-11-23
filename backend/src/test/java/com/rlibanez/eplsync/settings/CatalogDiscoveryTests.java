@@ -190,4 +190,48 @@ class CatalogDiscoveryTests {
         mvc.perform(get("/api/catalog/books").param("maxAuthors","-1")).andExpect(status().isBadRequest());
     }
 
+    @Test void authorSummaryDeduplicatesSourcesAndExplainsOverlappingExclusions() throws Exception {
+        jdbc.update("UPDATE catalog_books SET author='AA. VV. & Uno & Dos' WHERE epl_id=1");
+        jdbc.update("UPDATE catalog_books SET author='Uno & Otro' WHERE epl_id=5");
+        assertThat(discovery.authorSummary("BOTH",true,2)).isEqualTo(new CatalogDiscovery.AuthorSummary(2,1,1,1,1));
+        assertThat(discovery.authorSummary("BOTH",true,1)).isEqualTo(new CatalogDiscovery.AuthorSummary(2,2,1,2,1));
+        assertThat(discovery.authorSummary("BOTH",false,null)).isEqualTo(new CatalogDiscovery.AuthorSummary(2,0,0,0,0));
+        assertThat(discovery.authorSummary("DOWNLOADS",true,2)).isEqualTo(new CatalogDiscovery.AuthorSummary(1,1,1,1,1));
+        assertThat(discovery.authorSummary("CALIBRE",true,2)).isEqualTo(new CatalogDiscovery.AuthorSummary(2,1,1,1,1));
+        mvc.perform(get("/api/catalog/discovery/authors/summary").param("source","BOTH").param("ignoreAnthologies","true").param("maxAuthors","2"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.totalBooks").value(2)).andExpect(jsonPath("$.ignoredBooks").value(1));
+        mvc.perform(get("/api/catalog/discovery/authors/summary").param("source","CALIBRE").param("maxAuthors","0")).andExpect(status().isBadRequest());
+    }
+    @Test @WithMockUser(authorities="CATALOG_READ")
+    void authorSummaryRequiresPermissionForEveryRequestedSource() throws Exception {
+        mvc.perform(get("/api/catalog/discovery/authors/summary").param("source","DOWNLOADS")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/catalog/discovery/authors/summary").param("source","CALIBRE")).andExpect(status().isForbidden());
+        mvc.perform(get("/api/catalog/discovery/authors/summary").param("source","BOTH")).andExpect(status().isForbidden());
+    }
+
+    @Test void tableSelectionsSupportAllExceptExplicitValuesEmptySelectionAndExport() throws Exception {
+        var f=filter("BOTH","AUTHOR");f.setDiscoveryExcludedValues(new String[]{"AUTHOR:FRÍIDA ÍSBERG"});
+        assertThat(ids(f)).containsExactly(3L,6L);
+        f.setDiscoveryValues(new String[]{"AUTHOR:"});assertThat(ids(f)).isEmpty();
+        f.setDiscoveryValues(null);f.setDiscoveryCriteria(new String[]{"AUTHOR","COLLECTION"});f.setDiscoveryMatch("ANY");assertThat(ids(f)).contains(2L,3L,6L,8L);
+        mvc.perform(get("/api/catalog/books").param("discoverySource","BOTH").param("discoveryCriteria","AUTHOR").param("discoveryExcludedValues","AUTHOR:Fríida Ísberg").param("torrentPresence","ABSENT").param("calibrePresence","ABSENT").param("discoveryExcludePending","true")).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(post("/api/catalog/data/export/preview").contentType("application/json").content("""
+            {"filters":{"discoverySource":"BOTH","discoveryCriteria":["AUTHOR"],"discoveryExcludedValues":["AUTHOR:Fríida Ísberg"],"torrentPresence":"ABSENT","calibrePresence":"ABSENT","discoveryExcludePending":true},"format":"JSON","columns":["eplId"]}
+            """)).andExpect(status().isOk()).andExpect(jsonPath("$.rows").value(2));
+        mvc.perform(get("/api/catalog/books").param("discoverySource","BOTH").param("discoveryValues","AUTHOR:")).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(0));
+        mvc.perform(get("/api/catalog/books").param("discoverySource","BOTH").param("discoveryExcludedValues","GENRE:Other")).andExpect(status().isBadRequest());
+    }
+
+    @Test void selectedCountsIgnoreStaleValuesAndDoNotDependOnTextSearchOrPaging() throws Exception {
+        var all=discovery.optionsWithSelection("BOTH","AUTHOR","",0,1,false,null,true,null,List.of("Desconocido"));
+        assertThat(all.selectedTotal()).isEqualTo(3);assertThat(all.items()).hasSize(1);
+        assertThat(discovery.optionsWithSelection("BOTH","AUTHOR","zzzz",0,1,false,null,true,null,List.of("Autor B","Desconocido")).selectedTotal()).isEqualTo(2);
+        assertThat(discovery.optionsWithSelection("BOTH","AUTHOR","",0,100,false,null,false,List.of("FRÍIDA ÍSBERG","Desconocido","Fríida Ísberg"),null).selectedTotal()).isEqualTo(1);
+        assertThat(discovery.optionsWithSelection("BOTH","AUTHOR","",0,100,false,null,false,null,null).selectedTotal()).isZero();
+        jdbc.update("UPDATE catalog_books SET collection='Ciclo, 1' WHERE epl_id=1");
+        mvc.perform(get("/api/catalog/discovery/values").param("source","BOTH").param("criterion","COLLECTION").param("allSelected","false").param("selected","Ciclo, 1"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.selectedTotal").value(1));
+        mvc.perform(get("/api/catalog/discovery/values").param("source","BOTH").param("excluded"," ")).andExpect(status().isBadRequest());
+    }
+
 }

@@ -173,6 +173,7 @@ export function catalogParams(
     ["discoveryCriteria", 16],
     ["discoveryMatch", 3],
     ["discoveryValues", 540],
+    ["discoveryExcludedValues", 540],
     ["discoveryExcludeDownloads", 5],
     ["discoveryExcludeCalibre", 5],
     ["discoveryExcludePending", 5],
@@ -196,6 +197,7 @@ export function catalogParams(
     const multiple = [
       "discoveryCriteria",
       "discoveryValues",
+      "discoveryExcludedValues",
       "torrentStatus",
       "title",
       "author",
