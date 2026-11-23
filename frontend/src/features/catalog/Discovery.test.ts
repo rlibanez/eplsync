@@ -80,3 +80,23 @@ it("serializes restored criteria and their values in dropdown order", () => {
     "LANGUAGE:es",
   ]);
 });
+
+it("preserves author detection exclusions through search and export", () => {
+  const params = new URLSearchParams();
+  expect(
+    applyDiscoveryConfiguration(params, {
+      ...config,
+      ignoreAnthologies: true,
+      maxAuthors: 2,
+    }),
+  ).toBe(true);
+  const filters = selectionFilters(selectionQuery(catalogParams(params)));
+  expect(filters.discoveryIgnoreAnthologies).toBe("true");
+  expect(filters.discoveryMaxAuthors).toBe("2");
+  expect(applyDiscoveryConfiguration(params, config)).toBe(true);
+  expect(params.has("discoveryIgnoreAnthologies")).toBe(false);
+  expect(params.has("discoveryMaxAuthors")).toBe(false);
+  expect(
+    applyDiscoveryConfiguration(params, { ...config, maxAuthors: 0 }),
+  ).toBe(false);
+});

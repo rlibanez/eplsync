@@ -2381,7 +2381,7 @@ th.row-number, td.row-number { width: 1%; min-width: 0; padding-left: 8px; paddi
   .discovery-criteria-table thead th:nth-child(2) { padding-inline: 4px; }
 }
 
-.discovery-criteria-table tbody:has(.discovery-criterion-details) .discovery-criterion-row > * { border-bottom: 0; padding-bottom: 6px; }
+.discovery-criteria-table tbody:has(.discovery-criterion-details) .discovery-criterion-row > * { border-bottom: 0; }
 .discovery-criteria-table .discovery-criterion-details td { border-bottom: 0; padding-bottom: 14px; }
 .discovery-criteria-table tbody tr:hover { background: transparent; }
 .discovery-criteria-table tbody:hover { background: var(--surface-hover); }

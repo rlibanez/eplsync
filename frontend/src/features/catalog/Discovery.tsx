@@ -18,6 +18,7 @@ import {
   Checkbox,
   Group,
   MultiSelect,
+  NumberInput,
   Select,
   Stack,
   Text,
@@ -41,6 +42,8 @@ export const criteria = [
 type Criterion = (typeof criteria)[number];
 type Choice = { all: boolean; values: string[] };
 export const discoveryKeys = [
+  "discoveryIgnoreAnthologies",
+  "discoveryMaxAuthors",
   "discoverySource",
   "discoveryCriterion",
   "discoveryCriteria",
@@ -58,6 +61,8 @@ export type DiscoveryPreferences = {
   downloads: boolean;
   calibre: boolean;
   pending: boolean;
+  ignoreAnthologies?: boolean;
+  maxAuthors?: number;
 };
 export function defaultDiscoveryPreferences(
   downloads: boolean,
@@ -117,6 +122,8 @@ export function applyDiscoveryConfiguration(
   const selectedCriteria = validCriteria(config.criteria);
   if (
     !selectedCriteria.length ||
+    (config.maxAuthors !== undefined &&
+      (!Number.isInteger(config.maxAuthors) || config.maxAuthors < 1)) ||
     selectedCriteria.some(
       (criterion) =>
         !choiceFor(config, criterion).all &&
@@ -129,6 +136,9 @@ export function applyDiscoveryConfiguration(
   selectedCriteria.forEach((criterion) =>
     next.append("discoveryCriteria", criterion),
   );
+  if (config.ignoreAnthologies) next.set("discoveryIgnoreAnthologies", "true");
+  if (config.maxAuthors !== undefined)
+    next.set("discoveryMaxAuthors", String(config.maxAuthors));
   next.set("discoveryMatch", config.match);
   next.set("discoveryExcludePending", String(config.pending));
   for (const criterion of selectedCriteria) {
@@ -226,6 +236,17 @@ export function DiscoveryPanel({
           ? "ANY"
           : "ALL",
       choices,
+      ignoreAnthologies: fromUrl
+        ? params.get("discoveryIgnoreAnthologies") === "true"
+        : saved.ignoreAnthologies === true,
+      maxAuthors: (() => {
+        const value = fromUrl
+          ? Number(params.get("discoveryMaxAuthors"))
+          : saved.maxAuthors;
+        return typeof value === "number" && Number.isInteger(value) && value > 0
+          ? value
+          : undefined;
+      })(),
       downloads: presence.torrent === "ABSENT",
       calibre: presence.calibre === "ABSENT",
       pending: fromUrl
@@ -380,6 +401,14 @@ export function DiscoveryPanel({
                     source={preferences.source}
                     criterion={criterion}
                     choice={choiceFor(preferences, criterion)}
+                    ignoreAnthologies={preferences.ignoreAnthologies === true}
+                    maxAuthors={preferences.maxAuthors}
+                    onAuthorOptions={(options) =>
+                      setPreferences((previous) => ({
+                        ...previous,
+                        ...options,
+                      }))
+                    }
                     onChange={(choice) =>
                       setPreferences((previous) => ({
                         ...previous,
@@ -608,7 +637,16 @@ function CriterionValues({
   criterion,
   choice,
   onChange,
+  ignoreAnthologies,
+  maxAuthors,
+  onAuthorOptions,
 }: {
+  ignoreAnthologies: boolean;
+  maxAuthors?: number;
+  onAuthorOptions: (options: {
+    ignoreAnthologies?: boolean;
+    maxAuthors?: number;
+  }) => void;
   source: string;
   criterion: Criterion;
   choice: Choice;
@@ -621,11 +659,23 @@ function CriterionValues({
   const [debounced] = useDebouncedValue(query, 300);
   const [labels, setLabels] = useState<Record<string, string>>({});
   const serverQuery = criterion === "LANGUAGE" ? "" : debounced;
+  const authorParams = new URLSearchParams();
+  if (criterion === "AUTHOR") {
+    if (ignoreAnthologies) authorParams.set("ignoreAnthologies", "true");
+    if (maxAuthors !== undefined)
+      authorParams.set("maxAuthors", String(maxAuthors));
+  }
   const values = useQuery({
-    queryKey: ["discovery-values", source, criterion, serverQuery],
+    queryKey: [
+      "discovery-values",
+      source,
+      criterion,
+      serverQuery,
+      authorParams.toString(),
+    ],
     queryFn: ({ signal }) =>
       get<Page<Value>>(
-        `/catalog/discovery/values?source=${source}&criterion=${criterion}&q=${encodeURIComponent(serverQuery)}&size=100`,
+        `/catalog/discovery/values?source=${source}&criterion=${criterion}&q=${encodeURIComponent(serverQuery)}&size=100&${authorParams}`,
         signal,
       ),
     retry: false,
@@ -680,6 +730,50 @@ function CriterionValues({
               : number(values.data?.meta.totalItems ?? 0)}
         </td>
       </tr>
+      {criterion === "AUTHOR" && (
+        <tr className="discovery-criterion-details">
+          <td colSpan={3}>
+            <Stack gap="xs">
+              <Checkbox
+                label={t("discovery.ignoreAnthologies")}
+                checked={ignoreAnthologies}
+                onChange={(event) =>
+                  onAuthorOptions({
+                    ignoreAnthologies: event.currentTarget.checked,
+                  })
+                }
+              />
+              <Group gap="xs" wrap="wrap">
+                <Checkbox
+                  label={t("discovery.limitAuthors")}
+                  checked={maxAuthors !== undefined}
+                  onChange={(event) =>
+                    onAuthorOptions({
+                      maxAuthors: event.currentTarget.checked ? 5 : undefined,
+                    })
+                  }
+                />
+                <NumberInput
+                  aria-label={t("discovery.maxAuthors")}
+                  value={maxAuthors ?? 5}
+                  disabled={maxAuthors === undefined}
+                  min={1}
+                  max={2147483647}
+                  allowDecimal={false}
+                  allowNegative={false}
+                  clampBehavior="strict"
+                  w={90}
+                  onChange={(value) => {
+                    if (typeof value === "number" && value > 0)
+                      onAuthorOptions({ maxAuthors: value });
+                  }}
+                />
+                <Text size="sm">{t("discovery.authorsUnit")}</Text>
+              </Group>
+            </Stack>
+          </td>
+        </tr>
+      )}
       {(!choice.all || values.isError) && (
         <tr className="discovery-criterion-details">
           <td colSpan={3}>

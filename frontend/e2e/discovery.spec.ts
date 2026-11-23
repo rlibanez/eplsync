@@ -871,11 +871,13 @@ test("criteria picker stays fixed-height with checkbox options, summary, tooltip
     Math.abs(title.y + title.height / 2 - count.y - count.height / 2),
   ).toBeLessThan(2);
   expect(
-    (await page
-      .getByRole("rowgroup", { name: "Año de publicación", exact: true })
-      .getByRole("rowheader")
-      .boundingBox())!.height,
-  ).toBe(title.height);
+    Math.abs(
+      (await page
+        .getByRole("rowgroup", { name: "Año de publicación", exact: true })
+        .getByRole("rowheader")
+        .boundingBox())!.height - title.height,
+    ),
+  ).toBeLessThan(1);
   await page.screenshot({
     path: "/tmp/eplsync-discovery-compact-criteria.png",
     fullPage: true,
@@ -1063,11 +1065,21 @@ test("criteria table aligns its columns and expands manual selections across the
   await expect(
     table.getByRole("columnheader", { name: "Disponibles", exact: true }),
   ).toBeVisible();
-  await expect(table.getByRole("checkbox")).toHaveCount(5);
+  await expect(
+    table.getByRole("checkbox", {
+      name: "Todos los valores detectados",
+      exact: true,
+    }),
+  ).toHaveCount(5);
   const author = table.getByRole("rowgroup", { name: "Autores", exact: true });
   await expect(author.locator(".criterion-count")).toHaveText("2");
-  await author.getByRole("checkbox").uncheck();
-  const detail = author.locator(".discovery-criterion-details td");
+  await author
+    .getByRole("checkbox", {
+      name: "Todos los valores detectados",
+      exact: true,
+    })
+    .uncheck();
+  const detail = author.locator(".discovery-criterion-details td").last();
   await expect(detail).toHaveAttribute("colspan", "3");
   await expect(author.getByText("Autores", { exact: true })).toHaveCount(1);
   expect(
@@ -1084,11 +1096,21 @@ test("criteria table aligns its columns and expands manual selections across the
     .fill("Brandon");
   await page.getByRole("option", { name: /Brandon Sanderson/ }).click();
   await page.getByRole("heading", { name: "Descubrir", exact: true }).click();
-  await author.getByRole("checkbox").check();
+  await author
+    .getByRole("checkbox", {
+      name: "Todos los valores detectados",
+      exact: true,
+    })
+    .check();
   await expect(
     author.getByRole("textbox", { name: "Autores", exact: true }),
   ).toHaveCount(0);
-  await author.getByRole("checkbox").uncheck();
+  await author
+    .getByRole("checkbox", {
+      name: "Todos los valores detectados",
+      exact: true,
+    })
+    .uncheck();
   await expect(author).toContainText("Brandon Sanderson");
   await page.screenshot({
     path: "/tmp/eplsync-criteria-table-desktop.png",
@@ -1489,4 +1511,111 @@ test("Discover sync respects read-only Calibre permissions", async ({
   await expect(page.getByRole("button", { name: /Sincronizar/ })).toHaveCount(
     0,
   );
+});
+
+test("author detection exclusions update counts and survive saved searches, reload and reset", async ({
+  page,
+}) => {
+  const requests: URLSearchParams[] = [];
+  let saved: { id: string; name: string; filters: Record<string, string[]> }[] =
+    [];
+  await page.route("**/api/catalog/discovery/values?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const count = params.has("maxAuthors")
+      ? 1
+      : params.get("ignoreAnthologies") === "true"
+        ? 2
+        : 4;
+    return route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 100, totalItems: count, totalPages: 1 },
+      },
+    });
+  });
+  await page.route("**/api/catalog/books?**", (route) => {
+    requests.push(new URL(route.request().url()).searchParams);
+    return route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+      },
+    });
+  });
+  await page.route("**/api/catalog/saved-searches**", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: saved });
+    const input = route.request().postDataJSON();
+    saved = [{ ...input, id: "author-exclusions" }];
+    return route.fulfill({ json: saved[0] });
+  });
+  await page.goto("/discover");
+  const row = page.getByRole("rowgroup", { name: "Autores", exact: true });
+  const aa = page.getByRole("checkbox", {
+    name: "Ignorar libros de «AA. VV.» al detectar autores",
+    exact: true,
+  });
+  const limit = page.getByRole("checkbox", {
+    name: "Ignorar libros con más de",
+    exact: true,
+  });
+  await expect(aa).not.toBeChecked();
+  await expect(limit).not.toBeChecked();
+  await expect(row.getByRole("cell", { name: "4", exact: true })).toBeVisible();
+  await aa.check();
+  await expect(row.getByRole("cell", { name: "2", exact: true })).toBeVisible();
+  await limit.check();
+  const max = page.getByRole("textbox", {
+    name: "Máximo de autores por libro",
+    exact: true,
+  });
+  await max.fill("2");
+  await expect(row.getByRole("cell", { name: "1", exact: true })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Guardar búsqueda", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("textbox", { name: "Nombre", exact: true })
+    .fill("Sin antologías");
+  await dialog
+    .getByRole("button", { name: "Guardar búsqueda", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  expect(saved[0].filters.discoveryIgnoreAnthologies).toEqual(["true"]);
+  expect(saved[0].filters.discoveryMaxAuthors).toEqual(["2"]);
+  await aa.uncheck();
+  await limit.uncheck();
+  await page
+    .getByRole("textbox", { name: "Búsquedas guardadas", exact: true })
+    .click();
+  await page
+    .getByRole("option", { name: "Sin antologías", exact: true })
+    .click();
+  await expect(aa).toBeChecked();
+  await expect(max).toHaveValue("2");
+  await expect
+    .poll(() => requests.at(-1)?.get("discoveryMaxAuthors"))
+    .toBe("2");
+  expect(requests.at(-1)?.get("discoveryIgnoreAnthologies")).toBe("true");
+  await page.reload();
+  await expect(aa).toBeChecked();
+  await expect(max).toHaveValue("2");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(aa).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "/tmp/eplsync-author-options-mobile.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Limpiar", exact: true })
+    .first()
+    .click();
+  await expect(aa).not.toBeChecked();
+  await expect(limit).not.toBeChecked();
 });

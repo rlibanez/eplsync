@@ -44,6 +44,8 @@ export const multiKeys = [
   "torrentStatus",
 ];
 export const filterKeys = [
+  "discoveryIgnoreAnthologies",
+  "discoveryMaxAuthors",
   "discoverySource",
   "discoveryCriterion",
   "discoveryCriteria",

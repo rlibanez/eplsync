@@ -1,5 +1,9 @@
 {
   "discovery": {
+    "authorsUnit": "autores",
+    "ignoreAnthologies": "Ignorar libros de «AA. VV.» al detectar autores",
+    "limitAuthors": "Ignorar libros con más de",
+    "maxAuthors": "Máximo de autores por libro",
     "syncAll": "Sincronizar todo",
     "syncDownloads": "Sincronizar descargas",
     "syncCalibre": "Sincronizar Calibre",

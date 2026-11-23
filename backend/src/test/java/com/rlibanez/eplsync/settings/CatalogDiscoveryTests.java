@@ -154,4 +154,25 @@ class CatalogDiscoveryTests {
         jdbc.update("UPDATE torrent_downloads SET status='NOT_FOUND'");assertThat(ids(filter("DOWNLOADS","AUTHOR"))).isEmpty();
         var f=filter("DOWNLOADS","AUTHOR");f.setDiscoveryValues(new String[]{});var invalid=f;assertThatThrownBy(invalid::normalize).isInstanceOf(com.rlibanez.eplsync.exception.UserInputException.class);
     }
+    @Test void authorDetectionIgnoresAnthologiesAndBooksAboveTheLimitWithoutExcludingResults() throws Exception {
+        jdbc.update("UPDATE catalog_books SET author='AA. VV. & Compartido & Solo antología' WHERE epl_id=1");
+        jdbc.update("UPDATE catalog_books SET author='Compartido & Otro' WHERE epl_id=5");
+        jdbc.update("UPDATE catalog_books SET author='Solo antología' WHERE epl_id=2");
+        jdbc.update("UPDATE catalog_books SET author='AA. VV. & Compartido & Solo antología' WHERE epl_id=4");
+        assertThat(discovery.options("CALIBRE","AUTHOR","",0,100).meta().totalItems()).isEqualTo(4);
+        assertThat(discovery.options("CALIBRE","AUTHOR","",0,100,true,null).items()).extracting(CatalogDiscovery.Value::label).containsExactly("Compartido","Otro");
+        assertThat(discovery.options("DOWNLOADS","AUTHOR","",0,100,true,null).items()).isEmpty();
+        assertThat(discovery.options("BOTH","AUTHOR","",0,100,true,2).items()).extracting(CatalogDiscovery.Value::label).containsExactly("Compartido","Otro");
+        assertThat(discovery.options("CALIBRE","AUTHOR","",0,100,false,1).items()).isEmpty();
+        assertThat(discovery.options("CALIBRE","AUTHOR","",0,100,false,2).items()).extracting(CatalogDiscovery.Value::label).containsExactly("Compartido","Otro");
+        assertThat(discovery.options("CALIBRE","AUTHOR","",0,100,false,3).meta().totalItems()).isEqualTo(4);
+        var f=filter("CALIBRE","AUTHOR");f.setDiscoveryIgnoreAnthologies(true);f.setDiscoveryMaxAuthors(2);
+        assertThat(ids(f)).contains(4L).doesNotContain(2L);
+        f.setDiscoveryValues(new String[]{"Solo antología"});assertThat(ids(f)).isEmpty();
+        assertThat(discovery.options("CALIBRE","COLLECTION","",0,100,true,1)).isEqualTo(discovery.options("CALIBRE","COLLECTION","",0,100));
+        mvc.perform(get("/api/catalog/discovery/values").param("source","CALIBRE").param("maxAuthors","0")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/catalog/books").param("discoverySource","CALIBRE").param("discoveryMaxAuthors","-1")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/catalog/discovery/values").param("source","CALIBRE").param("ignoreAnthologies","true").param("maxAuthors","2")).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+    }
+
 }

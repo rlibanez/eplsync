@@ -116,3 +116,15 @@ de descubrimiento se asignan a Descubrir y el resto a Catálogo.
 No se necesitan nuevos permisos: se requiere
 lectura del Catálogo y acceso al origen utilizado. Los permisos existentes siguen
 controlando las acciones sobre los resultados.
+
+En **Autores** puedes limitar los libros utilizados para detectar autores:
+
+- **Ignorar libros de «AA. VV.» al detectar autores** descarta de la detección
+  todos los autores de esos libros.
+- **Ignorar libros con más de X autores** permite establecer un máximo entero
+  mayor que cero; los libros con exactamente X autores sí se tienen en cuenta.
+
+Ambas opciones están desactivadas por defecto, pueden combinarse y se guardan
+con las búsquedas de Descubrir. Solo afectan al origen de los autores: no impiden
+que un libro con varios autores aparezca entre los resultados. Un autor sigue
+estando disponible si aparece en otro libro que cumpla estas condiciones.

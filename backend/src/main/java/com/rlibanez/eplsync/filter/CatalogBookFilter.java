@@ -124,6 +124,8 @@ public class CatalogBookFilter {
     private Boolean discoveryExcludeDownloads;
     private Boolean discoveryExcludeCalibre;
     private Boolean discoveryExcludePending;
+    private Boolean discoveryIgnoreAnthologies;
+    private Integer discoveryMaxAuthors;
 
     /** Null means use every detected value for this criterion. Legacy unqualified values remain valid for single-criterion links. */
     public java.util.List<String> discoverySelection(String criterion) {
@@ -168,6 +170,7 @@ public class CatalogBookFilter {
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
         discoverySource=choice(discoverySource,Set.of("DOWNLOADS","CALIBRE","BOTH"),"discoverySource");
+        if(discoveryMaxAuthors!=null && discoveryMaxAuthors<1) throw new com.rlibanez.eplsync.exception.UserInputException("El máximo de autores debe ser mayor que 0");
         var discoveryAllowed=Set.of("AUTHOR","COLLECTION","GENRE","LANGUAGE","YEAR");
         discoveryCriterion=choice(discoveryCriterion,discoveryAllowed,"discoveryCriterion");
         discoveryMatch=choice(discoveryMatch,Set.of("ALL","ANY"),"discoveryMatch");
@@ -175,7 +178,7 @@ public class CatalogBookFilter {
             if(discoveryCriteria.length==0 || discoveryCriteria.length>5 || java.util.Arrays.stream(discoveryCriteria).anyMatch(v->v==null || !discoveryAllowed.contains(v))) throw new com.rlibanez.eplsync.exception.UserInputException("Criterios de descubrimiento inválidos");
             discoveryCriteria=java.util.Arrays.stream(discoveryCriteria).distinct().toArray(String[]::new);
         }
-        if(discoverySource==null && (discoveryCriteria!=null || discoveryMatch!=null || discoveryCriterion!=null || discoveryValues!=null || discoveryExcludeDownloads!=null || discoveryExcludeCalibre!=null || discoveryExcludePending!=null)) throw new com.rlibanez.eplsync.exception.UserInputException("Indica el origen de descubrimiento");
+        if(discoverySource==null && (discoveryCriteria!=null || discoveryMatch!=null || discoveryCriterion!=null || discoveryValues!=null || discoveryExcludeDownloads!=null || discoveryExcludeCalibre!=null || discoveryExcludePending!=null || discoveryIgnoreAnthologies!=null || discoveryMaxAuthors!=null)) throw new com.rlibanez.eplsync.exception.UserInputException("Indica el origen de descubrimiento");
         if(discoverySource!=null) {
             if(discoveryCriteria==null) discoveryCriteria=new String[]{discoveryCriterion==null?"AUTHOR":discoveryCriterion};
             discoveryCriterion=discoveryCriteria[0];

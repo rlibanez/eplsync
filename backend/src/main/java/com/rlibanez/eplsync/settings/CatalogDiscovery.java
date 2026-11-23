@@ -39,17 +39,26 @@ public class CatalogDiscovery {
                 ?"EXISTS(SELECT 1 FROM torrent_downloads d WHERE d.epl_id=b.epl_id AND d.client_instance_id=? AND d.status='DOWNLOADED')"
                 :"EXISTS(SELECT 1 FROM calibre_books c WHERE c.epl_id=b.epl_id AND c.active=1)";
             var rows=jdbc.queryForList("SELECT b."+field+" value,count(DISTINCT b.epl_id) books FROM catalog_books b WHERE "+where+" GROUP BY b."+field+" ORDER BY b."+field+" COLLATE EPL_TEXT",source.equals("DOWNLOADS")?new Object[]{tracking.instanceId()}:new Object[]{});
-            for(var row:rows) for(String label:DiscoveryTerms.labels(Objects.toString(row.get("value"),null),criterion)) {
+            for(var row:rows) {
+                var labels=DiscoveryTerms.labels(Objects.toString(row.get("value"),null),criterion);
+                if(criterion.equals("AUTHOR") && (
+                    Boolean.TRUE.equals(f.getDiscoveryIgnoreAnthologies()) && labels.stream().anyMatch(label->DiscoveryTerms.key(label).replaceAll("[.\\s]", "").equals("aavv"))
+                    || f.getDiscoveryMaxAuthors()!=null && labels.stream().map(DiscoveryTerms::key).distinct().count()>f.getDiscoveryMaxAuthors())) continue;
+                for(String label:labels) {
                 String key=DiscoveryTerms.key(label);var previous=values.get(key);var counts=new LinkedHashMap<String,Long>(previous==null?Map.of():previous.counts());counts.merge(source,((Number)row.get("books")).longValue(),Long::sum);
                 values.put(key,new Value(key,previous==null?label:previous.label(),Map.copyOf(counts)));
+            }
             }
         }
         return values;
     }
     public PageResponse<Value> options(String source,String criterion,String q,int page,int size) {
+        return options(source,criterion,q,page,size,false,null);
+    }
+    public PageResponse<Value> options(String source,String criterion,String q,int page,int size,boolean ignoreAnthologies,Integer maxAuthors) {
         com.rlibanez.eplsync.config.QueryLimits.page(page,size);
         if(q==null || q.length()>256) throw new com.rlibanez.eplsync.exception.UserInputException("Búsqueda de valores inválida");
-        var filter=new CatalogBookFilter();filter.setDiscoverySource(source);filter.setDiscoveryCriterion(criterion);
+        var filter=new CatalogBookFilter();filter.setDiscoverySource(source);filter.setDiscoveryCriterion(criterion);filter.setDiscoveryIgnoreAnthologies(ignoreAnthologies);filter.setDiscoveryMaxAuthors(maxAuthors);
         String needle=DiscoveryTerms.key(q);
         var values=vocabulary(filter,criterion).values().stream().filter(v->DiscoveryTerms.key(v.label()).contains(needle)).sorted((a,b)->com.rlibanez.eplsync.ordering.TextOrdering.compare(a.label(),b.label())).toList();
         int pages=(values.size()+size-1)/size;long start=(long)page*size;
