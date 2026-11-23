@@ -247,3 +247,178 @@ for (const button of ["Limpiar", "Limpiar filtros"]) {
     expect(mutations).toEqual([]);
   });
 }
+
+test("catalog authorship exclusions are saved, restored, applied and cleared", async ({
+  page,
+}) => {
+  type Entry = { id: string; name: string; filters: Record<string, string[]> };
+  let saved: Entry[] = [];
+  const requests: URLSearchParams[] = [];
+  await page.route("**/api/catalog/saved-searches**", (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: saved });
+    saved = [{ ...route.request().postDataJSON(), id: "authorship" }];
+    return route.fulfill({ json: saved[0] });
+  });
+  await page.route("**/api/catalog/books?**", (route) => {
+    requests.push(new URL(route.request().url()).searchParams);
+    return route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+      },
+    });
+  });
+  await page.goto("/catalog");
+  await page.locator(".catalog-search summary").click();
+  const aa = page.getByRole("checkbox", {
+    name: "Excluir libros de «AA. VV.»",
+    exact: true,
+  });
+  const limit = page.getByRole("checkbox", {
+    name: "Excluir libros con más de",
+    exact: true,
+  });
+  const max = page.getByRole("textbox", {
+    name: "Máximo de autores por libro",
+    exact: true,
+  });
+  await expect(aa).not.toBeChecked();
+  await expect(max).toBeDisabled();
+  await aa.check();
+  await limit.check();
+  await max.fill("2");
+  await page
+    .getByRole("button", { name: "Guardar búsqueda", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("textbox", { name: "Nombre", exact: true })
+    .fill("Sin antologías");
+  await dialog
+    .getByRole("button", { name: "Guardar búsqueda", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  expect(saved[0].filters).toEqual({
+    excludeAnthologies: ["true"],
+    maxAuthors: ["2"],
+  });
+  await aa.uncheck();
+  await limit.uncheck();
+  await page
+    .getByRole("textbox", { name: "Búsquedas guardadas", exact: true })
+    .click();
+  await page
+    .getByRole("option", { name: "Sin antologías", exact: true })
+    .click();
+  await expect(aa).toBeChecked();
+  await expect(max).toHaveValue("2");
+  await expect.poll(() => requests.at(-1)?.get("maxAuthors")).toBe("2");
+  expect(requests.at(-1)?.get("excludeAnthologies")).toBe("true");
+  await page.reload();
+  await page.locator(".catalog-search summary").click();
+  await expect(aa).toBeChecked();
+  await expect(max).toHaveValue("2");
+  await page.screenshot({
+    path: "/tmp/eplsync-catalog-authorship.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Plegar menú lateral", exact: true })
+    .click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".sidebar")).toHaveAttribute("inert", "");
+  await expect(aa).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "/tmp/eplsync-catalog-authorship-mobile.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Limpiar", exact: true })
+    .first()
+    .click();
+  await expect(aa).not.toBeChecked();
+  await expect(max).toBeDisabled();
+  expect(new URL(page.url()).searchParams.has("maxAuthors")).toBe(false);
+});
+
+test("Authors and ranges share a grid with Authors spanning two columns", async ({
+  page,
+}) => {
+  await page.route("**/api/catalog/books?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        meta: { page: 0, size: 20, totalItems: 0, totalPages: 0 },
+      },
+    }),
+  );
+  await page.goto("/catalog");
+  await page.locator(".catalog-search summary").click();
+  const frame = page.locator(".catalog-author-filters");
+  await expect(frame.locator("legend")).toHaveText("Autores");
+  const grid = page.locator(".catalog-range-grid");
+  const ranges = grid.locator(".catalog-compact-range");
+  expect(
+    await grid.locator(":scope > fieldset > legend").allTextContents(),
+  ).toEqual([
+    "Autores",
+    "Páginas",
+    "Año de publicación",
+    "Publicado en EPL",
+    "Añadido a EPL Sync",
+  ]);
+  for (const width of [2560, 1800, 1440, 900, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expect
+      .poll(async () => {
+        const box = (await frame.boundingBox())!;
+        const range = (await ranges.first().boundingBox())!;
+        return Math.abs(
+          box.width - (width > 600 ? range.width * 2 + 16 : range.width),
+        );
+      })
+      .toBeLessThan(2);
+    await expect.poll(async () => {
+      const authorsHeight = (await frame.boundingBox())!.height;
+      const heights = await ranges.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().height));
+      return Math.max(...heights.map(height => Math.abs(height - authorsHeight)));
+    }).toBeLessThan(2);
+    if (width === 2560) {
+      const authorsBox = (await frame.boundingBox())!;
+      const pagesBox = (await ranges.nth(0).boundingBox())!;
+      const yearBox = (await ranges.nth(1).boundingBox())!;
+      const publishedBox = (await ranges.nth(2).boundingBox())!;
+      expect(Math.abs(authorsBox.y - pagesBox.y)).toBeLessThan(2);
+      expect(Math.abs(authorsBox.y - yearBox.y)).toBeLessThan(2);
+      expect(publishedBox.y).toBeGreaterThan(authorsBox.y);
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await expect(
+      page.getByRole("checkbox", {
+        name: "Excluir libros de «AA. VV.»",
+        exact: true,
+      }),
+    ).toBeVisible();
+    const legendBox = (await frame.locator("legend").boundingBox())!;
+    const optionsBox = (await frame.locator(".catalog-author-options").boundingBox())!;
+    const frameBox = (await frame.boundingBox())!;
+    const topSpace = optionsBox.y - (legendBox.y + legendBox.height);
+    const bottomSpace = frameBox.y + frameBox.height - optionsBox.y - optionsBox.height;
+    expect(Math.abs(topSpace - bottomSpace)).toBeLessThan(2);
+    if (width === 2560 || width === 390)
+      await page.screenshot({
+        path: `/tmp/eplsync-authors-frame-${width}.png`,
+        fullPage: true,
+      });
+  }
+});

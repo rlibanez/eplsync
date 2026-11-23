@@ -228,12 +228,41 @@ it("clicking a catalog value replaces newly negated fields with inclusion", asyn
 
 it("migrates old discovery exclusions to Catalog presence and gives explicit presence priority", async () => {
   const { catalogParams } = await import("../../api/catalog");
-  const old = catalogParams(new URLSearchParams("discoverySource=BOTH&discoveryExcludeDownloads=true&discoveryExcludeCalibre=true"));
+  const old = catalogParams(
+    new URLSearchParams(
+      "discoverySource=BOTH&discoveryExcludeDownloads=true&discoveryExcludeCalibre=true",
+    ),
+  );
   expect(old.get("torrentPresence")).toBe("ABSENT");
   expect(old.get("calibrePresence")).toBe("ABSENT");
   expect(old.has("discoveryExcludeDownloads")).toBe(false);
   expect(old.has("discoveryExcludeCalibre")).toBe(false);
-  const explicit = catalogParams(new URLSearchParams("discoverySource=BOTH&discoveryExcludeDownloads=true&torrentPresence=PRESENT"));
+  const explicit = catalogParams(
+    new URLSearchParams(
+      "discoverySource=BOTH&discoveryExcludeDownloads=true&torrentPresence=PRESENT",
+    ),
+  );
   expect(explicit.get("torrentPresence")).toBe("PRESENT");
   expect(filterRequest(explicit).has("discoveryExcludeDownloads")).toBe(false);
+});
+
+it("preserves authorship exclusions in personal searches and selections", async () => {
+  const { savedFilters, applySavedFilters } =
+    await import("./SavedCatalogSearches");
+  const { catalogParams } = await import("../../api/catalog");
+  const { selectionFilters, selectionQuery } =
+    await import("./CatalogSelection");
+  const params = catalogParams(
+    new URLSearchParams("excludeAnthologies=true&maxAuthors=2&author=King"),
+  );
+  const saved = savedFilters(params);
+  expect(saved).toEqual({
+    excludeAnthologies: ["true"],
+    maxAuthors: ["2"],
+    author: ["King"],
+  });
+  const restored = applySavedFilters(new URLSearchParams("page=4"), saved);
+  expect(filterRequest(restored).get("excludeAnthologies")).toBe("true");
+  expect(selectionFilters(selectionQuery(restored)).maxAuthors).toBe("2");
+  expect(applySavedFilters(restored, {}).has("maxAuthors")).toBe(false);
 });

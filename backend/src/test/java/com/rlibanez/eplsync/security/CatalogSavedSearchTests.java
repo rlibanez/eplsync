@@ -132,4 +132,15 @@ class CatalogSavedSearchTests {
             .content("{\"name\":\"Test\",\"filters\":{}}" )).andExpect(status().isForbidden());
     }
 
+    @Test void catalogSavesAndLoadsAuthorshipOptions() throws Exception {
+        var session=login("reader");
+        var filters=Map.of("excludeAnthologies",List.of("true"),"maxAuthors",List.of("2"));
+        mvc.perform(post("/api/catalog/saved-searches").session(session).with(csrf()).contentType("application/json")
+            .content(mapper.writeValueAsString(Map.of("name","Autoría","filters",filters))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.filters.maxAuthors[0]").value("2"));
+        mvc.perform(get("/api/catalog/saved-searches").session(session)).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].filters.excludeAnthologies[0]").value("true"))
+            .andExpect(jsonPath("$[0].filters.maxAuthors[0]").value("2"));
+    }
+
 }

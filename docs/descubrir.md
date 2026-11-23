@@ -128,3 +128,9 @@ Ambas opciones están desactivadas por defecto, pueden combinarse y se guardan
 con las búsquedas de Descubrir. Solo afectan al origen de los autores: no impiden
 que un libro con varios autores aparezca entre los resultados. Un autor sigue
 estando disponible si aparece en otro libro que cumpla estas condiciones.
+
+La **Búsqueda avanzada** también ofrece un recuadro **Autores**, tanto en Catálogo
+como en Descubrir: **Excluir libros de «AA. VV.»** y **Excluir libros con más de
+X autores**. Estas opciones sí excluyen libros de los resultados, se combinan con
+el resto de filtros y se conservan en las búsquedas guardadas de cada buscador.
+Las exportaciones y la selección de todos los resultados respetan las exclusiones.

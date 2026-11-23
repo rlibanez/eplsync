@@ -175,4 +175,19 @@ class CatalogDiscoveryTests {
         mvc.perform(get("/api/catalog/discovery/values").param("source","CALIBRE").param("ignoreAnthologies","true").param("maxAuthors","2")).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
     }
 
+    @Test @WithMockUser(authorities="CATALOG_READ")
+    void catalogAuthorshipExcludesResultsIndependentlyOfDiscoveryAndExportsTheSameSelection() throws Exception {
+        jdbc.update("UPDATE catalog_books SET author=CASE epl_id WHEN 1 THEN 'AA. VV. & Uno' WHEN 2 THEN 'Solo' WHEN 3 THEN 'Uno & Dos' WHEN 4 THEN 'Uno & Dos & Tres' WHEN 5 THEN 'Sin autor conocido' WHEN 6 THEN 'Uno & UNO' WHEN 7 THEN 'Saa. VV. autor' WHEN 8 THEN ' aa. vv. & Otro' ELSE author END");
+        var f=new CatalogBookFilter();
+        f.setExcludeAnthologies(true);assertThat(ids(f)).doesNotContain(1L,8L).hasSize(8);
+        f.setExcludeAnthologies(false);f.setMaxAuthors(1);assertThat(ids(f)).containsExactly(2L,5L,6L,7L,9L,10L);
+        f.setExcludeAnthologies(true);f.setMaxAuthors(2);f.setAuthor(new String[]{"Uno"});assertThat(ids(f)).containsExactly(3L,6L);
+        mvc.perform(get("/api/catalog/books").param("excludeAnthologies","true").param("maxAuthors","2").param("author","Uno")).andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(2));
+        mvc.perform(post("/api/catalog/data/export/preview").contentType("application/json").content("""
+            {"filters":{"excludeAnthologies":true,"maxAuthors":2,"author":["Uno"]},"format":"JSON","columns":["eplId"]}
+            """)).andExpect(status().isOk()).andExpect(jsonPath("$.rows").value(2));
+        mvc.perform(get("/api/catalog/books").param("maxAuthors","0")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/catalog/books").param("maxAuthors","-1")).andExpect(status().isBadRequest());
+    }
+
 }

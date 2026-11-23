@@ -13,6 +13,10 @@ import {
 } from "../../components/StateOperator";
 import { Fragment, useRef, useState } from "react";
 import {
+  Checkbox,
+  NumberInput,
+  Group,
+  Text,
   Button,
   TextInput,
   MultiSelect,
@@ -44,6 +48,8 @@ export const multiKeys = [
   "torrentStatus",
 ];
 export const filterKeys = [
+  "excludeAnthologies",
+  "maxAuthors",
   "discoveryIgnoreAnthologies",
   "discoveryMaxAuthors",
   "discoverySource",
@@ -544,6 +550,46 @@ export function CatalogFilters({
           {tokenField("revision")}
         </div>
         <div className="catalog-filter-grid catalog-range-grid">
+          <fieldset className="catalog-author-filters">
+            <legend>{t("filters.authorship")}</legend>
+            <Group className="catalog-author-options" gap="lg" align="center">
+              <Checkbox
+                label={t("filters.excludeAnthologies")}
+                checked={values.excludeAnthologies === "true"}
+                onChange={(event) =>
+                  set(
+                    "excludeAnthologies",
+                    event.currentTarget.checked ? "true" : "",
+                  )
+                }
+              />
+              <Group gap="xs" wrap="wrap">
+                <Checkbox
+                  label={t("filters.limitAuthors")}
+                  checked={Boolean(values.maxAuthors)}
+                  onChange={(event) =>
+                    set("maxAuthors", event.currentTarget.checked ? "5" : "")
+                  }
+                />
+                <NumberInput
+                  aria-label={t("filters.maxAuthors")}
+                  value={Number(values.maxAuthors || 5)}
+                  disabled={!values.maxAuthors}
+                  min={1}
+                  max={2147483647}
+                  allowDecimal={false}
+                  allowNegative={false}
+                  clampBehavior="strict"
+                  w={90}
+                  onChange={(value) => {
+                    if (typeof value === "number" && value > 0)
+                      set("maxAuthors", String(value));
+                  }}
+                />
+                <Text size="sm">{t("discovery.authorsUnit")}</Text>
+              </Group>
+            </Group>
+          </fieldset>
           {ranges.map(([from, to, label]) => (
             <fieldset
               className={`catalog-date-range catalog-compact-range${label === "published" || label === "added" ? " catalog-calendar-range" : ""}`}

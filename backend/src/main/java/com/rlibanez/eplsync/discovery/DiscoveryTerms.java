@@ -21,7 +21,15 @@ public final class DiscoveryTerms {
         return Arrays.stream(criterion.equals("AUTHOR")?value.split("&"):criterion.equals("GENRE")?value.split(","):new String[]{value}).map(String::strip).filter(s->!s.isEmpty()).distinct().toList();
     }
     public static List<String> keys(String value,String criterion) {return labels(value,criterion).stream().map(DiscoveryTerms::key).distinct().toList();}
+    public static boolean authorsAllowed(String value,boolean excludeAnthologies,Integer maxAuthors) {
+        var labels=labels(value,"AUTHOR");
+        return !(excludeAnthologies && labels.stream().anyMatch(label->key(label).replaceAll("[.\\s]", "").equals("aavv")))
+            && (maxAuthors==null || labels.stream().map(DiscoveryTerms::key).distinct().count()<=maxAuthors);
+    }
     public static void register(Connection connection) throws SQLException {
+        org.sqlite.Function.create(connection,"epl_author_allowed",new org.sqlite.Function() {
+            @Override protected void xFunc() throws SQLException {result(authorsAllowed(value_text(0),value_int(1)!=0,value_int(2))?1:0);}
+        });
         org.sqlite.Function.create(connection,"epl_discovery_tokens",new org.sqlite.Function() {
             @Override protected void xFunc() throws SQLException {result(JSON.writeValueAsString(keys(value_text(0),Objects.toString(value_text(1),"AUTHOR"))));}
         });

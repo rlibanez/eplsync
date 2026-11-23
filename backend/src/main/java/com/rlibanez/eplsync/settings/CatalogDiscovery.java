@@ -41,9 +41,7 @@ public class CatalogDiscovery {
             var rows=jdbc.queryForList("SELECT b."+field+" value,count(DISTINCT b.epl_id) books FROM catalog_books b WHERE "+where+" GROUP BY b."+field+" ORDER BY b."+field+" COLLATE EPL_TEXT",source.equals("DOWNLOADS")?new Object[]{tracking.instanceId()}:new Object[]{});
             for(var row:rows) {
                 var labels=DiscoveryTerms.labels(Objects.toString(row.get("value"),null),criterion);
-                if(criterion.equals("AUTHOR") && (
-                    Boolean.TRUE.equals(f.getDiscoveryIgnoreAnthologies()) && labels.stream().anyMatch(label->DiscoveryTerms.key(label).replaceAll("[.\\s]", "").equals("aavv"))
-                    || f.getDiscoveryMaxAuthors()!=null && labels.stream().map(DiscoveryTerms::key).distinct().count()>f.getDiscoveryMaxAuthors())) continue;
+                if(criterion.equals("AUTHOR") && !DiscoveryTerms.authorsAllowed(Objects.toString(row.get("value"),null),Boolean.TRUE.equals(f.getDiscoveryIgnoreAnthologies()),f.getDiscoveryMaxAuthors())) continue;
                 for(String label:labels) {
                 String key=DiscoveryTerms.key(label);var previous=values.get(key);var counts=new LinkedHashMap<String,Long>(previous==null?Map.of():previous.counts());counts.merge(source,((Number)row.get("books")).longValue(),Long::sum);
                 values.put(key,new Value(key,previous==null?label:previous.label(),Map.copyOf(counts)));

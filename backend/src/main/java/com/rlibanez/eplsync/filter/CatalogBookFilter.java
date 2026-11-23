@@ -124,6 +124,8 @@ public class CatalogBookFilter {
     private Boolean discoveryExcludeDownloads;
     private Boolean discoveryExcludeCalibre;
     private Boolean discoveryExcludePending;
+    private Boolean excludeAnthologies;
+    private Integer maxAuthors;
     private Boolean discoveryIgnoreAnthologies;
     private Integer discoveryMaxAuthors;
 
@@ -170,6 +172,7 @@ public class CatalogBookFilter {
     // --- Helper: normalización de strings (para evitar " ") ---
     public void normalize() {
         discoverySource=choice(discoverySource,Set.of("DOWNLOADS","CALIBRE","BOTH"),"discoverySource");
+        if(maxAuthors!=null && maxAuthors<1) throw new com.rlibanez.eplsync.exception.UserInputException("El máximo de autores debe ser mayor que 0");
         if(discoveryMaxAuthors!=null && discoveryMaxAuthors<1) throw new com.rlibanez.eplsync.exception.UserInputException("El máximo de autores debe ser mayor que 0");
         var discoveryAllowed=Set.of("AUTHOR","COLLECTION","GENRE","LANGUAGE","YEAR");
         discoveryCriterion=choice(discoveryCriterion,discoveryAllowed,"discoveryCriterion");

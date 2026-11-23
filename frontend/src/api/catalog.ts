@@ -164,6 +164,8 @@ export function catalogParams(
     ["publicationYear", 11],
     ["eplId", 19],
     ["revision", 24],
+    ["excludeAnthologies", 5],
+    ["maxAuthors", 10],
     ["discoveryIgnoreAnthologies", 5],
     ["discoveryMaxAuthors", 10],
     ["discoverySource", 16],

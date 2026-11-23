@@ -32,6 +32,14 @@ public final class CatalogBookSpecifications {
             spec = spec.and((root, q, cb) -> com.rlibanez.eplsync.ordering.StateOperator.excluded(f.getEplIdOperator())?cb.not(selectedIds(root,cb,f.getEplId())):selectedIds(root,cb,f.getEplId()));
         }
 
+        if(Boolean.TRUE.equals(f.getExcludeAnthologies()) || f.getMaxAuthors()!=null) {
+            spec=spec.and((root,q,cb)-> {
+                var h=(org.hibernate.query.criteria.HibernateCriteriaBuilder)cb;
+                return cb.isTrue(h.sql("epl_author_allowed(?,?,?)=1",Boolean.class,root.get("author"),
+                    h.value(Boolean.TRUE.equals(f.getExcludeAnthologies())?1:0),h.value(f.getMaxAuthors()==null?Integer.MAX_VALUE:f.getMaxAuthors())));
+            });
+        }
+
         spec = andIfNotNull(spec, textFilter("author",f.getAuthor(),f.getAuthorOperator()));
         spec = andIfNotNull(spec, textFilter("title",f.getTitle(),f.getTitleOperator()));
         spec = andIfNotNull(spec, textFilter("genres",f.getGenres(),f.getGenresOperator()));

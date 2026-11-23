@@ -1048,6 +1048,10 @@
     "sourceZipSha256": "ZIP SHA-256"
   },
   "filters": {
+    "authorship": "Authors",
+    "excludeAnthologies": "Exclude “AA. VV.” books",
+    "limitAuthors": "Exclude books with more authors than",
+    "maxAuthors": "Maximum authors per book",
     "containsText": "Contains any of the specified texts",
     "excludesText": "Contains none of the specified texts",
     "includeSelected": "Include selected values",
