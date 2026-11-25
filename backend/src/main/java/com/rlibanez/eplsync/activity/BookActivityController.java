@@ -21,7 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/catalog/books/{eplId}/activity")
 @PreAuthorize("hasAuthority('CATALOG_READ')")
 public class BookActivityController {
-    public enum Operation { DOWNLOAD, DOWNLOAD_UPDATE, DOWNLOAD_COMPLETED, CALIBRE_SEND, DOWNLOAD_CLEANUP, CALIBRE_CLEANUP, DOWNLOAD_DELETE, CALIBRE_DELETE, DOWNLOAD_RETRY, CALIBRE_RETRY, CALIBRE_OMIT }
+    public enum Operation { DOWNLOAD, DOWNLOAD_UPDATE, DOWNLOAD_COMPLETED, CALIBRE_SEND, DOWNLOAD_CLEANUP, CALIBRE_CLEANUP, DOWNLOAD_DELETE, CALIBRE_DELETE, DOWNLOAD_RETRY, CALIBRE_RETRY, CALIBRE_OMIT, CALIBRE_REVISION_CONFIRM }
     public enum Result { PENDING, RUNNING, PAUSED, SUCCEEDED, FAILED, BLOCKED, UNCERTAIN, SKIPPED, CANCELLED, OMITTED }
     public record Entry(String id,Instant createdAt,String operation,String revision,String result,String message,String href) {}
     private final JdbcTemplate jdbc;
@@ -80,6 +80,7 @@ public class BookActivityController {
             queries.add("SELECT 'completed:'||d.id,"+millis("d.completed_at")+",'DOWNLOAD_COMPLETED',CAST(d.revision AS TEXT),'SUCCEEDED',NULL,NULL,'downloads',"+job+",0 FROM torrent_downloads d WHERE d.epl_id=? AND d.completed_at IS NOT NULL");args.add(eplId);
         }
         if(calibre) {
+            queries.add("SELECT 'calibre-revision:'||i.id,"+millis("coalesce(c.applied_at,c.created_at)")+",'CALIBRE_REVISION_CONFIRM',c.target_revision,CASE WHEN c.applied_at IS NOT NULL THEN 'SUCCEEDED' WHEN c.mode='IMPORT' THEN i.state ELSE 'UNCERTAIN' END,j.state,'Usuario: '||c.username||'. Revisión EPUB: r'||c.epub_revision||'; revisión confirmada: r'||c.target_revision||'. EPUB original sin modificar'||CASE WHEN c.mode='IMPORT' THEN '. Importación nueva; Calibre ID antiguo: '||c.old_calibre_id||'; nuevo: '||coalesce(CAST(c.new_calibre_id AS TEXT),'pendiente') ELSE '' END,'calibre',j.id,0 FROM calibre_revision_confirmations c JOIN calibre_job_items i ON i.id=c.item_id JOIN calibre_jobs j ON j.id=i.job_id WHERE i.epl_id=?");args.add(eplId);
             queries.add("SELECT 'calibre:'||i.id,"+millis("j.created_at")+",'CALIBRE_SEND',i.revision,CASE WHEN "+INITIAL_STATE+"='CLEANUP_PENDING' THEN i.completion_state ELSE "+INITIAL_STATE+" END,j.state,"+INITIAL_MESSAGE+",'calibre',j.id,0 FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id "+firstAttempt("calibre")+" WHERE i.epl_id=?");args.add(eplId);
             queries.add("SELECT 'calibre-cleanup:'||i.id,"+millis("j.created_at")+",'CALIBRE_CLEANUP',NULL,CASE WHEN j.state='CANCELLED' THEN 'CANCELLED' WHEN i.state='CLEANUP_PENDING' THEN 'PENDING' ELSE 'SUCCEEDED' END,j.state,i.message,'calibre',j.id,0 FROM calibre_job_items i JOIN calibre_jobs j ON j.id=i.job_id WHERE i.epl_id=? AND i.cleanup_policy<>'KEEP' AND json_array_length(i.cleanup_ids)>0 AND (i.state='CLEANUP_PENDING' OR i.state IN ('ACCEPTED','SKIPPED') AND i.calibre_id IS NOT NULL)");args.add(eplId);
             retry(queries,args,eplId,"calibre","calibre_jobs","calibre_job_items");

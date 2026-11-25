@@ -33,6 +33,12 @@ class CalibreIdentifierPatchTests {
         client.updateIdentifiers(connection,9,before,Map.of("hardcover_edition",""),Set.of("hardcover_edition"));
         assertThat(posts).isEqualTo(1);
     }
+    @Test void revisionReplacementPreservesAllOtherIdentifiersAndRecoversLostResponses() {
+        var before=client.identifierMetadata(connection,9);loseResponse=true;
+        var result=client.updateIdentifiers(connection,9,before,Map.of("revision","1.3"),Set.of("revision"));
+        assertThat(result.identifiers()).containsExactlyInAnyOrderEntriesOf(Map.of("epl","123","revision","1.3","isbn","9780201616224"));
+        client.updateIdentifiers(connection,9,before,Map.of("revision","1.3"),Set.of("revision"));assertThat(posts).isEqualTo(1);
+    }
     @Test void addsIdentifiersWithoutChangingEplRevisionOrIsbnAndReplaysWithoutAnotherPost() {
         var before=client.identifierMetadata(connection,9);var additions=Map.of("hardcover","book-slug","hardcover_book","7","hardcover_edition","11");
         var result=client.addIdentifiers(connection,9,before,additions);assertThat(result.identifiers()).containsAllEntriesOf(before.identifiers()).containsAllEntriesOf(additions);

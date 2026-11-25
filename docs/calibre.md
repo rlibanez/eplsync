@@ -207,6 +207,22 @@ UUID. Conserva otros identificadores, como el ISBN, y no modifica el EPUB.
 Una discrepancia de revisión sin EPL ID que confirme el libro sigue bloqueada.
 Los identificadores existentes que contradigan la identidad esperada no se sobrescriben.
 
+Si una actualización queda en **Limpieza pendiente** porque la descarga es, por
+ejemplo, r1.2 pero el EPUB declara r1.0, el elemento ofrece **Enviar descarga como
+r1.2** en el trabajo pausado. Tras la confirmación explícita se importa la descarga
+como una **entrada nueva**, sin reutilizar ni modificar la entrada antigua.
+Se compara el contenido de la nueva importación con la descarga autorizada y se
+establece `revision:1.2` únicamente en sus identificadores de Calibre, conservando
+los demás identificadores y el EPUB original. La limpieza seleccionada solo puede
+eliminar la entrada antigua después de verificar la nueva entrada.
+
+La autorización, la identidad de la entrada nueva y la verificación se conservan
+tras reinicios. Una importación incierta sin Calibre ID confirmado queda pausada;
+no se reenvía automáticamente ni se identifica por la revisión interna antigua.
+La actividad conserva el usuario y ambas revisiones. Se requieren los permisos de
+lectura de Calibre, descarga de sus EPUB, envío, eliminación, gestión de trabajos
+y lectura de archivos de Descargas.
+
 La escritura y su comprobación quedan separadas de la importación. Ante un fallo
 transitorio se comprueba la misma entrada y se reintenta sin importar otra copia.
 El trabajo conserva la identidad original del EPUB y señala los identificadores

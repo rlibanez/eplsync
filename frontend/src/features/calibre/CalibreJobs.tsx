@@ -15,6 +15,7 @@ import { stateOperatorProps } from "../../components/StateOperator";
 import { WorkNavigation, useWorkContext } from "../jobs/WorkNavigation";
 import { ResolveCalibreItem } from "./ResolveCalibreItem";
 import { ResolveCalibreUpload } from "./ResolveCalibreUpload";
+import { ConfirmCalibreRevision } from "./ConfirmCalibreRevision";
 import { useJobRetry } from "../jobs/useJobRetry";
 import { SelectionToolbar } from "../../components/SelectionToolbar";
 import { PageTitle } from "../../components/PageTitle";
@@ -73,6 +74,7 @@ type Item = {
   coverAvailable?: boolean | null;
   downloadJobId?: string | null;
   cancelledByDownloadJobId?: string | null;
+  revisionConfirmationAvailable?: boolean;
   index: number;
   name: string;
   size: number;
@@ -1007,6 +1009,25 @@ export function CalibreJobDetail() {
                                     <ResolveCalibreUpload
                                       jobId={value.id}
                                       itemId={item.id}
+                                    />
+                                  </div>
+                                )}
+                              {item.revisionConfirmationAvailable &&
+                                item.state === "CLEANUP_PENDING" &&
+                                value.state === "PAUSED" &&
+                                item.calibreId != null &&
+                                item.name.toLowerCase().endsWith(".epub") &&
+                                can("CALIBRE_READ") &&
+                                can("CALIBRE_FILES_READ") &&
+                                can("CALIBRE_SEND") &&
+                                can("CALIBRE_DELETE") &&
+                                can("CALIBRE_JOBS_MANAGE") &&
+                                can("DOWNLOADS_FILES_READ") && (
+                                  <div>
+                                    <ConfirmCalibreRevision
+                                      job={value.id}
+                                      item={item.id}
+                                      revision={item.revision}
                                     />
                                   </div>
                                 )}

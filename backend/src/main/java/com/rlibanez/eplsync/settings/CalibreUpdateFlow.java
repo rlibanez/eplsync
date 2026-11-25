@@ -233,6 +233,8 @@ public class CalibreUpdateFlow {
         jdbc.update("UPDATE calibre_job_items SET next_check=?,message=? WHERE id=? AND state='WAITING_DOWNLOAD'",Instant.now().plus(internalSettings.interval(com.rlibanez.eplsync.tasks.InternalTaskSettings.CALIBRE)).toEpochMilli(),"Esperando la descarga del EPUB",item.id());return false;
     }
     void cleanup(String job,CalibreSettings.Connection c,CalibreTransfers.Item item) {
+        if(jdbc.queryForObject("SELECT count(*) FROM calibre_revision_confirmations WHERE item_id=? AND applied_at IS NULL",Long.class,item.id())>0)
+            throw new UserInputException("La confirmación de revisión quedó sin verificar; abre Confirmar revisión antes de continuar la limpieza");
         var row=jdbc.queryForMap("SELECT cleanup_policy,cleanup_ids FROM calibre_job_items WHERE id=?",item.id());
         String policy=(String)row.get("cleanup_policy");
         if(policy.equals("KEEP")) return;
@@ -246,6 +248,9 @@ public class CalibreUpdateFlow {
             CalibreClient.Book old=null;
             try {old=client.book(c,id);}catch(org.springframework.web.server.ResponseStatusException ex) {if(ex.getStatusCode().value()!=404) throw ex;}
             if(old!=null) {
+                var confirmations=jdbc.queryForList("SELECT expected_metadata FROM calibre_revision_confirmations WHERE item_id=? AND mode='IMPORT' AND old_calibre_id=?",item.id(),id);
+                if(!confirmations.isEmpty() && !json.readValue(confirmations.getFirst().get("expected_metadata").toString(),CalibreClient.IdentifierMetadata.class).uuid().equals(old.uuid()))
+                    throw new UserInputException("La entrada antigua fue reemplazada; no se eliminará");
                 if(!Objects.equals(old.eplId(),item.eplId()) || old.revision()==null || old.revision().compareTo(newest.revision())>=0) throw new UserInputException("Los metadatos de la revisión anterior cambiaron; no se eliminará");
                 if(policy.equals("BOOK") || client.hasEpub(c,id)) {
                     if(cleanupWasCancelled(item.id())) return;

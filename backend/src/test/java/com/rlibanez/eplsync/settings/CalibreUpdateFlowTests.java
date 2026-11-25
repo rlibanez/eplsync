@@ -15,10 +15,11 @@ import org.springframework.security.test.context.support.WithMockUser;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@WithMockUser(authorities={"CALIBRE_READ","CALIBRE_SEND","CALIBRE_DELETE","DOWNLOADS_FILES_READ","CALIBRE_JOBS_MANAGE","CATALOG_READ","TORRENT_SEND","TORRENT_SYNC"})
+@WithMockUser(authorities={"CALIBRE_FILES_READ","CALIBRE_READ","CALIBRE_SEND","CALIBRE_DELETE","DOWNLOADS_FILES_READ","CALIBRE_JOBS_MANAGE","CATALOG_READ","TORRENT_SEND","TORRENT_SYNC"})
 @SpringBootTest(properties={"spring.datasource.url=jdbc:sqlite::memory:","eplsync.calibre.transfers.worker-enabled=false","eplsync.calibre.transfers.download-check-interval=15s","eplsync.torrent.bulk.worker-enabled=false","eplsync.updates.scheduler-enabled=false"})
 class CalibreUpdateFlowTests {
     @Autowired CalibreTransfers transfers;
+    @Autowired CalibreRevisionConfirmation confirmations;
     @Autowired CalibreUpdateFlow flow;
     @Autowired com.rlibanez.eplsync.tasks.InternalTaskSettings internalTasks;
     @Autowired CalibreSettings settings;
@@ -68,6 +69,81 @@ class CalibreUpdateFlowTests {
         assertThatThrownBy(()->flow.availability(List.of(1L))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
     }
     static CalibreClient.Book book(long id,long epl,String rev) {return new CalibreClient.Book(id,"Book",List.of("Author"),epl,new BigDecimal(rev),true);}
+    String authorizeMismatchedImport() throws Exception {
+        var path=java.nio.file.Files.createTempFile("revision-test-",".epub");
+        try {
+            bytes=java.nio.file.Files.readAllBytes(CalibreIdentifiersTests.withOpf(path,CalibreIdentifiersTests.epub("New download content"),"<package xmlns='http://www.idpf.org/2007/opf'><metadata xmlns:dc='http://purl.org/dc/elements/1.1/'><dc:identifier>epl:1</dc:identifier><dc:identifier>revision:1.0</dc:identifier></metadata></package>"));
+        } finally {java.nio.file.Files.deleteIfExists(path);}
+        String job="confirmed-import",item="confirmed-item";
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_id,owner_username,destination,library,source,state) VALUES(?,'2026-11-25T00:00:00Z','2026-11-25T00:00:00Z',?,'Owner',?,'main',?,'PAUSED')",job,owner.id(),CalibreTransfers.destination(settings.connection()),transfers.source());
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,calibre_id,calibre_uuid,cleanup_policy,cleanup_ids,epub_identity) VALUES(?,?,0,?,0,'book.epub',?,1,'1.1','CLEANUP_PENDING',1,'old-uuid','BOOK','[1]','{\"eplId\":1,\"revision\":1.0}')",item,job,record,bytes.length);
+        when(client.book(any(),eq(1L))).thenReturn(new CalibreClient.Book(1,"Old modified book",List.of("Author"),1L,BigDecimal.ONE,true,"old-uuid"));
+        when(client.identifierMetadata(any(),eq(1L))).thenReturn(new CalibreClient.IdentifierMetadata("old-uuid","Old modified book",List.of("Author"),Map.of("epl","1","revision","1.0")));
+        var preview=confirmations.preview(job,item);confirmations.apply(job,item,new CalibreRevisionConfirmation.Input(preview.token(),true));
+        var fresh=new java.util.concurrent.atomic.AtomicReference<>(new CalibreClient.Book(9,"New book",List.of("Author"),1L,BigDecimal.ONE,true,"new-uuid"));
+        when(client.book(any(),eq(9L))).thenAnswer(call->fresh.get());
+        when(client.identifierMetadata(any(),eq(9L))).thenAnswer(call->new CalibreClient.IdentifierMetadata("new-uuid","New book",List.of("Author"),Map.of("epl","1","revision",fresh.get().revision().toPlainString(),"isbn","preserved")));
+        when(client.updateIdentifiers(any(),eq(9L),any(),any(),any())).thenAnswer(call->{fresh.set(new CalibreClient.Book(9,"New book",List.of("Author"),1L,new BigDecimal("1.1"),true,"new-uuid"));return client.identifierMetadata(call.getArgument(0),9);});
+        doAnswer(call->{java.nio.file.Files.write(call.getArgument(2),bytes);return null;}).when(client).downloadOriginalEpub(any(),eq(9L),any(),anyLong());
+        doAnswer(call->{when(client.book(any(),eq(1L))).thenThrow(new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));return null;}).when(client).remove(any(),eq(1L),eq(true));
+        clearInvocations(client);return job;
+    }
+    @Test void confirmedImportDoesNotReuseOldRevisionAndDeletesItOnlyAfterNewPublicationVerification() throws Exception {
+        String job=authorizeMismatchedImport();
+        transfers.cycle();
+        assertThat(transfers.items(job,0,20,List.of("position,asc")).items().getFirst().calibreId()).isEqualTo(9);
+        verify(client).uploadEpub(any(),any(),eq("book.epub"),eq("confirmed-item"));
+        verify(client,never()).findRevision(any(),anyLong(),any());verify(client,never()).findBookRevision(any(),anyLong(),any());
+        verify(client,never()).downloadOriginalEpub(any(),eq(1L),any(),anyLong());verify(client,never()).updateIdentifiers(any(),eq(1L),any(),any(),any());
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        transfers.cycle();transfers.cycle();
+        assertThat(transfers.job(job).state()).isEqualTo("COMPLETED");verify(client).remove(any(),eq(1L),eq(true));
+        assertThat(jdbc.queryForObject("SELECT applied_at FROM calibre_revision_confirmations",String.class)).isNotBlank();
+    }
+    @Test void uncertainNewUploadNeverAdoptsTheOldRevisionOrRepeatsTheImportAfterRestart() throws Exception {
+        String job=authorizeMismatchedImport();when(client.uploadEpub(any(),any(),anyString(),anyString())).thenThrow(new CalibreClient.UnconfirmedUpload());
+        transfers.cycle();transfers.recoverInterrupted();jdbc.update("UPDATE calibre_jobs SET state='QUEUED',next_check=0 WHERE id=?",job);transfers.cycle();
+        assertThat(transfers.job(job).state()).isEqualTo("PAUSED");verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());
+        verify(client,never()).findRevision(any(),anyLong(),any());verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void pauseAndCancellationBeforeConfirmedImportDoNotSendOrDeleteAnything() throws Exception {
+        String job=authorizeMismatchedImport();transfers.control(job,"pause");transfers.cycle();
+        verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());
+        transfers.control(job,"cancel");transfers.cycle();verify(client,never()).uploadEpub(any(),any(),anyString(),anyString());verify(client,never()).remove(any(),anyLong(),anyBoolean());
+    }
+    @Test void lostRevisionWriteResponseRecoversTheNewEntryWithoutReuploadAndThenCleansTheOldOne() throws Exception {
+        String job=authorizeMismatchedImport();var lost=new java.util.concurrent.atomic.AtomicBoolean(true);
+        when(client.updateIdentifiers(any(),eq(9L),any(),any(),any())).thenAnswer(call->{
+            var corrected=new CalibreClient.Book(9,"New book",List.of("Author"),1L,new BigDecimal("1.1"),true,"new-uuid");
+            var metadata=new CalibreClient.IdentifierMetadata("new-uuid","New book",List.of("Author"),Map.of("epl","1","revision","1.1","isbn","preserved"));
+            when(client.book(any(),eq(9L))).thenReturn(corrected);when(client.identifierMetadata(any(),eq(9L))).thenReturn(metadata);
+            if(lost.getAndSet(false)) throw new IllegalStateException("Response lost after metadata write");return metadata;
+        });
+        transfers.cycle();assertThat(transfers.job(job).state()).isEqualTo("PAUSED");
+        assertThat(jdbc.queryForObject("SELECT applied_at FROM calibre_revision_confirmations",String.class)).isNull();
+        verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        transfers.recoverInterrupted();assertThat(transfers.job(job).state()).isEqualTo("PAUSED");
+        transfers.control(job,"resume");transfers.cycle();transfers.cycle();transfers.cycle();
+        assertThat(transfers.job(job).state()).isEqualTo("COMPLETED");
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());verify(client,times(1)).remove(any(),eq(1L),eq(true));
+        verify(client,never()).updateIdentifiers(any(),eq(1L),any(),any(),any());
+    }
+    @Test void mismatchedNewPublicationKeepsTheOldEntryAndDoesNotRepeatTheUpload() throws Exception {
+        String job=authorizeMismatchedImport();
+        doAnswer(call->{java.nio.file.Files.write(call.getArgument(2),CalibreIdentifiersTests.epub("Wrong publication"));return null;}).when(client).downloadOriginalEpub(any(),eq(9L),any(),anyLong());
+        transfers.cycle();assertThat(transfers.job(job).state()).isEqualTo("PAUSED");
+        transfers.recoverInterrupted();transfers.control(job,"resume");transfers.cycle();
+        verify(client,times(1)).uploadEpub(any(),any(),anyString(),anyString());verify(client,never()).remove(any(),anyLong(),anyBoolean());
+        verify(client,never()).updateIdentifiers(any(),anyLong(),any(),any(),any());
+    }
+    @Test void onlyMismatchedCleanupItemsOfferRevisionConfirmationAndKeepTheFlagWithCatalogEnrichment() {
+        String id="confirmation-job";
+        jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES(?,'now','now','Owner',?,'main',?,'PAUSED')",id,CalibreTransfers.destination(settings.connection()),transfers.source());
+        jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,calibre_id,epub_identity) VALUES('confirmation-item',?,0,?,0,'book.epub',?,1,'1.1','CLEANUP_PENDING',9,'{\"eplId\":1,\"revision\":1.0}')",id,record,bytes.length);
+        assertThat(transfers.items(id,0,20,List.of("position,asc")).items().getFirst().revisionConfirmationAvailable()).isTrue();
+        jdbc.update("UPDATE calibre_job_items SET epub_identity='{\"eplId\":1,\"revision\":1.1}' WHERE id='confirmation-item'");
+        assertThat(transfers.items(id,0,20,List.of("position,asc")).items().getFirst().revisionConfirmationAvailable()).isFalse();
+    }
     CalibreUpdateFlow.Choice ready(String policy) {return new CalibreUpdateFlow.Choice(1,1.1,true,List.of(new CalibreTransfers.FileChoice(record,0)),policy,List.of(1L),policy.equals("BOOK"));}
     CalibreUpdateFlow.Choice missing() {return new CalibreUpdateFlow.Choice(2,1.1,true,List.of(),"KEEP",List.of(2L),false);}
     CalibreUpdateFlow.Result submit(List<CalibreUpdateFlow.Choice> choices,boolean download,boolean deferred) {return submit(new CalibreUpdateFlow.Request(UUID.randomUUID().toString(),choices,download,deferred));}

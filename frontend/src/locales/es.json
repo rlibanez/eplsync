@@ -125,7 +125,8 @@
       "CALIBRE_DELETE": "Borrado en Calibre",
       "DOWNLOAD_RETRY": "Reintento en Descargas",
       "CALIBRE_RETRY": "Reintento en Calibre",
-      "CALIBRE_OMIT": "Omitir envío a Calibre"
+      "CALIBRE_OMIT": "Omitir envío a Calibre",
+      "CALIBRE_REVISION_CONFIRM": "Confirmar revisión en Calibre"
     },
     "results": {
       "PENDING": "Pendiente",
@@ -2385,5 +2386,15 @@
     },
     "completed": "Terminado con omisiones",
     "title": "Resolver"
+  },
+  "calibreRevision": {
+    "action": "Enviar descarga como r{{revision}}",
+    "help": "La descarga se importará como una entrada nueva, aunque su metadata interna declare una revisión anterior. Se establecerá la revisión indicada en los identificadores de la nueva entrada, sin modificar el EPUB original. La entrada antigua se conservará hasta verificar la nueva importación; después continuará la limpieza seleccionada.",
+    "identity": "EPL ID: {{eplId}} · Calibre ID: {{calibreId}}",
+    "internal": "Revisión interna del EPUB",
+    "current": "Revisión de la entrada antigua en Calibre",
+    "target": "Revisión de la descarga que se confirmará",
+    "consent": "Confirmo que la descarga corresponde a r{{revision}} y autorizo importarla como una entrada nueva y limpiar la antigua solo después de verificarla.",
+    "apply": "Importar y continuar"
   }
 }

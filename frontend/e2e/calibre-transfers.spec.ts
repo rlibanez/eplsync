@@ -984,3 +984,106 @@ test("preparation waits automatically and polls without repeating the request", 
   expect(posts).toBe(1);
   expect(polls).toBe(1);
 });
+
+test("authorizes a new import of the mismatched revision", async ({
+  page,
+}) => {
+  await jobRoutes(page, "PAUSED");
+  await page.route("**/api/calibre/transfers/job/items?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            id: "mismatch",
+            position: 0,
+            recordId: "1",
+            index: 0,
+            name: "Book.epub",
+            size: 200,
+            eplId: 48628,
+            revision: "1.2",
+            state: "CLEANUP_PENDING",
+            calibreId: 2999,
+            revisionConfirmationAvailable: true,
+            message:
+              "La nueva revisión no está verificada con EPUB e identificadores",
+          },
+        ],
+        meta: { ...meta, totalItems: 1 },
+      },
+    }),
+  );
+  let posts = 0;
+  await page.route(
+    "**/api/calibre/transfers/job/items/mismatch/revision-confirmation",
+    (r) => {
+      if (r.request().method() === "GET")
+        return r.fulfill({
+          json: {
+            token: "checked",
+            calibreId: 2999,
+            eplId: 48628,
+            epubRevision: "1.0",
+            currentRevision: "1.0",
+            targetRevision: "1.2",
+          },
+        });
+      expect(r.request().postDataJSON()).toEqual({
+        token: "checked",
+        confirm: true,
+      });
+      posts++;
+      return r.fulfill({ json: { id: "job", state: "QUEUED" } });
+    },
+  );
+  await page.goto("/calibre/jobs/job");
+  await page
+    .getByRole("button", { name: "Enviar descarga como r1.2", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByText("EPL ID: 48628 · Calibre ID: 2999"),
+  ).toBeVisible();
+  const apply = dialog.getByRole("button", {
+    name: "Importar y continuar",
+    exact: true,
+  });
+  await expect(apply).toBeDisabled();
+  await dialog.getByRole("checkbox").check();
+  await expect(apply).toBeEnabled();
+  await apply.click();
+  await expect(dialog).toHaveCount(0);
+  expect(posts).toBe(1);
+});
+
+test("revision confirmation is hidden for cancelled jobs", async ({ page }) => {
+  await jobRoutes(page, "CANCELLED");
+  await page.route("**/api/calibre/transfers/job/items?**", (r) =>
+    r.fulfill({
+      json: {
+        items: [
+          {
+            id: "mismatch",
+            position: 0,
+            recordId: "1",
+            index: 0,
+            name: "Book.epub",
+            size: 200,
+            eplId: 48628,
+            revision: "1.2",
+            state: "CLEANUP_PENDING",
+            calibreId: 2999,
+            revisionConfirmationAvailable: true,
+            message: null,
+          },
+        ],
+        meta: { ...meta, totalItems: 1 },
+      },
+    }),
+  );
+  await page.goto("/calibre/jobs/job");
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Enviar descarga como/ }),
+  ).toHaveCount(0);
+});

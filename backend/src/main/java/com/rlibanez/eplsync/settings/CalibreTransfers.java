@@ -38,7 +38,8 @@ public class CalibreTransfers {
     }
     public record Job(String id,String createdAt,String updatedAt,String username,String library,String state,String message,
         long total,long pending,long accepted,long skipped,long failed,long uncertain,long cancelled,long omitted) {}
-    public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position,String author,String cancelledByDownloadJobId) {
+    public record Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position,String author,String cancelledByDownloadJobId,boolean revisionConfirmationAvailable) {
+        public Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position,String author,String cancelledByDownloadJobId) {this(id,recordId,index,name,size,eplId,revision,state,calibreId,message,identityComplete,downloadJobId,coverUrl,coverAvailable,position,author,cancelledByDownloadJobId,false);}
         public Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position,String author) {this(id,recordId,index,name,size,eplId,revision,state,calibreId,message,identityComplete,downloadJobId,coverUrl,coverAvailable,position,author,null);}
         public Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId,String coverUrl,Boolean coverAvailable,long position) {this(id,recordId,index,name,size,eplId,revision,state,calibreId,message,identityComplete,downloadJobId,coverUrl,coverAvailable,position,null);}
         public Item(String id,String recordId,int index,String name,long size,long eplId,String revision,String state,Long calibreId,String message,boolean identityComplete,String downloadJobId) {
@@ -50,6 +51,7 @@ public class CalibreTransfers {
     @org.springframework.beans.factory.annotation.Autowired @org.springframework.context.annotation.Lazy private CalibreUpdateFlow updates;
     @org.springframework.beans.factory.annotation.Autowired private com.rlibanez.eplsync.repository.CatalogBookRepository catalogBooks;
     @org.springframework.beans.factory.annotation.Autowired private JobRetryHistory retryHistory;
+    @org.springframework.beans.factory.annotation.Autowired @org.springframework.context.annotation.Lazy private CalibreRevisionConfirmation revisionConfirmations;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
     private final CalibreSettings settings;
@@ -88,7 +90,7 @@ public class CalibreTransfers {
         });
     }
     static String destination(CalibreSettings.Connection c) { return fingerprint(c.url()+"\n"+c.username()); }
-    private String source() { return fingerprint(tracking.instanceId()+"\n"+torrent.getFiles().getRemoteRoot()+"\n"+torrent.getFiles().getLocalRoot()); }
+    String source() { return fingerprint(tracking.instanceId()+"\n"+torrent.getFiles().getRemoteRoot()+"\n"+torrent.getFiles().getLocalRoot()); }
     private static String fingerprint(String text) {
         try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
         catch(java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException(ex); }
@@ -278,7 +280,12 @@ public class CalibreTransfers {
         """+ITEM_COUNTS+") c ON c.job_id=j.id";
     private static final String SINGLE_SUMMARY=SUMMARY.replace("FROM calibre_job_items GROUP BY job_id","FROM calibre_job_items WHERE job_id=? GROUP BY job_id");
     private static Job mapJob(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Job(r.getString("id"),r.getString("created_at"),r.getString("updated_at"),r.getString("owner_username"),r.getString("library"),r.getString("state"),r.getString("message"),r.getLong("total"),r.getLong("pending"),r.getLong("accepted"),r.getLong("skipped"),r.getLong("failed"),r.getLong("uncertain"),r.getLong("cancelled"),r.getLong("omitted")); }
-    private static Item mapItem(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Item(r.getString("id"),r.getString("record_id"),r.getInt("file_index"),r.getString("name"),r.getLong("size"),r.getLong("epl_id"),r.getString("revision"),r.getString("state"),r.getObject("calibre_id")==null ? null : r.getLong("calibre_id"),r.getString("message"),r.getBoolean("identity_complete"),r.getString("download_job_id"),null,null,r.getLong("position"),null,r.getString("cancelled_by_download_job_id")); }
+    private static Item mapItem(java.sql.ResultSet r,int n) throws java.sql.SQLException { return new Item(r.getString("id"),r.getString("record_id"),r.getInt("file_index"),r.getString("name"),r.getLong("size"),r.getLong("epl_id"),r.getString("revision"),r.getString("state"),r.getObject("calibre_id")==null ? null : r.getLong("calibre_id"),r.getString("message"),r.getBoolean("identity_complete"),r.getString("download_job_id"),null,null,r.getLong("position"),null,r.getString("cancelled_by_download_job_id"),revisionConfirmationAvailable(r)); }
+    private static boolean revisionConfirmationAvailable(java.sql.ResultSet r) throws java.sql.SQLException {
+        if(!"CLEANUP_PENDING".equals(r.getString("state")) || r.getObject("calibre_id")==null || r.getString("epub_identity")==null) return false;
+        var identity=EPUB_IDENTITIES.readValue(r.getString("epub_identity"),CalibreEpubMetadata.Identity.class);
+        return identity.eplId()!=null && identity.eplId()==r.getLong("epl_id") && identity.revision()!=null && identity.revision().compareTo(new BigDecimal(r.getString("revision")))<0;
+    }
     public Job job(String id) {
         var result=jdbc.query(SINGLE_SUMMARY+" WHERE j.id=?",CalibreTransfers::mapJob,id,id);
         if(result.isEmpty()) throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND,"Trabajo de Calibre no encontrado");return result.getFirst();
@@ -336,7 +343,7 @@ public class CalibreTransfers {
             catalogBooks.findAllById(rows.stream().map(item -> Objects.requireNonNull(item).eplId()).distinct().toList()).forEach(book->covers.put(book.getEplId(),book));
             rows=rows.stream().map(item->{
                 var book=covers.get(item.eplId());
-                return book==null?item:new Item(item.id(),item.recordId(),item.index(),item.name(),item.size(),item.eplId(),item.revision(),item.state(),item.calibreId(),item.message(),item.identityComplete(),item.downloadJobId(),book.getCoverUrl(),book.getCoverAvailable(),item.position(),book.getAuthor(),item.cancelledByDownloadJobId());
+                return book==null?item:new Item(item.id(),item.recordId(),item.index(),item.name(),item.size(),item.eplId(),item.revision(),item.state(),item.calibreId(),item.message(),item.identityComplete(),item.downloadJobId(),book.getCoverUrl(),book.getCoverAvailable(),item.position(),book.getAuthor(),item.cancelledByDownloadJobId(),item.revisionConfirmationAvailable());
             }).toList();
         }
         return new Page<>(rows,meta(page,size,total));
@@ -380,11 +387,14 @@ public class CalibreTransfers {
             if(remote!=null && input.action().equals("retry")) {
                 try {client.book(connection,remote);if(!hasFormat(connection,remote,item)) remote=null;} catch(org.springframework.web.server.ResponseStatusException ex) {if(ex.getStatusCode().value()!=404) throw ex;remote=null;}
             }
+            if(remote==null && confirmedRevisionImport(item.id())) throw new UserInputException("Indica el Calibre ID de la nueva importación para verificarla; no se repetirá un envío incierto");
             if(remote==null && input.action().equals("retry")) {
                 var identity=expectedIdentity(item.id());
                 if(identity.eplId()!=null && identity.revision()!=null) remote=client.findRevision(connection,identity.eplId(),identity.revision());
             }
-            if(remote!=null) publish(connection,client.book(connection,remote),item);
+            if(remote!=null) {
+                publish(connection,client.book(connection,remote),item);
+            }
             else {
                 var available=files.list(item.recordId()).stream().filter(file->file.index()==item.index()).findFirst().orElseThrow(()->new UserInputException("El EPUB de origen ya no está disponible"));
                 if(available.size()!=item.size() || !available.name().equals(item.name())) throw new UserInputException("El archivo cambió; prepara un reintento con la selección actual");
@@ -668,7 +678,8 @@ public class CalibreTransfers {
             if(item.state().equals("UNCERTAIN")) {
                 verificationStarted = System.nanoTime();
                 var observed=expectedIdentity(item.id());
-                remoteId=remoteId==null && item.identityComplete() && observed.eplId()!=null && observed.revision()!=null ? (epub?client.findRevision(connection,observed.eplId(),observed.revision()):client.findBookRevision(connection,observed.eplId(),observed.revision())) : remoteId;
+                if(remoteId==null && confirmedRevisionImport(item.id())) remoteId=jdbc.queryForObject("SELECT new_calibre_id FROM calibre_revision_confirmations WHERE item_id=?",Long.class,item.id());
+                remoteId=remoteId==null && !confirmedRevisionImport(item.id()) && item.identityComplete() && observed.eplId()!=null && observed.revision()!=null ? (epub?client.findRevision(connection,observed.eplId(),observed.revision()):client.findBookRevision(connection,observed.eplId(),observed.revision())) : remoteId;
                 if(remoteId==null) {pause(job,actor,"El envío anterior no está confirmado. Comprueba Calibre; no se repetirá automáticamente");return;}
                 publish(connection,client.book(connection,remoteId),item);finish(job,actor,item,"ACCEPTED",remoteId,"Envío anterior verificado"+revisionNotice(item,observed));return;
             }
@@ -693,10 +704,12 @@ public class CalibreTransfers {
             metadataNotice=identity.eplId()==null && identity.revision()==null ? "EPUB enviado sin EPL ID ni revisión" : identity.eplId()==null ? "EPUB enviado sin EPL ID" : identity.revision()==null ? "EPUB enviado sin revisión" : "";
             if(!revisionNotice(item,identity).isEmpty()) metadataNotice=(metadataNotice.isEmpty()?"EPUB enviado y verificado":metadataNotice)+revisionNotice(item,identity);
             jdbc.update("UPDATE calibre_job_items SET epub_identity=? WHERE id=? AND state='PENDING'",EPUB_IDENTITIES.writeValueAsString(identity),item.id());
+            boolean confirmedImport=epub && confirmedRevisionImport(item.id());
+            if(confirmedImport) revisionConfirmations.verifySource(item.id(),temp);
             var expectedRevision=identity.revision()==null?new BigDecimal(item.revision()):identity.revision();
-            remoteId=epub?client.findRevision(connection,item.eplId(),expectedRevision):client.findBookRevision(connection,item.eplId(),expectedRevision);
-            if(remoteId==null) remoteId=client.findBookRevision(connection,item.eplId(),expectedRevision);
-            if(remoteId==null) {
+            remoteId=confirmedImport?null:epub?client.findRevision(connection,item.eplId(),expectedRevision):client.findBookRevision(connection,item.eplId(),expectedRevision);
+            if(!confirmedImport && remoteId==null) remoteId=client.findBookRevision(connection,item.eplId(),expectedRevision);
+            if(!confirmedImport && remoteId==null) {
                 var siblings=jdbc.queryForList("SELECT DISTINCT calibre_id,calibre_uuid FROM calibre_job_items WHERE job_id=? AND record_id=? AND id<>? AND state IN ('ACCEPTED','SKIPPED') AND calibre_id IS NOT NULL",job,item.recordId(),item.id());
                 if(siblings.size()>1) throw new UserInputException("Hay varias entradas de Calibre para esta descarga; revisa el destino antes de añadir formatos");
                 if(siblings.size()==1) {
@@ -778,8 +791,12 @@ public class CalibreTransfers {
     private static long elapsedMillis(long started) {
         return java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
     }
+    private boolean confirmedRevisionImport(String item) {
+        return jdbc.queryForObject("SELECT count(*) FROM calibre_revision_confirmations WHERE item_id=? AND mode='IMPORT'",Long.class,item)>0;
+    }
     CalibreEpubMetadata.Identity expectedIdentity(String item) {
         var row=jdbc.queryForMap("SELECT epl_id,revision,epub_identity FROM calibre_job_items WHERE id=?",item);
+        if(confirmedRevisionImport(item)) return new CalibreEpubMetadata.Identity(((Number)row.get("epl_id")).longValue(),new BigDecimal(row.get("revision").toString()));
         return storedIdentity(row);
     }
     static CalibreEpubMetadata.Identity storedIdentity(Map<String,Object> row) {
@@ -793,6 +810,7 @@ public class CalibreTransfers {
             ? ". La revisión del EPUB (r"+identity.revision().stripTrailingZeros().toPlainString()+") difiere de la del registro de descarga (r"+item.revision()+")" : "";
     }
     private void publish(CalibreSettings.Connection connection,CalibreClient.Book book,Item item) {
+        if(confirmedRevisionImport(item.id())) book=revisionConfirmations.verifyImported(connection,book,item);
         var observed=expectedIdentity(item.id());
         var revision=observed.revision()==null?new BigDecimal(item.revision()):observed.revision();
         if(book.eplId()!=null && !java.util.Objects.equals(book.eplId(),item.eplId()) || book.revision()!=null && book.revision().compareTo(revision)!=0) throw new UserInputException("Los identificadores del libro recibido por Calibre no coinciden; comprueba sus metadatos");

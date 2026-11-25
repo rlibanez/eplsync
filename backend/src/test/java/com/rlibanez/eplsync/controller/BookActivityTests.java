@@ -44,6 +44,18 @@ class BookActivityTests {
         jdbc.update("INSERT INTO calibre_jobs(id,created_at,updated_at,owner_username,destination,library,source,state) VALUES(?,'2026-10-19T00:00:00Z','2026-10-19T00:00:00Z','owner','target','main','source','COMPLETED')",id);
         jdbc.update("INSERT INTO calibre_job_items(id,job_id,position,record_id,file_index,name,size,epl_id,revision,state,message) VALUES(?,?,0,'record',0,'Book.epub',1,?,'1',?,'Calibre detail')",id+"-item",id,book,state);
     }
+    @Test void revisionConfirmationKeepsActorAndBothRevisionsAfterTheJobFinishes() throws Exception {
+        calibre("fixed",1,"ACCEPTED");
+        jdbc.update("INSERT INTO calibre_revision_confirmations(item_id,created_at,applied_at,username,epub_revision,target_revision,fingerprint,expected_metadata) VALUES('fixed-item','2026-11-25T10:00:00Z','2026-11-25T10:00:01Z','Roberto','1','1.2','fingerprint','{}')");
+        mvc.perform(get("/api/catalog/books/1/activity?operation=CALIBRE_REVISION_CONFIRM").with(permissions("CALIBRE_SEND")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.meta.totalItems").value(1))
+            .andExpect(jsonPath("$.items[0].result").value("SUCCEEDED"))
+            .andExpect(jsonPath("$.items[0].message").value(org.hamcrest.Matchers.allOf(org.hamcrest.Matchers.containsString("Roberto"),org.hamcrest.Matchers.containsString("r1;"),org.hamcrest.Matchers.containsString("r1.2"))))
+            .andExpect(jsonPath("$.items[0].href").value("/calibre/jobs/fixed"));
+        mvc.perform(get("/api/catalog/books/1/activity?operation=CALIBRE_REVISION_CONFIRM").with(permissions("BOOK_HISTORY_READ")))
+            .andExpect(jsonPath("$.meta.totalItems").value(0));
+        verifyNoInteractions(client,torrent);
+    }
     org.springframework.test.web.servlet.request.RequestPostProcessor permissions(String... extra) {
         var values=new ArrayList<String>(List.of("CATALOG_READ"));values.addAll(List.of(extra));
         return user("reader").authorities(values.stream().map(SimpleGrantedAuthority::new).toList());
