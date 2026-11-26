@@ -174,17 +174,21 @@ public class CatalogDataExport {
                 .setFirstResult(offset).setMaxResults(limit).getResultList();
     }
 
-    private String start(Request request) {
+    String start(Request request) {
         return request.format() == Format.JSON ? "[" : delimited(request, request.columns());
     }
 
-    private static String end(Request request) {
+    static String end(Request request) {
         return request.format() == Format.JSON ? "\n]\n" : "";
     }
 
     private String line(Request request, Tuple row, boolean first) {
+        return line(request, Arrays.asList(row.toArray()), first);
+    }
+
+    String line(Request request, List<?> row, boolean first) {
         if (request.format() != Format.JSON)
-            return delimited(request, Arrays.asList(row.toArray()));
+            return delimited(request, row);
         var values = new LinkedHashMap<String, Object>();
         for (int index = 0; index < request.columns().size(); index++) {
             String column = request.columns().get(index);

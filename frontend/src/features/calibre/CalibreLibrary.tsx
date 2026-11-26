@@ -1,3 +1,4 @@
+import { CalibreDataExportButton } from "./CalibreDataExport";
 import { sortOptions } from "../../locales/textOrdering";
 import { ExternalLink } from "lucide-react";
 import { CompleteHardcover } from "./CompleteHardcover";
@@ -100,7 +101,7 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
     ? auth.can("CALIBRE_SEND") &&
       auth.can("DOWNLOADS_FILES_READ") &&
       auth.can("CATALOG_READ")
-    : auth.can("CALIBRE_FILES_READ") || auth.can("CALIBRE_DELETE");
+    : auth.can("CALIBRE_READ");
   const [excluded, setExcluded] = useBookViewState("excluded", {
     title: false,
     author: false,
@@ -753,6 +754,10 @@ export function CalibreLibrary({ updates = false }: { updates?: boolean }) {
                     toolbar={false}
                   />
                 )}
+                <CalibreDataExportButton
+                  selected={selected}
+                  ordering={sort.split(";")}
+                />
                 <CompleteCalibreIdentifiers selected={selected} />
                 <CompleteHardcover selected={selected} />
                 <CalibreRemovalLauncher selected={selected} />

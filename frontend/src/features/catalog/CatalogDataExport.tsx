@@ -21,9 +21,9 @@ import { secureFetch } from "../auth/transport";
 import { columnLabels, type Column } from "./CatalogColumns";
 import { saveCatalogExport } from "./exportTransfer";
 
-type Field = Exclude<Column, "selection" | "rowNumber" | "discoveryMatches">;
+type Field = string;
 const fields = (Object.keys(columnLabels) as Column[]).filter(
-  (column): column is Field =>
+  (column) =>
     column !== "selection" &&
     column !== "rowNumber" &&
     column !== "discoveryMatches",
@@ -50,19 +50,38 @@ function storedExtension(value: unknown, fallback: string) {
     : fallback;
 }
 
-const storageKey = "eplsync.catalog.dataExport.v1";
-const defaults: Preferences = {
+export type DataExportConfig = {
+  endpoint: string;
+  storageKey: string;
+  filename: string;
+  labels: Record<string, string>;
+  defaultColumns: string[];
+};
+const catalogConfig: DataExportConfig = {
+  endpoint: "/api/catalog/data/export",
+  storageKey: "eplsync.catalog.dataExport.v1",
+  filename: "catalogo",
+  labels: columnLabels,
+  defaultColumns: ["eplId", "revision", "title", "author"],
+};
+const defaultPreferences: Preferences = {
   format: "CSV",
   csv: "COMMA",
   extensions: { CSV: "csv", JSON: "json" },
   columns: ["eplId", "revision", "title", "author"],
 };
-function readPreferences(): Preferences {
+function readPreferences(config: DataExportConfig): Preferences {
+  const storageKey = config.storageKey;
+  const defaults = { ...defaultPreferences, columns: config.defaultColumns };
   try {
     const value = JSON.parse(localStorage.getItem(storageKey) ?? "null");
     if (!value) return defaults;
     const columns = Array.isArray(value.columns)
-      ? [...new Set(fieldsFromStorage(value.columns))]
+      ? [
+          ...new Set(
+            fieldsFromStorage(value.columns, Object.keys(config.labels)),
+          ),
+        ]
       : [];
     const legacyText = value.format === "TXT";
     const csv = legacyText ? value.txt : value.csv;
@@ -80,7 +99,7 @@ function readPreferences(): Preferences {
   }
 }
 
-function fieldsFromStorage(values: unknown[]): Field[] {
+function fieldsFromStorage(values: unknown[], fields: string[]): Field[] {
   return values.filter((value): value is Field =>
     fields.includes(value as Field),
   );
@@ -91,9 +110,25 @@ type Selection = {
   count: number;
   ordering: string[];
 };
-const endpoint = "/api/catalog/data/export";
 
 export function CatalogDataExportButton(selection: Selection) {
+  return (
+    <DataExportButton
+      {...selection}
+      config={{
+        ...catalogConfig,
+        labels: Object.fromEntries(
+          fields.map((field) => [field, columnLabels[field as Column]]),
+        ),
+      }}
+    />
+  );
+}
+
+export function DataExportButton({
+  config,
+  ...selection
+}: Selection & { config: DataExportConfig }) {
   const { t } = useTranslation();
   const [snapshot, setSnapshot] = useState<Selection>();
   return (
@@ -108,6 +143,7 @@ export function CatalogDataExportButton(selection: Selection) {
       </Button>
       {snapshot && (
         <ExportDialog
+          config={config}
           selection={snapshot}
           close={() => setSnapshot(undefined)}
         />
@@ -117,14 +153,19 @@ export function CatalogDataExportButton(selection: Selection) {
 }
 
 function ExportDialog({
+  config,
   selection,
   close,
 }: {
+  config: DataExportConfig;
   selection: Selection;
   close: () => void;
 }) {
   const { t } = useTranslation();
-  const [settings, setSettings] = useState(readPreferences);
+  const { endpoint, storageKey } = config;
+  const fields = Object.keys(config.labels);
+  const defaults = { ...defaultPreferences, columns: config.defaultColumns };
+  const [settings, setSettings] = useState(() => readPreferences(config));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const request = {
@@ -144,7 +185,7 @@ function ExportDialog({
   const serialized = JSON.stringify(request);
   const [previewBody] = useDebouncedValue(serialized, 250);
   const preview = useQuery({
-    queryKey: ["catalog-data-export-preview", previewBody],
+    queryKey: ["data-export-preview", endpoint, previewBody],
     enabled: settings.columns.length > 0 && serialized === previewBody,
     retry: false,
     gcTime: 0,
@@ -187,7 +228,7 @@ function ExportDialog({
     try {
       await saveCatalogExport(
         endpoint,
-        "catalogo." + extension,
+        config.filename + "." + extension,
         { ...request, extension },
         t("catalogExport.error"),
         t("catalogExport.empty"),
@@ -270,7 +311,7 @@ function ExportDialog({
           <ScrollArea.Autosize mah={240} type="auto" offsetScrollbars>
             {[...settings.columns, ...unselected].map((field, index) => {
               const selected = index < settings.columns.length;
-              const label = t(columnLabels[field]);
+              const label = t(config.labels[field]);
               return (
                 <Group key={field} gap="xs" wrap="nowrap" mb={4}>
                   <Checkbox

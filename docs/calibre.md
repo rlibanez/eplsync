@@ -112,6 +112,23 @@ Abrir una ficha del catálogo requiere además `CATALOG_READ`. La consulta y la 
 
 Las copias anteriores deben volver a sincronizarse para completar título y autores.
 
+### Exportar datos
+
+Selecciona las entradas de la tabla y pulsa **Exportar datos**. El asistente permite
+elegir CSV o JSON, seleccionar y reordenar columnas, consultar una vista previa de
+hasta cinco libros y establecer la extensión del archivo. En CSV puedes elegir
+coma, punto y coma, tabulación o barra vertical como separador; la primera fila
+contiene los nombres de las columnas.
+
+Se exportan las entradas seleccionadas por su Calibre ID, incluidas las que no
+están en el Catálogo o comparten EPL ID con otra entrada. Puedes incluir título,
+autores, formatos, revisiones de Calibre y Catálogo, comparación, presencia y
+campos de Hardcover. Se utilizan los datos de la copia local sincronizada, sin
+descargar archivos de Calibre. Solo se requiere `CALIBRE_READ`.
+
+La configuración se recuerda en este navegador, por separado de la exportación
+del Catálogo.
+
 ## Abrir libros en Calibre
 
 En la ficha del catálogo, **Ver en Calibre** abre una nueva pestaña. Si hay

@@ -93,7 +93,8 @@ export function CalibreTable({
   const auth = useAuth();
   const { revision } = useLocale();
   const selectable =
-    (auth.can("CALIBRE_FILES_READ") ||
+    (auth.can("CALIBRE_READ") ||
+      auth.can("CALIBRE_FILES_READ") ||
       auth.can("CALIBRE_SEND") ||
       auth.can("CALIBRE_DELETE")) &&
     selected !== undefined &&

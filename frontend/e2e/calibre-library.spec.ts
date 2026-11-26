@@ -261,7 +261,9 @@ test("read-only Calibre users can browse without catalog links or synchronizatio
   await expect(
     page.getByRole("button", { name: "Descargar EPUB", exact: true }),
   ).toHaveCount(0);
-  await expect(page.locator("table").getByRole("checkbox")).toHaveCount(0);
+  await expect(page.locator("table").getByRole("checkbox")).toHaveCount(2);
+  await page.locator("tbody").getByRole("checkbox").check();
+  await expect(page.getByRole("button", { name: "Exportar datos", exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Sincronizar biblioteca", exact: true }),
   ).toHaveCount(0);
