@@ -609,3 +609,59 @@ test("one administrator form masks its text setup key without exposing a third p
     .click();
   await expect.poll(() => submissions).toBe(2);
 });
+
+test("remembered access is explicit without explanatory text", async ({
+  page,
+}) => {
+  let signedIn = false;
+  let submitted = false;
+  await page.route("http://127.0.0.1:5178/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/auth/me")
+      return route.fulfill({
+        status: signedIn ? 200 : 401,
+        json: signedIn ? account : {},
+      });
+    if (path === "/api/auth/status")
+      return route.fulfill({
+        json: {
+          initialized: true,
+          registrationEnabled: false,
+          rememberMeDays: 14,
+        },
+      });
+    if (path === "/api/auth/csrf")
+      return route.fulfill({
+        json: { token: "csrf", headerName: "X-CSRF-TOKEN" },
+      });
+    if (path === "/api/auth/login") {
+      expect(route.request().postDataJSON()).toEqual({
+        username: "reader",
+        password: "reader-password",
+        rememberMe: true,
+      });
+      expect(route.request().headers()["x-csrf-token"]).toBe("csrf");
+      submitted = true;
+      signedIn = true;
+      return route.fulfill({ json: account });
+    }
+    return route.fulfill({ json: {} });
+  });
+  await page.goto("/settings/account");
+  const remember = page.getByRole("checkbox", {
+    name: "Mantener la sesión iniciada",
+    exact: true,
+  });
+  await expect(remember).not.toBeChecked();
+  await expect(
+    page.getByText(/Recordar este navegador durante 14 días/),
+  ).toHaveCount(0);
+  await remember.check();
+  await page.getByLabel("Nombre de usuario").fill("reader");
+  await page.getByLabel(/^Contraseña/).fill("reader-password");
+  await page
+    .getByRole("button", { name: "Iniciar sesión", exact: true })
+    .click();
+  await expect(remember).toHaveCount(0);
+  expect(submitted).toBe(true);
+});

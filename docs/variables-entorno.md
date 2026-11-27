@@ -37,6 +37,7 @@ Ninguna variable exige un valor personalizado para arrancar la aplicación y uti
 | `SERVER_FORWARD_HEADERS_STRATEGY` | `none` ignora las cabeceras del proxy; `native` usa Tomcat y su lista de proxies de confianza (recomendado detrás de un proxy); `framework` usa Spring y no aplica esa lista. | `none` |
 | `SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES` | IP o redes CIDR de los proxies de confianza vistas desde EPL Sync, separadas por comas. Ejemplos: `192.168.2.2/32`, `192.168.2.0/24`. También admite una expresión regular Java. No usar vacío, `.*` ni redes que abarquen todos los clientes. Solo se aplica con estrategia `native`. | `127.0.0.1/32` |
 | `EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH` | Longitud mínima inicial de contraseña (8–128). Después se administra en Usuarios y seguridad. | `8` |
+| `EPLSYNC_SECURITY_REMEMBER_ME_DAYS` | Duración inicial de «Mantener la sesión iniciada», entre 1 y 365 días. El valor guardado por un administrador en Configuración de acceso prevalece sobre el entorno. | `30` |
 | `EPLSYNC_CATALOG_ZIPURL` | URL del ZIP utilizado para importar el catálogo. | `https://www.dropbox.com/s/a9r4p7oyaftaz1b/csv_full_imgs.zip?dl=1` |
 | `EPLSYNC_CATALOG_IMPORT_RETENTION` | Tiempo de conservación del ZIP de importación guardado. | `24h` |
 | `EPLSYNC_CATALOG_IMPORT_OPERATION_TIMEOUT` | Presupuesto compartido de importación, previsualización y comprobación de ausentes, incluyendo carga, descarga y escritura. Duración positiva, máximo `24h`. La cancelación es cooperativa; una llamada bloqueada puede tardar en devolver el control. | `30m` |

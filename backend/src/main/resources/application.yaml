@@ -108,6 +108,7 @@ eplsync:
     initial-admin-key: ${EPLSYNC_INITIAL_ADMIN_KEY:}
     # Clave AES-256: 32 bytes en Base64 estándar. Generar con: openssl rand -base64 32
     secret-key: ${EPLSYNC_SECRET_KEY:}
+    remember-me-days: ${EPLSYNC_SECURITY_REMEMBER_ME_DAYS:30}
     password-min-length: ${EPLSYNC_SECURITY_PASSWORD_MIN_LENGTH:8}
     # Exige HTTPS y marca la cookie de sesión como Secure; no configura TLS.
     require-https: ${EPLSYNC_SECURITY_REQUIRE_HTTPS:false}

@@ -51,6 +51,7 @@ interface Policy {
   approvalRequired: boolean;
   idleMinutes: number;
   maximumHours: number;
+  rememberMeDays?: number;
   passwordMinimumLength: number;
 }
 interface Temporary {
@@ -381,6 +382,17 @@ export function UserSettings() {
                   value={policy.maximumHours}
                   onChange={(value) =>
                     setPolicy({ ...policy, maximumHours: Number(value) })
+                  }
+                />
+                <NumberInput
+                  label={t("auth.rememberMeDays")}
+                  description={t("auth.rememberMePolicyHelp")}
+                  min={1}
+                  max={365}
+                  allowDecimal={false}
+                  value={policy.rememberMeDays ?? 30}
+                  onChange={(value) =>
+                    setPolicy({ ...policy, rememberMeDays: Number(value) })
                   }
                 />
               </div>

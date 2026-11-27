@@ -15,6 +15,7 @@ import {
   ActionIcon,
   Alert,
   Button,
+  Checkbox,
   PasswordInput,
   Stack,
   TextInput,
@@ -305,6 +306,7 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
     registrationEnabled: boolean;
     approvalRequired: boolean;
     passwordMinimumLength?: number;
+    rememberMeDays?: number;
   }>();
   const [initialAdminKey, setInitialAdminKey] = useState("");
   const [initialKeyVisible, setInitialKeyVisible] = useState(false);
@@ -328,6 +330,7 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [capsLock, setCapsLock] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [passwordConfirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -392,6 +395,7 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
         await authRequest("/auth/login", "POST", {
           username: username.trim(),
           password,
+          ...(rememberMe ? { rememberMe: true } : {}),
         });
         await onLogin();
       }
@@ -497,6 +501,16 @@ function Login({ onLogin }: { onLogin: () => Promise<void> }) {
                   error={passwordInvalid}
                 />
               </ValidationTip>
+              {!setup && !register && (
+                <Checkbox
+                  label={t("auth.rememberMe")}
+                  checked={rememberMe}
+                  disabled={pending}
+                  onChange={(event) =>
+                    setRememberMe(event.currentTarget.checked)
+                  }
+                />
+              )}
               {(setup || register) && (
                 <ValidationTip
                   message={

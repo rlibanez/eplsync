@@ -198,6 +198,26 @@ puede cambiarla en **Configuración de acceso**; el máximo admitido es 256.
 En ese mismo apartado se configuran la caducidad por inactividad y la duración
 máxima de sesión.
 
+En el formulario de acceso puedes marcar **Mantener la sesión iniciada**
+(desmarcado por defecto). Permite recuperar el acceso al cerrar el navegador,
+al caducar la sesión por inactividad o al reiniciar EPL Sync. La duración inicial
+es de **30 días** y se configura con `EPLSYNC_SECURITY_REMEMBER_ME_DAYS`.
+Un administrador puede cambiarla en **Configuración de acceso → Sesiones**,
+entre **1 y 365 días**, para todos los usuarios. El valor guardado en Ajustes
+prevalece sobre el entorno y se conserva tras reinicios.
+
+La caducidad es absoluta desde el inicio del acceso recordado: utilizar la
+aplicación no la prolonga. Reducir la duración acorta también los accesos
+existentes; aumentarla no extiende los ya emitidos. Sin marcar la casilla se
+mantienen los límites normales por inactividad y duración máxima.
+
+Cerrar sesión revoca el acceso recordado de ese navegador. Cambiar o restablecer
+la contraseña, modificar permisos o desactivar la cuenta revoca todos sus
+accesos recordados. Las cuentas con contraseña temporal no pueden recordarse.
+El navegador conserva una cookie HttpOnly y SameSite=Lax (Secure bajo HTTPS);
+SQLite guarda únicamente el hash de un token aleatorio, nunca su valor ni la
+contraseña. Las peticiones que modifican datos siguen requiriendo CSRF.
+
 Los inicios de sesión, intentos rechazados, cierres explícitos e invalidaciones
 se registran en `eplsync.log`, sin contraseñas ni tokens. Si un error muestra una
 referencia de incidencia, úsala para localizar el detalle en los

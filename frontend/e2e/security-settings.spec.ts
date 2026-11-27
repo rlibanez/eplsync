@@ -583,3 +583,44 @@ test("settings tabs wrap and database stays immediately before about", async ({
     page.getByRole("heading", { name: "Configuración de importación" }),
   ).toHaveCount(0);
 });
+
+test("admin changes the remembered access duration within the supported range", async ({
+  page,
+}) => {
+  let policy = {
+    registrationEnabled: false,
+    approvalRequired: true,
+    idleMinutes: 30,
+    maximumHours: 12,
+    passwordMinimumLength: 8,
+    rememberMeDays: 45,
+  };
+  await page.route("**/api/security/users", (route) =>
+    route.fulfill({ json: [] }),
+  );
+  await page.route("**/api/security/permissions", (route) =>
+    route.fulfill({ json: ["CATALOG_READ"] }),
+  );
+  await page.route("**/api/security/policy", (route) => {
+    if (route.request().method() === "PUT")
+      policy = route.request().postDataJSON();
+    return route.fulfill({ json: policy });
+  });
+  await page.goto("/settings/users");
+  const days = page.getByLabel(
+    "Duración de «Mantener la sesión iniciada» (días)",
+    { exact: true },
+  );
+  await expect(days).toHaveValue("45");
+  await days.fill("0");
+  await days.press("Tab");
+  await expect(days).toHaveValue("1");
+  await days.fill("366");
+  await days.press("Tab");
+  await expect(days).toHaveValue("365");
+  await days.fill("90");
+  await page.getByRole("button", { name: "Guardar", exact: true }).click();
+  await expect.poll(() => policy.rememberMeDays).toBe(90);
+  await page.reload();
+  await expect(days).toHaveValue("90");
+});

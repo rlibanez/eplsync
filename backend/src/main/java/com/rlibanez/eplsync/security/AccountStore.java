@@ -16,10 +16,14 @@ public class AccountStore {
     private final PasswordEncoder encoder;
     private final String dummyHash;
     private final int defaultPasswordMinimumLength;
+    private final int defaultRememberMeDays;
     public record UserView(String id, String username, String email, String emailVerifiedAt, String role,
             String status, boolean mustChangePassword, String temporaryPasswordExpiresAt,
             String createdAt, String approvedAt, String approvedBy, Map<String,String> overrides, Set<Permission> permissions) {}
-    public record Policy(boolean registrationEnabled, boolean approvalRequired, int idleMinutes, int maximumHours, int passwordMinimumLength) {
+    public record Policy(boolean registrationEnabled, boolean approvalRequired, int idleMinutes, int maximumHours, int passwordMinimumLength, Integer rememberMeDays) {
+        public Policy(boolean registrationEnabled, boolean approvalRequired, int idleMinutes, int maximumHours, int passwordMinimumLength) {
+            this(registrationEnabled,approvalRequired,idleMinutes,maximumHours,passwordMinimumLength,null);
+        }
         public Policy(boolean registrationEnabled, boolean approvalRequired, int idleMinutes, int maximumHours) {
             this(registrationEnabled, approvalRequired, idleMinutes, maximumHours, 8);
         }
@@ -32,8 +36,12 @@ public class AccountStore {
         defaultPasswordMinimumLength = environment.getProperty("eplsync.security.password-min-length", Integer.class, 8);
         if (defaultPasswordMinimumLength < 8 || defaultPasswordMinimumLength > 128)
             throw new com.rlibanez.eplsync.exception.UserInputException("La longitud mínima de contraseña debe estar entre 8 y 128");
+        defaultRememberMeDays = environment.getProperty("eplsync.security.remember-me-days", Integer.class, 30);
+        if(defaultRememberMeDays<1 || defaultRememberMeDays>365) throw new com.rlibanez.eplsync.exception.UserInputException("La duración del acceso recordado debe estar entre 1 y 365 días");
         dummyHash = encoder.encode(UUID.randomUUID().toString());
         jdbc.update("INSERT OR IGNORE INTO security_policy(id,password_minimum_length) VALUES(1,?)", defaultPasswordMinimumLength);
+        // Environment changes on restart must also shorten existing grants permanently.
+        jdbc.update("UPDATE remembered_access SET expires_at=min(expires_at,issued_at+?)",java.time.Duration.ofDays(policy().rememberMeDays()).toMillis());
     }
     private void audit(String action, String id, String username, String actor) {
         var details=new LinkedHashMap<String,Object>();
@@ -56,15 +64,19 @@ public class AccountStore {
     public boolean initialized() { return jdbc.queryForObject("SELECT count(*) FROM users", Long.class) > 0; }
     public Policy policy() {
         return jdbc.queryForObject("SELECT * FROM security_policy WHERE id=1", (r,n) ->
-            new Policy(r.getBoolean("registration_enabled"), r.getBoolean("approval_required"), r.getInt("idle_minutes"), r.getInt("maximum_hours"), r.getInt("password_minimum_length")));
+            new Policy(r.getBoolean("registration_enabled"), r.getBoolean("approval_required"), r.getInt("idle_minutes"), r.getInt("maximum_hours"), r.getInt("password_minimum_length"),r.getObject("remember_me_days")==null?defaultRememberMeDays:r.getInt("remember_me_days")));
     }
     @Transactional public void policy(Policy policy) {
         if (policy.idleMinutes() < 5 || policy.idleMinutes() > 1440 || policy.maximumHours() < 1 || policy.maximumHours() > 168)
             throw new com.rlibanez.eplsync.exception.UserInputException("Límites de sesión inválidos");
         if (policy.passwordMinimumLength() < 8 || policy.passwordMinimumLength() > 128)
             throw new com.rlibanez.eplsync.exception.UserInputException("La longitud mínima de contraseña debe estar entre 8 y 128");
-        jdbc.update("UPDATE security_policy SET registration_enabled=?,approval_required=?,idle_minutes=?,maximum_hours=?,password_minimum_length=? WHERE id=1",
-            policy.registrationEnabled(),policy.approvalRequired(),policy.idleMinutes(),policy.maximumHours(),policy.passwordMinimumLength());
+        int days=policy.rememberMeDays()==null?policy().rememberMeDays():policy.rememberMeDays();
+        if(days<1 || days>365) throw new com.rlibanez.eplsync.exception.UserInputException("La duración del acceso recordado debe estar entre 1 y 365 días");
+        // Clamp existing grants permanently. Raising the policy must never extend old credentials.
+        jdbc.update("UPDATE remembered_access SET expires_at=min(expires_at,issued_at+?)",java.time.Duration.ofDays(days).toMillis());
+        jdbc.update("UPDATE security_policy SET registration_enabled=?,approval_required=?,idle_minutes=?,maximum_hours=?,password_minimum_length=?,remember_me_days=? WHERE id=1",
+            policy.registrationEnabled(),policy.approvalRequired(),policy.idleMinutes(),policy.maximumHours(),policy.passwordMinimumLength(),days);
     }
     /** Acquire SQLite's write lock before checking invariants, including across CLI processes. */
     private void lockMutations() { jdbc.update("UPDATE security_policy SET id=id WHERE id=1"); }
@@ -165,6 +177,7 @@ public class AccountStore {
         String secret=randomPassword(); Instant expiry=Instant.now().plusSeconds(terminal?300:86400);
         jdbc.update("UPDATE users SET password_hash=?,must_change_password=1,temporary_password_expires_at=?,security_version=security_version+1,updated_at=? WHERE id=?",
             encoder.encode(secret),expiry.toString(),Instant.now().toString(),id);
+        jdbc.update("DELETE FROM remembered_access WHERE user_id=?",id);
         audit("USER_PASSWORD_RESET",id,a.username(),null);
         AuthenticationLog.invalidated(a,"PASSWORD_RESET");
         return new Temporary(view(id),secret,expiry);
@@ -178,6 +191,7 @@ public class AccountStore {
         int changed=jdbc.update("UPDATE users SET password_hash=?,must_change_password=0,temporary_password_expires_at=NULL,password_changed_at=?,updated_at=?,security_version=security_version+1 WHERE id=? AND security_version=?",
             encoder.encode(newPassword),Instant.now().toString(),Instant.now().toString(),actor.id(),actor.securityVersion());
         if(changed!=1) throw new org.springframework.security.access.AccessDeniedException("La cuenta ha cambiado");
+        jdbc.update("DELETE FROM remembered_access WHERE user_id=?",actor.id());
         AuthenticationLog.invalidated(actor,"PASSWORD_CHANGED");
     }
     @Transactional public void email(Account actor,String email) {
@@ -199,6 +213,7 @@ public class AccountStore {
             role,status,Instant.now().toString(),status,Instant.now().toString(),status,actor,id);
         jdbc.update("DELETE FROM user_permission_overrides WHERE user_id=?",id);
         overrides.forEach((key,value)->jdbc.update("INSERT INTO user_permission_overrides(user_id,permission,effect) VALUES(?,?,?)",id,key,value));
+        jdbc.update("DELETE FROM remembered_access WHERE user_id=?",id);
         audit("USER_UPDATE",id,previous.username(),actor);
         AuthenticationLog.invalidated(previous,!status.equals(previous.status()) ? "ACCOUNT_STATUS_CHANGED" : "PRIVILEGES_UPDATED");
     }
@@ -235,7 +250,7 @@ public class AccountStore {
     /** Participates in the caller's reset transaction. */
     public void clear() {
         jdbc.update("DELETE FROM user_permission_overrides"); jdbc.update("DELETE FROM users");
-        jdbc.update("UPDATE security_policy SET registration_enabled=0,approval_required=1,idle_minutes=30,maximum_hours=12,password_minimum_length=? WHERE id=1", defaultPasswordMinimumLength);
+        jdbc.update("UPDATE security_policy SET registration_enabled=0,approval_required=1,idle_minutes=30,maximum_hours=12,remember_me_days=NULL,password_minimum_length=? WHERE id=1", defaultPasswordMinimumLength);
         AuthenticationLog.allInvalidated();
     }
     private String randomPassword() {

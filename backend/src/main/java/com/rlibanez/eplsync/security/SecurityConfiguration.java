@@ -45,16 +45,25 @@ public class SecurityConfiguration {
             () -> env.getProperty("eplsync.security.require-https",Boolean.class,false)),SecurityContextHolderFilter.class);
         http.addFilterAfter(new OncePerRequestFilter() {
             @Override protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,FilterChain chain) throws IOException,ServletException {
-                if(req.getServletPath().startsWith("/api/")) res.setHeader("Cache-Control","no-store");
+                String path=req.getServletPath();
+                if(path.isEmpty()) path=req.getRequestURI().substring(req.getContextPath().length());
+                if(path.startsWith("/api/")) res.setHeader("Cache-Control","no-store");
                 boolean requireHttps=env.getProperty("eplsync.security.require-https",Boolean.class,false);
                 if(requireHttps && !req.isSecure()) { error(req,res,400,"HTTPS_REQUIRED"); return; }
+                boolean credentials=req.getMethod().equals("POST") && java.util.Set.of("/api/auth/login","/api/auth/setup","/api/auth/register").contains(path);
                 var auth=SecurityContextHolder.getContext().getAuthentication();
-                if(auth!=null && auth.getPrincipal() instanceof Account a) {
-                    if(!sessions.valid(a)) { sessions.logout(req); error(req,res,401,"SESSION_EXPIRED");return; }
+                if(!credentials) {
+                    if(auth!=null && auth.getPrincipal() instanceof Account a) {
+                        if(!sessions.rememberedSessionValid(req,a)) {sessions.logout(req,res);error(req,res,401,"SESSION_EXPIRED");return;}
+                        if(!sessions.valid(a) && !sessions.restore(req,res,a)) {sessions.logout(req,res);error(req,res,401,"SESSION_EXPIRED");return;}
+                    } else if(path.startsWith("/api/")) sessions.restore(req,res,null);
+                    auth=SecurityContextHolder.getContext().getAuthentication();
+                }
+                if(!credentials && auth!=null && auth.getPrincipal() instanceof Account a) {
                     var session=req.getSession(false);
                     if(session!=null) session.setMaxInactiveInterval(accounts.policy().idleMinutes()*60);
-                    if(a.mustChangePassword() && req.getServletPath().startsWith("/api/")
-                        && !java.util.Set.of("/api/auth/me","/api/auth/password","/api/auth/logout","/api/auth/csrf","/api/auth/status").contains(req.getServletPath())) {
+                    if(a.mustChangePassword() && path.startsWith("/api/")
+                        && !java.util.Set.of("/api/auth/me","/api/auth/password","/api/auth/logout","/api/auth/csrf","/api/auth/status").contains(path)) {
                         error(req,res,403,"PASSWORD_CHANGE_REQUIRED");return;
                     }
                 }

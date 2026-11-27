@@ -32,7 +32,7 @@ public class AuthController {
         } catch (java.security.NoSuchAlgorithmException ex) { throw new IllegalStateException("SHA-256 unavailable",ex); }
     }
     @GetMapping("/csrf") public Map<String,String> csrf(CsrfToken token) { return Map.of("token",token.getToken(),"headerName",token.getHeaderName()); }
-    @GetMapping("/status") public Map<String,Object> status() {var p=accounts.policy();return Map.of("initialized",accounts.initialized(),"registrationEnabled",accounts.initialized()&&p.registrationEnabled(),"approvalRequired",p.approvalRequired(),"passwordMinimumLength",p.passwordMinimumLength(),"initialAdminKeyRequired",!accounts.initialized()&&initialKeyRequired());}
+    @GetMapping("/status") public Map<String,Object> status() {var p=accounts.policy();return Map.of("initialized",accounts.initialized(),"registrationEnabled",accounts.initialized()&&p.registrationEnabled(),"approvalRequired",p.approvalRequired(),"passwordMinimumLength",p.passwordMinimumLength(),"rememberMeDays",Objects.requireNonNullElse(p.rememberMeDays(),30),"initialAdminKeyRequired",!accounts.initialized()&&initialKeyRequired());}
     public record Setup(@NotBlank @Size(min=3,max=64) String username,
             @jakarta.validation.constraints.Email @Size(max=254) String email,
             @NotBlank @Size(max=256) String password,
@@ -48,7 +48,8 @@ public class AuthController {
         sessions.login(request,response,account);
         return account;
     }
-    public record Login(@NotBlank @Size(max=64) String username,@NotBlank @Size(max=256) String password) {
+    public record Login(@NotBlank @Size(max=64) String username,@NotBlank @Size(max=256) String password,Boolean rememberMe) {
+        public Login(String username,String password) {this(username,password,false);}
         public Login { if (username != null) username = username.strip(); }
     }
     @PostMapping("/login") public Account login(@Valid @RequestBody Login input,HttpServletRequest request,HttpServletResponse response) {
@@ -64,7 +65,7 @@ public class AuthController {
             AuthenticationLog.rejected(false,request.getRemoteAddr());
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Usuario o contraseña incorrectos, cuenta no activa o contraseña temporal caducada");
         }
-        sessions.login(request,response,account);return account;
+        sessions.login(request,response,account,Boolean.TRUE.equals(input.rememberMe()));return account;
     }
     public record Register(@NotBlank String username,@jakarta.validation.constraints.Email @Size(max=254) String email,@NotBlank @Size(max=256) String password) {
         public Register {email=Objects.requireNonNullElse(email,"");}
@@ -76,11 +77,11 @@ public class AuthController {
     }
     @GetMapping("/me") @PreAuthorize("isAuthenticated()") public Account me() { var previous=sessions.current(); var a=accounts.find(previous.id());
         return new Account(a.id(),a.username(),a.email(),a.role(),a.status(),a.mustChangePassword(),a.temporaryExpiresAt(),a.securityVersion(),a.permissions(),previous.authenticatedAt()); }
-    @PostMapping("/logout") @PreAuthorize("isAuthenticated()") public Map<String,Boolean> logout(HttpServletRequest request) { var account=sessions.current();sessions.logout(request);AuthenticationLog.logout(account);return Map.of("success",true); }
+    @PostMapping("/logout") @PreAuthorize("isAuthenticated()") public Map<String,Boolean> logout(HttpServletRequest request,HttpServletResponse response) { var account=sessions.current();sessions.logout(request,response);AuthenticationLog.logout(account);return Map.of("success",true); }
     public record Password(@NotBlank @Size(max=256) String currentPassword,@NotBlank @Size(max=256) String newPassword) {}
-    @PostMapping("/password") @PreAuthorize("isAuthenticated()") public Map<String,Boolean> password(@Valid @RequestBody Password input,HttpServletRequest request) {
+    @PostMapping("/password") @PreAuthorize("isAuthenticated()") public Map<String,Boolean> password(@Valid @RequestBody Password input,HttpServletRequest request,HttpServletResponse response) {
         throttle.check("password:"+sessions.current().id(),10);
-        accounts.changePassword(sessions.current(),input.currentPassword(),input.newPassword());sessions.logout(request);
+        accounts.changePassword(sessions.current(),input.currentPassword(),input.newPassword());sessions.logout(request,response);
         return Map.of("success",true);
     }
     public record Email(@NotBlank @jakarta.validation.constraints.Email String email) {}
